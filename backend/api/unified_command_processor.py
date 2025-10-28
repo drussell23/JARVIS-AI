@@ -3,16 +3,16 @@ Unified Command Processor - Dynamic command interpretation with zero hardcoding
 Learns from the system and adapts to any environment
 """
 
-import logging
-from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass
-from enum import Enum
 import asyncio
-from datetime import datetime
 import json
-from pathlib import Path
+import logging
 import re
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,16 @@ try:
 except ImportError:
     handle_manual_unlock = None
     logger.warning("Manual unlock handler not available")
+
+# Import Intelligent Vision Router
+try:
+    from vision.intelligent_vision_router import IntelligentVisionRouter
+
+    INTELLIGENT_ROUTER_AVAILABLE = True
+    logger.info("[UNIFIED] ✅ Intelligent Vision Router available")
+except ImportError as e:
+    INTELLIGENT_ROUTER_AVAILABLE = False
+    logger.warning(f"[UNIFIED] Intelligent Vision Router not available: {e}")
 
 
 class DynamicPatternLearner:
@@ -85,9 +95,7 @@ class DynamicPatternLearner:
                 self.pattern_confidence[f"verb_{first_word}"] += 0.1
 
             # Learn app names from successful commands
-            if command_type == "system" and any(
-                verb in words for verb in self.app_verbs
-            ):
+            if command_type == "system" and any(verb in words for verb in self.app_verbs):
                 # Extract potential app names
                 for i, word in enumerate(words):
                     if word in self.app_verbs and i + 1 < len(words):
@@ -200,14 +208,20 @@ class UnifiedCommandProcessor:
         self.context_graph = None
 
         # Initialize resolver systems
-        self.contextual_resolver = None   # Space/monitor resolution
-        self.implicit_resolver = None     # Entity/intent resolution
-        self.multi_space_handler = None   # Multi-space query handler
-        self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
+        self.contextual_resolver = None  # Space/monitor resolution
+        self.implicit_resolver = None  # Entity/intent resolution
+        self.multi_space_handler = None  # Multi-space query handler
+        self.temporal_handler = (
+            None  # Temporal query handler (change detection, error tracking, timeline)
+        )
         self.query_complexity_manager = None  # Query complexity classification and routing
         self.medium_complexity_handler = None  # Medium complexity (Level 2) query execution
         self.display_reference_handler = None  # Display voice command resolution
         self._resolvers_initialized = False
+
+        # Initialize Intelligent Vision Router (YOLO + LLaMA + Claude intelligent routing)
+        self.vision_router = None
+        self._vision_router_initialized = False
 
     async def _initialize_resolvers(self):
         """Initialize both resolver systems for comprehensive query understanding"""
@@ -215,6 +229,7 @@ class UnifiedCommandProcessor:
         # Step 1: Initialize MultiSpaceContextGraph (required for implicit resolver)
         try:
             from core.context.multi_space_context_graph import MultiSpaceContextGraph
+
             self.context_graph = MultiSpaceContextGraph()
             logger.info("[UNIFIED] ✅ MultiSpaceContextGraph initialized")
         except ImportError as e:
@@ -228,6 +243,7 @@ class UnifiedCommandProcessor:
         if self.context_graph:
             try:
                 from core.nlp.implicit_reference_resolver import initialize_implicit_resolver
+
                 self.implicit_resolver = initialize_implicit_resolver(self.context_graph)
                 logger.info("[UNIFIED] ✅ ImplicitReferenceResolver initialized")
             except ImportError as e:
@@ -243,6 +259,7 @@ class UnifiedCommandProcessor:
         # Step 3: Initialize ContextualQueryResolver (space/monitor resolution)
         try:
             from context_intelligence.resolvers import get_contextual_resolver
+
             self.contextual_resolver = get_contextual_resolver()
             logger.info("[UNIFIED] ✅ ContextualQueryResolver initialized")
         except ImportError as e:
@@ -264,6 +281,7 @@ class UnifiedCommandProcessor:
 
                 try:
                     from vision.yabai_space_detector import YabaiSpaceDetector
+
                     yabai_detector = YabaiSpaceDetector()
                     logger.info("[UNIFIED] ✅ YabaiSpaceDetector initialized")
                 except Exception as e:
@@ -271,6 +289,7 @@ class UnifiedCommandProcessor:
 
                 try:
                     from vision.multi_space_window_detector import MultiSpaceWindowDetector
+
                     cg_window_detector = MultiSpaceWindowDetector()
                     logger.info("[UNIFIED] ✅ MultiSpaceWindowDetector initialized")
                 except Exception as e:
@@ -290,7 +309,7 @@ class UnifiedCommandProcessor:
                     contextual_resolver=self.contextual_resolver,
                     learning_db=learning_db,
                     yabai_detector=yabai_detector,
-                    cg_window_detector=cg_window_detector
+                    cg_window_detector=cg_window_detector,
                 )
                 logger.info("[UNIFIED] ✅ MultiSpaceQueryHandler initialized with ALL data sources")
                 logger.info(f"[UNIFIED]    • Context Graph: ✅")
@@ -331,13 +350,13 @@ class UnifiedCommandProcessor:
         # Step 6.5: Initialize ResponseStrategyManager (response quality enhancement)
         try:
             from context_intelligence.managers import (
+                ResponseQuality,
                 initialize_response_strategy_manager,
-                ResponseQuality
             )
 
             self.response_strategy_manager = initialize_response_strategy_manager(
                 vision_client=None,  # Will be set if vision client available
-                min_quality=ResponseQuality.SPECIFIC
+                min_quality=ResponseQuality.SPECIFIC,
             )
             logger.info("[UNIFIED] ✅ ResponseStrategyManager initialized")
         except ImportError as e:
@@ -354,7 +373,7 @@ class UnifiedCommandProcessor:
             self.context_aware_manager = initialize_context_aware_response_manager(
                 implicit_resolver=self.implicit_resolver,
                 max_history=10,
-                context_ttl=300.0  # 5 minutes
+                context_ttl=300.0,  # 5 minutes
             )
             logger.info("[UNIFIED] ✅ ContextAwareResponseManager initialized")
         except ImportError as e:
@@ -377,7 +396,7 @@ class UnifiedCommandProcessor:
                 conversation_tracker=conversation_tracker,
                 implicit_resolver=self.implicit_resolver,
                 max_suggestions=2,
-                confidence_threshold=0.5
+                confidence_threshold=0.5,
             )
             logger.info("[UNIFIED] ✅ ProactiveSuggestionManager initialized")
         except ImportError as e:
@@ -395,7 +414,7 @@ class UnifiedCommandProcessor:
                 include_visual_indicators=True,  # Include ✅ ⚠️ ❓
                 include_reasoning=True,  # Include reasoning for non-high confidence
                 min_confidence_for_high=0.8,
-                min_confidence_for_medium=0.5
+                min_confidence_for_medium=0.5,
             )
             logger.info("[UNIFIED] ✅ ConfidenceManager initialized")
         except ImportError as e:
@@ -417,9 +436,11 @@ class UnifiedCommandProcessor:
             self.multi_monitor_manager = initialize_multi_monitor_manager(
                 implicit_resolver=self.implicit_resolver,
                 conversation_tracker=conversation_tracker,
-                auto_refresh_interval=30.0  # Refresh monitor layout every 30 seconds
+                auto_refresh_interval=30.0,  # Refresh monitor layout every 30 seconds
             )
-            logger.info("[UNIFIED] ✅ MultiMonitorManager initialized (will be fully initialized on first use)")
+            logger.info(
+                "[UNIFIED] ✅ MultiMonitorManager initialized (will be fully initialized on first use)"
+            )
         except ImportError as e:
             logger.warning(f"[UNIFIED] MultiMonitorManager not available: {e}")
             self.multi_monitor_manager = None
@@ -432,14 +453,14 @@ class UnifiedCommandProcessor:
             from context_intelligence.handlers import initialize_multi_monitor_query_handler
             from context_intelligence.managers import (
                 get_capture_strategy_manager,
-                get_ocr_strategy_manager
+                get_ocr_strategy_manager,
             )
 
             self.multi_monitor_query_handler = initialize_multi_monitor_query_handler(
                 multi_monitor_manager=self.multi_monitor_manager,
                 capture_manager=get_capture_strategy_manager(),
                 ocr_manager=get_ocr_strategy_manager(),
-                implicit_resolver=self.implicit_resolver
+                implicit_resolver=self.implicit_resolver,
             )
             logger.info("[UNIFIED] ✅ MultiMonitorQueryHandler initialized")
         except ImportError as e:
@@ -451,8 +472,9 @@ class UnifiedCommandProcessor:
 
         # Step 6.11: Initialize ChangeDetectionManager (temporal & state-based change detection)
         try:
-            from context_intelligence.managers import initialize_change_detection_manager
             from pathlib import Path
+
+            from context_intelligence.managers import initialize_change_detection_manager
 
             # Get conversation tracker from context-aware manager
             conversation_tracker = None
@@ -464,7 +486,7 @@ class UnifiedCommandProcessor:
                 cache_ttl=3600.0,  # 1 hour
                 max_cache_size=100,
                 implicit_resolver=self.implicit_resolver,
-                conversation_tracker=conversation_tracker
+                conversation_tracker=conversation_tracker,
             )
             logger.info("[UNIFIED] ✅ ChangeDetectionManager initialized")
         except ImportError as e:
@@ -476,7 +498,11 @@ class UnifiedCommandProcessor:
 
         # Step 6.12: Initialize ProactiveMonitoringManager (autonomous monitoring & alerts)
         try:
-            from context_intelligence.managers import initialize_proactive_monitoring_manager, get_capture_strategy_manager, get_ocr_strategy_manager
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager,
+                initialize_proactive_monitoring_manager,
+            )
 
             # Get conversation tracker from context-aware manager
             conversation_tracker = None
@@ -495,9 +521,11 @@ class UnifiedCommandProcessor:
                 implicit_resolver=self.implicit_resolver,
                 conversation_tracker=conversation_tracker,
                 default_interval=10.0,  # Check every 10 seconds
-                alert_callback=alert_callback
+                alert_callback=alert_callback,
             )
-            logger.info("[UNIFIED] ✅ ProactiveMonitoringManager initialized (not started - use start_monitoring())")
+            logger.info(
+                "[UNIFIED] ✅ ProactiveMonitoringManager initialized (not started - use start_monitoring())"
+            )
         except ImportError as e:
             logger.warning(f"[UNIFIED] ProactiveMonitoringManager not available: {e}")
             self.proactive_monitoring_manager = None
@@ -508,6 +536,7 @@ class UnifiedCommandProcessor:
         # Step 6.13: Initialize Goal Inference + Autonomous Decision Integration
         try:
             from backend.intelligence.goal_autonomous_uae_integration import get_integration
+
             self.goal_autonomous_integration = get_integration()
             logger.info("[UNIFIED] ✅ Goal Inference + Autonomous Decision Engine initialized")
         except ImportError as e:
@@ -530,7 +559,7 @@ class UnifiedCommandProcessor:
                 proactive_monitoring_manager=self.proactive_monitoring_manager,
                 change_detection_manager=self.change_detection_manager,
                 implicit_resolver=self.implicit_resolver,
-                conversation_tracker=conversation_tracker
+                conversation_tracker=conversation_tracker,
             )
 
             # Register alert callback for ProactiveMonitoringManager to feed alerts to TemporalHandler
@@ -540,14 +569,16 @@ class UnifiedCommandProcessor:
 
                 def enhanced_alert_callback(alert):
                     original_callback(alert)  # Log to console
-                    self.temporal_handler.register_monitoring_alert({
-                        'space_id': alert.space_id,
-                        'event_type': alert.event_type.value,
-                        'message': alert.message,
-                        'priority': alert.priority.value,
-                        'timestamp': alert.timestamp,
-                        'metadata': alert.metadata
-                    })
+                    self.temporal_handler.register_monitoring_alert(
+                        {
+                            "space_id": alert.space_id,
+                            "event_type": alert.event_type.value,
+                            "message": alert.message,
+                            "priority": alert.priority.value,
+                            "timestamp": alert.timestamp,
+                            "metadata": alert.metadata,
+                        }
+                    )
 
                 # Re-initialize ProactiveMonitoringManager with enhanced callback
                 self.proactive_monitoring_manager = initialize_proactive_monitoring_manager(
@@ -557,10 +588,12 @@ class UnifiedCommandProcessor:
                     implicit_resolver=self.implicit_resolver,
                     conversation_tracker=conversation_tracker,
                     default_interval=10.0,
-                    alert_callback=enhanced_alert_callback
+                    alert_callback=enhanced_alert_callback,
                 )
 
-            logger.info("[UNIFIED] ✅ Enhanced TemporalQueryHandler v2.0 initialized with ProactiveMonitoring integration")
+            logger.info(
+                "[UNIFIED] ✅ Enhanced TemporalQueryHandler v2.0 initialized with ProactiveMonitoring integration"
+            )
         except ImportError as e:
             logger.warning(f"[UNIFIED] Enhanced TemporalQueryHandler not available: {e}")
             self.temporal_handler = None
@@ -573,7 +606,7 @@ class UnifiedCommandProcessor:
             from context_intelligence.handlers import initialize_medium_complexity_handler
             from context_intelligence.managers import (
                 get_capture_strategy_manager,
-                get_ocr_strategy_manager
+                get_ocr_strategy_manager,
             )
 
             self.medium_complexity_handler = initialize_medium_complexity_handler(
@@ -585,7 +618,7 @@ class UnifiedCommandProcessor:
                 confidence_manager=self.confidence_manager,
                 multi_monitor_manager=self.multi_monitor_manager,
                 multi_monitor_query_handler=self.multi_monitor_query_handler,
-                implicit_resolver=self.implicit_resolver
+                implicit_resolver=self.implicit_resolver,
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
         except ImportError as e:
@@ -597,11 +630,13 @@ class UnifiedCommandProcessor:
 
         # Step 8: Initialize DisplayReferenceHandler (voice command → display connection)
         try:
-            from context_intelligence.handlers.display_reference_handler import initialize_display_reference_handler
+            from context_intelligence.handlers.display_reference_handler import (
+                initialize_display_reference_handler,
+            )
 
             self.display_reference_handler = initialize_display_reference_handler(
                 implicit_resolver=self.implicit_resolver,
-                display_monitor=None  # Will be integrated with advanced_display_monitor later
+                display_monitor=None,  # Will be integrated with advanced_display_monitor later
             )
             logger.info("[UNIFIED] ✅ DisplayReferenceHandler initialized")
         except ImportError as e:
@@ -614,13 +649,12 @@ class UnifiedCommandProcessor:
         # Step 8: Initialize ComplexComplexityHandler (Level 3 query execution)
         try:
             from context_intelligence.handlers import (
-                initialize_complex_complexity_handler,
                 get_predictive_handler,
-                get_action_query_handler
+                initialize_complex_complexity_handler,
             )
             from context_intelligence.managers import (
                 get_capture_strategy_manager,
-                get_ocr_strategy_manager
+                get_ocr_strategy_manager,
             )
 
             self.complex_complexity_handler = initialize_complex_complexity_handler(
@@ -632,7 +666,7 @@ class UnifiedCommandProcessor:
                 multi_monitor_manager=self.multi_monitor_manager,
                 implicit_resolver=self.implicit_resolver,
                 cache_ttl=60.0,
-                max_concurrent_captures=5
+                max_concurrent_captures=5,
             )
             logger.info("[UNIFIED] ✅ ComplexComplexityHandler initialized")
         except ImportError as e:
@@ -680,7 +714,115 @@ class UnifiedCommandProcessor:
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
         else:
-            logger.warning("[UNIFIED] ⚠️  No resolvers available - queries will use basic processing")
+            logger.warning(
+                "[UNIFIED] ⚠️  No resolvers available - queries will use basic processing"
+            )
+
+        # Step 7: Initialize Intelligent Vision Router (YOLO + LLaMA + Claude routing)
+        if INTELLIGENT_ROUTER_AVAILABLE and not self._vision_router_initialized:
+            try:
+                logger.info("[UNIFIED] Initializing Intelligent Vision Router...")
+
+                # Get YOLO detector
+                yolo_detector = None
+                try:
+                    from vision.yolo_vision_detector import get_yolo_detector
+
+                    yolo_detector = get_yolo_detector()
+                    logger.info("[UNIFIED] ✅ YOLO detector loaded for router")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] YOLO detector not available for router: {e}")
+
+                # Get LLaMA executor from hybrid orchestrator
+                llama_executor = None
+                try:
+                    from core.hybrid_orchestrator import get_hybrid_orchestrator
+
+                    orchestrator = get_hybrid_orchestrator()
+                    if orchestrator and hasattr(orchestrator, "model_manager"):
+                        llama_executor = orchestrator.model_manager
+                        logger.info("[UNIFIED] ✅ LLaMA executor loaded for router")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] LLaMA executor not available for router: {e}")
+
+                # Get OptimizedClaudeVisionAnalyzer
+                claude_vision_analyzer = None
+                try:
+                    import os
+
+                    from vision.optimized_claude_vision import OptimizedClaudeVisionAnalyzer
+
+                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    if api_key:
+                        claude_vision_analyzer = OptimizedClaudeVisionAnalyzer(
+                            api_key=api_key, use_intelligent_selection=True, use_yolo_hybrid=True
+                        )
+                        logger.info(
+                            "[UNIFIED] ✅ OptimizedClaudeVisionAnalyzer loaded for router (YOLO hybrid enabled)"
+                        )
+                    else:
+                        logger.warning(
+                            "[UNIFIED] ANTHROPIC_API_KEY not set - Claude vision not available"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"[UNIFIED] OptimizedClaudeVisionAnalyzer not available for router: {e}"
+                    )
+
+                # Get Yabai detector (already initialized above)
+                yabai_detector = None
+                try:
+                    from vision.yabai_space_detector import YabaiSpaceDetector
+
+                    yabai_detector = YabaiSpaceDetector()
+                    logger.info("[UNIFIED] ✅ Yabai detector loaded for router")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] Yabai detector not available for router: {e}")
+
+                # Create the intelligent vision router
+                self.vision_router = IntelligentVisionRouter(
+                    yolo_detector=yolo_detector,
+                    llama_executor=llama_executor,
+                    claude_vision_analyzer=claude_vision_analyzer,
+                    yabai_detector=yabai_detector,
+                    max_cost_per_query=0.05,  # Max $0.05 per query
+                    target_latency_ms=2000,  # Target <2s
+                    prefer_local=True,  # Prefer free local models (YOLO, LLaMA, Yabai)
+                )
+
+                self._vision_router_initialized = True
+
+                # Log which models are available
+                available_models = []
+                if yolo_detector:
+                    available_models.append("YOLO")
+                if llama_executor:
+                    available_models.append("LLaMA-3.1-70B")
+                if claude_vision_analyzer:
+                    available_models.append("Claude-Vision (Haiku/Sonnet/Opus)")
+                if yabai_detector:
+                    available_models.append("Yabai")
+
+                logger.info(
+                    f"[UNIFIED] 🚀 Intelligent Vision Router initialized with models: "
+                    f"{', '.join(available_models)}"
+                )
+                logger.info(
+                    "[UNIFIED] 🧠 Router will intelligently select: "
+                    "YOLO (trivial), LLaMA (complex reasoning), "
+                    "Claude-Haiku (simple), Claude-Sonnet (medium), "
+                    "Yabai (multi-space)"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"[UNIFIED] Failed to initialize Intelligent Vision Router: {e}", exc_info=True
+                )
+                self.vision_router = None
+                self._vision_router_initialized = False
+        else:
+            if not INTELLIGENT_ROUTER_AVAILABLE:
+                logger.warning("[UNIFIED] Intelligent Vision Router not available")
 
         self._resolvers_initialized = True
 
@@ -730,9 +872,7 @@ class UnifiedCommandProcessor:
             CommandType.QUERY: "api.query_handler",  # Add basic query handler
         }
 
-    async def process_command(
-        self, command_text: str, websocket=None
-    ) -> Dict[str, Any]:
+    async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
         """Process any command through unified pipeline with FULL context awareness"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
 
@@ -745,9 +885,7 @@ class UnifiedCommandProcessor:
         self.command_stats[command_text.lower()] += 1
 
         # NEW: Get context-aware handler for ALL commands
-        from context_intelligence.handlers.context_aware_handler import (
-            get_context_aware_handler,
-        )
+        from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
 
         context_handler = get_context_aware_handler()
 
@@ -772,9 +910,7 @@ class UnifiedCommandProcessor:
 
         # Step 2: Classify command intent
         command_type, confidence = await self._classify_command(command_text)
-        logger.info(
-            f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})"
-        )
+        logger.info(f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})")
 
         # Step 3: Check system context FIRST (screen lock, active apps, etc.)
         system_context = await self._get_full_system_context()
@@ -787,35 +923,52 @@ class UnifiedCommandProcessor:
             try:
                 # Build integration context
                 integration_context = {
-                    'command': command_text,
-                    'active_applications': system_context.get('active_apps', []),
-                    'recent_actions': list(self.context.conversation_history)[-5:] if self.context.conversation_history else [],
-                    'workspace_state': system_context,
-                    'windows': [],  # Would be populated from window manager if available
-                    'time_context': {
-                        'current_time': datetime.now().strftime('%I:%M %p'),
-                        'day_of_week': 'weekday' if datetime.now().weekday() < 5 else 'weekend'
-                    }
+                    "command": command_text,
+                    "active_applications": system_context.get("active_apps", []),
+                    "recent_actions": (
+                        list(self.context.conversation_history)[-5:]
+                        if self.context.conversation_history
+                        else []
+                    ),
+                    "workspace_state": system_context,
+                    "windows": [],  # Would be populated from window manager if available
+                    "time_context": {
+                        "current_time": datetime.now().strftime("%I:%M %p"),
+                        "day_of_week": "weekday" if datetime.now().weekday() < 5 else "weekend",
+                    },
                 }
 
                 # Check for predictive display connection if relevant
-                if any(keyword in command_text.lower() for keyword in ['tv', 'display', 'screen', 'monitor', 'living room']):
-                    display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+                if any(
+                    keyword in command_text.lower()
+                    for keyword in ["tv", "display", "screen", "monitor", "living room"]
+                ):
+                    display_decision = (
+                        await self.goal_autonomous_integration.predict_display_connection(
+                            integration_context
+                        )
+                    )
 
                     if display_decision and display_decision.integrated_confidence > 0.85:
-                        logger.info(f"[GOAL-INFERENCE] High-confidence display prediction: {display_decision.reasoning}")
+                        logger.info(
+                            f"[GOAL-INFERENCE] High-confidence display prediction: {display_decision.reasoning}"
+                        )
 
                         # Send proactive suggestion if websocket available
                         if websocket:
-                            await websocket.send_json({
-                                "type": "proactive_suggestion",
-                                "message": f"I've noticed {display_decision.reasoning}. Shall I connect to {display_decision.action.target}?",
-                                "confidence": display_decision.integrated_confidence,
-                                "action": "connect_display"
-                            })
+                            await websocket.send_json(
+                                {
+                                    "type": "proactive_suggestion",
+                                    "message": f"I've noticed {display_decision.reasoning}. Shall I connect to {display_decision.action.target}?",
+                                    "confidence": display_decision.integrated_confidence,
+                                    "action": "connect_display",
+                                }
+                            )
 
                 # Process through full integration for goal-based decisions
-                decisions = await self.goal_autonomous_integration.process_context(integration_context)
+                decisions = await self.goal_autonomous_integration.process_context(
+                    integration_context
+                )
 
                 if decisions:
                     logger.info(f"[GOAL-INFERENCE] Generated {len(decisions)} autonomous decisions")
@@ -823,22 +976,31 @@ class UnifiedCommandProcessor:
                     # Log high-confidence decisions for proactive suggestions
                     for decision in decisions:
                         if decision.integrated_confidence > 0.8:
-                            logger.info(f"[GOAL-INFERENCE] Suggestion: {decision.action.action_type} - {decision.reasoning}")
+                            logger.info(
+                                f"[GOAL-INFERENCE] Suggestion: {decision.action.action_type} - {decision.reasoning}"
+                            )
 
                             # Could auto-execute or suggest based on confidence
-                            if decision.integrated_confidence > 0.95 and decision.action.action_type == 'connect_display':
+                            if (
+                                decision.integrated_confidence > 0.95
+                                and decision.action.action_type == "connect_display"
+                            ):
                                 # Pre-load resources for faster execution
-                                logger.info("[GOAL-INFERENCE] Pre-loading display connection resources")
+                                logger.info(
+                                    "[GOAL-INFERENCE] Pre-loading display connection resources"
+                                )
 
             except Exception as e:
                 logger.error(f"[GOAL-INFERENCE] Error in integration: {e}")
                 # Continue with normal processing if integration fails
 
         # Step 4: Route to Medium Complexity Handler if appropriate
-        if (classified_query and
-            classified_query.complexity.level.name == "MODERATE" and
-            self.medium_complexity_handler and
-            classified_query.entities.get("spaces")):
+        if (
+            classified_query
+            and classified_query.complexity.level.name == "MODERATE"
+            and self.medium_complexity_handler
+            and classified_query.entities.get("spaces")
+        ):
 
             try:
                 from context_intelligence.handlers import MediumQueryType
@@ -858,7 +1020,7 @@ class UnifiedCommandProcessor:
                     query=command_text,
                     space_ids=classified_query.entities["spaces"],
                     query_type=medium_type,
-                    context={"system_context": system_context}
+                    context={"system_context": system_context},
                 )
 
                 # Return formatted result
@@ -871,7 +1033,7 @@ class UnifiedCommandProcessor:
                         "query_type": classified_query.query_type,
                         "spaces_processed": result.spaces_processed,
                         "execution_time": result.execution_time,
-                        "api_calls": result.total_api_calls
+                        "api_calls": result.total_api_calls,
                     },
                     "captures": [
                         {
@@ -879,10 +1041,10 @@ class UnifiedCommandProcessor:
                             "success": c.success,
                             "text_length": len(c.ocr_text) if c.ocr_text else 0,
                             "confidence": c.ocr_confidence,
-                            "method": f"{c.capture_method} + {c.ocr_method}"
+                            "method": f"{c.capture_method} + {c.ocr_method}",
                         }
                         for c in result.captures
-                    ]
+                    ],
                 }
 
             except Exception as e:
@@ -890,19 +1052,30 @@ class UnifiedCommandProcessor:
                 # Fall through to regular processing
 
         # Step 4.5: Route to Complex Complexity Handler if appropriate
-        if (classified_query and
-            classified_query.complexity.level.name == "COMPLEX" and
-            self.complex_complexity_handler):
+        if (
+            classified_query
+            and classified_query.complexity.level.name == "COMPLEX"
+            and self.complex_complexity_handler
+        ):
 
             try:
                 from context_intelligence.handlers import ComplexQueryType
 
                 # Determine complex query type
-                if any(word in command_text.lower() for word in ["changed", "change", "different", "history"]):
+                if any(
+                    word in command_text.lower()
+                    for word in ["changed", "change", "different", "history"]
+                ):
                     complex_type = ComplexQueryType.TEMPORAL
-                elif any(word in command_text.lower() for word in ["find", "search", "all", "across", "every"]):
+                elif any(
+                    word in command_text.lower()
+                    for word in ["find", "search", "all", "across", "every"]
+                ):
                     complex_type = ComplexQueryType.CROSS_SPACE
-                elif any(word in command_text.lower() for word in ["progress", "predict", "will", "going"]):
+                elif any(
+                    word in command_text.lower()
+                    for word in ["progress", "predict", "will", "going"]
+                ):
                     complex_type = ComplexQueryType.PREDICTIVE
                 else:
                     complex_type = ComplexQueryType.ANALYTICAL
@@ -910,15 +1083,18 @@ class UnifiedCommandProcessor:
                 logger.info(f"[UNIFIED] Routing to ComplexComplexityHandler ({complex_type.value})")
 
                 # Determine space IDs (all spaces if not specified)
-                space_ids = classified_query.entities.get("spaces") if classified_query.entities else None
+                space_ids = (
+                    classified_query.entities.get("spaces") if classified_query.entities else None
+                )
 
                 # Determine time range for temporal queries
                 time_range = None
                 if complex_type == ComplexQueryType.TEMPORAL:
                     # Extract time range from query
                     import re
-                    minutes_match = re.search(r'(\d+)\s*minute', command_text.lower())
-                    hours_match = re.search(r'(\d+)\s*hour', command_text.lower())
+
+                    minutes_match = re.search(r"(\d+)\s*minute", command_text.lower())
+                    hours_match = re.search(r"(\d+)\s*hour", command_text.lower())
                     if minutes_match:
                         time_range = {"minutes": int(minutes_match.group(1))}
                     elif hours_match:
@@ -932,7 +1108,7 @@ class UnifiedCommandProcessor:
                     query_type=complex_type,
                     space_ids=space_ids,
                     time_range=time_range,
-                    context={"system_context": system_context}
+                    context={"system_context": system_context},
                 )
 
                 # Return formatted result
@@ -943,7 +1119,9 @@ class UnifiedCommandProcessor:
                     ta = result.temporal_analysis
                     response_parts.append(f"\n\n**Temporal Analysis:**")
                     response_parts.append(f"- Changes detected: {ta.changes_detected}")
-                    response_parts.append(f"- Changed spaces: {', '.join(map(str, ta.changed_spaces)) if ta.changed_spaces else 'none'}")
+                    response_parts.append(
+                        f"- Changed spaces: {', '.join(map(str, ta.changed_spaces)) if ta.changed_spaces else 'none'}"
+                    )
 
                 # Add cross-space analysis if available
                 if result.cross_space_analysis:
@@ -966,7 +1144,7 @@ class UnifiedCommandProcessor:
                         "query_type": complex_type.value,
                         "spaces_processed": result.spaces_processed,
                         "execution_time": result.execution_time,
-                        "api_calls": result.api_calls
+                        "api_calls": result.api_calls,
                     },
                     "snapshots": [
                         {
@@ -974,10 +1152,10 @@ class UnifiedCommandProcessor:
                             "success": s.ocr_text is not None and not s.error,
                             "text_length": len(s.ocr_text) if s.ocr_text else 0,
                             "confidence": s.ocr_confidence,
-                            "error": s.error
+                            "error": s.error,
                         }
                         for s in result.snapshots
-                    ]
+                    ],
                 }
 
             except Exception as e:
@@ -1001,9 +1179,7 @@ class UnifiedCommandProcessor:
             if command_type == CommandType.COMPOUND:
                 return await self._handle_compound_command(cmd, context=context)
             else:
-                return await self._execute_command(
-                    command_type, cmd, websocket, context=context
-                )
+                return await self._execute_command(command_type, cmd, websocket, context=context)
 
         # Step 7: Process through context-aware handler
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
@@ -1083,9 +1259,7 @@ class UnifiedCommandProcessor:
             "lock screen",
             "lock the screen",
         ]:
-            logger.info(
-                f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'"
-            )
+            logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
             return (
                 CommandType.VOICE_UNLOCK,
                 0.99,
@@ -1102,9 +1276,7 @@ class UnifiedCommandProcessor:
         # Display/Screen mirroring detection (HIGH PRIORITY - before vision to avoid confusion)
         display_score = self._calculate_display_score(words, command_lower)
         if display_score > 0.7:
-            logger.info(
-                f"Display command detected: '{command_lower}' with score={display_score}"
-            )
+            logger.info(f"Display command detected: '{command_lower}' with score={display_score}")
             return CommandType.DISPLAY, display_score
 
         # Check for implicit compound commands (app + action without connector)
@@ -1124,8 +1296,7 @@ class UnifiedCommandProcessor:
                     # Check if there's a verb or action after the app
                     after_has_action = any(
                         word
-                        in self.pattern_learner.app_verbs
-                        | {"search", "navigate", "go", "type"}
+                        in self.pattern_learner.app_verbs | {"search", "navigate", "go", "type"}
                         for word in words[app_idx + 1 :]
                     )
 
@@ -1167,9 +1338,7 @@ class UnifiedCommandProcessor:
                 return CommandType.SYSTEM, 0.85 + (system_indicators * 0.05)
 
         # Dynamic app detection - if any learned app is mentioned
-        mentioned_apps = [
-            word for word in words if self.pattern_learner.is_learned_app(word)
-        ]
+        mentioned_apps = [word for word in words if self.pattern_learner.is_learned_app(word)]
         if mentioned_apps:
             # Check for action context
             has_action = any(word in self.pattern_learner.app_verbs for word in words)
@@ -1203,9 +1372,7 @@ class UnifiedCommandProcessor:
         has_document_type = any(dtype in words for dtype in document_types)
 
         if has_document_keyword and has_document_type:
-            logger.info(
-                f"[CLASSIFY] Document creation command detected: '{command_text}'"
-            )
+            logger.info(f"[CLASSIFY] Document creation command detected: '{command_text}'")
             return CommandType.DOCUMENT, 0.95
 
         # Vision detection through semantic analysis (CHECK BEFORE QUERY!)
@@ -1224,10 +1391,28 @@ class UnifiedCommandProcessor:
             return CommandType.AUTONOMY, autonomy_score
 
         # Meta command detection
-        meta_indicators = {"cancel", "stop", "undo", "never", "not", "wait", "hold"}
+        meta_indicators = {
+            "cancel",
+            "stop",
+            "undo",
+            "never",
+            "not",
+            "wait",
+            "hold",
+            "performance",
+            "stats",
+        }
         meta_count = sum(1 for word in words if word in meta_indicators)
         if meta_count > 0 and len(words) < 5:
             return CommandType.META, 0.8 + (meta_count * 0.05)
+
+        # Performance/stats queries
+        if (
+            "performance" in command_lower
+            or "vision performance" in command_lower
+            or "show stats" in command_lower
+        ):
+            return CommandType.META, 0.95
 
         # Wake word detection
         if command_lower.strip() in {
@@ -1290,10 +1475,7 @@ class UnifiedCommandProcessor:
 
         # Check if it's part of a search query or typed text
         before_connector = text.split(connector)[0]
-        if any(
-            pattern in before_connector
-            for pattern in ["search for", "type", "write", "enter"]
-        ):
+        if any(pattern in before_connector for pattern in ["search for", "type", "write", "enter"]):
             return True
 
         return False
@@ -1349,7 +1531,8 @@ class UnifiedCommandProcessor:
 
         # Clean words by removing punctuation
         import re
-        clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
+
+        clean_words = [re.sub(r"[^\w\s]", "", word) for word in words]
 
         # Primary display/mirroring keywords (STRONG indicators)
         primary_keywords = {
@@ -1367,7 +1550,17 @@ class UnifiedCommandProcessor:
         has_secondary = any(kw in clean_words for kw in secondary_keywords)
 
         # Display action verbs (both connection and disconnection)
-        action_verbs = {"connect", "cast", "project", "stream", "share", "stop", "disconnect", "turn", "disable"}
+        action_verbs = {
+            "connect",
+            "cast",
+            "project",
+            "stream",
+            "share",
+            "stop",
+            "disconnect",
+            "turn",
+            "disable",
+        }
         has_action = any(verb in clean_words for verb in action_verbs)
 
         # Disconnection indicators (boost score for disconnect commands)
@@ -1395,12 +1588,12 @@ class UnifiedCommandProcessor:
         # Specific display name patterns (HIGH confidence even without action verb)
         # These patterns strongly indicate user wants to connect to a display
         display_name_patterns = [
-            r"living\s*room\s*tv",      # "living room tv"
-            r"bedroom\s*tv",             # "bedroom tv"
-            r"kitchen\s*tv",             # "kitchen tv"
-            r"office\s*tv",              # "office tv"
-            r"\w+\s*room\s*tv",         # "any room tv"
-            r"(sony|lg|samsung)\s*tv",   # "sony tv", "lg tv", etc.
+            r"living\s*room\s*tv",  # "living room tv"
+            r"bedroom\s*tv",  # "bedroom tv"
+            r"kitchen\s*tv",  # "kitchen tv"
+            r"office\s*tv",  # "office tv"
+            r"\w+\s*room\s*tv",  # "any room tv"
+            r"(sony|lg|samsung)\s*tv",  # "sony tv", "lg tv", etc.
         ]
 
         for pattern in display_name_patterns:
@@ -1422,7 +1615,7 @@ class UnifiedCommandProcessor:
             "stop mirroring",
             "disconnect display",
             "turn off screen mirror",
-            "stop airplay"
+            "stop airplay",
         ]
         for phrase in disconnect_phrases:
             if phrase in command_lower:
@@ -1441,7 +1634,7 @@ class UnifiedCommandProcessor:
             "set to entire",
             "extended display",
             "entire screen",
-            "window or app"
+            "window or app",
         ]
         for phrase in mode_change_phrases:
             if phrase in command_lower:
@@ -1456,7 +1649,8 @@ class UnifiedCommandProcessor:
 
         # Clean words by removing punctuation for better matching
         import re
-        clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
+
+        clean_words = [re.sub(r"[^\w\s]", "", word) for word in words]
 
         # EXCLUDE lock/unlock commands - they're system commands, not vision
         if "lock" in clean_words or "unlock" in clean_words:
@@ -1477,7 +1671,22 @@ class UnifiedCommandProcessor:
         }
         verb_count = sum(1 for word in clean_words if word in vision_verbs)
         score += verb_count * 0.2
-        
+
+        # Common vision question patterns - "can you see", "what do you see", etc.
+        vision_question_patterns = [
+            "can you see",
+            "do you see",
+            "what do you see",
+            "can you look",
+            "can you watch",
+            "are you watching",
+            "are you looking",
+        ]
+        for pattern in vision_question_patterns:
+            if pattern in command_lower:
+                score += 0.6  # Strong boost for explicit vision questions
+                break
+
         # "monitor" or "analyze" with "screen" is definitely vision
         if ("monitor" in clean_words or "analyze" in clean_words) and "screen" in clean_words:
             score += 0.5  # Extra boost for monitor/analyze screen
@@ -1512,10 +1721,11 @@ class UnifiedCommandProcessor:
         multi_space_count = sum(1 for word in clean_words if word in multi_space_indicators)
         if multi_space_count > 0:
             score += 0.4 * multi_space_count  # Strong boost for multi-space queries
-            
+
         # Extra boost for "desktop spaces" or "workspace" combinations
-        if ("desktop" in clean_words and ("space" in clean_words or "spaces" in clean_words)) or \
-           ("workspace" in clean_words or "workspaces" in clean_words):
+        if ("desktop" in clean_words and ("space" in clean_words or "spaces" in clean_words)) or (
+            "workspace" in clean_words or "workspaces" in clean_words
+        ):
             score += 0.3  # Extra boost for these specific combinations
 
         # 'screen' only counts as vision if paired with vision verbs or multi-space indicators
@@ -1721,7 +1931,7 @@ class UnifiedCommandProcessor:
             "entity_resolution": None,
             "space_resolution": None,
             "spaces": None,
-            "confidence": 0.0
+            "confidence": 0.0,
         }
 
         # ============================================================
@@ -1742,7 +1952,7 @@ class UnifiedCommandProcessor:
                         "source": referent.get("source"),
                         "type": referent.get("type"),
                         "entity": referent.get("entity"),
-                        "confidence": referent.get("relevance", 0.0)
+                        "confidence": referent.get("relevance", 0.0),
                     }
 
                     logger.info(
@@ -1756,14 +1966,16 @@ class UnifiedCommandProcessor:
                         resolution["space_resolution"] = {
                             "strategy": "implicit_reference",
                             "confidence": 1.0,
-                            "source": "visual_attention"
+                            "source": "visual_attention",
                         }
                         resolution["resolved"] = True
                         resolution["confidence"] = implicit_result.get("confidence", 0.9)
 
                         # Enhance query with entity and space info
                         entity_desc = referent.get("entity", "")[:50]
-                        resolution["query"] = f"{query} [entity: {entity_desc}, space: {referent['space_id']}]"
+                        resolution["query"] = (
+                            f"{query} [entity: {entity_desc}, space: {referent['space_id']}]"
+                        )
 
                         logger.info(
                             f"[UNIFIED] Stage 1 complete: Space {referent['space_id']} from implicit resolver"
@@ -1797,7 +2009,7 @@ class UnifiedCommandProcessor:
                     resolution["space_resolution"] = {
                         "strategy": strategy,
                         "confidence": space_result.confidence,
-                        "monitors": space_result.resolved_monitors
+                        "monitors": space_result.resolved_monitors,
                     }
                     resolution["resolved"] = True
 
@@ -1842,8 +2054,14 @@ class UnifiedCommandProcessor:
 
         return resolution
 
-    def record_visual_attention(self, space_id: int, app_name: str, ocr_text: str,
-                               content_type: str = "unknown", significance: str = "normal"):
+    def record_visual_attention(
+        self,
+        space_id: int,
+        app_name: str,
+        ocr_text: str,
+        content_type: str = "unknown",
+        significance: str = "normal",
+    ):
         """
         Record visual attention for implicit reference resolution
 
@@ -1866,7 +2084,7 @@ class UnifiedCommandProcessor:
                 app_name=app_name,
                 ocr_text=ocr_text,
                 content_type=content_type,
-                significance=significance
+                significance=significance,
             )
             logger.debug(
                 f"[UNIFIED] Recorded visual attention: {content_type} in {app_name} "
@@ -1874,8 +2092,10 @@ class UnifiedCommandProcessor:
             )
         except Exception as e:
             logger.warning(f"[UNIFIED] Failed to record visual attention: {e}")
-    
-    def _is_multi_space_query(self, query: str) -> bool: # check if the query is about multiple spaces
+
+    def _is_multi_space_query(
+        self, query: str
+    ) -> bool:  # check if the query is about multiple spaces
         """
         Detect if a query is asking about multiple spaces.
 
@@ -1885,7 +2105,7 @@ class UnifiedCommandProcessor:
         - "Find the terminal across all spaces"
         - "What's different between space 1 and space 2?"
         """
-        query_lower = query.lower() # convert the query to lowercase    
+        query_lower = query.lower()  # convert the query to lowercase
 
         # Keywords that indicate multi-space queries
         multi_space_keywords = [
@@ -1897,20 +2117,27 @@ class UnifiedCommandProcessor:
             "across",
             "all spaces",
             "search",
-            "locate"
+            "locate",
         ]
 
         # Check for keywords
-        if any(keyword in query_lower for keyword in multi_space_keywords): # if any of the keywords are in the query, it's a multi-space query
-            return True # return True if it's a multi-space query
+        if any(
+            keyword in query_lower for keyword in multi_space_keywords
+        ):  # if any of the keywords are in the query, it's a multi-space query
+            return True  # return True if it's a multi-space query
 
         # Check for multiple space mentions
         import re
-        space_matches = re.findall(r'space\s+\d+', query_lower) # find all space mentions in the query
-        if len(space_matches) >= 2: # if there are at least two space mentions, it's a multi-space query
-            return True # return True if it's a multi-space query
 
-        return False # return False if it's not a multi-space query
+        space_matches = re.findall(
+            r"space\s+\d+", query_lower
+        )  # find all space mentions in the query
+        if (
+            len(space_matches) >= 2
+        ):  # if there are at least two space mentions, it's a multi-space query
+            return True  # return True if it's a multi-space query
+
+        return False  # return False if it's not a multi-space query
 
     # Function to handle multi-space queries
     async def _handle_multi_space_query(self, query: str) -> Dict[str, Any]:
@@ -1923,55 +2150,59 @@ class UnifiedCommandProcessor:
         Returns:
             Dict with comprehensive multi-space analysis
         """
-        if not self.multi_space_handler: # if the multi-space handler is not available
+        if not self.multi_space_handler:  # if the multi-space handler is not available
             # Fallback: treat as regular vision query
             logger.warning("[UNIFIED] Multi-space query detected but handler not available")
             return {
-                "success": False, # indicate failure
-                "response": "Multi-space analysis not available. Please specify a single space.", # add error message
-                "multi_space": False # indicate that it's not a multi-space query
+                "success": False,  # indicate failure
+                "response": "Multi-space analysis not available. Please specify a single space.",  # add error message
+                "multi_space": False,  # indicate that it's not a multi-space query
             }
 
         try:
             logger.info(f"[UNIFIED] Handling multi-space query: '{query}'")
 
             # Use the multi-space handler
-            result = await self.multi_space_handler.handle_query(query) # handle the multi-space query
+            result = await self.multi_space_handler.handle_query(
+                query
+            )  # handle the multi-space query
 
             # Build response with the results of the multi-space query
             response = {
-                "success": True, # indicate success
-                "response": result.synthesis, # add the synthesis to the response
-                "multi_space": True, # indicate that it's a multi-space query
-                "query_type": result.query_type.value, # add the query type to the response
-                "spaces_analyzed": result.spaces_analyzed, # add the spaces analyzed to the response
+                "success": True,  # indicate success
+                "response": result.synthesis,  # add the synthesis to the response
+                "multi_space": True,  # indicate that it's a multi-space query
+                "query_type": result.query_type.value,  # add the query type to the response
+                "spaces_analyzed": result.spaces_analyzed,  # add the spaces analyzed to the response
                 "results": [
                     {
-                        "space_id": r.space_id, # add the space id to the response
-                        "success": r.success, # add the success to the response
-                        "app": r.app_name, # add the app name to the response
-                        "content_type": r.content_type, # add the content type to the response
-                        "summary": r.content_summary, # add the content summary to the response
-                        "errors": r.errors, # add the errors to the response
-                        "significance": r.significance # add the significance to the response
+                        "space_id": r.space_id,  # add the space id to the response
+                        "success": r.success,  # add the success to the response
+                        "app": r.app_name,  # add the app name to the response
+                        "content_type": r.content_type,  # add the content type to the response
+                        "summary": r.content_summary,  # add the content summary to the response
+                        "errors": r.errors,  # add the errors to the response
+                        "significance": r.significance,  # add the significance to the response
                     }
-                    for r in result.results # loop through the results
+                    for r in result.results  # loop through the results
                 ],
-                "confidence": result.confidence, # add the confidence to the response
-                "analysis_time": result.total_time # add the analysis time to the response
+                "confidence": result.confidence,  # add the confidence to the response
+                "analysis_time": result.total_time,  # add the analysis time to the response
             }
 
             # Add comparison if available
-            if result.comparison: # if there is a comparison, add it to the response
-                response["comparison"] = result.comparison # add the comparison to the response
+            if result.comparison:  # if there is a comparison, add it to the response
+                response["comparison"] = result.comparison  # add the comparison to the response
 
             # Add differences if available
-            if result.differences: # if there is a difference, add it to the response
-                response["differences"] = result.differences # add the difference to the response
+            if result.differences:  # if there is a difference, add it to the response
+                response["differences"] = result.differences  # add the difference to the response
 
             # Add search matches if available
-            if result.search_matches: # if there is a search match, add it to the response
-                response["search_matches"] = result.search_matches # add the search match to the response
+            if result.search_matches:  # if there is a search match, add it to the response
+                response["search_matches"] = (
+                    result.search_matches
+                )  # add the search match to the response
 
             logger.info(
                 f"[UNIFIED] Multi-space query completed: "
@@ -1986,7 +2217,7 @@ class UnifiedCommandProcessor:
                 "success": False,
                 "response": f"Multi-space analysis failed: {str(e)}",
                 "multi_space": True,
-                "error": str(e)
+                "error": str(e),
             }
 
     def _is_temporal_query(self, query: str) -> bool:
@@ -2003,13 +2234,29 @@ class UnifiedCommandProcessor:
 
         # Keywords that indicate temporal queries
         temporal_keywords = [
-            "changed", "change", "different",
-            "fixed", "error", "bug", "issue",
-            "new", "recently", "last",
-            "when", "history", "timeline",
-            "appeared", "first", "started",
-            "ago", "since", "before", "after",
-            "latest", "recent", "past"
+            "changed",
+            "change",
+            "different",
+            "fixed",
+            "error",
+            "bug",
+            "issue",
+            "new",
+            "recently",
+            "last",
+            "when",
+            "history",
+            "timeline",
+            "appeared",
+            "first",
+            "started",
+            "ago",
+            "since",
+            "before",
+            "after",
+            "latest",
+            "recent",
+            "past",
         ]
 
         # Check for keywords
@@ -2018,11 +2265,12 @@ class UnifiedCommandProcessor:
 
         # Check for time expressions
         import re
+
         time_patterns = [
-            r'\d+\s+(minute|hour|day|second)s?\s+ago',
-            r'last\s+\d+\s+(minute|hour|day|second)s?',
-            r'in\s+the\s+last',
-            r'(today|yesterday|recently|just now)'
+            r"\d+\s+(minute|hour|day|second)s?\s+ago",
+            r"last\s+\d+\s+(minute|hour|day|second)s?",
+            r"in\s+the\s+last",
+            r"(today|yesterday|recently|just now)",
         ]
 
         for pattern in time_patterns:
@@ -2047,7 +2295,7 @@ class UnifiedCommandProcessor:
             return {
                 "success": False,
                 "response": "Temporal analysis not available. Cannot track changes over time.",
-                "temporal": False
+                "temporal": False,
             }
 
         try:
@@ -2056,7 +2304,8 @@ class UnifiedCommandProcessor:
             # Get current space (or from query)
             space_id = None
             import re
-            space_match = re.search(r'space\s+(\d+)', query.lower())
+
+            space_match = re.search(r"space\s+(\d+)", query.lower())
             if space_match:
                 space_id = int(space_match.group(1))
 
@@ -2072,7 +2321,7 @@ class UnifiedCommandProcessor:
                 "time_range": {
                     "start": result.time_range.start.isoformat(),
                     "end": result.time_range.end.isoformat(),
-                    "duration_seconds": result.time_range.duration_seconds
+                    "duration_seconds": result.time_range.duration_seconds,
                 },
                 "changes": [
                     {
@@ -2080,12 +2329,12 @@ class UnifiedCommandProcessor:
                         "description": change.description,
                         "confidence": change.confidence,
                         "timestamp": change.timestamp.isoformat(),
-                        "space_id": change.space_id
+                        "space_id": change.space_id,
                     }
                     for change in result.changes
                 ],
                 "timeline": result.timeline,
-                "screenshot_count": len(result.screenshots)
+                "screenshot_count": len(result.screenshots),
             }
 
             # Add metadata if available
@@ -2105,15 +2354,13 @@ class UnifiedCommandProcessor:
                 "success": False,
                 "response": f"Temporal analysis failed: {str(e)}",
                 "temporal": True,
-                "error": str(e)
+                "error": str(e),
             }
 
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
         try:
-            from context_intelligence.detectors.screen_lock_detector import (
-                get_screen_lock_detector,
-            )
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
 
             screen_detector = get_screen_lock_detector()
             is_locked = await screen_detector.is_screen_locked()
@@ -2189,10 +2436,7 @@ class UnifiedCommandProcessor:
             # Different handlers have different interfaces, normalize them
             if command_type == CommandType.VISION:
                 # For vision commands, check if it's a monitoring command or analysis
-                if any(
-                    word in command_text.lower()
-                    for word in ["start", "stop", "monitor"]
-                ):
+                if any(word in command_text.lower() for word in ["start", "stop", "monitor"]):
                     result = await handler.handle_command(command_text)
                 else:
                     # Check if this is a temporal query first (change detection, error tracking, timeline)
@@ -2214,29 +2458,84 @@ class UnifiedCommandProcessor:
                             "success": False,
                             "response": resolved_query.get("clarification_message"),
                             "command_type": command_type.value,
-                            "clarification_needed": True
+                            "clarification_needed": True,
                         }
 
                     # Analyze the screen with the enhanced query
                     try:
-                        result = await handler.analyze_screen(resolved_query.get("query", command_text))
+                        # Use Intelligent Vision Router if available
+                        if self.vision_router and self._vision_router_initialized:
+                            logger.info(
+                                "[UNIFIED] 🧠 Using Intelligent Vision Router for optimal model selection"
+                            )
 
-                        # Ensure result has proper format
-                        if not isinstance(result, dict):
-                            logger.error(f"[VISION] analyze_screen returned non-dict: {type(result)}")
-                            result = {"handled": True, "response": str(result)}
+                            # Capture screenshot if needed
+                            screenshot = None
+                            try:
+                                from vision.screenshot_manager import capture_screenshot
 
-                        # Ensure handled key exists
-                        if "handled" not in result:
-                            logger.warning("[VISION] analyze_screen missing 'handled' key, adding it")
-                            result["handled"] = True
+                                screenshot = await capture_screenshot()
+                            except Exception as e:
+                                logger.warning(f"[UNIFIED] Failed to capture screenshot: {e}")
+
+                            # Execute via router (automatically selects YOLO/LLaMA/Claude/Yabai)
+                            result = await self.vision_router.execute_query(
+                                query=resolved_query.get("query", command_text),
+                                screenshot=screenshot,
+                                context={
+                                    "conversation_history": self.context.conversation_history[-5:],
+                                    "original_query": command_text,
+                                    "resolved_query": resolved_query,
+                                },
+                            )
+
+                            # Add routing metadata to result
+                            if result.get("routing_metadata"):
+                                logger.info(
+                                    f"[UNIFIED] Router used {result['routing_metadata']['model_used']} "
+                                    f"(latency: {result['routing_metadata']['actual_latency_ms']:.0f}ms, "
+                                    f"cost: ${result['routing_metadata']['actual_cost_usd']:.4f})"
+                                )
+
+                            # Ensure result has proper format
+                            if not isinstance(result, dict):
+                                logger.error(f"[VISION] Router returned non-dict: {type(result)}")
+                                result = {"handled": True, "success": True, "response": str(result)}
+
+                            # Map "success" to "handled" for compatibility
+                            if "handled" not in result and "success" in result:
+                                result["handled"] = result["success"]
+
+                        else:
+                            # Fallback to legacy vision handler
+                            logger.info(
+                                "[UNIFIED] Using legacy vision handler (router not available)"
+                            )
+                            result = await handler.analyze_screen(
+                                resolved_query.get("query", command_text)
+                            )
+
+                            # Ensure result has proper format
+                            if not isinstance(result, dict):
+                                logger.error(
+                                    f"[VISION] analyze_screen returned non-dict: {type(result)}"
+                                )
+                                result = {"handled": True, "response": str(result)}
+
+                            # Ensure handled key exists
+                            if "handled" not in result:
+                                logger.warning(
+                                    "[VISION] analyze_screen missing 'handled' key, adding it"
+                                )
+                                result["handled"] = True
 
                     except Exception as e:
-                        logger.error(f"[VISION] analyze_screen failed: {e}", exc_info=True)
+                        logger.error(f"[VISION] Vision analysis failed: {e}", exc_info=True)
                         result = {
                             "handled": True,
+                            "success": False,
                             "response": f"I encountered an error analyzing your screen: {str(e)}",
-                            "error": True
+                            "error": True,
                         }
 
                     # Add comprehensive resolution context to result
@@ -2248,7 +2547,7 @@ class UnifiedCommandProcessor:
                             "space_resolution": resolved_query.get("space_resolution"),
                             "resolved_spaces": resolved_query.get("spaces"),
                             "confidence": resolved_query.get("confidence"),
-                            "two_stage": True  # Indicates both resolvers were used
+                            "two_stage": True,  # Indicates both resolvers were used
                         }
 
                         # Log the comprehensive resolution
@@ -2265,15 +2564,15 @@ class UnifiedCommandProcessor:
                     "command_type": command_type.value,
                     **result,
                 }
-                logger.info(f"[VISION] Returning response - success={vision_response['success']}, response_len={len(vision_response.get('response', ''))}")
+                logger.info(
+                    f"[VISION] Returning response - success={vision_response['success']}, response_len={len(vision_response.get('response', ''))}"
+                )
                 return vision_response
             elif command_type == CommandType.WEATHER:
                 result = await handler.get_weather(command_text)
                 return {
                     "success": result.get("success", False),
-                    "response": result.get(
-                        "formatted_response", result.get("message", "")
-                    ),
+                    "response": result.get("formatted_response", result.get("message", "")),
                     "command_type": command_type.value,
                     **result,
                 }
@@ -2287,8 +2586,10 @@ class UnifiedCommandProcessor:
                     **result,
                 }
             elif command_type == CommandType.META:
-                # Handle meta commands (wake words, cancellations)
-                if command_text.lower().strip() in [
+                # Handle meta commands (wake words, cancellations, performance reports)
+                command_lower = command_text.lower().strip()
+
+                if command_lower in [
                     "activate",
                     "wake",
                     "wake up",
@@ -2302,6 +2603,43 @@ class UnifiedCommandProcessor:
                         "command_type": "meta",
                         "silent": True,
                     }
+                elif (
+                    "performance" in command_lower
+                    or "vision performance" in command_lower
+                    or "show stats" in command_lower
+                ):
+                    # Get performance report from vision router
+                    if self.vision_router and self._vision_router_initialized:
+                        report = self.vision_router.get_performance_report()
+
+                        # Format response
+                        response_lines = [
+                            "Vision Performance Report:",
+                            f"Total queries processed: {report['total_queries']}",
+                            f"Total cost: {report['total_cost_usd']}",
+                            "\nModel Performance:",
+                        ]
+
+                        for model_name, stats in report.get("models", {}).items():
+                            response_lines.append(
+                                f"  • {model_name}: {stats['total_queries']} queries, "
+                                f"{stats['success_rate']} success, "
+                                f"avg {stats['avg_latency_ms']}, "
+                                f"cost {stats['total_cost_usd']}"
+                            )
+
+                        return {
+                            "success": True,
+                            "response": "\n".join(response_lines),
+                            "command_type": "meta",
+                            "performance_report": report,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": "Vision router not initialized - no performance data available",
+                            "command_type": "meta",
+                        }
                 else:
                     return {
                         "success": True,
@@ -2317,14 +2655,20 @@ class UnifiedCommandProcessor:
                     try:
                         # Check if we predicted this command
                         integration_context = {
-                            'command': command_text,
-                            'active_applications': system_context.get('active_apps', []),
+                            "command": command_text,
+                            "active_applications": system_context.get("active_apps", []),
                         }
 
                         # If we have high confidence from Goal Inference, use optimized path
-                        display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+                        display_decision = (
+                            await self.goal_autonomous_integration.predict_display_connection(
+                                integration_context
+                            )
+                        )
                         if display_decision and display_decision.integrated_confidence > 0.85:
-                            logger.info(f"[GOAL-INFERENCE] Using optimized display connection path (confidence: {display_decision.integrated_confidence:.0%})")
+                            logger.info(
+                                f"[GOAL-INFERENCE] Using optimized display connection path (confidence: {display_decision.integrated_confidence:.0%})"
+                            )
                             prediction_boost = True
                     except Exception as e:
                         logger.debug(f"[GOAL-INFERENCE] No prediction boost: {e}")
@@ -2339,7 +2683,10 @@ class UnifiedCommandProcessor:
                     result["goal_inference_active"] = True
                     result["execution_time"] = f"{execution_time:.2f}s (optimized)"
                     if execution_time < 0.5:
-                        result["response"] = result.get("response", "") + " I anticipated your request and pre-loaded resources for faster connection."
+                        result["response"] = (
+                            result.get("response", "")
+                            + " I anticipated your request and pre-loaded resources for faster connection."
+                        )
                 else:
                     result["execution_time"] = f"{execution_time:.2f}s"
 
@@ -2355,12 +2702,12 @@ class UnifiedCommandProcessor:
                     f"[DOCUMENT] Routing to context-aware document handler: '{command_text}'"
                 )
                 try:
-                    from context_intelligence.handlers.context_aware_handler import (
-                        get_context_aware_handler,
-                    )
                     from context_intelligence.executors import (
                         get_document_writer,
                         parse_document_request,
+                    )
+                    from context_intelligence.handlers.context_aware_handler import (
+                        get_context_aware_handler,
                     )
 
                     # Get the context-aware handler
@@ -2370,9 +2717,7 @@ class UnifiedCommandProcessor:
                     async def create_document_callback(
                         command: str, context: Dict[str, Any] = None
                     ):
-                        logger.info(
-                            f"[DOCUMENT] Creating document within context-aware flow"
-                        )
+                        logger.info(f"[DOCUMENT] Creating document within context-aware flow")
 
                         # Parse the document request
                         doc_request = parse_document_request(command, {})
@@ -2382,13 +2727,9 @@ class UnifiedCommandProcessor:
 
                         # Start document creation as a background task (non-blocking)
                         # This allows us to return immediately with feedback
-                        logger.info(
-                            f"[DOCUMENT] Starting background document creation task"
-                        )
+                        logger.info(f"[DOCUMENT] Starting background document creation task")
                         asyncio.create_task(
-                            writer.create_document(
-                                request=doc_request, websocket=websocket
-                            )
+                            writer.create_document(request=doc_request, websocket=websocket)
                         )
 
                         # Return immediate feedback to user
@@ -2424,9 +2765,7 @@ class UnifiedCommandProcessor:
                             "success": False,
                             "response": result.get(
                                 "summary",
-                                result.get("messages", ["Failed to create document"])[
-                                    0
-                                ],
+                                result.get("messages", ["Failed to create document"])[0],
                             ),
                             "command_type": command_type.value,
                             **result,
@@ -2474,9 +2813,7 @@ class UnifiedCommandProcessor:
                     # Let the actual handler process enrollment
                     result = await handler.handle_command(command_text, websocket)
                     return {
-                        "success": result.get(
-                            "success", result.get("type") == "voice_unlock"
-                        ),
+                        "success": result.get("success", result.get("type") == "voice_unlock"),
                         "response": result.get("message", result.get("response", "")),
                         "command_type": command_type.value,
                         **result,
@@ -2485,9 +2822,7 @@ class UnifiedCommandProcessor:
                     # Other voice unlock commands - use the handler
                     result = await handler.handle_command(command_text, websocket)
                     return {
-                        "success": result.get(
-                            "success", result.get("type") == "voice_unlock"
-                        ),
+                        "success": result.get("success", result.get("type") == "voice_unlock"),
                         "response": result.get("message", result.get("response", "")),
                         "command_type": command_type.value,
                         **result,
@@ -2501,9 +2836,7 @@ class UnifiedCommandProcessor:
                 }
 
         except Exception as e:
-            logger.error(
-                f"Error executing {command_type.value} command: {e}", exc_info=True
-            )
+            logger.error(f"Error executing {command_type.value} command: {e}", exc_info=True)
             return {
                 "success": False,
                 "response": f"I encountered an error with that {command_type.value} command.",
@@ -2552,9 +2885,7 @@ class UnifiedCommandProcessor:
         self, command_text: str, context: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Handle commands with multiple parts and maintain context between them"""
-        logger.info(
-            f"[COMPOUND] Handling compound command with context: {context is not None}"
-        )
+        logger.info(f"[COMPOUND] Handling compound command with context: {context is not None}")
 
         # Parse compound commands more intelligently
         parts = self._parse_compound_parts(command_text)
@@ -2576,9 +2907,7 @@ class UnifiedCommandProcessor:
 
         if can_parallelize:
             # Process similar operations in parallel (e.g., closing multiple apps)
-            logger.info(
-                f"[COMPOUND] Processing {len(parts)} similar commands in parallel"
-            )
+            logger.info(f"[COMPOUND] Processing {len(parts)} similar commands in parallel")
 
             # Create tasks for parallel execution
             tasks = []
@@ -2605,9 +2934,7 @@ class UnifiedCommandProcessor:
                     responses.append(result.get("response", ""))
                 else:
                     all_success = False
-                    responses.append(
-                        f"Failed: {result.get('response', 'Unknown error')}"
-                    )
+                    responses.append(f"Failed: {result.get('response', 'Unknown error')}")
         else:
             # Sequential processing for dependent commands
             for i, part in enumerate(parts):
@@ -2620,9 +2947,7 @@ class UnifiedCommandProcessor:
                     logger.info(f"[COMPOUND] Step {i+1}/{len(parts)}: {part}")
 
                 # Check if this is a dependent command that needs context
-                enhanced_command = self._enhance_with_context(
-                    part, active_app, previous_result
-                )
+                enhanced_command = self._enhance_with_context(part, active_app, previous_result)
                 logger.info(
                     f"[COMPOUND] Enhanced command: '{part}' -> '{enhanced_command}' (active_app: {active_app})"
                 )
@@ -2639,18 +2964,14 @@ class UnifiedCommandProcessor:
                 # Update context for next command
                 if result.get("success", False):
                     # Track opened apps for subsequent commands
-                    if any(
-                        word in part.lower() for word in ["open", "launch", "start"]
-                    ):
+                    if any(word in part.lower() for word in ["open", "launch", "start"]):
                         # Find which app was opened dynamically
                         words = enhanced_command.lower().split()
                         for word in words:
                             if self.pattern_learner.is_learned_app(word):
                                 active_app = word
                                 # Even if app is already open, we want to track it for context
-                                logger.info(
-                                    f"[COMPOUND] Tracking active app: {active_app}"
-                                )
+                                logger.info(f"[COMPOUND] Tracking active app: {active_app}")
                                 break
 
                     # Skip "already open" messages in compound commands
@@ -2659,9 +2980,7 @@ class UnifiedCommandProcessor:
                         responses.append(response)
                 else:
                     all_success = False
-                    responses.append(
-                        f"Failed: {result.get('response', 'Unknown error')}"
-                    )
+                    responses.append(f"Failed: {result.get('response', 'Unknown error')}")
                     # Don't continue if a step fails
                     break
 
@@ -2687,9 +3006,7 @@ class UnifiedCommandProcessor:
                 response = f"{cleaned_responses[0]} and {cleaned_responses[1]}"
             else:
                 # For 3+ steps: "Opening Safari, navigating to Google, and taking a screenshot"
-                response = (
-                    ", ".join(cleaned_responses[:-1]) + f" and {cleaned_responses[-1]}"
-                )
+                response = ", ".join(cleaned_responses[:-1]) + f" and {cleaned_responses[-1]}"
 
             # Add "Sir" at the end if it's not already there
             if not response.endswith(", Sir"):
@@ -2727,27 +3044,20 @@ class UnifiedCommandProcessor:
         if len(words) >= 3:
             # Look for app names to find split points
             for i, word in enumerate(words):
-                if (
-                    self.pattern_learner.is_learned_app(word)
-                    and i > 0
-                    and i < len(words) - 1
-                ):
+                if self.pattern_learner.is_learned_app(word) and i > 0 and i < len(words) - 1:
                     # Check if there's a verb before and action after
                     if words[i - 1] in self.pattern_learner.app_verbs:
                         # Check if there's an action after the app
                         remaining_words = words[i + 1 :]
                         if any(
                             w
-                            in self.pattern_learner.app_verbs
-                            | {"search", "navigate", "go", "type"}
+                            in self.pattern_learner.app_verbs | {"search", "navigate", "go", "type"}
                             for w in remaining_words
                         ):
                             # Split at the app name
                             part1 = " ".join(words[: i + 1])
                             part2 = " ".join(words[i + 1 :])
-                            logger.info(
-                                f"[PARSE] Split implicit compound: '{part1}' | '{part2}'"
-                            )
+                            logger.info(f"[PARSE] Split implicit compound: '{part1}' | '{part2}'")
                             return [part1, part2]
 
         # Dynamic connector detection
@@ -2806,9 +3116,7 @@ class UnifiedCommandProcessor:
         # If no valid splits, return original
         return parts if parts else [command_text]
 
-    def _should_split_at_connector(
-        self, before: str, after: str, connector: str
-    ) -> bool:
+    def _should_split_at_connector(self, before: str, after: str, connector: str) -> bool:
         """Determine if we should split at this connector"""
         if not before or not after:
             return False
@@ -2831,12 +3139,8 @@ class UnifiedCommandProcessor:
             return True
 
         # Check if both sides mention apps
-        before_has_app = any(
-            self.pattern_learner.is_learned_app(word) for word in before_words
-        )
-        after_has_app = any(
-            self.pattern_learner.is_learned_app(word) for word in after_words
-        )
+        before_has_app = any(self.pattern_learner.is_learned_app(word) for word in before_words)
+        after_has_app = any(self.pattern_learner.is_learned_app(word) for word in after_words)
 
         if before_has_app and after_has_app and before_has_verb:
             return True
@@ -2861,9 +3165,7 @@ class UnifiedCommandProcessor:
         # "search for X and Y" should not split, but "open X and search for Y" should
         if connector == " and " and "search for" in after.lower():
             # If before has an app operation, this should split
-            if any(
-                verb in before.lower() for verb in ["open", "launch", "start", "close"]
-            ):
+            if any(verb in before.lower() for verb in ["open", "launch", "start", "close"]):
                 return True
 
         # Don't split URLs or domains
@@ -2889,14 +3191,10 @@ class UnifiedCommandProcessor:
 
             analysis = {
                 "has_verb": any(
-                    word
-                    in self.pattern_learner.app_verbs
-                    | self.pattern_learner.system_verbs
+                    word in self.pattern_learner.app_verbs | self.pattern_learner.system_verbs
                     for word in words
                 ),
-                "has_app": any(
-                    self.pattern_learner.is_learned_app(word) for word in words
-                ),
+                "has_app": any(self.pattern_learner.is_learned_app(word) for word in words),
                 "has_dependency": False,
                 "operation_type": None,
                 "affects_state": False,
@@ -2944,9 +3242,7 @@ class UnifiedCommandProcessor:
             return False
 
         # Check operation types
-        operation_types = [
-            a["operation_type"] for a in command_analyses if a["operation_type"]
-        ]
+        operation_types = [a["operation_type"] for a in command_analyses if a["operation_type"]]
         if operation_types:
             # All same type = parallelizable
             return len(set(operation_types)) == 1
@@ -2986,9 +3282,7 @@ class UnifiedCommandProcessor:
                     self.pattern_learner.learned_apps.add(active_app.lower())
 
                 # Enhance command if browser not mentioned
-                app_mentioned = any(
-                    self.pattern_learner.is_learned_app(word) for word in words
-                )
+                app_mentioned = any(self.pattern_learner.is_learned_app(word) for word in words)
                 if not app_mentioned:
                     # Add browser context
                     if has_search:
@@ -2998,16 +3292,10 @@ class UnifiedCommandProcessor:
                         if cleaned.lower().startswith("and "):
                             cleaned = cleaned[4:]
                         # Remove search-related words
-                        cleaned = (
-                            cleaned.replace("search for", "")
-                            .replace("search", "")
-                            .strip()
-                        )
+                        cleaned = cleaned.replace("search for", "").replace("search", "").strip()
                         command = f"search in {active_app} for {cleaned}"
                     elif "go to" in command_lower:
-                        command = command.replace(
-                            "go to", f"tell {active_app} to go to"
-                        )
+                        command = command.replace("go to", f"tell {active_app} to go to")
                     else:
                         command = f"in {active_app} {command}"
 
@@ -3018,9 +3306,7 @@ class UnifiedCommandProcessor:
 
         return command
 
-    def _parse_system_command(
-        self, command_text: str
-    ) -> Tuple[str, Optional[str], Dict[str, Any]]:
+    def _parse_system_command(self, command_text: str) -> Tuple[str, Optional[str], Dict[str, Any]]:
         """Dynamically parse system command to extract type, target, and parameters"""
         words = command_text.lower().split()
         command_type = None
@@ -3106,8 +3392,7 @@ class UnifiedCommandProcessor:
 
         # Web operations
         elif any(
-            web_verb in words
-            for web_verb in {"search", "google", "browse", "navigate", "visit"}
+            web_verb in words for web_verb in {"search", "google", "browse", "navigate", "visit"}
         ):
             command_type = "web_action"
             # Determine specific action
@@ -3115,10 +3400,7 @@ class UnifiedCommandProcessor:
                 params["action"] = "search"
                 # Extract search query
                 # Handle "search in X for Y" pattern first
-                if (
-                    "search in" in command_text.lower()
-                    and " for " in command_text.lower()
-                ):
+                if "search in" in command_text.lower() and " for " in command_text.lower():
                     # Extract query after "for"
                     for_idx = command_text.lower().find(" for ")
                     if for_idx != -1:
@@ -3167,18 +3449,12 @@ class UnifiedCommandProcessor:
             if not target:
                 for word in words:
                     if self.pattern_learner.is_learned_app(word):
-                        if any(
-                            hint in word
-                            for hint in ["safari", "chrome", "firefox", "browser"]
-                        ):
+                        if any(hint in word for hint in ["safari", "chrome", "firefox", "browser"]):
                             target = word
                             break
 
         # Multi-tab searches
-        if (
-            "separate tabs" in command_text.lower()
-            or "different tabs" in command_text.lower()
-        ):
+        if "separate tabs" in command_text.lower() or "different tabs" in command_text.lower():
             command_type = "multi_tab_search"
             params["multi_tab"] = True
 
@@ -3255,7 +3531,7 @@ class UnifiedCommandProcessor:
         Returns:
             Dict with success status and response
         """
-        from context_intelligence.handlers.display_reference_handler import ActionType, ModeType
+        from context_intelligence.handlers.display_reference_handler import ActionType
 
         logger.info(
             f"[DISPLAY-ACTION] Executing: action={display_ref.action.value}, "
@@ -3265,12 +3541,13 @@ class UnifiedCommandProcessor:
         try:
             # Get display monitor instance
             monitor = None
-            if hasattr(self, '_app') and self._app:
-                if hasattr(self._app.state, 'display_monitor'):
+            if hasattr(self, "_app") and self._app:
+                if hasattr(self._app.state, "display_monitor"):
                     monitor = self._app.state.display_monitor
 
             if monitor is None:
                 from display import get_display_monitor
+
                 monitor = get_display_monitor()
 
             # Route based on action type
@@ -3303,7 +3580,9 @@ class UnifiedCommandProcessor:
                 "response": f"Error executing display action: {str(e)}",
             }
 
-    async def _action_connect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+    async def _action_connect_display(
+        self, monitor, display_ref, original_command: str
+    ) -> Dict[str, Any]:
         """Execute CONNECT action"""
         from context_intelligence.handlers.display_reference_handler import ModeType
 
@@ -3314,10 +3593,15 @@ class UnifiedCommandProcessor:
         logger.info(f"[DISPLAY-ACTION] Connecting to '{display_name}' (id={display_id})")
 
         # Determine mode string for monitor.connect_display
-        mode_str = "extended" if mode == ModeType.EXTENDED else \
-                   "entire" if mode == ModeType.ENTIRE_SCREEN else \
-                   "window" if mode == ModeType.WINDOW else \
-                   "mirror"  # Default
+        mode_str = (
+            "extended"
+            if mode == ModeType.EXTENDED
+            else (
+                "entire"
+                if mode == ModeType.ENTIRE_SCREEN
+                else "window" if mode == ModeType.WINDOW else "mirror"
+            )
+        )  # Default
 
         try:
             # Connect using display monitor
@@ -3326,11 +3610,17 @@ class UnifiedCommandProcessor:
             if result.get("success"):
                 # Generate time-aware response
                 from datetime import datetime
+
                 hour = datetime.now().hour
-                greeting = "Good morning" if 5 <= hour < 12 else \
-                          "Good afternoon" if 12 <= hour < 17 else \
-                          "Good evening" if 17 <= hour < 21 else \
-                          "Good night"
+                greeting = (
+                    "Good morning"
+                    if 5 <= hour < 12
+                    else (
+                        "Good afternoon"
+                        if 12 <= hour < 17
+                        else "Good evening" if 17 <= hour < 21 else "Good night"
+                    )
+                )
 
                 response = f"{greeting}! Connected to {display_name}, sir."
 
@@ -3346,7 +3636,7 @@ class UnifiedCommandProcessor:
                     "mode": mode_str,
                     "action": "connect",
                     "resolution_strategy": display_ref.resolution_strategy.value,
-                    "confidence": display_ref.confidence
+                    "confidence": display_ref.confidence,
                 }
             else:
                 return {
@@ -3362,7 +3652,9 @@ class UnifiedCommandProcessor:
                 "response": f"Error connecting to {display_name}: {str(e)}",
             }
 
-    async def _action_disconnect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+    async def _action_disconnect_display(
+        self, monitor, display_ref, original_command: str
+    ) -> Dict[str, Any]:
         """Execute DISCONNECT action"""
         display_name = display_ref.display_name
         display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
@@ -3378,7 +3670,7 @@ class UnifiedCommandProcessor:
                     "response": f"Disconnected from {display_name}, sir.",
                     "display_name": display_name,
                     "display_id": display_id,
-                    "action": "disconnect"
+                    "action": "disconnect",
                 }
             else:
                 return {
@@ -3394,7 +3686,9 @@ class UnifiedCommandProcessor:
                 "response": f"Error disconnecting from {display_name}: {str(e)}",
             }
 
-    async def _action_change_mode(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+    async def _action_change_mode(
+        self, monitor, display_ref, original_command: str
+    ) -> Dict[str, Any]:
         """Execute CHANGE_MODE action"""
         from context_intelligence.handlers.display_reference_handler import ModeType
 
@@ -3411,10 +3705,15 @@ class UnifiedCommandProcessor:
         logger.info(f"[DISPLAY-ACTION] Changing '{display_name}' to {mode.value} mode")
 
         # Map ModeType to mode string
-        mode_str = "entire" if mode == ModeType.ENTIRE_SCREEN else \
-                   "window" if mode == ModeType.WINDOW else \
-                   "extended" if mode == ModeType.EXTENDED else \
-                   "mirror"
+        mode_str = (
+            "entire"
+            if mode == ModeType.ENTIRE_SCREEN
+            else (
+                "window"
+                if mode == ModeType.WINDOW
+                else "extended" if mode == ModeType.EXTENDED else "mirror"
+            )
+        )
 
         try:
             result = await monitor.change_display_mode(display_id, mode_str)
@@ -3425,12 +3724,14 @@ class UnifiedCommandProcessor:
                     "response": f"Changed {display_name} to {mode.value} mode, sir.",
                     "display_name": display_name,
                     "mode": mode_str,
-                    "action": "change_mode"
+                    "action": "change_mode",
                 }
             else:
                 return {
                     "success": False,
-                    "response": result.get("message", f"Unable to change {display_name} to {mode.value} mode."),
+                    "response": result.get(
+                        "message", f"Unable to change {display_name} to {mode.value} mode."
+                    ),
                 }
 
         except Exception as e:
@@ -3440,23 +3741,27 @@ class UnifiedCommandProcessor:
                 "response": f"Error changing mode: {str(e)}",
             }
 
-    async def _action_query_status(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+    async def _action_query_status(
+        self, monitor, display_ref, original_command: str
+    ) -> Dict[str, Any]:
         """Execute QUERY_STATUS action"""
         logger.info(f"[DISPLAY-ACTION] Querying display status")
 
         try:
             status = monitor.get_status()
-            connected = status.get('connected_displays', [])
+            connected = status.get("connected_displays", [])
             available = monitor.get_available_display_details()
 
             if connected:
-                display_names = [d.get('display_name', d) for d in connected]
-                response = f"You have {len(connected)} display(s) connected: {', '.join(display_names)}."
+                display_names = [d.get("display_name", d) for d in connected]
+                response = (
+                    f"You have {len(connected)} display(s) connected: {', '.join(display_names)}."
+                )
             else:
                 response = "No displays are currently connected."
 
             if available:
-                avail_names = [d['display_name'] for d in available]
+                avail_names = [d["display_name"] for d in available]
                 response += f" Available displays: {', '.join(avail_names)}."
 
             return {
@@ -3464,7 +3769,7 @@ class UnifiedCommandProcessor:
                 "response": response,
                 "connected_displays": connected,
                 "available_displays": available,
-                "action": "query_status"
+                "action": "query_status",
             }
 
         except Exception as e:
@@ -3474,7 +3779,9 @@ class UnifiedCommandProcessor:
                 "response": f"Error querying display status: {str(e)}",
             }
 
-    async def _action_list_displays(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+    async def _action_list_displays(
+        self, monitor, display_ref, original_command: str
+    ) -> Dict[str, Any]:
         """Execute LIST_DISPLAYS action"""
         logger.info(f"[DISPLAY-ACTION] Listing available displays")
 
@@ -3482,7 +3789,7 @@ class UnifiedCommandProcessor:
             available = monitor.get_available_display_details()
 
             if available:
-                names = [d['display_name'] for d in available]
+                names = [d["display_name"] for d in available]
                 response = f"Available displays: {', '.join(names)}."
             else:
                 response = "No displays are currently available."
@@ -3491,7 +3798,7 @@ class UnifiedCommandProcessor:
                 "success": True,
                 "response": response,
                 "available_displays": available,
-                "action": "list_displays"
+                "action": "list_displays",
             }
 
         except Exception as e:
@@ -3537,13 +3844,16 @@ class UnifiedCommandProcessor:
             f.write(f"[DISPLAY] _execute_display_command called\n")
             f.write(f"  Command: '{command_text}'\n")
             import datetime
+
             f.write(f"  Time: {datetime.datetime.now()}\n")
 
         # NEW: Try display reference handler first for intelligent voice command resolution
         display_ref = None
         if self.display_reference_handler:
             try:
-                display_ref = await self.display_reference_handler.handle_voice_command(command_text)
+                display_ref = await self.display_reference_handler.handle_voice_command(
+                    command_text
+                )
 
                 if display_ref:
                     logger.info(
@@ -3559,23 +3869,35 @@ class UnifiedCommandProcessor:
 
                         # Learn from success/failure
                         if result.get("success"):
-                            self.display_reference_handler.learn_from_success(command_text, display_ref)
-                            logger.info(f"[DISPLAY] ✅ Action completed successfully - learned from: '{command_text}'")
+                            self.display_reference_handler.learn_from_success(
+                                command_text, display_ref
+                            )
+                            logger.info(
+                                f"[DISPLAY] ✅ Action completed successfully - learned from: '{command_text}'"
+                            )
                         else:
-                            self.display_reference_handler.learn_from_failure(command_text, display_ref)
-                            logger.warning(f"[DISPLAY] ❌ Action failed - learned from: '{command_text}'")
+                            self.display_reference_handler.learn_from_failure(
+                                command_text, display_ref
+                            )
+                            logger.warning(
+                                f"[DISPLAY] ❌ Action failed - learned from: '{command_text}'"
+                            )
 
                         return result
 
                     except Exception as e:
-                        logger.error(f"[DISPLAY] Error executing display action: {e}", exc_info=True)
+                        logger.error(
+                            f"[DISPLAY] Error executing display action: {e}", exc_info=True
+                        )
                         # Learn from failure
                         self.display_reference_handler.learn_from_failure(command_text, display_ref)
                         # Fall through to legacy logic as fallback
                         logger.warning("[DISPLAY] Falling back to legacy display command logic")
 
             except Exception as e:
-                logger.warning(f"[DISPLAY] Display reference handler error (continuing with fallback): {e}")
+                logger.warning(
+                    f"[DISPLAY] Display reference handler error (continuing with fallback): {e}"
+                )
                 # Continue with existing logic if handler fails
 
         try:
@@ -3583,14 +3905,15 @@ class UnifiedCommandProcessor:
             monitor = None
 
             # Check if we have app reference
-            if hasattr(self, '_app') and self._app:
-                if hasattr(self._app.state, 'display_monitor'):
+            if hasattr(self, "_app") and self._app:
+                if hasattr(self._app.state, "display_monitor"):
                     monitor = self._app.state.display_monitor
                     logger.info("[DISPLAY] Using running display monitor from app.state")
 
             # Fallback: get singleton instance
             if monitor is None:
                 from display import get_display_monitor
+
                 monitor = get_display_monitor()
                 logger.info("[DISPLAY] Using display monitor singleton")
 
@@ -3599,7 +3922,7 @@ class UnifiedCommandProcessor:
             mode_types = {
                 "entire": ["entire", "entire screen", "full screen"],
                 "window": ["window", "window or app", "app"],
-                "extended": ["extended", "extend", "extended display"]
+                "extended": ["extended", "extend", "extended display"],
             }
 
             is_mode_change = any(keyword in command_lower for keyword in mode_keywords)
@@ -3618,7 +3941,7 @@ class UnifiedCommandProcessor:
 
                 # Check config for connected displays
                 status = monitor.get_status()
-                connected_displays = list(status.get('connected_displays', []))
+                connected_displays = list(status.get("connected_displays", []))
 
                 logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
 
@@ -3639,7 +3962,9 @@ class UnifiedCommandProcessor:
                     else:
                         return {
                             "success": False,
-                            "response": result.get("message", f"Unable to change to {detected_mode} mode."),
+                            "response": result.get(
+                                "message", f"Unable to change to {detected_mode} mode."
+                            ),
                         }
                 elif len(connected_displays) > 1:
                     # Multiple displays connected, need to specify which one
@@ -3665,7 +3990,7 @@ class UnifiedCommandProcessor:
 
                 # Check config for monitored displays
                 status = monitor.get_status()
-                connected_displays = list(status.get('connected_displays', []))
+                connected_displays = list(status.get("connected_displays", []))
 
                 logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
 
@@ -3707,7 +4032,9 @@ class UnifiedCommandProcessor:
             status = monitor.get_status()
             available_displays = monitor.get_available_display_details()
 
-            logger.debug(f"[DISPLAY] Available displays: {[d['display_name'] for d in available_displays]}")
+            logger.debug(
+                f"[DISPLAY] Available displays: {[d['display_name'] for d in available_displays]}"
+            )
 
             # Match display name in command text
             display_id = None
@@ -3722,6 +4049,7 @@ class UnifiedCommandProcessor:
             if not display_name:
                 # Try to extract room name or TV reference
                 import re
+
                 # Match patterns like "living room", "bedroom", "sony", "lg", etc.
                 patterns = [
                     r"(living\s*room|bedroom|kitchen|office)\s*tv",
@@ -3759,7 +4087,9 @@ class UnifiedCommandProcessor:
                         "response": "No displays are currently available. Please ensure your TV or display is powered on and connected to the network.",
                     }
 
-            logger.info(f"[DISPLAY] Connecting to '{display_name}' (id: {display_id}) in {mode} mode...")
+            logger.info(
+                f"[DISPLAY] Connecting to '{display_name}' (id: {display_id}) in {mode} mode..."
+            )
 
             # DEBUG: Log to file
             with open("/tmp/jarvis_display_command.log", "a") as f:
@@ -3791,7 +4121,7 @@ class UnifiedCommandProcessor:
                     "response": response,
                     "display_name": display_name,
                     "mode": mode,
-                    "already_connected": result.get("cached", False)
+                    "already_connected": result.get("cached", False),
                 }
             else:
                 return {
@@ -3820,26 +4150,22 @@ class UnifiedCommandProcessor:
             if handler:
                 result = await handler.handle_command(command_text)
                 return {
-                    "success": result.get(
-                        "success", result.get("type") == "voice_unlock"
-                    ),
+                    "success": result.get("success", result.get("type") == "voice_unlock"),
                     "response": result.get("message", result.get("response", "")),
                     "command_type": "voice_unlock",
                     **result,
                 }
 
         try:
-            from system_control.macos_controller import MacOSController
             from system_control.dynamic_app_controller import get_dynamic_app_controller
+            from system_control.macos_controller import MacOSController
 
             macos_controller = MacOSController()
             dynamic_controller = get_dynamic_app_controller()
 
             # Check for lock/unlock screen commands first
             # Use the existing voice unlock integration for proper daemon support
-            if (
-                "lock" in command_lower or "unlock" in command_lower
-            ) and "screen" in command_lower:
+            if ("lock" in command_lower or "unlock" in command_lower) and "screen" in command_lower:
                 logger.info(
                     f"[SYSTEM] Screen lock/unlock command detected, using voice unlock handler"
                 )
@@ -3854,9 +4180,7 @@ class UnifiedCommandProcessor:
                         # Add command_type if not present
                         if "command_type" not in result:
                             result["command_type"] = (
-                                "screen_lock"
-                                if "lock" in command_lower
-                                else "screen_unlock"
+                                "screen_lock" if "lock" in command_lower else "screen_unlock"
                             )
                         return result
                     else:
@@ -3874,9 +4198,7 @@ class UnifiedCommandProcessor:
                     result = await macos_controller.handle_command(command_text)
                     return result
                 except Exception as e:
-                    logger.error(
-                        f"[SYSTEM] Error with unlock handler: {e}, falling back"
-                    )
+                    logger.error(f"[SYSTEM] Error with unlock handler: {e}, falling back")
                     result = await macos_controller.handle_command(command_text)
                     return result
 
@@ -3884,9 +4206,7 @@ class UnifiedCommandProcessor:
             command_type, target, params = self._parse_system_command(command_text)
 
             logger.info(f"[SYSTEM] Parsing '{command_text}'")
-            logger.info(
-                f"[SYSTEM] Parsed: type={command_type}, target={target}, params={params}"
-            )
+            logger.info(f"[SYSTEM] Parsed: type={command_type}, target={target}, params={params}")
 
             # Execute based on parsed command type
             if command_type == "tab_control":
@@ -3899,9 +4219,7 @@ class UnifiedCommandProcessor:
             elif command_type == "app_open":
                 # Open application
                 if target:
-                    success, message = await dynamic_controller.open_app_intelligently(
-                        target
-                    )
+                    success, message = await dynamic_controller.open_app_intelligently(target)
                     return {"success": success, "response": message}
                 else:
                     return {
@@ -3912,9 +4230,7 @@ class UnifiedCommandProcessor:
             elif command_type == "app_close":
                 # Close application
                 if target:
-                    success, message = await dynamic_controller.close_app_intelligently(
-                        target
-                    )
+                    success, message = await dynamic_controller.close_app_intelligently(target)
                     return {"success": success, "response": message}
                 else:
                     return {
@@ -3971,9 +4287,7 @@ class UnifiedCommandProcessor:
                 browser = target
 
                 if action == "search" and "query" in params:
-                    success, message = macos_controller.web_search(
-                        params["query"], browser=browser
-                    )
+                    success, message = macos_controller.web_search(params["query"], browser=browser)
                     return {"success": success, "response": message}
 
                 elif action == "navigate" and "url" in params:
@@ -3997,9 +4311,7 @@ class UnifiedCommandProcessor:
                 browser = target
 
                 if text:
-                    success, message = macos_controller.type_in_browser(
-                        text, browser, press_enter
-                    )
+                    success, message = macos_controller.type_in_browser(text, browser, press_enter)
                     return {"success": success, "response": message}
                 else:
                     return {"success": False, "response": "Please specify what to type"}
@@ -4023,8 +4335,8 @@ class UnifiedCommandProcessor:
     ) -> Dict[str, Any]:
         """Handle searches across multiple tabs dynamically"""
         try:
-            from system_control.macos_controller import MacOSController
             from system_control.dynamic_app_controller import get_dynamic_app_controller
+            from system_control.macos_controller import MacOSController
 
             macos_controller = MacOSController()
             dynamic_controller = get_dynamic_app_controller()
@@ -4103,9 +4415,7 @@ class UnifiedCommandProcessor:
                 parts = after_pattern.split(" and ")
                 for part in parts:
                     part = part.strip()
-                    if part and not any(
-                        skip in part.lower() for skip in ["open", "close", "quit"]
-                    ):
+                    if part and not any(skip in part.lower() for skip in ["open", "close", "quit"]):
                         terms.append(part)
 
                 return terms
@@ -4137,7 +4447,7 @@ def get_unified_processor(api_key: Optional[str] = None, app=None) -> UnifiedCom
     global _unified_processor
     if _unified_processor is None:
         _unified_processor = UnifiedCommandProcessor(api_key, app=app)
-    elif app is not None and not hasattr(_unified_processor, '_app'):
+    elif app is not None and not hasattr(_unified_processor, "_app"):
         # Update existing processor with app reference
         _unified_processor._app = app
     return _unified_processor
