@@ -330,19 +330,39 @@ class IntelligentVisionRouter:
         }
         analysis.requires_reasoning = any(kw in query_lower for kw in reasoning_keywords)
 
-        # Multi-space indicators
+        # Multi-space indicators (must be word boundaries to avoid false positives)
         multi_space_keywords = {
             "desktop",
-            "space",
-            "spaces",
+            "spaces",  # plural only
             "across",
-            "all",
             "other",
             "different",
             "workspace",
             "workspaces",
         }
-        analysis.is_multi_space = any(kw in query_lower for kw in multi_space_keywords)
+        # Check for word boundaries (not substring matches)
+        analysis.is_multi_space = any(
+            f" {kw} " in f" {query_lower} "
+            or query_lower.startswith(kw + " ")
+            or query_lower.endswith(" " + kw)
+            for kw in multi_space_keywords
+        )
+
+        # Also check for explicit multi-space patterns
+        multi_space_patterns = [
+            "desktop 1",
+            "desktop 2",
+            "desktop 3",
+            "space 1",
+            "space 2",
+            "space 3",
+            "all spaces",
+            "all desktops",
+            "other spaces",
+            "other desktops",
+        ]
+        if any(pattern in query_lower for pattern in multi_space_patterns):
+            analysis.is_multi_space = True
 
         # Counting tasks
         analysis.is_counting = any(word in ["count", "how many", "number"] for word in words)
@@ -932,10 +952,28 @@ class IntelligentVisionRouter:
             return {"success": False, "response": "Claude vision analyzer not available"}
 
         try:
+            # Enhance prompt for more detailed responses
+            enhanced_prompt = query
+
+            # For "can you see" queries, request detailed description
+            if any(
+                pattern in query.lower()
+                for pattern in ["can you see", "what do you see", "describe"]
+            ):
+                enhanced_prompt = (
+                    f"{query}\n\n"
+                    "Please provide a detailed response including:\n"
+                    "- What applications are open and what they're showing\n"
+                    "- Any text or content visible on screen\n"
+                    "- What the user appears to be working on\n"
+                    "- Any notable UI elements or activities\n"
+                    "Respond naturally as JARVIS."
+                )
+
             # Use OptimizedClaudeVisionAnalyzer
             result = await self.claude_vision_analyzer.analyze_screenshot_fast(
                 screenshot=screenshot,
-                prompt=query,
+                prompt=enhanced_prompt,
                 model=model,
             )
 
@@ -957,10 +995,28 @@ class IntelligentVisionRouter:
             return {"success": False, "response": "Claude vision analyzer not available"}
 
         try:
+            # Enhance prompt for more detailed responses
+            enhanced_prompt = query
+
+            # For "can you see" queries, request detailed description
+            if any(
+                pattern in query.lower()
+                for pattern in ["can you see", "what do you see", "describe"]
+            ):
+                enhanced_prompt = (
+                    f"{query}\n\n"
+                    "Please provide a detailed response including:\n"
+                    "- What applications are open and what they're showing\n"
+                    "- Any text or content visible on screen\n"
+                    "- What the user appears to be working on\n"
+                    "- Any notable UI elements or activities\n"
+                    "Respond naturally as JARVIS."
+                )
+
             # OptimizedClaudeVisionAnalyzer has built-in YOLO hybrid mode
             result = await self.claude_vision_analyzer.analyze_with_yolo_hybrid(
                 screenshot=screenshot,
-                prompt=query,
+                prompt=enhanced_prompt,
             )
 
             return {
