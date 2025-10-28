@@ -2566,6 +2566,7 @@ class AsyncSystemManager:
     def __init__(self):
         self.processes = []
         self.open_files = []  # Track open file handles for cleanup
+        self.background_tasks = []  # Track asyncio tasks for proper cleanup
         self.backend_dir = Path("backend")
         self.frontend_dir = Path("frontend")
         self.ports = {
@@ -4520,6 +4521,21 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         # Set a flag to suppress exit warnings
         self._shutting_down = True
 
+        # Cancel all background tasks first
+        if self.background_tasks:
+            print(f"{Colors.CYAN}🔄 [0/6] Canceling background tasks...{Colors.ENDC}")
+            print(f"   ├─ Found {len(self.background_tasks)} background tasks")
+            for task in self.background_tasks:
+                if not task.done():
+                    task.cancel()
+            # Wait for cancellation to complete
+            try:
+                await asyncio.gather(*self.background_tasks, return_exceptions=True)
+                print(f"   └─ {Colors.GREEN}✓ All background tasks cancelled{Colors.ENDC}")
+            except Exception as e:
+                print(f"   └─ {Colors.YELLOW}⚠ Task cancellation warning: {e}{Colors.ENDC}")
+            self.background_tasks.clear()
+
         # Stop hybrid coordinator first
         if self.hybrid_enabled and self.hybrid_coordinator:
             try:
@@ -4879,11 +4895,13 @@ except Exception as e:
 
             # Start orchestrator
             if self.orchestrator is not None:
-                asyncio.create_task(self.orchestrator.start())
+                task = asyncio.create_task(self.orchestrator.start())
+                self.background_tasks.append(task)
 
             # Start service mesh
             if self.mesh is not None:
-                asyncio.create_task(self.mesh.start())
+                task = asyncio.create_task(self.mesh.start())
+                self.background_tasks.append(task)
 
             # Wait for initial discovery
             await asyncio.sleep(3)
@@ -4901,7 +4919,8 @@ except Exception as e:
                     self.ports["frontend"] = service.port
 
         # Start pre-warming imports early
-        asyncio.create_task(self._prewarm_python_imports())
+        task = asyncio.create_task(self._prewarm_python_imports())
+        self.background_tasks.append(task)
 
         # Run initial checks in parallel
         check_tasks = [
@@ -6236,9 +6255,12 @@ if __name__ == "__main__":
 
         # Debug: Check for remaining threads
         import threading
+
         remaining_threads = [t for t in threading.enumerate() if t != threading.main_thread()]
         if remaining_threads:
-            print(f"\n{Colors.YELLOW}⚠️  {len(remaining_threads)} threads still running:{Colors.ENDC}")
+            print(
+                f"\n{Colors.YELLOW}⚠️  {len(remaining_threads)} threads still running:{Colors.ENDC}"
+            )
             for thread in remaining_threads:
                 daemon_str = "daemon" if thread.daemon else "non-daemon"
                 print(f"   - {thread.name} ({daemon_str})")
@@ -6247,11 +6269,14 @@ if __name__ == "__main__":
         # Debug: Check for remaining async tasks
         try:
             import asyncio
+
             loop = asyncio.get_event_loop()
             if loop and not loop.is_closed():
                 all_tasks = asyncio.all_tasks(loop)
                 if all_tasks:
-                    print(f"\n{Colors.YELLOW}⚠️  {len(all_tasks)} async tasks still pending:{Colors.ENDC}")
+                    print(
+                        f"\n{Colors.YELLOW}⚠️  {len(all_tasks)} async tasks still pending:{Colors.ENDC}"
+                    )
                     for task in all_tasks:
                         print(f"   - {task.get_name()}: {task}")
                         logger.warning(f"Async task still pending: {task.get_name()}")
