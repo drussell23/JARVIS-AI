@@ -279,6 +279,29 @@ class JARVISCommand(BaseModel):
     audio_data: Optional[str] = None  # Base64 encoded audio
 
 
+class AudioTranscriptionRequest(BaseModel):
+    """Audio transcription request for Hybrid STT"""
+
+    audio_data: str  # Base64 encoded audio bytes
+    audio_format: Optional[str] = "wav"  # wav, mp3, webm, ogg
+    strategy: Optional[str] = "balanced"  # speed, accuracy, balanced, cost, adaptive
+    speaker_name: Optional[str] = None  # e.g., "Derek J. Russell"
+
+
+class AudioTranscriptionResponse(BaseModel):
+    """Audio transcription response from Hybrid STT"""
+
+    text: str  # Transcribed text
+    confidence: float  # 0.0 - 1.0
+    engine: str  # wav2vec2, vosk, whisper_local, whisper_gcp
+    model_name: str  # e.g., "wav2vec2-base"
+    latency_ms: float  # Transcription time
+    audio_duration_ms: float  # Audio length
+    speaker_identified: Optional[str] = None  # Identified speaker
+    metadata: Dict  # Additional engine-specific data
+    total_request_time_ms: float  # End-to-end request time
+
+
 class JARVISConfig(BaseModel):
     """JARVIS configuration update"""
 
@@ -425,6 +448,9 @@ class JARVISVoiceAPI:
         # Initialize async pipeline for all commands
         self._pipeline = None
 
+        # Hybrid STT Router (lazy initialization)
+        self._hybrid_stt_router = None
+
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
@@ -448,6 +474,16 @@ class JARVISVoiceAPI:
             self._pipeline = get_async_pipeline(self.jarvis)
             logger.info("[JARVIS API] Async pipeline initialized for voice commands")
         return self._pipeline
+
+    @property
+    def hybrid_stt_router(self):
+        """Get or create hybrid STT router instance"""
+        if self._hybrid_stt_router is None:
+            from voice.hybrid_stt_router import get_hybrid_router
+
+            self._hybrid_stt_router = get_hybrid_router()
+            logger.info("🎤 Hybrid STT Router initialized for voice transcription")
+        return self._hybrid_stt_router
 
     @property
     def jarvis(self):
@@ -635,6 +671,10 @@ class JARVISVoiceAPI:
         self.router.add_api_route("/command", self.process_command, methods=["POST"])
         self.router.add_api_route("/speak", self.speak, methods=["POST"])
         self.router.add_api_route("/speak/{text}", self.speak_get, methods=["GET"])
+
+        # Hybrid STT - Audio transcription
+        self.router.add_api_route("/transcribe", self.transcribe_audio, methods=["POST"])
+        self.router.add_api_route("/transcribe/stats", self.get_stt_stats, methods=["GET"])
 
         # Configuration
         self.router.add_api_route("/config", self.get_config, methods=["GET"])
@@ -1498,6 +1538,134 @@ class JARVISVoiceAPI:
     async def speak_get(self, text: str) -> Response:
         """GET endpoint for text-to-speech (fallback for frontend)"""
         return await self.speak({"text": text})
+
+    @dynamic_error_handler
+    @graceful_endpoint
+    async def transcribe_audio(self, request: Dict) -> Dict:
+        """
+        Transcribe audio using Hybrid STT Router.
+
+        Ultra-intelligent transcription with:
+        - RAM-aware model selection (Wav2Vec, Vosk, Whisper)
+        - Confidence-based escalation (local -> cloud)
+        - Speaker identification (Derek J. Russell)
+        - Database recording for learning
+        - Cost optimization (prefer local)
+
+        Request body:
+        {
+            "audio_data": "base64_encoded_audio_bytes",
+            "audio_format": "wav|mp3|webm|ogg",  # optional
+            "strategy": "speed|accuracy|balanced|cost",  # optional
+            "speaker_name": "Derek J. Russell"  # optional
+        }
+
+        Returns:
+        {
+            "text": "transcribed text",
+            "confidence": 0.95,
+            "engine": "wav2vec2",
+            "model_name": "wav2vec2-base",
+            "latency_ms": 150.0,
+            "speaker_identified": "Derek J. Russell",
+            "metadata": {...}
+        }
+        """
+        import time
+
+        start_time = time.time()
+
+        try:
+            # Extract audio data
+            audio_b64 = request.get("audio_data")
+            if not audio_b64:
+                raise HTTPException(status_code=400, detail="No audio_data provided")
+
+            # Decode base64 audio
+            audio_bytes = base64.b64decode(audio_b64)
+
+            # Get optional parameters
+            from voice.stt_config import RoutingStrategy
+
+            strategy_str = request.get("strategy", "balanced")
+            try:
+                strategy = RoutingStrategy(strategy_str)
+            except ValueError:
+                strategy = RoutingStrategy.BALANCED
+
+            speaker_name = request.get("speaker_name")
+
+            # Transcribe using hybrid router
+            logger.info(
+                f"🎤 Transcribing {len(audio_bytes)} bytes of audio (strategy={strategy.value}, speaker={speaker_name})"
+            )
+
+            result = await self.hybrid_stt_router.transcribe(
+                audio_data=audio_bytes, strategy=strategy, speaker_name=speaker_name
+            )
+
+            # Calculate total request time
+            total_time_ms = (time.time() - start_time) * 1000
+
+            logger.info(
+                f"✅ Transcription complete: '{result.text[:50]}...' "
+                f"(confidence={result.confidence:.2f}, total_time={total_time_ms:.0f}ms)"
+            )
+
+            # Return result
+            return {
+                "text": result.text,
+                "confidence": result.confidence,
+                "engine": result.engine.value,
+                "model_name": result.model_name,
+                "latency_ms": result.latency_ms,
+                "audio_duration_ms": result.audio_duration_ms,
+                "speaker_identified": result.speaker_identified,
+                "metadata": result.metadata,
+                "total_request_time_ms": total_time_ms,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+    @dynamic_error_handler
+    async def get_stt_stats(self) -> Dict:
+        """
+        Get Hybrid STT Router performance statistics.
+
+        Returns:
+        {
+            "total_requests": 123,
+            "cloud_requests": 15,
+            "cloud_usage_percent": 12.2,
+            "cache_hits": 5,
+            "loaded_engines": ["wav2vec2:wav2vec2-base"],
+            "performance_by_model": {
+                "wav2vec2-base": {
+                    "total_requests": 100,
+                    "avg_latency_ms": 150.0,
+                    "avg_confidence": 0.93
+                }
+            },
+            "config": {...}
+        }
+        """
+        try:
+            stats = self.hybrid_stt_router.get_stats()
+            return stats
+        except Exception as e:
+            logger.error(f"Failed to get STT stats: {e}")
+            return {
+                "error": str(e),
+                "total_requests": 0,
+                "cloud_requests": 0,
+            }
 
     @dynamic_error_handler
     async def get_config(self) -> Dict:
@@ -2366,18 +2534,132 @@ class JARVISVoiceAPI:
                     # Don't speak on backend to avoid delays - let frontend handle TTS
 
                 elif data.get("type") == "audio":
-                    # Handle audio data (base64 encoded)
-                    audio_data = base64.b64decode(data.get("data", ""))
+                    # Handle audio data for hybrid STT transcription
+                    try:
+                        audio_b64 = data.get("data", "")
+                        if not audio_b64:
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": "No audio data provided",
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
+                            continue
 
-                    # In a real implementation, process audio through speech recognition
-                    # For now, acknowledge receipt
-                    await websocket.send_json(
-                        {
-                            "type": "audio_received",
-                            "size": len(audio_data),
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                        # Decode audio
+                        audio_bytes = base64.b64decode(audio_b64)
+
+                        logger.info(
+                            f"🎤 [WebSocket] Received {len(audio_bytes)} bytes of audio for transcription"
+                        )
+
+                        # Send processing notification
+                        await websocket.send_json(
+                            {
+                                "type": "transcription_started",
+                                "size": len(audio_bytes),
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+
+                        # Get routing strategy from request (optional)
+                        from voice.stt_config import RoutingStrategy
+
+                        strategy_str = data.get("strategy", "balanced")
+                        try:
+                            strategy = RoutingStrategy(strategy_str)
+                        except ValueError:
+                            strategy = RoutingStrategy.BALANCED
+
+                        # Transcribe using hybrid router
+                        result = await self.hybrid_stt_router.transcribe(
+                            audio_data=audio_bytes,
+                            strategy=strategy,
+                            speaker_name="Derek J. Russell",  # Default to Derek
+                        )
+
+                        # Send transcription result
+                        await websocket.send_json(
+                            {
+                                "type": "transcription_result",
+                                "text": result.text,
+                                "confidence": result.confidence,
+                                "engine": result.engine.value,
+                                "model_name": result.model_name,
+                                "latency_ms": result.latency_ms,
+                                "speaker_identified": result.speaker_identified,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+
+                        # If confidence is good, also process as command
+                        if result.confidence >= 0.6 and result.text.strip():
+                            logger.info(
+                                f"🎯 Auto-processing transcription as command: '{result.text}'"
+                            )
+
+                            # Process the transcribed text as a command
+                            command_text = result.text.strip()
+
+                            # Use the same command processing logic as text commands
+                            if USE_CONTEXT_HANDLER:
+                                try:
+                                    # Use async pipeline for enhanced context-aware processing
+                                    pipeline_result = await self.pipeline.process_command_async(
+                                        command_text
+                                    )
+
+                                    response_text = pipeline_result.get(
+                                        "response", "I'm not sure how to respond to that."
+                                    )
+                                    success = pipeline_result.get("success", False)
+
+                                    # Record interaction to learning database
+                                    await self._record_interaction(
+                                        user_query=command_text,
+                                        jarvis_response=response_text,
+                                        response_type=pipeline_result.get("type", "context_aware"),
+                                        confidence_score=result.confidence,
+                                        execution_time_ms=result.latency_ms,
+                                        success=success,
+                                    )
+
+                                    # Send response
+                                    await websocket.send_json(
+                                        {
+                                            "type": "command_response",
+                                            "response": response_text,
+                                            "command": command_text,
+                                            "speak": True,
+                                            "confidence": result.confidence,
+                                            "stt_engine": result.engine.value,
+                                            "timestamp": datetime.now().isoformat(),
+                                        }
+                                    )
+
+                                except Exception as e:
+                                    logger.error(f"Error processing transcribed command: {e}")
+                                    await websocket.send_json(
+                                        {
+                                            "type": "error",
+                                            "message": f"Failed to process command: {str(e)}",
+                                            "timestamp": datetime.now().isoformat(),
+                                        }
+                                    )
+
+                    except Exception as e:
+                        logger.error(f"Audio transcription failed: {e}")
+                        import traceback
+
+                        traceback.print_exc()
+                        await websocket.send_json(
+                            {
+                                "type": "transcription_error",
+                                "message": str(e),
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
 
                 elif data.get("type") == "set_mode":
                     # Handle mode change from frontend
