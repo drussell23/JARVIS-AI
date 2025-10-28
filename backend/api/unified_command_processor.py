@@ -1668,6 +1668,10 @@ class UnifiedCommandProcessor:
             "read",
             "check",
             "examine",
+            "find",
+            "locate",
+            "detect",
+            "identify",
         }
         verb_count = sum(1 for word in clean_words if word in vision_verbs)
         score += verb_count * 0.2
@@ -1681,6 +1685,13 @@ class UnifiedCommandProcessor:
             "can you watch",
             "are you watching",
             "are you looking",
+            "is visible",
+            "is hidden",
+            "is showing",
+            "is displayed",
+            "visible",
+            "icon visible",
+            "button visible",
         ]
         for pattern in vision_question_patterns:
             if pattern in command_lower:
@@ -1702,8 +1713,25 @@ class UnifiedCommandProcessor:
             "space",
             "workspace",
             "screen",
+            "icon",
+            "button",
+            "element",
+            "control",
+            "ui",
         }
         score += sum(0.15 for word in clean_words if word in vision_nouns)
+
+        # Vision adjectives/state words
+        vision_state_words = {
+            "visible",
+            "hidden",
+            "showing",
+            "displayed",
+            "appearing",
+            "present",
+        }
+        state_count = sum(1 for word in clean_words if word in vision_state_words)
+        score += state_count * 0.25  # Strong indicator for vision queries
 
         # Multi-space indicators (very strong vision signal)
         multi_space_indicators = {
