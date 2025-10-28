@@ -925,6 +925,29 @@ async def lifespan(app: FastAPI):
             components["display_monitor"] = import_display_monitor()
             components["goal_inference"] = import_goal_inference()
 
+    # ═══════════════════════════════════════════════════════════════
+    # ADVANCED COMPONENT WARMUP (Pre-initialize for instant response)
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        logger.info("🚀 Starting advanced component warmup...")
+        from api.unified_command_processor import get_unified_processor
+
+        processor = get_unified_processor(app=app)
+        warmup_report = await processor.warmup_components()
+
+        if warmup_report:
+            logger.info(
+                f"✅ Component warmup complete! "
+                f"{warmup_report['ready_count']}/{warmup_report['total_count']} ready "
+                f"in {warmup_report['total_load_time']:.2f}s"
+            )
+            app.state.warmup_report = warmup_report
+        else:
+            logger.warning("⚠️ Component warmup failed, using lazy initialization")
+    except Exception as e:
+        logger.error(f"❌ Component warmup error: {e}", exc_info=True)
+        logger.warning("⚠️ Falling back to lazy initialization")
+
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
     if memory_class:

@@ -826,6 +826,56 @@ class UnifiedCommandProcessor:
 
         self._resolvers_initialized = True
 
+    async def warmup_components(self):
+        """
+        Pre-initialize all components using advanced warmup system.
+
+        This eliminates first-command latency by loading components
+        at startup with priority-based, async, health-checked initialization.
+        """
+        try:
+            from api.component_warmup_config import register_all_components
+            from core.component_warmup import get_warmup_system
+
+            logger.info("[UNIFIED] 🚀 Starting component warmup...")
+
+            # Register all components
+            await register_all_components(self)
+
+            # Execute warmup
+            warmup = get_warmup_system()
+            report = await warmup.warmup_all()
+
+            # Store component instances in processor
+            self.context_graph = warmup.get_component("multi_space_context_graph")
+            self.implicit_resolver = warmup.get_component("implicit_reference_resolver")
+            self.contextual_resolver = warmup.get_component(
+                "implicit_reference_resolver"
+            )  # fallback
+            self.yabai_detector = warmup.get_component("yabai_detector")
+            self.window_detector = warmup.get_component("multi_space_window_detector")
+            self.query_complexity_manager = warmup.get_component("query_complexity_manager")
+            self.action_handler = warmup.get_component("action_query_handler")
+            self.predictive_handler = warmup.get_component("predictive_query_handler")
+            self.multi_space_handler = warmup.get_component("multi_space_query_handler")
+
+            # Mark as initialized
+            self._resolvers_initialized = True
+
+            logger.info(
+                f"[UNIFIED] ✅ Component warmup complete! "
+                f"{report['ready_count']}/{report['total_count']} components ready "
+                f"in {report['total_load_time']:.2f}s"
+            )
+
+            return report
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] ❌ Component warmup failed: {e}", exc_info=True)
+            # Fall back to lazy initialization
+            logger.warning("[UNIFIED] Falling back to lazy initialization")
+            return None
+
     def _load_learned_data(self):
         """Load previously learned patterns and statistics"""
         try:
