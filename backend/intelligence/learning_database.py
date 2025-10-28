@@ -4,24 +4,25 @@ Advanced Learning Database System for JARVIS Goal Inference
 Hybrid architecture: SQLite (structured) + ChromaDB (embeddings) + Async + ML-powered insights
 """
 
-import sqlite3
+import asyncio
+import hashlib
 import json
 import logging
-import hashlib
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple, Set
-from dataclasses import dataclass, asdict, field
-import asyncio
-import aiosqlite
-from collections import defaultdict, deque
-from enum import Enum
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import aiosqlite
 
 # Try to import Cloud Database Adapter
 try:
     from intelligence.cloud_database_adapter import get_database_adapter
+
     CLOUD_ADAPTER_AVAILABLE = True
 except ImportError:
     CLOUD_ADAPTER_AVAILABLE = False
@@ -29,7 +30,8 @@ except ImportError:
 
 # Async and ML dependencies
 try:
-    import numpy as np
+    pass
+
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
@@ -38,6 +40,7 @@ except ImportError:
 try:
     import chromadb
     from chromadb.config import Settings
+
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
@@ -153,7 +156,7 @@ class DatabaseCursorWrapper:
             if "RETURNING" in query_upper and self._last_results:
                 # Check for common ID column names
                 first_row = self._last_results[0]
-                for id_col in ['id', 'ID', 'Id', 'rowid', 'ROWID']:
+                for id_col in ["id", "ID", "Id", "rowid", "ROWID"]:
                     if id_col in first_row:
                         try:
                             self._lastrowid = int(first_row[id_col])
@@ -251,27 +254,29 @@ class DatabaseCursorWrapper:
 
             # Build DB-API 2.0 description tuple
             # (name, type_code, display_size, internal_size, precision, scale, null_ok)
-            descriptions.append((
-                col_name,                    # name
-                col_type,                    # type_code (Python type)
-                max_size if max_size > 0 else None,  # display_size
-                None,                        # internal_size (not available)
-                None,                        # precision (not available)
-                None,                        # scale (not available)
-                has_null                     # null_ok
-            ))
+            descriptions.append(
+                (
+                    col_name,  # name
+                    col_type,  # type_code (Python type)
+                    max_size if max_size > 0 else None,  # display_size
+                    None,  # internal_size (not available)
+                    None,  # precision (not available)
+                    None,  # scale (not available)
+                    has_null,  # null_ok
+                )
+            )
 
             # Store extended metadata
             self._column_metadata[col_name] = {
-                'python_type': col_type,
-                'max_size': max_size,
-                'nullable': has_null,
-                'samples': min(len(self._last_results), 5)
+                "python_type": col_type,
+                "max_size": max_size,
+                "nullable": has_null,
+                "samples": min(len(self._last_results), 5),
             }
 
         self._description = descriptions
 
-    async def execute(self, sql: str, parameters: Tuple = ()) -> 'DatabaseCursorWrapper':
+    async def execute(self, sql: str, parameters: Tuple = ()) -> "DatabaseCursorWrapper":
         """
         Execute SQL with parameters. Handles both SELECT and DML operations.
 
@@ -312,7 +317,7 @@ class DatabaseCursorWrapper:
             query_upper = sql.strip().upper()
             query_type = self._detect_query_type(query_upper)
 
-            if query_type in ('SELECT', 'RETURNING'):
+            if query_type in ("SELECT", "RETURNING"):
                 # Query that returns rows
                 results = await self.adapter_conn.fetch(sql, *parameters)
                 self._last_results = results if results else []
@@ -325,10 +330,10 @@ class DatabaseCursorWrapper:
                     self._description = None
 
                 # Extract lastrowid from RETURNING results
-                if query_type == 'RETURNING' and self._last_results:
+                if query_type == "RETURNING" and self._last_results:
                     self._extract_lastrowid()
 
-            elif query_type in ('INSERT', 'UPDATE', 'DELETE'):
+            elif query_type in ("INSERT", "UPDATE", "DELETE"):
                 # DML operation - try to get affected rows count
                 try:
                     # For PostgreSQL with asyncpg, we can use execute and get status
@@ -336,8 +341,8 @@ class DatabaseCursorWrapper:
 
                     # Try to extract row count from result status
                     # PostgreSQL returns status like "INSERT 0 1" or "UPDATE 5"
-                    if hasattr(result, 'decode'):
-                        result = result.decode('utf-8')
+                    if hasattr(result, "decode"):
+                        result = result.decode("utf-8")
 
                     if isinstance(result, str):
                         self._row_count = self._parse_rowcount_from_status(result)
@@ -380,24 +385,24 @@ class DatabaseCursorWrapper:
             str: Query type ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'RETURNING', etc.)
         """
         # Check for RETURNING clause (takes precedence)
-        if 'RETURNING' in query_upper:
-            return 'RETURNING'
+        if "RETURNING" in query_upper:
+            return "RETURNING"
 
         # Check for standard DML/DDL commands
-        query_start = query_upper.split()[0] if query_upper.split() else ''
+        query_start = query_upper.split()[0] if query_upper.split() else ""
 
-        if query_start in ('SELECT', 'WITH'):  # WITH for CTEs
-            return 'SELECT'
-        elif query_start == 'INSERT':
-            return 'INSERT'
-        elif query_start == 'UPDATE':
-            return 'UPDATE'
-        elif query_start == 'DELETE':
-            return 'DELETE'
-        elif query_start in ('CREATE', 'DROP', 'ALTER', 'TRUNCATE'):
-            return 'DDL'
+        if query_start in ("SELECT", "WITH"):  # WITH for CTEs
+            return "SELECT"
+        elif query_start == "INSERT":
+            return "INSERT"
+        elif query_start == "UPDATE":
+            return "UPDATE"
+        elif query_start == "DELETE":
+            return "DELETE"
+        elif query_start in ("CREATE", "DROP", "ALTER", "TRUNCATE"):
+            return "DDL"
         else:
-            return 'OTHER'
+            return "OTHER"
 
     def _parse_rowcount_from_status(self, status: str) -> int:
         """
@@ -434,12 +439,7 @@ class DatabaseCursorWrapper:
         first_row = self._last_results[0]
 
         # Priority order for ID column detection
-        id_candidates = [
-            'id', 'ID', 'Id',
-            'rowid', 'ROWID', 'RowId',
-            '_id', '_ID',
-            'pk', 'PK'
-        ]
+        id_candidates = ["id", "ID", "Id", "rowid", "ROWID", "RowId", "_id", "_ID", "pk", "PK"]
 
         # Try known column names first
         for col_name in id_candidates:
@@ -460,7 +460,7 @@ class DatabaseCursorWrapper:
             except (ValueError, TypeError, StopIteration) as e:
                 logger.debug(f"Could not extract lastrowid from single column: {e}")
 
-    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> 'DatabaseCursorWrapper':
+    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DatabaseCursorWrapper":
         """
         Execute SQL with multiple parameter sets.
 
@@ -492,7 +492,7 @@ class DatabaseCursorWrapper:
             List of result dictionaries
         """
         try:
-            results = self._last_results[self._current_index:]
+            results = self._last_results[self._current_index :]
             self._current_index = len(self._last_results)
             return results
 
@@ -540,7 +540,7 @@ class DatabaseCursorWrapper:
             if fetch_size < 1:
                 raise ValueError("fetchmany size must be >= 1")
 
-            results = self._last_results[self._current_index:self._current_index + fetch_size]
+            results = self._last_results[self._current_index : self._current_index + fetch_size]
             self._current_index += len(results)
             return results
 
@@ -566,7 +566,7 @@ class DatabaseCursorWrapper:
             logger.error(f"Error in fetchval: {e}")
             return None
 
-    async def scroll(self, value: int, mode: str = 'relative'):
+    async def scroll(self, value: int, mode: str = "relative"):
         """
         Scroll cursor position (DB-API 2.0 optional extension).
 
@@ -577,9 +577,9 @@ class DatabaseCursorWrapper:
         Raises:
             IndexError: If scrolling beyond result bounds
         """
-        if mode == 'relative':
+        if mode == "relative":
             new_index = self._current_index + value
-        elif mode == 'absolute':
+        elif mode == "absolute":
             new_index = value
         else:
             raise ValueError(f"Invalid scroll mode: {mode}. Use 'relative' or 'absolute'")
@@ -591,11 +591,9 @@ class DatabaseCursorWrapper:
 
     def setinputsizes(self, sizes):
         """DB-API 2.0 required method (no-op for our implementation)"""
-        pass
 
     def setoutputsize(self, size, column=None):
         """DB-API 2.0 required method (no-op for our implementation)"""
-        pass
 
     def get_column_metadata(self, column_name: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -643,14 +641,18 @@ class DatabaseCursorWrapper:
     def __repr__(self) -> str:
         """String representation for debugging"""
         status = "closed" if self._row_count == -1 and not self._last_results else "open"
-        return (f"<DatabaseCursorWrapper status={status} "
-                f"rowcount={self._row_count} "
-                f"rownumber={self.rownumber}>")
+        return (
+            f"<DatabaseCursorWrapper status={status} "
+            f"rowcount={self._row_count} "
+            f"rownumber={self.rownumber}>"
+        )
 
     def __str__(self) -> str:
         """User-friendly string representation"""
         if self._last_query:
-            query_preview = self._last_query[:50] + "..." if len(self._last_query) > 50 else self._last_query
+            query_preview = (
+                self._last_query[:50] + "..." if len(self._last_query) > 50 else self._last_query
+            )
             return f"Cursor(query='{query_preview}', rowcount={self._row_count})"
         return "Cursor(no query)"
 
@@ -679,7 +681,7 @@ class DatabaseConnectionWrapper:
     @property
     def is_cloud(self) -> bool:
         """Check if using cloud database backend"""
-        return self.adapter.is_cloud if hasattr(self.adapter, 'is_cloud') else False
+        return self.adapter.is_cloud if hasattr(self.adapter, "is_cloud") else False
 
     @property
     def in_transaction(self) -> bool:
@@ -707,7 +709,7 @@ class DatabaseConnectionWrapper:
                 async with self.adapter.connection() as conn:
                     yield DatabaseCursorWrapper(conn, connection_wrapper=self)
 
-    async def execute(self, sql: str, parameters: Tuple = ()) -> 'DatabaseCursorWrapper':
+    async def execute(self, sql: str, parameters: Tuple = ()) -> "DatabaseCursorWrapper":
         """
         Execute SQL directly without creating cursor.
 
@@ -722,7 +724,7 @@ class DatabaseConnectionWrapper:
             await cur.execute(sql, parameters)
             return cur
 
-    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> 'DatabaseCursorWrapper':
+    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DatabaseCursorWrapper":
         """
         Execute SQL with multiple parameter sets.
 
@@ -745,7 +747,7 @@ class DatabaseConnectionWrapper:
             sql_script: Multiple SQL statements separated by semicolons
         """
         # Split on semicolons and execute each statement
-        statements = [s.strip() for s in sql_script.split(';') if s.strip()]
+        statements = [s.strip() for s in sql_script.split(";") if s.strip()]
         async with self.cursor() as cur:
             for statement in statements:
                 await cur.execute(statement)
@@ -906,6 +908,7 @@ class DatabaseConnectionWrapper:
 
 class PatternType(Enum):
     """Dynamic pattern types - extensible"""
+
     TEMPORAL = "temporal"  # Time-based patterns
     SEQUENTIAL = "sequential"  # Action sequences
     CONTEXTUAL = "contextual"  # Context-driven patterns
@@ -914,6 +917,7 @@ class PatternType(Enum):
 
 class ConfidenceBoostStrategy(Enum):
     """Strategies for boosting pattern confidence"""
+
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
     LOGARITHMIC = "logarithmic"
@@ -923,6 +927,7 @@ class ConfidenceBoostStrategy(Enum):
 @dataclass
 class GoalPattern:
     """Represents a learned goal pattern with ML metadata"""
+
     pattern_id: str
     goal_type: str
     context_embedding: Optional[List[float]]
@@ -941,6 +946,7 @@ class GoalPattern:
 @dataclass
 class LearningMetrics:
     """Real-time learning performance metrics"""
+
     total_patterns: int
     active_patterns: int
     avg_confidence: float
@@ -1011,27 +1017,20 @@ class PatternMatcher:
         similarity_scores = []
 
         # Context similarity
-        if 'context' in pattern1 and 'context' in pattern2:
+        if "context" in pattern1 and "context" in pattern2:
             context_sim = self._jaccard_similarity(
-                set(pattern1['context'].keys()),
-                set(pattern2['context'].keys())
+                set(pattern1["context"].keys()), set(pattern2["context"].keys())
             )
             similarity_scores.append(context_sim * 0.3)
 
         # Action sequence similarity
-        if 'actions' in pattern1 and 'actions' in pattern2:
-            action_sim = self._sequence_similarity(
-                pattern1['actions'],
-                pattern2['actions']
-            )
+        if "actions" in pattern1 and "actions" in pattern2:
+            action_sim = self._sequence_similarity(pattern1["actions"], pattern2["actions"])
             similarity_scores.append(action_sim * 0.4)
 
         # Temporal similarity
-        if 'timestamp' in pattern1 and 'timestamp' in pattern2:
-            time_sim = self._temporal_similarity(
-                pattern1['timestamp'],
-                pattern2['timestamp']
-            )
+        if "timestamp" in pattern1 and "timestamp" in pattern2:
+            time_sim = self._temporal_similarity(pattern1["timestamp"], pattern2["timestamp"])
             similarity_scores.append(time_sim * 0.3)
 
         return sum(similarity_scores) if similarity_scores else 0.0
@@ -1062,10 +1061,10 @@ class PatternMatcher:
 
         for i in range(1, m + 1):
             for j in range(1, n + 1):
-                if seq1[i-1] == seq2[j-1]:
-                    dp[i][j] = dp[i-1][j-1]
+                if seq1[i - 1] == seq2[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1]
                 else:
-                    dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
+                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
 
         max_len = max(m, n)
         return 1.0 - (dp[m][n] / max_len) if max_len > 0 else 0.0
@@ -1099,11 +1098,11 @@ class JARVISLearningDatabase:
         """Initialize the advanced learning database"""
         # Configuration with defaults
         self.config = config or {}
-        self.cache_size = self.config.get('cache_size', 1000)
-        self.cache_ttl = self.config.get('cache_ttl_seconds', 3600)
-        self.enable_ml = self.config.get('enable_ml_features', True)
-        self.auto_optimize = self.config.get('auto_optimize', True)
-        self.batch_size = self.config.get('batch_insert_size', 100)
+        self.cache_size = self.config.get("cache_size", 1000)
+        self.cache_ttl = self.config.get("cache_ttl_seconds", 3600)
+        self.enable_ml = self.config.get("enable_ml_features", True)
+        self.auto_optimize = self.config.get("auto_optimize", True)
+        self.batch_size = self.config.get("batch_insert_size", 100)
 
         # Set up paths
         self.db_dir = db_path or Path.home() / ".jarvis" / "learning"
@@ -1138,7 +1137,7 @@ class JARVISLearningDatabase:
             cache_hit_rate=0.0,
             avg_inference_time_ms=0.0,
             memory_usage_mb=0.0,
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
         )
 
         # Initialize ChromaDB if available
@@ -1200,7 +1199,8 @@ class JARVISLearningDatabase:
             await cursor.execute("PRAGMA temp_store=MEMORY")
 
             # Goals table with enhanced tracking
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS goals (
                     goal_id TEXT PRIMARY KEY,
                     goal_type TEXT NOT NULL,
@@ -1218,10 +1218,12 @@ class JARVISLearningDatabase:
                     embedding_id TEXT,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Actions table with performance tracking
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS actions (
                     action_id TEXT PRIMARY KEY,
                     action_type TEXT NOT NULL,
@@ -1238,10 +1240,12 @@ class JARVISLearningDatabase:
                     context_hash TEXT,
                     FOREIGN KEY (goal_id) REFERENCES goals(goal_id)
                 )
-            """)
+            """
+            )
 
             # Enhanced patterns table with ML metadata
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS patterns (
                     pattern_id TEXT PRIMARY KEY,
                     pattern_type TEXT NOT NULL,
@@ -1259,10 +1263,12 @@ class JARVISLearningDatabase:
                     embedding_id TEXT,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # User preferences with confidence tracking
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_preferences (
                     preference_id TEXT PRIMARY KEY,
                     category TEXT NOT NULL,
@@ -1275,10 +1281,12 @@ class JARVISLearningDatabase:
                     updated_at TIMESTAMP,
                     UNIQUE(category, key)
                 )
-            """)
+            """
+            )
 
             # Goal-Action mappings with performance metrics
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS goal_action_mappings (
                     mapping_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     goal_type TEXT NOT NULL,
@@ -1292,10 +1300,12 @@ class JARVISLearningDatabase:
                     prediction_accuracy REAL,
                     UNIQUE(goal_type, action_type)
                 )
-            """)
+            """
+            )
 
             # Display patterns with temporal analysis
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS display_patterns (
                     pattern_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     display_name TEXT NOT NULL,
@@ -1310,10 +1320,12 @@ class JARVISLearningDatabase:
                     consecutive_successes INTEGER DEFAULT 0,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Learning metrics tracking
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS learning_metrics (
                     metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     metric_name TEXT NOT NULL,
@@ -1321,10 +1333,12 @@ class JARVISLearningDatabase:
                     timestamp TIMESTAMP,
                     context JSON
                 )
-            """)
+            """
+            )
 
             # Pattern similarity cache
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS pattern_similarity_cache (
                     cache_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     pattern1_id TEXT NOT NULL,
@@ -1333,10 +1347,12 @@ class JARVISLearningDatabase:
                     computed_at TIMESTAMP,
                     UNIQUE(pattern1_id, pattern2_id)
                 )
-            """)
+            """
+            )
 
             # Context embeddings metadata
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS context_embeddings (
                     embedding_id TEXT PRIMARY KEY,
                     context_hash TEXT UNIQUE,
@@ -1346,14 +1362,16 @@ class JARVISLearningDatabase:
                     access_count INTEGER DEFAULT 0,
                     last_accessed TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # ============================================================================
             # 24/7 BEHAVIORAL LEARNING TABLES - Enhanced Workspace Tracking
             # ============================================================================
 
             # Workspace/Space tracking (Yabai integration)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS workspace_usage (
                     usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     space_id INTEGER NOT NULL,
@@ -1368,10 +1386,12 @@ class JARVISLearningDatabase:
                     is_fullscreen BOOLEAN DEFAULT 0,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # App usage patterns (24/7 tracking)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS app_usage_patterns (
                     pattern_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     app_name TEXT NOT NULL,
@@ -1386,10 +1406,12 @@ class JARVISLearningDatabase:
                     metadata JSON,
                     UNIQUE(app_name, space_id, typical_time_of_day, typical_day_of_week)
                 )
-            """)
+            """
+            )
 
             # User workflows (sequential action patterns)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_workflows (
                     workflow_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     workflow_name TEXT,
@@ -1405,10 +1427,12 @@ class JARVISLearningDatabase:
                     confidence REAL DEFAULT 0.5,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Space transitions (movement between Spaces)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS space_transitions (
                     transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     from_space_id INTEGER NOT NULL,
@@ -1422,10 +1446,12 @@ class JARVISLearningDatabase:
                     day_of_week INTEGER,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Behavioral patterns (high-level user habits)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS behavioral_patterns (
                     behavior_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     behavior_type TEXT NOT NULL,
@@ -1440,10 +1466,12 @@ class JARVISLearningDatabase:
                     prediction_accuracy REAL,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Temporal patterns (time-based behaviors for leap years too!)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS temporal_patterns (
                     temporal_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     pattern_type TEXT NOT NULL,
@@ -1459,10 +1487,12 @@ class JARVISLearningDatabase:
                     last_occurrence TIMESTAMP,
                     metadata JSON
                 )
-            """)
+            """
+            )
 
             # Proactive suggestions (what JARVIS should suggest)
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS proactive_suggestions (
                     suggestion_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     suggestion_type TEXT NOT NULL,
@@ -1477,34 +1507,149 @@ class JARVISLearningDatabase:
                     last_suggested TIMESTAMP,
                     metadata JSON
                 )
-            """)
+            """
+            )
+
+            # Conversation history (ALL user-JARVIS interactions for learning)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_history (
+                    interaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TIMESTAMP NOT NULL,
+                    session_id TEXT,
+                    user_query TEXT NOT NULL,
+                    jarvis_response TEXT NOT NULL,
+                    response_type TEXT,
+                    confidence_score REAL,
+                    execution_time_ms REAL,
+                    success BOOLEAN DEFAULT 1,
+                    user_feedback TEXT,
+                    feedback_score INTEGER,
+                    was_corrected BOOLEAN DEFAULT 0,
+                    correction_text TEXT,
+                    context_snapshot JSON,
+                    active_apps JSON,
+                    current_space TEXT,
+                    system_state JSON,
+                    embedding_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_timestamp (timestamp),
+                    INDEX idx_session (session_id),
+                    INDEX idx_response_type (response_type),
+                    INDEX idx_success (success),
+                    INDEX idx_feedback_score (feedback_score)
+                )
+            """
+            )
+
+            # Learning from corrections (when user corrects JARVIS)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS interaction_corrections (
+                    correction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    interaction_id INTEGER NOT NULL,
+                    original_response TEXT NOT NULL,
+                    corrected_response TEXT NOT NULL,
+                    correction_type TEXT NOT NULL,
+                    user_explanation TEXT,
+                    applied_at TIMESTAMP NOT NULL,
+                    learned BOOLEAN DEFAULT 0,
+                    pattern_extracted TEXT,
+                    metadata JSON,
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
+                    INDEX idx_correction_type (correction_type),
+                    INDEX idx_learned (learned)
+                )
+            """
+            )
+
+            # Semantic embeddings for conversation search
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_embeddings (
+                    embedding_id TEXT PRIMARY KEY,
+                    interaction_id INTEGER NOT NULL,
+                    query_embedding BLOB,
+                    response_embedding BLOB,
+                    combined_embedding BLOB,
+                    embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
+                    INDEX idx_interaction (interaction_id)
+                )
+            """
+            )
 
             # Performance indexes
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_type ON goals(goal_type)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_created ON goals(created_at)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_context_hash ON goals(context_hash)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_actions_type ON actions(action_type)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_actions_timestamp ON actions(timestamp)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_actions_context_hash ON actions(context_hash)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(pattern_hash)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_patterns_context ON display_patterns(context_hash)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_patterns_time ON display_patterns(connection_time, day_of_week)")
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_goals_created ON goals(created_at)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_goals_context_hash ON goals(context_hash)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_actions_type ON actions(action_type)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_actions_timestamp ON actions(timestamp)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_actions_context_hash ON actions(context_hash)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(pattern_hash)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_display_patterns_context ON display_patterns(context_hash)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_display_patterns_time ON display_patterns(connection_time, day_of_week)"
+            )
 
             # Indexes for 24/7 behavioral learning tables
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_space ON workspace_usage(space_id, timestamp)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_app ON workspace_usage(app_name, timestamp)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_time ON workspace_usage(hour_of_day, day_of_week)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_app ON app_usage_patterns(app_name)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_space ON app_usage_patterns(space_id)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_time ON app_usage_patterns(typical_time_of_day, typical_day_of_week)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workflows_frequency ON user_workflows(frequency DESC)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_space_transitions_from ON space_transitions(from_space_id, timestamp)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_space_transitions_to ON space_transitions(to_space_id, timestamp)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_behavioral_patterns_type ON behavioral_patterns(behavior_type)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_temporal_patterns_time ON temporal_patterns(time_of_day, day_of_week)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_temporal_patterns_leap ON temporal_patterns(is_leap_year)")
-            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggestions_confidence ON proactive_suggestions(confidence DESC)")
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_workspace_usage_space ON workspace_usage(space_id, timestamp)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_workspace_usage_app ON workspace_usage(app_name, timestamp)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_workspace_usage_time ON workspace_usage(hour_of_day, day_of_week)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_app_usage_app ON app_usage_patterns(app_name)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_app_usage_space ON app_usage_patterns(space_id)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_app_usage_time ON app_usage_patterns(typical_time_of_day, typical_day_of_week)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_workflows_frequency ON user_workflows(frequency DESC)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_space_transitions_from ON space_transitions(from_space_id, timestamp)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_space_transitions_to ON space_transitions(to_space_id, timestamp)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_behavioral_patterns_type ON behavioral_patterns(behavior_type)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_temporal_patterns_time ON temporal_patterns(time_of_day, day_of_week)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_temporal_patterns_leap ON temporal_patterns(is_leap_year)"
+            )
+            await cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_suggestions_confidence ON proactive_suggestions(confidence DESC)"
+            )
 
         await self.db.commit()
         logger.info("SQLite database initialized with enhanced async schema")
@@ -1515,10 +1660,7 @@ class JARVISLearningDatabase:
             # Initialize ChromaDB client with persistent storage
             self.chroma_client = chromadb.PersistentClient(
                 path=str(self.chroma_path),
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
+                settings=Settings(anonymized_telemetry=False, allow_reset=True),
             )
 
             # Create or get collections with metadata
@@ -1526,24 +1668,24 @@ class JARVISLearningDatabase:
                 name="goal_embeddings",
                 metadata={
                     "description": "Goal context embeddings for similarity search",
-                    "created": datetime.now().isoformat()
-                }
+                    "created": datetime.now().isoformat(),
+                },
             )
 
             self.pattern_collection = self.chroma_client.get_or_create_collection(
                 name="pattern_embeddings",
                 metadata={
                     "description": "Pattern embeddings for matching",
-                    "created": datetime.now().isoformat()
-                }
+                    "created": datetime.now().isoformat(),
+                },
             )
 
             self.context_collection = self.chroma_client.get_or_create_collection(
                 name="context_embeddings",
                 metadata={
                     "description": "Context state embeddings for prediction",
-                    "created": datetime.now().isoformat()
-                }
+                    "created": datetime.now().isoformat(),
+                },
             )
 
             logger.info("ChromaDB initialized for semantic search")
@@ -1556,7 +1698,7 @@ class JARVISLearningDatabase:
 
     async def store_goal(self, goal: Dict[str, Any], batch: bool = False) -> str:
         """Store an inferred goal with batching support"""
-        goal_id = goal.get('goal_id', self._generate_id('goal'))
+        goal_id = goal.get("goal_id", self._generate_id("goal"))
 
         if batch:
             self.pending_goals.append((goal_id, goal))
@@ -1565,42 +1707,45 @@ class JARVISLearningDatabase:
             return goal_id
 
         # Compute context hash for deduplication
-        context_hash = self._hash_context(goal.get('evidence', {}))
+        context_hash = self._hash_context(goal.get("evidence", {}))
 
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     INSERT OR REPLACE INTO goals
                     (goal_id, goal_type, goal_level, description, confidence,
                      progress, is_completed, created_at, evidence, context_hash, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    goal_id,
-                    goal['goal_type'],
-                    goal.get('goal_level', 'UNKNOWN'),
-                    goal.get('description', ''),
-                    goal.get('confidence', 0.0),
-                    goal.get('progress', 0.0),
-                    goal.get('is_completed', False),
-                    goal.get('created_at', datetime.now()),
-                    json.dumps(goal.get('evidence', [])),
-                    context_hash,
-                    json.dumps(goal.get('metadata', {}))
-                ))
+                """,
+                    (
+                        goal_id,
+                        goal["goal_type"],
+                        goal.get("goal_level", "UNKNOWN"),
+                        goal.get("description", ""),
+                        goal.get("confidence", 0.0),
+                        goal.get("progress", 0.0),
+                        goal.get("is_completed", False),
+                        goal.get("created_at", datetime.now()),
+                        json.dumps(goal.get("evidence", [])),
+                        context_hash,
+                        json.dumps(goal.get("metadata", {})),
+                    ),
+                )
 
             await self.db.commit()
 
         # Store embedding in ChromaDB if available
-        if self.goal_collection and 'embedding' in goal:
+        if self.goal_collection and "embedding" in goal:
             await self._store_embedding_async(
                 self.goal_collection,
                 goal_id,
-                goal['embedding'],
+                goal["embedding"],
                 {
-                    'goal_type': goal['goal_type'],
-                    'confidence': goal.get('confidence', 0.0),
-                    'timestamp': datetime.now().isoformat()
-                }
+                    "goal_type": goal["goal_type"],
+                    "confidence": goal.get("confidence", 0.0),
+                    "timestamp": datetime.now().isoformat(),
+                },
             )
 
         # Update cache
@@ -1608,10 +1753,11 @@ class JARVISLearningDatabase:
 
         return goal_id
 
-    async def get_similar_goals(self, embedding: List[float], top_k: int = 5,
-                               min_confidence: float = 0.5) -> List[Dict]:
+    async def get_similar_goals(
+        self, embedding: List[float], top_k: int = 5, min_confidence: float = 0.5
+    ) -> List[Dict]:
         """Find similar goals using semantic search with caching"""
-        cache_key = f"similar_goals_{hashlib.md5(str(embedding).encode()).hexdigest()}_{top_k}"
+        cache_key = f"similar_goals_{hashlib.md5(str(embedding).encode(), usedforsecurity=False).hexdigest()}_{top_k}"
 
         cached = self.query_cache.get(cache_key)
         if cached:
@@ -1624,20 +1770,20 @@ class JARVISLearningDatabase:
             results = self.goal_collection.query(
                 query_embeddings=[embedding],
                 n_results=top_k,
-                where={"confidence": {"$gte": min_confidence}} if min_confidence > 0 else None
+                where={"confidence": {"$gte": min_confidence}} if min_confidence > 0 else None,
             )
 
             similar_goals = []
             async with self.db.cursor() as cursor:
-                for i, goal_id in enumerate(results['ids'][0]):
+                for i, goal_id in enumerate(results["ids"][0]):
                     await cursor.execute("SELECT * FROM goals WHERE goal_id = ?", (goal_id,))
                     row = await cursor.fetchone()
 
                     if row:
                         goal = dict(row)
-                        goal['evidence'] = json.loads(goal['evidence']) if goal['evidence'] else []
-                        goal['metadata'] = json.loads(goal['metadata']) if goal['metadata'] else {}
-                        goal['similarity'] = 1.0 - results['distances'][0][i]
+                        goal["evidence"] = json.loads(goal["evidence"]) if goal["evidence"] else []
+                        goal["metadata"] = json.loads(goal["metadata"]) if goal["metadata"] else {}
+                        goal["similarity"] = 1.0 - results["distances"][0][i]
                         similar_goals.append(goal)
 
             self.query_cache.set(cache_key, similar_goals)
@@ -1651,7 +1797,7 @@ class JARVISLearningDatabase:
 
     async def store_action(self, action: Dict[str, Any], batch: bool = False) -> str:
         """Store an executed action with performance tracking"""
-        action_id = action.get('action_id', self._generate_id('action'))
+        action_id = action.get("action_id", self._generate_id("action"))
 
         if batch:
             self.pending_actions.append((action_id, action))
@@ -1659,45 +1805,49 @@ class JARVISLearningDatabase:
                 await self._flush_action_batch()
             return action_id
 
-        context_hash = self._hash_context(action.get('params', {}))
+        context_hash = self._hash_context(action.get("params", {}))
 
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     INSERT INTO actions
                     (action_id, action_type, target, goal_id, confidence,
                      success, execution_time, timestamp, retry_count, params, result, context_hash)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    action_id,
-                    action['action_type'],
-                    action.get('target', ''),
-                    action.get('goal_id'),
-                    action.get('confidence', 0.0),
-                    action.get('success', False),
-                    action.get('execution_time', 0.0),
-                    action.get('timestamp', datetime.now()),
-                    action.get('retry_count', 0),
-                    json.dumps(action.get('params', {})),
-                    json.dumps(action.get('result', {})),
-                    context_hash
-                ))
+                """,
+                    (
+                        action_id,
+                        action["action_type"],
+                        action.get("target", ""),
+                        action.get("goal_id"),
+                        action.get("confidence", 0.0),
+                        action.get("success", False),
+                        action.get("execution_time", 0.0),
+                        action.get("timestamp", datetime.now()),
+                        action.get("retry_count", 0),
+                        json.dumps(action.get("params", {})),
+                        json.dumps(action.get("result", {})),
+                        context_hash,
+                    ),
+                )
 
             await self.db.commit()
 
         # Update goal-action mapping
-        if action.get('goal_id'):
+        if action.get("goal_id"):
             await self._update_goal_action_mapping(
-                action['action_type'],
-                action.get('goal_id'),
-                action.get('success', False),
-                action.get('execution_time', 0.0)
+                action["action_type"],
+                action.get("goal_id"),
+                action.get("success", False),
+                action.get("execution_time", 0.0),
             )
 
         return action_id
 
-    async def _update_goal_action_mapping(self, action_type: str, goal_id: Optional[str],
-                                          success: bool, execution_time: float):
+    async def _update_goal_action_mapping(
+        self, action_type: str, goal_id: Optional[str], success: bool, execution_time: float
+    ):
         """Update goal-action mapping with statistical tracking"""
         if not goal_id:
             return
@@ -1708,13 +1858,14 @@ class JARVISLearningDatabase:
             row = await cursor.fetchone()
 
             if row:
-                goal_type = row['goal_type']
+                goal_type = row["goal_type"]
 
                 # Calculate new statistics
                 success_inc = 1 if success else 0
                 failure_inc = 0 if success else 1
 
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     INSERT INTO goal_action_mappings
                     (goal_type, action_type, success_count, failure_count,
                      avg_execution_time, confidence, last_updated)
@@ -1726,107 +1877,465 @@ class JARVISLearningDatabase:
                                             / (success_count + failure_count + 1),
                         confidence = CAST(success_count + ? AS REAL) / (success_count + failure_count + 1),
                         last_updated = ?
-                """, (
-                    goal_type, action_type,
-                    success_inc, failure_inc,
-                    execution_time, 0.5, datetime.now(),
-                    success_inc, failure_inc,
-                    execution_time, success_inc, datetime.now()
-                ))
+                """,
+                    (
+                        goal_type,
+                        action_type,
+                        success_inc,
+                        failure_inc,
+                        execution_time,
+                        0.5,
+                        datetime.now(),
+                        success_inc,
+                        failure_inc,
+                        execution_time,
+                        success_inc,
+                        datetime.now(),
+                    ),
+                )
 
         await self.db.commit()
+
+    # ==================== Conversation History & Learning ====================
+
+    async def record_interaction(
+        self,
+        user_query: str,
+        jarvis_response: str,
+        response_type: Optional[str] = None,
+        confidence_score: Optional[float] = None,
+        execution_time_ms: Optional[float] = None,
+        success: bool = True,
+        session_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Record every user-JARVIS interaction for learning and improvement.
+
+        Args:
+            user_query: What the user said/typed
+            jarvis_response: How JARVIS responded
+            response_type: Type of response (command, conversation, error, etc.)
+            confidence_score: JARVIS's confidence in the response (0-1)
+            execution_time_ms: How long it took to respond
+            success: Whether the response was successful
+            session_id: Unique session identifier
+            context: Full context snapshot (apps, spaces, system state, etc.)
+
+        Returns:
+            int: interaction_id for reference
+        """
+        try:
+            import uuid
+
+            embedding_id = str(uuid.uuid4())
+
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO conversation_history
+                    (timestamp, session_id, user_query, jarvis_response, response_type,
+                     confidence_score, execution_time_ms, success, context_snapshot,
+                     active_apps, current_space, system_state, embedding_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        datetime.now(),
+                        session_id,
+                        user_query,
+                        jarvis_response,
+                        response_type,
+                        confidence_score,
+                        execution_time_ms,
+                        1 if success else 0,
+                        json.dumps(context or {}),
+                        json.dumps(context.get("active_apps", []) if context else []),
+                        context.get("current_space") if context else None,
+                        json.dumps(context.get("system_state", {}) if context else {}),
+                        embedding_id,
+                    ),
+                )
+
+                await self.db.commit()
+
+                # Get the interaction_id
+                interaction_id = cursor.lastrowid
+
+                # Generate embeddings asynchronously (non-blocking)
+                if self.enable_embeddings:
+                    asyncio.create_task(
+                        self._generate_conversation_embeddings(
+                            interaction_id, embedding_id, user_query, jarvis_response
+                        )
+                    )
+
+                logger.debug(
+                    f"Recorded interaction {interaction_id}: '{user_query[:50]}...' -> '{jarvis_response[:50]}...'"
+                )
+
+                return interaction_id
+
+        except Exception as e:
+            logger.error(f"Failed to record interaction: {e}")
+            return -1
+
+    async def record_correction(
+        self,
+        interaction_id: int,
+        corrected_response: str,
+        correction_type: str,
+        user_explanation: Optional[str] = None,
+    ) -> int:
+        """
+        Record when user corrects JARVIS's response (critical for learning!).
+
+        Args:
+            interaction_id: ID of the original interaction
+            corrected_response: What the correct response should have been
+            correction_type: Type of correction (misunderstanding, wrong_action, etc.)
+            user_explanation: User's explanation of what went wrong
+
+        Returns:
+            int: correction_id
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                # Get original response
+                await cursor.execute(
+                    "SELECT jarvis_response FROM conversation_history WHERE interaction_id = ?",
+                    (interaction_id,),
+                )
+                row = await cursor.fetchone()
+
+                if not row:
+                    logger.error(f"Interaction {interaction_id} not found for correction")
+                    return -1
+
+                original_response = row["jarvis_response"]
+
+                # Insert correction
+                await cursor.execute(
+                    """
+                    INSERT INTO interaction_corrections
+                    (interaction_id, original_response, corrected_response,
+                     correction_type, user_explanation, applied_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        interaction_id,
+                        original_response,
+                        corrected_response,
+                        correction_type,
+                        user_explanation,
+                        datetime.now(),
+                    ),
+                )
+
+                # Mark the original interaction as corrected
+                await cursor.execute(
+                    """
+                    UPDATE conversation_history
+                    SET was_corrected = 1, correction_text = ?
+                    WHERE interaction_id = ?
+                """,
+                    (corrected_response, interaction_id),
+                )
+
+                await self.db.commit()
+
+                correction_id = cursor.lastrowid
+
+                logger.info(
+                    f"Recorded correction {correction_id} for interaction {interaction_id}: "
+                    f"{correction_type}"
+                )
+
+                # Extract learning pattern from correction (ML task)
+                asyncio.create_task(self._extract_correction_pattern(correction_id))
+
+                return correction_id
+
+        except Exception as e:
+            logger.error(f"Failed to record correction: {e}")
+            return -1
+
+    async def add_user_feedback(
+        self,
+        interaction_id: int,
+        feedback_text: Optional[str] = None,
+        feedback_score: Optional[int] = None,
+    ) -> bool:
+        """
+        Record user feedback on JARVIS's response (thumbs up/down, rating, comment).
+
+        Args:
+            interaction_id: ID of the interaction
+            feedback_text: User's feedback comment
+            feedback_score: Numeric score (-1, 0, 1 or 1-5 scale)
+
+        Returns:
+            bool: Success
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE conversation_history
+                    SET user_feedback = ?, feedback_score = ?
+                    WHERE interaction_id = ?
+                """,
+                    (feedback_text, feedback_score, interaction_id),
+                )
+
+                await self.db.commit()
+
+                logger.debug(
+                    f"Added feedback to interaction {interaction_id}: score={feedback_score}"
+                )
+
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to add feedback: {e}")
+            return False
+
+    async def _generate_conversation_embeddings(
+        self, interaction_id: int, embedding_id: str, query: str, response: str
+    ):
+        """Generate semantic embeddings for conversation search (async background task)"""
+        try:
+            # Import embedding model (lazy load)
+            from sentence_transformers import SentenceTransformer
+
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+
+            # Generate embeddings
+            query_embedding = model.encode(query)
+            response_embedding = model.encode(response)
+            combined_embedding = model.encode(f"{query} {response}")
+
+            # Store embeddings
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO conversation_embeddings
+                    (embedding_id, interaction_id, query_embedding, response_embedding, combined_embedding)
+                    VALUES (?, ?, ?, ?, ?)
+                """,
+                    (
+                        embedding_id,
+                        interaction_id,
+                        query_embedding.tobytes(),
+                        response_embedding.tobytes(),
+                        combined_embedding.tobytes(),
+                    ),
+                )
+
+                await self.db.commit()
+
+        except ImportError:
+            logger.debug("sentence-transformers not installed - skipping embeddings")
+        except Exception as e:
+            logger.error(f"Failed to generate conversation embeddings: {e}")
+
+    async def _extract_correction_pattern(self, correction_id: int):
+        """Extract learning pattern from user correction (ML-powered)"""
+        try:
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT ic.*, ch.user_query, ch.context_snapshot
+                    FROM interaction_corrections ic
+                    JOIN conversation_history ch ON ic.interaction_id = ch.interaction_id
+                    WHERE ic.correction_id = ?
+                """,
+                    (correction_id,),
+                )
+
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                # Extract pattern from correction
+                # This is where ML/LLM could analyze what went wrong and create a rule
+                # For now, store basic pattern
+                pattern_text = f"When user says '{row['user_query']}', respond with '{row['corrected_response']}' not '{row['original_response']}'"
+
+                await cursor.execute(
+                    """
+                    UPDATE interaction_corrections
+                    SET pattern_extracted = ?, learned = 1
+                    WHERE correction_id = ?
+                """,
+                    (pattern_text, correction_id),
+                )
+
+                await self.db.commit()
+
+                logger.info(f"Extracted pattern from correction {correction_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to extract correction pattern: {e}")
+
+    async def search_similar_conversations(
+        self, query: str, top_k: int = 5, min_confidence: float = 0.5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search past conversations semantically using embeddings.
+
+        Args:
+            query: Search query
+            top_k: Number of results to return
+            min_confidence: Minimum similarity score
+
+        Returns:
+            List of similar past interactions with scores
+        """
+        try:
+            import numpy as np
+            from sentence_transformers import SentenceTransformer
+
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            query_embedding = model.encode(query)
+
+            # Get all conversation embeddings
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT ce.*, ch.user_query, ch.jarvis_response, ch.success, ch.timestamp
+                    FROM conversation_embeddings ce
+                    JOIN conversation_history ch ON ce.interaction_id = ch.interaction_id
+                """
+                )
+
+                rows = await cursor.fetchall()
+
+            # Calculate similarity scores
+            results = []
+            for row in rows:
+                combined_embedding = np.frombuffer(row["combined_embedding"], dtype=np.float32)
+
+                # Cosine similarity
+                similarity = np.dot(query_embedding, combined_embedding) / (
+                    np.linalg.norm(query_embedding) * np.linalg.norm(combined_embedding)
+                )
+
+                if similarity >= min_confidence:
+                    results.append(
+                        {
+                            "interaction_id": row["interaction_id"],
+                            "user_query": row["user_query"],
+                            "jarvis_response": row["jarvis_response"],
+                            "success": row["success"],
+                            "timestamp": row["timestamp"],
+                            "similarity_score": float(similarity),
+                        }
+                    )
+
+            # Sort by similarity and return top_k
+            results.sort(key=lambda x: x["similarity_score"], reverse=True)
+            return results[:top_k]
+
+        except ImportError:
+            logger.warning("sentence-transformers not installed - semantic search unavailable")
+            return []
+        except Exception as e:
+            logger.error(f"Failed to search conversations: {e}")
+            return []
 
     # ==================== Pattern Learning (ML-Powered) ====================
 
     async def store_pattern(self, pattern: Dict[str, Any], auto_merge: bool = True) -> str:
         """Store pattern with automatic similarity-based merging"""
-        pattern_id = pattern.get('pattern_id', self._generate_id('pattern'))
+        pattern_id = pattern.get("pattern_id", self._generate_id("pattern"))
         pattern_hash = self._hash_pattern(pattern)
 
         # Check cache first
         cached_pattern = self.pattern_cache.get(pattern_hash)
         if cached_pattern:
             # Update occurrence count
-            await self._increment_pattern_occurrence(cached_pattern['pattern_id'])
-            return cached_pattern['pattern_id']
+            await self._increment_pattern_occurrence(cached_pattern["pattern_id"])
+            return cached_pattern["pattern_id"]
 
         # Check for similar patterns if auto_merge enabled
-        if auto_merge and 'embedding' in pattern:
+        if auto_merge and "embedding" in pattern:
             similar = await self._find_similar_patterns(
-                pattern['embedding'],
-                pattern['pattern_type'],
-                similarity_threshold=0.85
+                pattern["embedding"], pattern["pattern_type"], similarity_threshold=0.85
             )
 
             if similar:
                 # Merge with most similar pattern
-                await self._merge_patterns(similar[0]['pattern_id'], pattern)
-                return similar[0]['pattern_id']
+                await self._merge_patterns(similar[0]["pattern_id"], pattern)
+                return similar[0]["pattern_id"]
 
         # Store new pattern
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     INSERT OR REPLACE INTO patterns
                     (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
                      success_rate, occurrence_count, first_seen, last_seen, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    pattern_id,
-                    pattern['pattern_type'],
-                    pattern_hash,
-                    json.dumps(pattern.get('pattern_data', {})),
-                    pattern.get('confidence', 0.5),
-                    pattern.get('success_rate', 0.5),
-                    1,
-                    datetime.now(),
-                    datetime.now(),
-                    json.dumps(pattern.get('metadata', {}))
-                ))
+                """,
+                    (
+                        pattern_id,
+                        pattern["pattern_type"],
+                        pattern_hash,
+                        json.dumps(pattern.get("pattern_data", {})),
+                        pattern.get("confidence", 0.5),
+                        pattern.get("success_rate", 0.5),
+                        1,
+                        datetime.now(),
+                        datetime.now(),
+                        json.dumps(pattern.get("metadata", {})),
+                    ),
+                )
 
             await self.db.commit()
 
         # Store embedding
-        if self.pattern_collection and 'embedding' in pattern:
+        if self.pattern_collection and "embedding" in pattern:
             await self._store_embedding_async(
                 self.pattern_collection,
                 pattern_id,
-                pattern['embedding'],
+                pattern["embedding"],
                 {
-                    'pattern_type': pattern['pattern_type'],
-                    'confidence': pattern.get('confidence', 0.5),
-                    'timestamp': datetime.now().isoformat()
-                }
+                    "pattern_type": pattern["pattern_type"],
+                    "confidence": pattern.get("confidence", 0.5),
+                    "timestamp": datetime.now().isoformat(),
+                },
             )
 
         # Update cache
-        self.pattern_cache.set(pattern_hash, {'pattern_id': pattern_id, **pattern})
+        self.pattern_cache.set(pattern_hash, {"pattern_id": pattern_id, **pattern})
 
         return pattern_id
 
-    async def _find_similar_patterns(self, embedding: List[float], pattern_type: str,
-                                    similarity_threshold: float = 0.8) -> List[Dict]:
+    async def _find_similar_patterns(
+        self, embedding: List[float], pattern_type: str, similarity_threshold: float = 0.8
+    ) -> List[Dict]:
         """Find similar patterns using embeddings"""
         if not self.pattern_collection:
             return []
 
         try:
             results = self.pattern_collection.query(
-                query_embeddings=[embedding],
-                n_results=5,
-                where={"pattern_type": pattern_type}
+                query_embeddings=[embedding], n_results=5, where={"pattern_type": pattern_type}
             )
 
             similar_patterns = []
             async with self.db.cursor() as cursor:
-                for i, pattern_id in enumerate(results['ids'][0]):
-                    similarity = 1.0 - results['distances'][0][i]
+                for i, pattern_id in enumerate(results["ids"][0]):
+                    similarity = 1.0 - results["distances"][0][i]
                     if similarity >= similarity_threshold:
-                        await cursor.execute("SELECT * FROM patterns WHERE pattern_id = ?", (pattern_id,))
+                        await cursor.execute(
+                            "SELECT * FROM patterns WHERE pattern_id = ?", (pattern_id,)
+                        )
                         row = await cursor.fetchone()
                         if row:
                             pattern = dict(row)
-                            pattern['similarity'] = similarity
+                            pattern["similarity"] = similarity
                             similar_patterns.append(pattern)
 
             return similar_patterns
@@ -1840,7 +2349,8 @@ class JARVISLearningDatabase:
         async with self._db_lock:
             async with self.db.cursor() as cursor:
                 # Update occurrence count and confidence
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     UPDATE patterns SET
                         occurrence_count = occurrence_count + 1,
                         confidence = (confidence + ?) / 2,
@@ -1848,12 +2358,14 @@ class JARVISLearningDatabase:
                         last_seen = ?,
                         boost_count = boost_count + 1
                     WHERE pattern_id = ?
-                """, (
-                    new_pattern.get('confidence', 0.5),
-                    new_pattern.get('success_rate', 0.5),
-                    datetime.now(),
-                    target_pattern_id
-                ))
+                """,
+                    (
+                        new_pattern.get("confidence", 0.5),
+                        new_pattern.get("success_rate", 0.5),
+                        datetime.now(),
+                        target_pattern_id,
+                    ),
+                )
 
             await self.db.commit()
 
@@ -1861,18 +2373,21 @@ class JARVISLearningDatabase:
         """Increment pattern occurrence count"""
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     UPDATE patterns SET
                         occurrence_count = occurrence_count + 1,
                         last_seen = ?
                     WHERE pattern_id = ?
-                """, (datetime.now(), pattern_id))
+                """,
+                    (datetime.now(), pattern_id),
+                )
 
             await self.db.commit()
 
-    async def get_pattern_by_type(self, pattern_type: str,
-                                  min_confidence: float = 0.5,
-                                  limit: int = 10) -> List[Dict]:
+    async def get_pattern_by_type(
+        self, pattern_type: str, min_confidence: float = 0.5, limit: int = 10
+    ) -> List[Dict]:
         """Get patterns by type with caching"""
         cache_key = f"patterns_{pattern_type}_{min_confidence}_{limit}"
 
@@ -1881,12 +2396,15 @@ class JARVISLearningDatabase:
             return cached
 
         async with self.db.cursor() as cursor:
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT * FROM patterns
                 WHERE pattern_type = ? AND confidence >= ?
                 ORDER BY confidence DESC, occurrence_count DESC
                 LIMIT ?
-            """, (pattern_type, min_confidence, limit))
+            """,
+                (pattern_type, min_confidence, limit),
+            )
 
             rows = await cursor.fetchall()
             patterns = [dict(row) for row in rows]
@@ -1907,18 +2425,22 @@ class JARVISLearningDatabase:
         async with self._db_lock:
             async with self.db.cursor() as cursor:
                 # Check if similar pattern exists
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     SELECT * FROM display_patterns
                     WHERE display_name = ?
                     AND hour_of_day = ?
                     AND day_of_week = ?
-                """, (display_name, hour_of_day, day_of_week))
+                """,
+                    (display_name, hour_of_day, day_of_week),
+                )
 
                 existing = await cursor.fetchone()
 
                 if existing:
                     # Update frequency and consecutive successes
-                    await cursor.execute("""
+                    await cursor.execute(
+                        """
                         UPDATE display_patterns SET
                             frequency = frequency + 1,
                             consecutive_successes = consecutive_successes + 1,
@@ -1926,34 +2448,43 @@ class JARVISLearningDatabase:
                             auto_connect = CASE WHEN frequency >= 3 THEN 1 ELSE auto_connect END,
                             context = ?
                         WHERE pattern_id = ?
-                    """, (datetime.now(), json.dumps(context), existing['pattern_id']))
+                    """,
+                        (datetime.now(), json.dumps(context), existing["pattern_id"]),
+                    )
 
-                    if existing['frequency'] >= 2:
-                        logger.info(f"📊 Display pattern strengthened: {display_name} at {hour_of_day}:00 on day {day_of_week}")
+                    if existing["frequency"] >= 2:
+                        logger.info(
+                            f"📊 Display pattern strengthened: {display_name} at {hour_of_day}:00 on day {day_of_week}"
+                        )
                 else:
                     # Insert new pattern
-                    await cursor.execute("""
+                    await cursor.execute(
+                        """
                         INSERT INTO display_patterns
                         (display_name, context, context_hash, connection_time, day_of_week,
                          hour_of_day, frequency, auto_connect, last_seen, consecutive_successes, metadata)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        display_name,
-                        json.dumps(context),
-                        context_hash,
-                        time_str,
-                        day_of_week,
-                        hour_of_day,
-                        1,
-                        False,
-                        datetime.now(),
-                        1,
-                        json.dumps({})
-                    ))
+                    """,
+                        (
+                            display_name,
+                            json.dumps(context),
+                            context_hash,
+                            time_str,
+                            day_of_week,
+                            hour_of_day,
+                            1,
+                            False,
+                            datetime.now(),
+                            1,
+                            json.dumps({}),
+                        ),
+                    )
 
             await self.db.commit()
 
-    async def should_auto_connect_display(self, current_context: Optional[Dict] = None) -> Optional[Tuple[str, float]]:
+    async def should_auto_connect_display(
+        self, current_context: Optional[Dict] = None
+    ) -> Optional[Tuple[str, float]]:
         """Predict display connection with context awareness"""
         now = datetime.now()
         hour_of_day = now.hour
@@ -1961,7 +2492,8 @@ class JARVISLearningDatabase:
 
         async with self.db.cursor() as cursor:
             # Look for matching patterns with temporal proximity
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT display_name, frequency, consecutive_successes, auto_connect
                 FROM display_patterns
                 WHERE hour_of_day = ?
@@ -1969,28 +2501,37 @@ class JARVISLearningDatabase:
                 AND frequency >= 2
                 ORDER BY frequency DESC, consecutive_successes DESC
                 LIMIT 1
-            """, (hour_of_day, day_of_week))
+            """,
+                (hour_of_day, day_of_week),
+            )
 
             row = await cursor.fetchone()
 
             if row:
                 # Calculate dynamic confidence
-                base_confidence = min(row['frequency'] / 10.0, 0.85)
-                consecutive_bonus = min(row['consecutive_successes'] * 0.05, 0.10)
+                base_confidence = min(row["frequency"] / 10.0, 0.85)
+                consecutive_bonus = min(row["consecutive_successes"] * 0.05, 0.10)
                 confidence = min(base_confidence + consecutive_bonus, 0.95)
 
-                return row['display_name'], confidence
+                return row["display_name"], confidence
 
         return None
 
     # ==================== User Preferences (Enhanced) ====================
 
-    async def learn_preference(self, category: str, key: str, value: Any,
-                              confidence: float = 0.5, learned_from: str = 'implicit'):
+    async def learn_preference(
+        self,
+        category: str,
+        key: str,
+        value: Any,
+        confidence: float = 0.5,
+        learned_from: str = "implicit",
+    ):
         """Learn user preference with confidence averaging"""
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     INSERT INTO user_preferences
                     (preference_id, category, key, value, confidence,
                      learned_from, created_at, updated_at, update_count)
@@ -2000,17 +2541,28 @@ class JARVISLearningDatabase:
                         confidence = (confidence * update_count + ?) / (update_count + 1),
                         update_count = update_count + 1,
                         updated_at = ?
-                """, (
-                    f"{category}_{key}",
-                    category, key, str(value), confidence,
-                    learned_from, datetime.now(), datetime.now(), 1,
-                    str(value), confidence, datetime.now()
-                ))
+                """,
+                    (
+                        f"{category}_{key}",
+                        category,
+                        key,
+                        str(value),
+                        confidence,
+                        learned_from,
+                        datetime.now(),
+                        datetime.now(),
+                        1,
+                        str(value),
+                        confidence,
+                        datetime.now(),
+                    ),
+                )
 
             await self.db.commit()
 
-    async def get_preference(self, category: str, key: str,
-                            min_confidence: float = 0.5) -> Optional[Dict]:
+    async def get_preference(
+        self, category: str, key: str, min_confidence: float = 0.5
+    ) -> Optional[Dict]:
         """Get learned preference with confidence threshold"""
         cache_key = f"pref_{category}_{key}"
 
@@ -2019,10 +2571,13 @@ class JARVISLearningDatabase:
             return cached
 
         async with self.db.cursor() as cursor:
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT * FROM user_preferences
                 WHERE category = ? AND key = ? AND confidence >= ?
-            """, (category, key, min_confidence))
+            """,
+                (category, key, min_confidence),
+            )
 
             row = await cursor.fetchone()
             result = dict(row) if row else None
@@ -2040,7 +2595,8 @@ class JARVISLearningDatabase:
 
         async with self.db.cursor() as cursor:
             # Goal metrics
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT
                     COUNT(*) as total_goals,
                     AVG(confidence) as avg_confidence,
@@ -2048,11 +2604,13 @@ class JARVISLearningDatabase:
                     AVG(actual_duration) as avg_duration
                 FROM goals
                 WHERE created_at >= datetime('now', '-30 days')
-            """)
-            metrics['goals'] = dict(await cursor.fetchone())
+            """
+            )
+            metrics["goals"] = dict(await cursor.fetchone())
 
             # Action metrics
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT
                     COUNT(*) as total_actions,
                     AVG(confidence) as avg_confidence,
@@ -2061,11 +2619,13 @@ class JARVISLearningDatabase:
                     AVG(retry_count) as avg_retries
                 FROM actions
                 WHERE timestamp >= datetime('now', '-30 days')
-            """)
-            metrics['actions'] = dict(await cursor.fetchone())
+            """
+            )
+            metrics["actions"] = dict(await cursor.fetchone())
 
             # Pattern metrics
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT
                     COUNT(*) as total_patterns,
                     AVG(confidence) as avg_confidence,
@@ -2073,22 +2633,26 @@ class JARVISLearningDatabase:
                     SUM(occurrence_count) as total_occurrences,
                     AVG(occurrence_count) as avg_occurrences_per_pattern
                 FROM patterns
-            """)
-            metrics['patterns'] = dict(await cursor.fetchone())
+            """
+            )
+            metrics["patterns"] = dict(await cursor.fetchone())
 
             # Display pattern metrics
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT
                     COUNT(*) as total_display_patterns,
                     SUM(auto_connect) as auto_connect_enabled,
                     MAX(frequency) as max_frequency,
                     AVG(consecutive_successes) as avg_consecutive_successes
                 FROM display_patterns
-            """)
-            metrics['display_patterns'] = dict(await cursor.fetchone())
+            """
+            )
+            metrics["display_patterns"] = dict(await cursor.fetchone())
 
             # Goal-action mapping insights
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT
                     goal_type,
                     action_type,
@@ -2099,20 +2663,21 @@ class JARVISLearningDatabase:
                 WHERE confidence > 0.7
                 ORDER BY confidence DESC
                 LIMIT 10
-            """)
-            metrics['top_mappings'] = [dict(row) for row in await cursor.fetchall()]
+            """
+            )
+            metrics["top_mappings"] = [dict(row) for row in await cursor.fetchall()]
 
         # Add cache metrics
-        metrics['cache_performance'] = {
-            'pattern_cache_hit_rate': self.pattern_cache.hit_rate(),
-            'goal_cache_hit_rate': self.goal_cache.hit_rate(),
-            'query_cache_hit_rate': self.query_cache.hit_rate()
+        metrics["cache_performance"] = {
+            "pattern_cache_hit_rate": self.pattern_cache.hit_rate(),
+            "goal_cache_hit_rate": self.goal_cache.hit_rate(),
+            "query_cache_hit_rate": self.query_cache.hit_rate(),
         }
 
         # Update internal metrics
-        self.metrics.total_patterns = metrics['patterns']['total_patterns']
-        self.metrics.avg_confidence = metrics['patterns']['avg_confidence'] or 0.0
-        self.metrics.cache_hit_rate = metrics['cache_performance']['pattern_cache_hit_rate']
+        self.metrics.total_patterns = metrics["patterns"]["total_patterns"]
+        self.metrics.avg_confidence = metrics["patterns"]["avg_confidence"] or 0.0
+        self.metrics.cache_hit_rate = metrics["cache_performance"]["pattern_cache_hit_rate"]
         self.metrics.last_updated = datetime.now()
 
         return metrics
@@ -2122,13 +2687,15 @@ class JARVISLearningDatabase:
         patterns = []
 
         async with self.db.cursor() as cursor:
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 SELECT *
                 FROM patterns
                 WHERE occurrence_count >= 3
                 ORDER BY success_rate DESC, occurrence_count DESC
                 LIMIT 50
-            """)
+            """
+            )
 
             rows = await cursor.fetchall()
 
@@ -2137,38 +2704,45 @@ class JARVISLearningDatabase:
 
                 # Calculate pattern strength score
                 strength = (
-                    pattern['confidence'] * 0.4 +
-                    pattern['success_rate'] * 0.4 +
-                    min(pattern['occurrence_count'] / 100.0, 1.0) * 0.2
+                    pattern["confidence"] * 0.4
+                    + pattern["success_rate"] * 0.4
+                    + min(pattern["occurrence_count"] / 100.0, 1.0) * 0.2
                 )
-                pattern['strength_score'] = strength
+                pattern["strength_score"] = strength
 
                 # Time since last seen
-                last_seen = datetime.fromisoformat(pattern['last_seen'])
+                last_seen = datetime.fromisoformat(pattern["last_seen"])
                 days_since = (datetime.now() - last_seen).days
-                pattern['days_since_last_seen'] = days_since
+                pattern["days_since_last_seen"] = days_since
 
                 # Decay recommendation
-                if days_since > 30 and pattern['occurrence_count'] < 5:
-                    pattern['should_decay'] = True
+                if days_since > 30 and pattern["occurrence_count"] < 5:
+                    pattern["should_decay"] = True
                 else:
-                    pattern['should_decay'] = False
+                    pattern["should_decay"] = False
 
                 patterns.append(pattern)
 
         return patterns
 
-    async def boost_pattern_confidence(self, pattern_id: str, boost: float = 0.05,
-                                      strategy: ConfidenceBoostStrategy = ConfidenceBoostStrategy.ADAPTIVE):
+    async def boost_pattern_confidence(
+        self,
+        pattern_id: str,
+        boost: float = 0.05,
+        strategy: ConfidenceBoostStrategy = ConfidenceBoostStrategy.ADAPTIVE,
+    ):
         """Boost pattern confidence using configurable strategy"""
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute("SELECT confidence, boost_count FROM patterns WHERE pattern_id = ?", (pattern_id,))
+                await cursor.execute(
+                    "SELECT confidence, boost_count FROM patterns WHERE pattern_id = ?",
+                    (pattern_id,),
+                )
                 row = await cursor.fetchone()
 
                 if row:
-                    current_confidence = row['confidence']
-                    boost_count = row['boost_count']
+                    current_confidence = row["confidence"]
+                    boost_count = row["boost_count"]
 
                     # Apply strategy
                     if strategy == ConfidenceBoostStrategy.LINEAR:
@@ -2182,12 +2756,15 @@ class JARVISLearningDatabase:
                         adaptive_boost = boost * (1.0 - current_confidence)
                         new_confidence = min(current_confidence + adaptive_boost, 1.0)
 
-                    await cursor.execute("""
+                    await cursor.execute(
+                        """
                         UPDATE patterns SET
                             confidence = ?,
                             boost_count = boost_count + 1
                         WHERE pattern_id = ?
-                    """, (new_confidence, pattern_id))
+                    """,
+                        (new_confidence, pattern_id),
+                    )
 
                 await self.db.commit()
 
@@ -2200,18 +2777,24 @@ class JARVISLearningDatabase:
         async with self._db_lock:
             async with self.db.cursor() as cursor:
                 # Decay old patterns instead of deleting
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     UPDATE patterns SET
                         confidence = confidence * 0.9,
                         decay_applied = 1
                     WHERE last_seen < ? AND occurrence_count < 3
-                """, (cutoff_date,))
+                """,
+                    (cutoff_date,),
+                )
 
                 # Delete very old patterns with low occurrence
-                await cursor.execute("""
+                await cursor.execute(
+                    """
                     DELETE FROM patterns
                     WHERE last_seen < ? AND occurrence_count = 1 AND confidence < 0.3
-                """, (cutoff_date,))
+                """,
+                    (cutoff_date,),
+                )
 
                 deleted_count = cursor.rowcount
 
@@ -2254,26 +2837,29 @@ class JARVISLearningDatabase:
 
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.executemany("""
+                await cursor.executemany(
+                    """
                     INSERT OR REPLACE INTO goals
                     (goal_id, goal_type, goal_level, description, confidence,
                      progress, is_completed, created_at, evidence, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        goal_id,
-                        goal['goal_type'],
-                        goal.get('goal_level', 'UNKNOWN'),
-                        goal.get('description', ''),
-                        goal.get('confidence', 0.0),
-                        goal.get('progress', 0.0),
-                        goal.get('is_completed', False),
-                        goal.get('created_at', datetime.now()),
-                        json.dumps(goal.get('evidence', [])),
-                        json.dumps(goal.get('metadata', {}))
-                    )
-                    for goal_id, goal in goals_to_insert
-                ])
+                """,
+                    [
+                        (
+                            goal_id,
+                            goal["goal_type"],
+                            goal.get("goal_level", "UNKNOWN"),
+                            goal.get("description", ""),
+                            goal.get("confidence", 0.0),
+                            goal.get("progress", 0.0),
+                            goal.get("is_completed", False),
+                            goal.get("created_at", datetime.now()),
+                            json.dumps(goal.get("evidence", [])),
+                            json.dumps(goal.get("metadata", {})),
+                        )
+                        for goal_id, goal in goals_to_insert
+                    ],
+                )
 
             await self.db.commit()
 
@@ -2287,26 +2873,29 @@ class JARVISLearningDatabase:
 
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.executemany("""
+                await cursor.executemany(
+                    """
                     INSERT INTO actions
                     (action_id, action_type, target, goal_id, confidence,
                      success, execution_time, timestamp, params, result)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        action_id,
-                        action['action_type'],
-                        action.get('target', ''),
-                        action.get('goal_id'),
-                        action.get('confidence', 0.0),
-                        action.get('success', False),
-                        action.get('execution_time', 0.0),
-                        action.get('timestamp', datetime.now()),
-                        json.dumps(action.get('params', {})),
-                        json.dumps(action.get('result', {}))
-                    )
-                    for action_id, action in actions_to_insert
-                ])
+                """,
+                    [
+                        (
+                            action_id,
+                            action["action_type"],
+                            action.get("target", ""),
+                            action.get("goal_id"),
+                            action.get("confidence", 0.0),
+                            action.get("success", False),
+                            action.get("execution_time", 0.0),
+                            action.get("timestamp", datetime.now()),
+                            json.dumps(action.get("params", {})),
+                            json.dumps(action.get("result", {})),
+                        )
+                        for action_id, action in actions_to_insert
+                    ],
+                )
 
             await self.db.commit()
 
@@ -2333,35 +2922,38 @@ class JARVISLearningDatabase:
                         # Single pattern - insert directly
                         pattern_id, pattern = group[0]
 
-                        await cursor.execute("""
+                        await cursor.execute(
+                            """
                             INSERT OR REPLACE INTO patterns
                             (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
                              success_rate, occurrence_count, first_seen, last_seen, metadata)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            pattern_id,
-                            pattern['pattern_type'],
-                            pattern_hash,
-                            json.dumps(pattern.get('pattern_data', {})),
-                            pattern.get('confidence', 0.5),
-                            pattern.get('success_rate', 0.5),
-                            1,
-                            datetime.now(),
-                            datetime.now(),
-                            json.dumps(pattern.get('metadata', {}))
-                        ))
+                        """,
+                            (
+                                pattern_id,
+                                pattern["pattern_type"],
+                                pattern_hash,
+                                json.dumps(pattern.get("pattern_data", {})),
+                                pattern.get("confidence", 0.5),
+                                pattern.get("success_rate", 0.5),
+                                1,
+                                datetime.now(),
+                                datetime.now(),
+                                json.dumps(pattern.get("metadata", {})),
+                            ),
+                        )
 
                         # Store embedding if available
-                        if self.pattern_collection and 'embedding' in pattern:
+                        if self.pattern_collection and "embedding" in pattern:
                             await self._store_embedding_async(
                                 self.pattern_collection,
                                 pattern_id,
-                                pattern['embedding'],
+                                pattern["embedding"],
                                 {
-                                    'pattern_type': pattern['pattern_type'],
-                                    'confidence': pattern.get('confidence', 0.5),
-                                    'timestamp': datetime.now().isoformat()
-                                }
+                                    "pattern_type": pattern["pattern_type"],
+                                    "confidence": pattern.get("confidence", 0.5),
+                                    "timestamp": datetime.now().isoformat(),
+                                },
                             )
                     else:
                         # Multiple patterns with same hash - merge intelligently
@@ -2369,17 +2961,17 @@ class JARVISLearningDatabase:
                         base_pattern_id, base_pattern = group[0]
 
                         # Calculate merged confidence (weighted average)
-                        total_confidence = sum(p.get('confidence', 0.5) for _, p in group)
+                        total_confidence = sum(p.get("confidence", 0.5) for _, p in group)
                         avg_confidence = total_confidence / len(group)
 
                         # Calculate merged success rate
-                        total_success_rate = sum(p.get('success_rate', 0.5) for _, p in group)
+                        total_success_rate = sum(p.get("success_rate", 0.5) for _, p in group)
                         avg_success_rate = total_success_rate / len(group)
 
                         # Merge metadata intelligently
                         merged_metadata = {}
                         for _, pattern in group:
-                            pattern_meta = pattern.get('metadata', {})
+                            pattern_meta = pattern.get("metadata", {})
                             for key, value in pattern_meta.items():
                                 if key not in merged_metadata:
                                     merged_metadata[key] = []
@@ -2392,36 +2984,39 @@ class JARVISLearningDatabase:
                                 merged_metadata[key] = merged_metadata[key][0]
 
                         # Insert merged pattern
-                        await cursor.execute("""
+                        await cursor.execute(
+                            """
                             INSERT OR REPLACE INTO patterns
                             (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
                              success_rate, occurrence_count, first_seen, last_seen, boost_count, metadata)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            base_pattern_id,
-                            base_pattern['pattern_type'],
-                            pattern_hash,
-                            json.dumps(base_pattern.get('pattern_data', {})),
-                            avg_confidence,
-                            avg_success_rate,
-                            len(group),  # Number of merged patterns
-                            datetime.now(),
-                            datetime.now(),
-                            len(group) - 1,  # Boost count from merging
-                            json.dumps(merged_metadata)
-                        ))
+                        """,
+                            (
+                                base_pattern_id,
+                                base_pattern["pattern_type"],
+                                pattern_hash,
+                                json.dumps(base_pattern.get("pattern_data", {})),
+                                avg_confidence,
+                                avg_success_rate,
+                                len(group),  # Number of merged patterns
+                                datetime.now(),
+                                datetime.now(),
+                                len(group) - 1,  # Boost count from merging
+                                json.dumps(merged_metadata),
+                            ),
+                        )
 
                         # Store embedding for merged pattern
-                        if self.pattern_collection and 'embedding' in base_pattern:
+                        if self.pattern_collection and "embedding" in base_pattern:
                             # Average all embeddings if multiple available
                             embeddings_to_merge = [
-                                p.get('embedding') for _, p in group
-                                if 'embedding' in p
+                                p.get("embedding") for _, p in group if "embedding" in p
                             ]
 
                             if embeddings_to_merge and NUMPY_AVAILABLE:
                                 # Average embeddings
                                 import numpy as np
+
                                 avg_embedding = np.mean(embeddings_to_merge, axis=0).tolist()
 
                                 await self._store_embedding_async(
@@ -2429,11 +3024,11 @@ class JARVISLearningDatabase:
                                     base_pattern_id,
                                     avg_embedding,
                                     {
-                                        'pattern_type': base_pattern['pattern_type'],
-                                        'confidence': avg_confidence,
-                                        'merged_count': len(group),
-                                        'timestamp': datetime.now().isoformat()
-                                    }
+                                        "pattern_type": base_pattern["pattern_type"],
+                                        "confidence": avg_confidence,
+                                        "merged_count": len(group),
+                                        "timestamp": datetime.now().isoformat(),
+                                    },
                                 )
                             elif embeddings_to_merge:
                                 # Use first embedding if numpy not available
@@ -2442,26 +3037,33 @@ class JARVISLearningDatabase:
                                     base_pattern_id,
                                     embeddings_to_merge[0],
                                     {
-                                        'pattern_type': base_pattern['pattern_type'],
-                                        'confidence': avg_confidence,
-                                        'merged_count': len(group),
-                                        'timestamp': datetime.now().isoformat()
-                                    }
+                                        "pattern_type": base_pattern["pattern_type"],
+                                        "confidence": avg_confidence,
+                                        "merged_count": len(group),
+                                        "timestamp": datetime.now().isoformat(),
+                                    },
                                 )
 
                         # Update cache with merged pattern
-                        self.pattern_cache.set(pattern_hash, {
-                            'pattern_id': base_pattern_id,
-                            'confidence': avg_confidence,
-                            'success_rate': avg_success_rate,
-                            'occurrence_count': len(group)
-                        })
+                        self.pattern_cache.set(
+                            pattern_hash,
+                            {
+                                "pattern_id": base_pattern_id,
+                                "confidence": avg_confidence,
+                                "success_rate": avg_success_rate,
+                                "occurrence_count": len(group),
+                            },
+                        )
 
-                        logger.debug(f"🔀 Merged {len(group)} similar patterns into {base_pattern_id}")
+                        logger.debug(
+                            f"🔀 Merged {len(group)} similar patterns into {base_pattern_id}"
+                        )
 
             await self.db.commit()
 
-        logger.debug(f"✅ Flushed {len(patterns_to_process)} patterns ({len(pattern_groups)} unique)")
+        logger.debug(
+            f"✅ Flushed {len(patterns_to_process)} patterns ({len(pattern_groups)} unique)"
+        )
 
     async def _auto_optimize_task(self):
         """Auto-optimize database periodically"""
@@ -2480,17 +3082,16 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.error(f"Failed to load metrics: {e}")
 
-    async def _store_embedding_async(self, collection, doc_id: str,
-                                    embedding: List[float], metadata: Dict):
+    async def _store_embedding_async(
+        self, collection, doc_id: str, embedding: List[float], metadata: Dict
+    ):
         """Store embedding asynchronously"""
         try:
             await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: collection.upsert(
-                    ids=[doc_id],
-                    embeddings=[embedding],
-                    metadatas=[metadata]
-                )
+                    ids=[doc_id], embeddings=[embedding], metadatas=[metadata]
+                ),
             )
         except Exception as e:
             logger.error(f"Failed to store embedding: {e}")
@@ -2501,7 +3102,7 @@ class JARVISLearningDatabase:
     def _generate_id(prefix: str) -> str:
         """Generate unique ID"""
         timestamp = datetime.now().timestamp()
-        return f"{prefix}_{timestamp}_{hashlib.md5(str(timestamp).encode()).hexdigest()[:8]}"
+        return f"{prefix}_{timestamp}_{hashlib.md5(str(timestamp).encode(), usedforsecurity=False).hexdigest()[:8]}"
 
     @staticmethod
     def _hash_context(context: Dict) -> str:
@@ -2512,10 +3113,10 @@ class JARVISLearningDatabase:
     @staticmethod
     def _hash_pattern(pattern: Dict) -> str:
         """Generate hash for pattern deduplication"""
-        pattern_str = json.dumps({
-            'type': pattern.get('pattern_type'),
-            'data': pattern.get('pattern_data')
-        }, sort_keys=True)
+        pattern_str = json.dumps(
+            {"type": pattern.get("pattern_type"), "data": pattern.get("pattern_data")},
+            sort_keys=True,
+        )
         return hashlib.sha256(pattern_str.encode()).hexdigest()[:16]
 
     # ========================================================================
@@ -2530,7 +3131,7 @@ class JARVISLearningDatabase:
         window_position: Optional[Dict] = None,
         focus_duration: Optional[float] = None,
         is_fullscreen: bool = False,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> int:
         """
         Store workspace usage event
@@ -2550,25 +3151,28 @@ class JARVISLearningDatabase:
         now = datetime.now()
 
         try:
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 INSERT INTO workspace_usage (
                     space_id, space_label, app_name, window_title,
                     window_position, focus_duration_seconds, timestamp,
                     day_of_week, hour_of_day, is_fullscreen, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                space_id,
-                None,  # space_label can be updated separately
-                app_name,
-                window_title,
-                json.dumps(window_position) if window_position else None,
-                focus_duration,
-                now.isoformat(),
-                now.weekday(),
-                now.hour,
-                is_fullscreen,
-                json.dumps(metadata) if metadata else None
-            )) as cursor:
+            """,
+                (
+                    space_id,
+                    None,  # space_label can be updated separately
+                    app_name,
+                    window_title,
+                    json.dumps(window_position) if window_position else None,
+                    focus_duration,
+                    now.isoformat(),
+                    now.weekday(),
+                    now.hour,
+                    is_fullscreen,
+                    json.dumps(metadata) if metadata else None,
+                ),
+            ) as cursor:
                 await self.db.commit()
                 return cursor.lastrowid
 
@@ -2581,7 +3185,7 @@ class JARVISLearningDatabase:
         app_name: str,
         space_id: int,
         session_duration: float,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
     ):
         """
         Update app usage pattern (incremental learning)
@@ -2600,13 +3204,16 @@ class JARVISLearningDatabase:
 
         try:
             # Check if pattern exists
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT pattern_id, usage_frequency, avg_session_duration,
                        total_usage_time, confidence
                 FROM app_usage_patterns
                 WHERE app_name = ? AND space_id = ?
                   AND typical_time_of_day = ? AND typical_day_of_week = ?
-            """, (app_name, space_id, hour, day)) as cursor:
+            """,
+                (app_name, space_id, hour, day),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
@@ -2617,7 +3224,8 @@ class JARVISLearningDatabase:
                 new_avg = new_total / new_freq
                 new_conf = min(0.99, conf + 0.02)  # Incremental confidence boost
 
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE app_usage_patterns
                     SET usage_frequency = ?,
                         avg_session_duration = ?,
@@ -2625,21 +3233,34 @@ class JARVISLearningDatabase:
                         last_used = ?,
                         confidence = ?
                     WHERE pattern_id = ?
-                """, (new_freq, new_avg, new_total, timestamp.isoformat(), new_conf, pattern_id))
+                """,
+                    (new_freq, new_avg, new_total, timestamp.isoformat(), new_conf, pattern_id),
+                )
 
             else:
                 # Create new pattern
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     INSERT INTO app_usage_patterns (
                         app_name, space_id, usage_frequency,
                         avg_session_duration, total_usage_time,
                         typical_time_of_day, typical_day_of_week,
                         last_used, confidence, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    app_name, space_id, 1, session_duration, session_duration,
-                    hour, day, timestamp.isoformat(), 0.3, json.dumps({})
-                ))
+                """,
+                    (
+                        app_name,
+                        space_id,
+                        1,
+                        session_duration,
+                        session_duration,
+                        hour,
+                        day,
+                        timestamp.isoformat(),
+                        0.3,
+                        json.dumps({}),
+                    ),
+                )
 
             await self.db.commit()
 
@@ -2655,7 +3276,7 @@ class JARVISLearningDatabase:
         duration: Optional[float] = None,
         success: bool = True,
         confidence: float = 0.5,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> int:
         """
         Store or update user workflow pattern
@@ -2678,11 +3299,14 @@ class JARVISLearningDatabase:
 
         try:
             # Check if workflow exists
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT workflow_id, frequency, success_rate, time_of_day_pattern
                 FROM user_workflows
                 WHERE workflow_name = ?
-            """, (workflow_name,)) as cursor:
+            """,
+                (workflow_name,),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
@@ -2697,7 +3321,8 @@ class JARVISLearningDatabase:
                 time_patterns = json.loads(time_pattern) if time_pattern else []
                 time_patterns.append(hour)
 
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE user_workflows
                     SET frequency = ?,
                         success_rate = ?,
@@ -2705,40 +3330,45 @@ class JARVISLearningDatabase:
                         time_of_day_pattern = ?,
                         confidence = ?
                     WHERE workflow_id = ?
-                """, (
-                    new_freq,
-                    new_success_rate,
-                    now.isoformat(),
-                    json.dumps(time_patterns[-20:]),  # Keep last 20
-                    min(0.99, confidence + 0.05),
-                    wf_id
-                ))
+                """,
+                    (
+                        new_freq,
+                        new_success_rate,
+                        now.isoformat(),
+                        json.dumps(time_patterns[-20:]),  # Keep last 20
+                        min(0.99, confidence + 0.05),
+                        wf_id,
+                    ),
+                )
 
                 return wf_id
 
             else:
                 # Create new workflow
-                async with self.db.execute("""
+                async with self.db.execute(
+                    """
                     INSERT INTO user_workflows (
                         workflow_name, action_sequence, space_sequence,
                         app_sequence, frequency, avg_duration, success_rate,
                         first_seen, last_seen, time_of_day_pattern,
                         confidence, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    workflow_name,
-                    json.dumps(action_sequence),
-                    json.dumps(space_sequence) if space_sequence else None,
-                    json.dumps(app_sequence) if app_sequence else None,
-                    1,
-                    duration,
-                    1.0 if success else 0.0,
-                    now.isoformat(),
-                    now.isoformat(),
-                    json.dumps([hour]),
-                    confidence,
-                    json.dumps(metadata) if metadata else None
-                )) as cursor:
+                """,
+                    (
+                        workflow_name,
+                        json.dumps(action_sequence),
+                        json.dumps(space_sequence) if space_sequence else None,
+                        json.dumps(app_sequence) if app_sequence else None,
+                        1,
+                        duration,
+                        1.0 if success else 0.0,
+                        now.isoformat(),
+                        now.isoformat(),
+                        json.dumps([hour]),
+                        confidence,
+                        json.dumps(metadata) if metadata else None,
+                    ),
+                ) as cursor:
                     await self.db.commit()
                     return cursor.lastrowid
 
@@ -2752,7 +3382,7 @@ class JARVISLearningDatabase:
         to_space: int,
         trigger_app: Optional[str] = None,
         trigger_action: Optional[str] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ):
         """
         Store Space transition event
@@ -2768,35 +3398,50 @@ class JARVISLearningDatabase:
 
         try:
             # Check for existing transition pattern
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT transition_id, frequency, avg_time_between_seconds
                 FROM space_transitions
                 WHERE from_space_id = ? AND to_space_id = ?
                   AND hour_of_day = ? AND day_of_week = ?
-            """, (from_space, to_space, now.hour, now.weekday())) as cursor:
+            """,
+                (from_space, to_space, now.hour, now.weekday()),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
                 # Update existing
                 trans_id, freq, avg_time = row
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE space_transitions
                     SET frequency = ?,
                         timestamp = ?
                     WHERE transition_id = ?
-                """, (freq + 1, now.isoformat(), trans_id))
+                """,
+                    (freq + 1, now.isoformat(), trans_id),
+                )
             else:
                 # Create new
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     INSERT INTO space_transitions (
                         from_space_id, to_space_id, trigger_app, trigger_action,
                         frequency, timestamp, hour_of_day, day_of_week, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    from_space, to_space, trigger_app, trigger_action,
-                    1, now.isoformat(), now.hour, now.weekday(),
-                    json.dumps(metadata) if metadata else None
-                ))
+                """,
+                    (
+                        from_space,
+                        to_space,
+                        trigger_app,
+                        trigger_action,
+                        1,
+                        now.isoformat(),
+                        now.hour,
+                        now.weekday(),
+                        json.dumps(metadata) if metadata else None,
+                    ),
+                )
 
             await self.db.commit()
 
@@ -2812,7 +3457,7 @@ class JARVISLearningDatabase:
         temporal_pattern: Optional[Dict] = None,
         contextual_triggers: Optional[List[str]] = None,
         prediction_accuracy: Optional[float] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> int:
         """
         Store high-level behavioral pattern
@@ -2834,11 +3479,14 @@ class JARVISLearningDatabase:
 
         try:
             # Check if behavior exists
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT behavior_id, frequency, confidence
                 FROM behavioral_patterns
                 WHERE behavior_type = ? AND behavior_description = ?
-            """, (behavior_type, description)) as cursor:
+            """,
+                (behavior_type, description),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
@@ -2846,38 +3494,44 @@ class JARVISLearningDatabase:
                 beh_id, freq, old_conf = row
                 new_conf = min(0.99, old_conf + 0.03)
 
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE behavioral_patterns
                     SET frequency = ?,
                         confidence = ?,
                         last_observed = ?,
                         prediction_accuracy = ?
                     WHERE behavior_id = ?
-                """, (freq + 1, new_conf, now.isoformat(), prediction_accuracy, beh_id))
+                """,
+                    (freq + 1, new_conf, now.isoformat(), prediction_accuracy, beh_id),
+                )
 
                 return beh_id
             else:
                 # Create new
-                async with self.db.execute("""
+                async with self.db.execute(
+                    """
                     INSERT INTO behavioral_patterns (
                         behavior_type, behavior_description, pattern_data,
                         frequency, confidence, temporal_pattern,
                         contextual_triggers, first_observed, last_observed,
                         prediction_accuracy, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    behavior_type,
-                    description,
-                    json.dumps(pattern_data),
-                    1,
-                    confidence,
-                    json.dumps(temporal_pattern) if temporal_pattern else None,
-                    json.dumps(contextual_triggers) if contextual_triggers else None,
-                    now.isoformat(),
-                    now.isoformat(),
-                    prediction_accuracy,
-                    json.dumps(metadata) if metadata else None
-                )) as cursor:
+                """,
+                    (
+                        behavior_type,
+                        description,
+                        json.dumps(pattern_data),
+                        1,
+                        confidence,
+                        json.dumps(temporal_pattern) if temporal_pattern else None,
+                        json.dumps(contextual_triggers) if contextual_triggers else None,
+                        now.isoformat(),
+                        now.isoformat(),
+                        prediction_accuracy,
+                        json.dumps(metadata) if metadata else None,
+                    ),
+                ) as cursor:
                     await self.db.commit()
                     return cursor.lastrowid
 
@@ -2896,7 +3550,7 @@ class JARVISLearningDatabase:
         month_of_year: Optional[int] = None,
         frequency: int = 1,
         confidence: float = 0.5,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ):
         """
         Store temporal (time-based) behavioral pattern
@@ -2918,12 +3572,15 @@ class JARVISLearningDatabase:
 
         try:
             # Check if pattern exists
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT temporal_id, frequency, confidence
                 FROM temporal_patterns
                 WHERE pattern_type = ? AND action_type = ? AND target = ?
                   AND time_of_day = ? AND day_of_week = ?
-            """, (pattern_type, action_type, target, time_of_day, day_of_week)) as cursor:
+            """,
+                (pattern_type, action_type, target, time_of_day, day_of_week),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
@@ -2932,29 +3589,42 @@ class JARVISLearningDatabase:
                 new_freq = freq + frequency
                 new_conf = min(0.99, old_conf + 0.02)
 
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE temporal_patterns
                     SET frequency = ?,
                         confidence = ?,
                         last_occurrence = ?
                     WHERE temporal_id = ?
-                """, (new_freq, new_conf, now.isoformat(), temp_id))
+                """,
+                    (new_freq, new_conf, now.isoformat(), temp_id),
+                )
             else:
                 # Create new
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     INSERT INTO temporal_patterns (
                         pattern_type, time_of_day, day_of_week,
                         day_of_month, month_of_year, is_leap_year,
                         action_type, target, frequency, confidence,
                         last_occurrence, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    pattern_type, time_of_day, day_of_week,
-                    day_of_month, month_of_year, is_leap,
-                    action_type, target, frequency, confidence,
-                    now.isoformat(),
-                    json.dumps(metadata) if metadata else None
-                ))
+                """,
+                    (
+                        pattern_type,
+                        time_of_day,
+                        day_of_week,
+                        day_of_month,
+                        month_of_year,
+                        is_leap,
+                        action_type,
+                        target,
+                        frequency,
+                        confidence,
+                        now.isoformat(),
+                        json.dumps(metadata) if metadata else None,
+                    ),
+                )
 
             await self.db.commit()
 
@@ -2967,7 +3637,7 @@ class JARVISLearningDatabase:
         suggestion_text: str,
         trigger_pattern_id: Optional[str] = None,
         confidence: float = 0.7,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> int:
         """
         Store proactive suggestion from AI
@@ -2985,23 +3655,29 @@ class JARVISLearningDatabase:
         now = datetime.now()
 
         try:
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 INSERT INTO proactive_suggestions (
                     suggestion_type, suggestion_text, trigger_pattern_id,
                     confidence, times_suggested, times_accepted,
                     times_rejected, acceptance_rate, created_at,
                     last_suggested, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                suggestion_type,
-                suggestion_text,
-                trigger_pattern_id,
-                confidence,
-                0, 0, 0, 0.0,
-                now.isoformat(),
-                None,
-                json.dumps(metadata) if metadata else None
-            )) as cursor:
+            """,
+                (
+                    suggestion_type,
+                    suggestion_text,
+                    trigger_pattern_id,
+                    confidence,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    now.isoformat(),
+                    None,
+                    json.dumps(metadata) if metadata else None,
+                ),
+            ) as cursor:
                 await self.db.commit()
                 return cursor.lastrowid
 
@@ -3009,11 +3685,7 @@ class JARVISLearningDatabase:
             logger.error(f"Error storing suggestion: {e}", exc_info=True)
             raise
 
-    async def update_suggestion_feedback(
-        self,
-        suggestion_id: int,
-        accepted: bool
-    ):
+    async def update_suggestion_feedback(self, suggestion_id: int, accepted: bool):
         """
         Update suggestion with user feedback
 
@@ -3025,11 +3697,14 @@ class JARVISLearningDatabase:
 
         try:
             # Get current stats
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT times_suggested, times_accepted, times_rejected
                 FROM proactive_suggestions
                 WHERE suggestion_id = ?
-            """, (suggestion_id,)) as cursor:
+            """,
+                (suggestion_id,),
+            ) as cursor:
                 row = await cursor.fetchone()
 
             if row:
@@ -3043,14 +3718,23 @@ class JARVISLearningDatabase:
                 total = accepted_count + rejected_count
                 acceptance_rate = accepted_count / total if total > 0 else 0.0
 
-                await self.db.execute("""
+                await self.db.execute(
+                    """
                     UPDATE proactive_suggestions
                     SET times_accepted = ?,
                         times_rejected = ?,
                         acceptance_rate = ?,
                         last_suggested = ?
                     WHERE suggestion_id = ?
-                """, (accepted_count, rejected_count, acceptance_rate, now.isoformat(), suggestion_id))
+                """,
+                    (
+                        accepted_count,
+                        rejected_count,
+                        acceptance_rate,
+                        now.isoformat(),
+                        suggestion_id,
+                    ),
+                )
 
                 await self.db.commit()
 
@@ -3064,7 +3748,7 @@ class JARVISLearningDatabase:
         app_name: Optional[str] = None,
         space_id: Optional[int] = None,
         time_of_day: Optional[int] = None,
-        min_confidence: float = 0.6
+        min_confidence: float = 0.6,
     ) -> List[Dict]:
         """
         Query app usage patterns
@@ -3109,7 +3793,7 @@ class JARVISLearningDatabase:
         app_sequence: Optional[List[str]] = None,
         space_sequence: Optional[List[int]] = None,
         time_of_day: Optional[int] = None,
-        min_confidence: float = 0.6
+        min_confidence: float = 0.6,
     ) -> List[Dict]:
         """
         Query workflows by context
@@ -3131,7 +3815,7 @@ class JARVISLearningDatabase:
 
         if time_of_day is not None:
             query += " AND json_extract(time_of_day_pattern, '$') LIKE ?"
-            params.append(f'%{time_of_day}%')
+            params.append(f"%{time_of_day}%")
 
         query += " ORDER BY confidence DESC, frequency DESC LIMIT 30"
 
@@ -3143,10 +3827,10 @@ class JARVISLearningDatabase:
                 # Filter by sequences if provided
                 if app_sequence:
                     workflows = [
-                        w for w in workflows
+                        w
+                        for w in workflows
                         if self._sequence_matches(
-                            json.loads(w['app_sequence']) if w['app_sequence'] else [],
-                            app_sequence
+                            json.loads(w["app_sequence"]) if w["app_sequence"] else [], app_sequence
                         )
                     ]
 
@@ -3155,10 +3839,7 @@ class JARVISLearningDatabase:
             logger.error(f"Error querying workflows: {e}", exc_info=True)
             return []
 
-    async def predict_next_action(
-        self,
-        current_context: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    async def predict_next_action(self, current_context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Predict next likely actions based on current context
 
@@ -3176,68 +3857,79 @@ class JARVISLearningDatabase:
 
         try:
             now = datetime.now()
-            current_app = current_context.get('current_app')
-            current_space = current_context.get('current_space')
-            time_of_day = current_context.get('time_of_day', now.hour)
+            current_app = current_context.get("current_app")
+            current_space = current_context.get("current_space")
+            time_of_day = current_context.get("time_of_day", now.hour)
 
             # Check temporal patterns
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT action_type, target, confidence, frequency
                 FROM temporal_patterns
                 WHERE time_of_day = ? AND day_of_week = ?
                 ORDER BY confidence DESC, frequency DESC
                 LIMIT 10
-            """, (time_of_day, now.weekday())) as cursor:
+            """,
+                (time_of_day, now.weekday()),
+            ) as cursor:
                 temporal_rows = await cursor.fetchall()
 
             for row in temporal_rows:
-                predictions.append({
-                    'source': 'temporal_pattern',
-                    'action_type': row[0],
-                    'target': row[1],
-                    'confidence': row[2],
-                    'reasoning': f'Typical behavior at {time_of_day}:00'
-                })
+                predictions.append(
+                    {
+                        "source": "temporal_pattern",
+                        "action_type": row[0],
+                        "target": row[1],
+                        "confidence": row[2],
+                        "reasoning": f"Typical behavior at {time_of_day}:00",
+                    }
+                )
 
             # Check app transitions
             if current_app:
                 # Find common next apps
-                async with self.db.execute("""
+                async with self.db.execute(
+                    """
                     SELECT app_name, confidence, usage_frequency
                     FROM app_usage_patterns
                     WHERE typical_time_of_day = ?
                       AND space_id = ?
                     ORDER BY confidence DESC
                     LIMIT 5
-                """, (time_of_day, current_space)) as cursor:
+                """,
+                    (time_of_day, current_space),
+                ) as cursor:
                     app_rows = await cursor.fetchall()
 
                 for row in app_rows:
-                    predictions.append({
-                        'source': 'app_usage_pattern',
-                        'action_type': 'switch_app',
-                        'target': row[0],
-                        'confidence': row[1],
-                        'reasoning': f'Commonly used on Space {current_space} at this time'
-                    })
+                    predictions.append(
+                        {
+                            "source": "app_usage_pattern",
+                            "action_type": "switch_app",
+                            "target": row[0],
+                            "confidence": row[1],
+                            "reasoning": f"Commonly used on Space {current_space} at this time",
+                        }
+                    )
 
             # Check workflows
             workflows = await self.get_workflows_by_context(
-                time_of_day=time_of_day,
-                min_confidence=0.6
+                time_of_day=time_of_day, min_confidence=0.6
             )
 
             for workflow in workflows[:3]:
-                predictions.append({
-                    'source': 'workflow_pattern',
-                    'action_type': 'workflow',
-                    'target': workflow['workflow_name'],
-                    'confidence': workflow['confidence'],
-                    'reasoning': f'Part of frequent workflow'
-                })
+                predictions.append(
+                    {
+                        "source": "workflow_pattern",
+                        "action_type": "workflow",
+                        "target": workflow["workflow_name"],
+                        "confidence": workflow["confidence"],
+                        "reasoning": f"Part of frequent workflow",
+                    }
+                )
 
             # Sort by confidence
-            predictions.sort(key=lambda x: x['confidence'], reverse=True)
+            predictions.sort(key=lambda x: x["confidence"], reverse=True)
 
             return predictions[:10]
 
@@ -3253,7 +3945,7 @@ class JARVISLearningDatabase:
             return False
 
         for i in range(len(full_sequence) - len(partial) + 1):
-            if full_sequence[i:i+len(partial)] == partial:
+            if full_sequence[i : i + len(partial)] == partial:
                 return True
         return False
 
@@ -3265,64 +3957,64 @@ class JARVISLearningDatabase:
             Dictionary of behavioral insights and statistics
         """
         insights = {
-            'most_used_apps': [],
-            'most_used_spaces': [],
-            'common_workflows': [],
-            'temporal_habits': [],
-            'space_transitions': [],
-            'prediction_accuracy': 0.0
+            "most_used_apps": [],
+            "most_used_spaces": [],
+            "common_workflows": [],
+            "temporal_habits": [],
+            "space_transitions": [],
+            "prediction_accuracy": 0.0,
         }
 
         try:
             # Most used apps
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT app_name, space_id, SUM(usage_frequency) as total_use,
                        AVG(confidence) as avg_conf
                 FROM app_usage_patterns
                 GROUP BY app_name, space_id
                 ORDER BY total_use DESC
                 LIMIT 10
-            """) as cursor:
+            """
+            ) as cursor:
                 rows = await cursor.fetchall()
-                insights['most_used_apps'] = [
-                    {'app': r[0], 'space': r[1], 'usage': r[2], 'confidence': r[3]}
-                    for r in rows
+                insights["most_used_apps"] = [
+                    {"app": r[0], "space": r[1], "usage": r[2], "confidence": r[3]} for r in rows
                 ]
 
             # Most used spaces
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT space_id, COUNT(*) as usage_count
                 FROM workspace_usage
                 GROUP BY space_id
                 ORDER BY usage_count DESC
                 LIMIT 5
-            """) as cursor:
+            """
+            ) as cursor:
                 rows = await cursor.fetchall()
-                insights['most_used_spaces'] = [
-                    {'space_id': r[0], 'usage_count': r[1]}
-                    for r in rows
+                insights["most_used_spaces"] = [
+                    {"space_id": r[0], "usage_count": r[1]} for r in rows
                 ]
 
             # Common workflows
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT workflow_name, frequency, success_rate, confidence
                 FROM user_workflows
                 ORDER BY frequency DESC
                 LIMIT 10
-            """) as cursor:
+            """
+            ) as cursor:
                 rows = await cursor.fetchall()
-                insights['common_workflows'] = [
-                    {
-                        'name': r[0],
-                        'frequency': r[1],
-                        'success_rate': r[2],
-                        'confidence': r[3]
-                    }
+                insights["common_workflows"] = [
+                    {"name": r[0], "frequency": r[1], "success_rate": r[2], "confidence": r[3]}
                     for r in rows
                 ]
 
             # Temporal habits
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT time_of_day, day_of_week, action_type,
                        COUNT(*) as occurrences, AVG(confidence) as avg_conf
                 FROM temporal_patterns
@@ -3330,48 +4022,47 @@ class JARVISLearningDatabase:
                 HAVING occurrences > 2
                 ORDER BY occurrences DESC
                 LIMIT 20
-            """) as cursor:
+            """
+            ) as cursor:
                 rows = await cursor.fetchall()
-                insights['temporal_habits'] = [
+                insights["temporal_habits"] = [
                     {
-                        'hour': r[0],
-                        'day': r[1],
-                        'action': r[2],
-                        'occurrences': r[3],
-                        'confidence': r[4]
+                        "hour": r[0],
+                        "day": r[1],
+                        "action": r[2],
+                        "occurrences": r[3],
+                        "confidence": r[4],
                     }
                     for r in rows
                 ]
 
             # Space transitions
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT from_space_id, to_space_id, trigger_app,
                        SUM(frequency) as total_transitions
                 FROM space_transitions
                 GROUP BY from_space_id, to_space_id
                 ORDER BY total_transitions DESC
                 LIMIT 15
-            """) as cursor:
+            """
+            ) as cursor:
                 rows = await cursor.fetchall()
-                insights['space_transitions'] = [
-                    {
-                        'from': r[0],
-                        'to': r[1],
-                        'trigger': r[2],
-                        'frequency': r[3]
-                    }
-                    for r in rows
+                insights["space_transitions"] = [
+                    {"from": r[0], "to": r[1], "trigger": r[2], "frequency": r[3]} for r in rows
                 ]
 
             # Overall prediction accuracy
-            async with self.db.execute("""
+            async with self.db.execute(
+                """
                 SELECT AVG(acceptance_rate) as avg_acceptance
                 FROM proactive_suggestions
                 WHERE times_suggested > 0
-            """) as cursor:
+            """
+            ) as cursor:
                 row = await cursor.fetchone()
                 if row and row[0]:
-                    insights['prediction_accuracy'] = row[0]
+                    insights["prediction_accuracy"] = row[0]
 
             return insights
 
@@ -3418,12 +4109,12 @@ async def test_database():
 
     # Test storing a goal
     goal = {
-        'goal_id': 'test_goal_1',
-        'goal_type': 'meeting_preparation',
-        'goal_level': 'HIGH',
-        'description': 'Prepare for team meeting',
-        'confidence': 0.92,
-        'evidence': [{'source': 'calendar', 'data': 'meeting in 10 min'}]
+        "goal_id": "test_goal_1",
+        "goal_type": "meeting_preparation",
+        "goal_level": "HIGH",
+        "description": "Prepare for team meeting",
+        "confidence": 0.92,
+        "evidence": [{"source": "calendar", "data": "meeting in 10 min"}],
     }
 
     goal_id = await db.store_goal(goal)
@@ -3431,35 +4122,31 @@ async def test_database():
 
     # Test batch storage
     for i in range(5):
-        await db.store_goal({
-            'goal_type': 'test',
-            'confidence': 0.5 + i * 0.1
-        }, batch=True)
+        await db.store_goal({"goal_type": "test", "confidence": 0.5 + i * 0.1}, batch=True)
     print(f"✅ Queued 5 goals for batch insert")
 
     # Test storing an action
     action = {
-        'action_id': 'test_action_1',
-        'action_type': 'connect_display',
-        'target': 'Living Room TV',
-        'goal_id': goal_id,
-        'confidence': 0.85,
-        'success': True,
-        'execution_time': 0.45
+        "action_id": "test_action_1",
+        "action_type": "connect_display",
+        "target": "Living Room TV",
+        "goal_id": goal_id,
+        "confidence": 0.85,
+        "success": True,
+        "execution_time": 0.45,
     }
 
     action_id = await db.store_action(action)
     print(f"✅ Stored action: {action_id}")
 
     # Test learning display pattern
-    await db.learn_display_pattern('Living Room TV', {
-        'apps': ['keynote', 'calendar'],
-        'time': '09:00'
-    })
+    await db.learn_display_pattern(
+        "Living Room TV", {"apps": ["keynote", "calendar"], "time": "09:00"}
+    )
     print("✅ Learned display pattern")
 
     # Test learning preference
-    await db.learn_preference('display', 'default', 'Living Room TV', 0.8)
+    await db.learn_preference("display", "default", "Living Room TV", 0.8)
     print("✅ Learned preference")
 
     # Get metrics
@@ -3468,7 +4155,9 @@ async def test_database():
     print(f"   Total Goals: {metrics['goals']['total_goals']}")
     print(f"   Total Actions: {metrics['actions']['total_actions']}")
     print(f"   Total Patterns: {metrics['patterns']['total_patterns']}")
-    print(f"   Pattern Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.2%}")
+    print(
+        f"   Pattern Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.2%}"
+    )
 
     # Test pattern analysis
     patterns = await db.analyze_patterns()
