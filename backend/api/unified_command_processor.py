@@ -2927,6 +2927,54 @@ class UnifiedCommandProcessor:
         """Handle commands with multiple parts and maintain context between them"""
         logger.info(f"[COMPOUND] Handling compound command with context: {context is not None}")
 
+        # IMPORTANT: Check screen lock state FIRST using CAI
+        # This ensures compound commands like "open safari and search dogs" unlock the screen first
+        try:
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+
+            screen_detector = get_screen_lock_detector()
+            is_locked = await screen_detector.is_screen_locked()
+
+            if is_locked:
+                logger.warning(
+                    f"[COMPOUND] Screen is LOCKED - checking if unlock needed for: {command_text}"
+                )
+
+                # Check if compound command requires screen access
+                screen_context = await screen_detector.check_screen_context(
+                    command_text, speaker_name=getattr(self, "current_speaker_name", None)
+                )
+
+                if screen_context["requires_unlock"]:
+                    logger.warning(
+                        f"[COMPOUND] Unlock required! Message: {screen_context['unlock_message']}"
+                    )
+
+                    # Get audio data if available (stored from process_command)
+                    audio_data = getattr(self, "current_audio_data", None)
+                    speaker_name = getattr(self, "current_speaker_name", None)
+
+                    # Perform unlock with voice authentication
+                    unlock_success, unlock_msg = await screen_detector.handle_screen_lock_context(
+                        command_text, audio_data=audio_data, speaker_name=speaker_name
+                    )
+
+                    if not unlock_success:
+                        logger.error(f"[COMPOUND] Screen unlock failed: {unlock_msg}")
+                        return {
+                            "success": False,
+                            "response": unlock_msg
+                            or "Failed to unlock screen. Cannot execute command.",
+                            "command_type": "compound",
+                        }
+                    else:
+                        logger.info(
+                            f"[COMPOUND] ✅ Screen unlocked successfully - proceeding with compound command"
+                        )
+        except Exception as e:
+            logger.error(f"[COMPOUND] Error checking screen lock: {e}")
+            # Continue anyway - don't block the command
+
         # Parse compound commands more intelligently
         parts = self._parse_compound_parts(command_text)
 
