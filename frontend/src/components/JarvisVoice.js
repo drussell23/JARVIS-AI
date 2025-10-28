@@ -604,7 +604,7 @@ const getWakeWordResponse = (context = {}) => {
 const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [jarvisStatus, setJarvisStatus] = useState('offline');
+  const [jarvisStatus, setJarvisStatus] = useState('initializing'); // Start with 'initializing' instead of 'offline'
   const [systemMode, setSystemMode] = useState('unknown'); // 'minimal' or 'full'
   const [showUpgradeSuccess, setShowUpgradeSuccess] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -1118,6 +1118,14 @@ const JarvisVoice = () => {
         reconnectionStateRef.current.reconnecting = true;
         reconnectionStateRef.current.attempts += 1;
 
+        // If we've exhausted retry attempts, mark as offline
+        if (reconnectionStateRef.current.attempts >= reconnectionStateRef.current.maxAttempts) {
+          console.log('[WS-ADVANCED] ❌ Max reconnection attempts reached - marking as offline');
+          setJarvisStatus('offline');
+          setError('Unable to connect to JARVIS backend. Please ensure the server is running.');
+          return;
+        }
+
         // Calculate exponential backoff delay
         const delay = Math.min(
           reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
@@ -1125,6 +1133,11 @@ const JarvisVoice = () => {
         );
 
         console.log(`[WS-ADVANCED] Reconnecting in ${delay}ms (attempt ${reconnectionStateRef.current.attempts}/${reconnectionStateRef.current.maxAttempts})`);
+
+        // Keep status as initializing during retry attempts
+        if (jarvisStatus === 'initializing') {
+          setJarvisStatus('connecting');
+        }
 
         // Only reconnect if component is still mounted and not offline
         if (jarvisStatus !== 'offline') {
@@ -2957,8 +2970,12 @@ const JarvisVoice = () => {
               {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}
               {proactiveIntelligenceActive && <span className="mode-badge phase4">[PHASE 4: PROACTIVE]</span>}
             </>
-          ) : jarvisStatus === 'activating' ? (
+          ) : jarvisStatus === 'activating' || jarvisStatus === 'initializing' ? (
             <>INITIALIZING...</>
+          ) : jarvisStatus === 'connecting' ? (
+            <>CONNECTING TO BACKEND...</>
+          ) : jarvisStatus === 'offline' ? (
+            <>SYSTEM OFFLINE - START BACKEND</>
           ) : (
             <>SYSTEM {(jarvisStatus || 'offline').toUpperCase()}</>
           )}

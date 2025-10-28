@@ -4074,6 +4074,9 @@ class AsyncSystemManager:
             print(
                 f"  • Frontend: {Colors.GREEN}http://localhost:{self.ports['frontend']}/{Colors.ENDC}"
             )
+            print(
+                f"    {Colors.YELLOW}ℹ️  Frontend will show 'INITIALIZING...' then 'CONNECTING...' before 'SYSTEM READY'{Colors.ENDC}"
+            )
 
         print(
             f"  • Backend API: {Colors.GREEN}http://localhost:{self.ports['main_api']}/docs{Colors.ENDC}"
@@ -5325,9 +5328,39 @@ except Exception as e:
                 if heal["healed"]:
                     print(f"    - Fixed: {heal['context']} ({heal['error'][:50]}...)")
 
-        # Open browser intelligently
+        # Open browser intelligently - wait for backend to be ready
         if not self.no_browser:
-            await asyncio.sleep(2)
+            print(
+                f"\n{Colors.CYAN}⏳ Waiting for backend to be ready before opening browser...{Colors.ENDC}"
+            )
+
+            # Check backend health before opening browser
+            backend_ready = False
+            max_wait = 15  # seconds
+            start_time = asyncio.get_event_loop().time()
+
+            while not backend_ready and (asyncio.get_event_loop().time() - start_time) < max_wait:
+                try:
+                    import aiohttp
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"http://localhost:{self.ports['main_api']}/health",
+                            timeout=aiohttp.ClientTimeout(total=2),
+                        ) as resp:
+                            if resp.status == 200:
+                                backend_ready = True
+                                print(f"{Colors.GREEN}✓ Backend is ready!{Colors.ENDC}")
+                                break
+                except Exception:
+                    await asyncio.sleep(0.5)
+
+            if not backend_ready:
+                print(
+                    f"{Colors.YELLOW}⚠️  Backend health check timeout - opening browser anyway{Colors.ENDC}"
+                )
+
+            await asyncio.sleep(1)  # Brief pause before opening
             await self.open_browser_smart()
 
         # Monitor services
