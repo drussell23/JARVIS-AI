@@ -90,6 +90,18 @@ if budget_exhausted:
 - Max **10 VMs per day** (configurable)
 - Prevents thundering herd
 
+**Instance Locking (NEW):**
+- **File-based exclusive lock** prevents multiple JARVIS instances from creating VMs simultaneously
+- Uses `fcntl.flock()` for atomic lock acquisition
+- Lock automatically released when VM is destroyed
+- Prevents duplicate VM creation and double billing
+- Lock file: `~/.jarvis/gcp_optimizer/vm_creation.lock`
+```python
+# Only one instance can hold the lock at a time
+if not self._acquire_vm_creation_lock():
+    return False, "⚠️ Another JARVIS instance is creating a VM"
+```
+
 **Cost Savings Features:**
 
 1. **VM Warm-Down Period** (600s default)
@@ -193,6 +205,14 @@ New: Detects trend, creates VM proactively at 75% with high confidence
 Scenario: Multiple processes start simultaneously
 Old: Immediate panic → VM created
 New: Waits 30s to see if pressure sustained → Often resolves locally
+```
+
+### 2.5. Multiple JARVIS Instances (NEW)
+```
+Scenario: User accidentally runs JARVIS twice
+Old: Both instances create VMs → 2x cost
+New: Instance locking prevents second VM → Only one VM created
+Result: Saves duplicate VM costs (~$0.029/hr per duplicate)
 ```
 
 ### 3. Browser Tab Explosion

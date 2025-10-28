@@ -19,8 +19,10 @@ Philosophy:
 """
 
 import asyncio
+import fcntl
 import json
 import logging
+import os
 from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -125,6 +127,8 @@ class IntelligentGCPOptimizer:
         self.history_file = self.data_dir / "pressure_history.jsonl"
         self.sessions_file = self.data_dir / "vm_sessions.jsonl"
         self.budget_file = self.data_dir / "daily_budgets.json"
+        self.lock_file = self.data_dir / "vm_creation.lock"
+        self.lock_fd = None
 
         # Adaptive thresholds (learned from history)
         self.thresholds = {
@@ -592,6 +596,69 @@ class IntelligentGCPOptimizer:
         except Exception as e:
             logger.debug(f"Failed to save pressure history: {e}")
 
+    def _acquire_vm_creation_lock(self) -> bool:
+        """
+        Acquire exclusive lock for VM creation.
+        Prevents multiple JARVIS instances from creating VMs simultaneously.
+
+        Returns: True if lock acquired, False otherwise
+        """
+        # If we already hold the lock, don't try to acquire again
+        if self.lock_fd is not None:
+            logger.debug("VM creation lock already held by this instance")
+            return True
+
+        try:
+            # Open/create lock file
+            self.lock_fd = os.open(str(self.lock_file), os.O_CREAT | os.O_RDWR)
+
+            # Try to acquire exclusive lock (non-blocking)
+            fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            # Write PID and timestamp to lock file
+            lock_info = {
+                "pid": os.getpid(),
+                "timestamp": datetime.now().isoformat(),
+                "hostname": os.uname().nodename,
+            }
+            os.ftruncate(self.lock_fd, 0)  # Clear file first
+            os.write(self.lock_fd, json.dumps(lock_info).encode())
+
+            logger.info(f"🔒 Acquired VM creation lock (PID: {os.getpid()})")
+            return True
+
+        except BlockingIOError:
+            # Another instance holds the lock
+            logger.warning(f"⚠️  VM creation lock held by another JARVIS instance")
+            if self.lock_fd is not None:
+                try:
+                    os.close(self.lock_fd)
+                except Exception:
+                    pass
+                self.lock_fd = None
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Error acquiring VM creation lock: {e}")
+            if self.lock_fd is not None:
+                try:
+                    os.close(self.lock_fd)
+                except Exception:
+                    pass
+                self.lock_fd = None
+            return False
+
+    def _release_vm_creation_lock(self):
+        """Release VM creation lock"""
+        if self.lock_fd is not None:
+            try:
+                fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
+                os.close(self.lock_fd)
+                self.lock_fd = None
+                logger.info(f"🔓 Released VM creation lock (PID: {os.getpid()})")
+            except Exception as e:
+                logger.error(f"❌ Error releasing VM creation lock: {e}")
+
     async def should_create_vm(
         self, memory_snapshot, current_processes: Optional[List] = None
     ) -> Tuple[bool, str, PressureScore]:
@@ -607,8 +674,22 @@ class IntelligentGCPOptimizer:
         self.total_decisions += 1
 
         if score.gcp_recommended:
+            # Try to acquire lock before recommending VM creation
+            if not self._acquire_vm_creation_lock():
+                logger.warning(
+                    "⚠️  Another JARVIS instance is creating a VM - skipping to prevent duplicate VMs"
+                )
+                score.gcp_recommended = False
+                score.gcp_urgent = False
+                score.reasoning = (
+                    "❌ VM creation blocked: Another JARVIS instance is already creating a VM. "
+                    "Only one VM creation at a time is allowed to prevent duplicate VMs and cost waste."
+                )
+                return False, score.reasoning, score
+
             logger.info(f"🔍 GCP Recommended (score: {score.composite_score:.1f}/100)")
             logger.info(f"   {score.reasoning}")
+            logger.info(f"   🔒 VM creation lock acquired - safe to proceed")
 
         return score.gcp_recommended, score.reasoning, score
 
@@ -634,6 +715,9 @@ class IntelligentGCPOptimizer:
 
     def record_vm_destruction(self, vm_id: str, runtime_seconds: float):
         """Record that we destroyed a VM"""
+        # Release the VM creation lock when VM is destroyed
+        self._release_vm_creation_lock()
+
         if self.current_vm_session and self.current_vm_session.vm_id == vm_id:
             self.current_vm_session.actual_runtime_seconds = runtime_seconds
 
@@ -670,6 +754,14 @@ class IntelligentGCPOptimizer:
             "false_alarms": self.false_alarms,
             "missed_opportunities": self.missed_opportunities,
         }
+
+    def cleanup(self):
+        """Cleanup resources on shutdown"""
+        self._release_vm_creation_lock()
+
+    def __del__(self):
+        """Ensure lock is released on object destruction"""
+        self._release_vm_creation_lock()
 
 
 # Global singleton
