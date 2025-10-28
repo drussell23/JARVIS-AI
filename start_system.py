@@ -31,14 +31,22 @@ The JARVIS backend loads 9 critical components + 6 intelligent systems:
 4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
-7. VOICE_UNLOCK - Advanced Screen Unlock with Dual Modes
+7. VOICE_UNLOCK - Intelligent Voice-Authenticated Screen Unlock (UPGRADED!)
    ✨ Manual Unlock: "Hey JARVIS, unlock my screen" - Direct control 24/7
    ✨ Context-Aware: Automatically unlocks when needed for tasks
+   🧠 NEW: Intelligent Voice Authentication with Learning
+   • Hybrid STT System: Wav2Vec, Vosk, Whisper with intelligent routing
+   • Speaker Recognition: Learns your voice over time (voice biometrics)
+   • Owner Detection: Automatically rejects non-owner voices
+   • Context-Aware Intelligence (CAI): Screen state, time, location analysis
+   • Scenario-Aware Intelligence (SAI): Routine/emergency/suspicious detection
+   • Learning Database: Records all attempts for continuous improvement
+   • Anti-Spoofing: High verification threshold (0.85) for security
+   • Fail-Closed Security: Denies unlock on any verification error
    • No quiet hours restrictions - works anytime
    • Secure password automation via WebSocket daemon
    • Clear voice feedback for every step
    • Apple Watch alternative - no additional hardware needed
-   • Two modes: Direct unlock or intelligent context-aware unlock
 
 8. WAKE_WORD - Hands-free 'Hey JARVIS' activation
    • Always-listening mode with zero clicks required
@@ -2795,17 +2803,27 @@ class AsyncSystemManager:
         print(f"   • {Colors.GREEN}✓ CPU:{Colors.ENDC} <1% idle with Swift vDSP")
         print(f"   • {Colors.PURPLE}✓ Works:{Colors.ENDC} Say 'Hey JARVIS' - instant response!")
 
-        # Proximity + Voice Unlock
-        print(f"\n{Colors.BOLD}🔐 PROXIMITY + VOICE UNLOCK (Option 3):{Colors.ENDC}")
+        # Intelligent Voice-Authenticated Unlock
+        print(f"\n{Colors.BOLD}🔐 INTELLIGENT VOICE-AUTHENTICATED UNLOCK:{Colors.ENDC}")
         print(
-            f"   • {Colors.GREEN}✓ Apple Watch:{Colors.ENDC} Bluetooth LE detection (3m unlock, 10m lock)"
+            f"   • {Colors.GREEN}✓ Speaker Recognition:{Colors.ENDC} Learns your voice over time (biometric auth)"
         )
         print(
-            f"   • {Colors.CYAN}✓ Dual-Factor:{Colors.ENDC} Watch proximity + voice authentication"
+            f"   • {Colors.CYAN}✓ Hybrid STT:{Colors.ENDC} Wav2Vec + Vosk + Whisper intelligent routing"
         )
-        print(f"   • {Colors.YELLOW}✓ Memory:{Colors.ENDC} 300MB ML models with 30s auto-unload")
         print(
-            f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey JARVIS, unlock my Mac' (Watch must be near)"
+            f"   • {Colors.YELLOW}✓ Context-Aware (CAI):{Colors.ENDC} Screen state, time, location analysis"
+        )
+        print(
+            f"   • {Colors.PURPLE}✓ Scenario-Aware (SAI):{Colors.ENDC} Routine/emergency/suspicious detection"
+        )
+        print(
+            f"   • {Colors.GREEN}✓ Learning Database:{Colors.ENDC} Records attempts for continuous improvement"
+        )
+        print(f"   • {Colors.CYAN}✓ Anti-Spoofing:{Colors.ENDC} High verification threshold (0.85)")
+        print(f"   • {Colors.YELLOW}✓ Fail-Closed:{Colors.ENDC} Denies unlock on any error")
+        print(
+            f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey JARVIS, unlock my screen' (voice verified)"
         )
 
         # Vision System Enhancement
@@ -3584,7 +3602,7 @@ class AsyncSystemManager:
                                 f"  {Colors.GREEN}✅ MONITORING{Colors.ENDC}  - Health tracking active"
                             )
                             print(
-                                f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Manual & context-aware screen unlock"
+                                f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Intelligent voice-authenticated unlock (Speaker Recognition + CAI + SAI)"
                             )
                             print(
                                 f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active"
