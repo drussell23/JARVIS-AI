@@ -723,7 +723,21 @@ class JARVISVoiceAPI:
 
     @dynamic_error_handler
     async def _announce_startup_once(self):
-        """Announce startup ONCE using lock to prevent multiple voices"""
+        """Announce startup ONCE using global coordinator to prevent multiple voices"""
+        # Use global coordinator to prevent display monitor, voice API, and other
+        # systems from all speaking at once
+        from core.startup_announcement_coordinator import get_startup_coordinator
+
+        coordinator = get_startup_coordinator()
+
+        # Check if we should announce (first system wins)
+        should_announce = await coordinator.announce_if_first("jarvis_voice_api")
+
+        if not should_announce:
+            logger.info("[STARTUP] Another system already announced startup, skipping")
+            self._startup_announced = True  # Mark as announced so we don't try again
+            return
+
         async with self._startup_announcement_lock:
             if self._startup_announced:
                 logger.debug("[STARTUP] Startup already announced, skipping")
@@ -733,20 +747,8 @@ class JARVISVoiceAPI:
                 # Mark as announced immediately to prevent race conditions
                 self._startup_announced = True
 
-                # Generate time-based greeting
-                from datetime import datetime
-
-                hour = datetime.now().hour
-                if 5 <= hour < 12:
-                    greeting = (
-                        "Good morning, Sir. JARVIS systems initialized and ready for your command."
-                    )
-                elif 12 <= hour < 17:
-                    greeting = "Good afternoon, Sir. JARVIS at your disposal."
-                elif 17 <= hour < 22:
-                    greeting = "Good evening, Sir. JARVIS at your service."
-                else:
-                    greeting = "Welcome back, Sir. JARVIS systems online despite the late hour."
+                # Generate time-based greeting using coordinator
+                greeting = coordinator.generate_greeting()
 
                 # Send greeting via WebSocket to frontend (will show in transcript AND speak)
                 logger.info(f"[STARTUP] Announcing: {greeting}")

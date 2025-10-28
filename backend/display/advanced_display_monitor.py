@@ -18,23 +18,22 @@ Version: 2.0
 """
 
 import asyncio
-import logging
-import subprocess
 import json
-import hashlib
+import logging
 import random
-from typing import List, Dict, Optional, Set, Callable, Any
+import subprocess
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
-from dataclasses import dataclass, asdict
 from enum import Enum
-import os
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
 
 class DetectionMethod(Enum):
     """Available detection methods"""
+
     APPLESCRIPT = "applescript"
     DNSSD = "dnssd"
     COREGRAPHICS = "coregraphics"
@@ -43,6 +42,7 @@ class DetectionMethod(Enum):
 
 class DisplayType(Enum):
     """Types of displays"""
+
     AIRPLAY = "airplay"
     HDMI = "hdmi"
     THUNDERBOLT = "thunderbolt"
@@ -53,6 +53,7 @@ class DisplayType(Enum):
 
 class ConnectionMode(Enum):
     """Display connection modes"""
+
     EXTEND = "extend"
     MIRROR = "mirror"
 
@@ -60,6 +61,7 @@ class ConnectionMode(Enum):
 @dataclass
 class DisplayInfo:
     """Information about a detected display"""
+
     id: str
     name: str
     display_type: DisplayType
@@ -72,15 +74,16 @@ class DisplayInfo:
     def to_dict(self) -> Dict:
         """Convert to dictionary"""
         data = asdict(self)
-        data['display_type'] = self.display_type.value
-        data['detection_method'] = self.detection_method.value
-        data['detected_at'] = self.detected_at.isoformat()
+        data["display_type"] = self.display_type.value
+        data["detection_method"] = self.detection_method.value
+        data["detected_at"] = self.detected_at.isoformat()
         return data
 
 
 @dataclass
 class MonitoredDisplay:
     """Configuration for a monitored display"""
+
     id: str
     name: str
     display_type: str
@@ -128,16 +131,16 @@ class AppleScriptDetector:
 
     def __init__(self, config: Dict):
         self.config = config
-        self.timeout = config.get('timeout_seconds', 5.0)
-        self.retry_attempts = config.get('retry_attempts', 3)
-        self.retry_delay = config.get('retry_delay_seconds', 0.5)
-        self.filter_items = config.get('filter_system_items', [])
+        self.timeout = config.get("timeout_seconds", 5.0)
+        self.retry_attempts = config.get("retry_attempts", 3)
+        self.retry_delay = config.get("retry_delay_seconds", 0.5)
+        self.filter_items = config.get("filter_system_items", [])
 
     async def detect_displays(self) -> List[str]:
         """Detect available displays using AppleScript"""
         for attempt in range(self.retry_attempts):
             try:
-                script = '''
+                script = """
                 tell application "System Events"
                     tell process "ControlCenter"
                         try
@@ -155,23 +158,22 @@ class AppleScriptDetector:
                         end try
                     end tell
                 end tell
-                '''
+                """
 
                 result = await asyncio.create_subprocess_exec(
-                    'osascript', '-e', script,
+                    "osascript",
+                    "-e",
+                    script,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
 
-                stdout, stderr = await asyncio.wait_for(
-                    result.communicate(),
-                    timeout=self.timeout
-                )
+                stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=self.timeout)
 
                 if result.returncode == 0:
-                    output = stdout.decode('utf-8').strip()
+                    output = stdout.decode("utf-8").strip()
 
-                    if output.startswith('ERROR:'):
+                    if output.startswith("ERROR:"):
                         logger.debug(f"AppleScript error: {output}")
                         continue
 
@@ -179,11 +181,8 @@ class AppleScriptDetector:
                     devices = []
                     if output:
                         # AppleScript returns comma-separated values
-                        raw_devices = [d.strip() for d in output.split(', ')]
-                        devices = [
-                            d for d in raw_devices
-                            if d and d not in self.filter_items
-                        ]
+                        raw_devices = [d.strip() for d in output.split(", ")]
+                        devices = [d for d in raw_devices if d and d not in self.filter_items]
 
                     logger.debug(f"AppleScript detected: {devices}")
                     return devices
@@ -202,7 +201,7 @@ class AppleScriptDetector:
     async def connect_display(self, display_name: str) -> Dict[str, Any]:
         """Connect to a display using AppleScript"""
         try:
-            script = f'''
+            script = f"""
             tell application "System Events"
                 tell process "ControlCenter"
                     try
@@ -218,20 +217,21 @@ class AppleScriptDetector:
                     end try
                 end tell
             end tell
-            '''
+            """
 
             result = await asyncio.create_subprocess_exec(
-                'osascript', '-e', script,
+                "osascript",
+                "-e",
+                script,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             stdout, stderr = await asyncio.wait_for(
-                result.communicate(),
-                timeout=self.timeout * 2  # Connection takes longer
+                result.communicate(), timeout=self.timeout * 2  # Connection takes longer
             )
 
-            output = stdout.decode('utf-8').strip()
+            output = stdout.decode("utf-8").strip()
 
             if "SUCCESS" in output:
                 return {"success": True, "message": f"Connected to {display_name}"}
@@ -240,7 +240,7 @@ class AppleScriptDetector:
                 return {
                     "success": False,
                     "message": f"Failed to connect to {display_name}",
-                    "error": error_detail
+                    "error": error_detail,
                 }
 
         except asyncio.TimeoutError:
@@ -254,18 +254,20 @@ class DNSSDDetector:
 
     def __init__(self, config: Dict):
         self.config = config
-        self.timeout = config.get('timeout_seconds', 5.0)
-        self.service_type = config.get('service_type', '_airplay._tcp')
-        self.exclude_local = config.get('exclude_local_device', True)
+        self.timeout = config.get("timeout_seconds", 5.0)
+        self.service_type = config.get("service_type", "_airplay._tcp")
+        self.exclude_local = config.get("exclude_local_device", True)
 
     async def detect_displays(self) -> List[str]:
         """Detect AirPlay displays using dns-sd"""
         try:
             # Start dns-sd browsing in background
             process = await asyncio.create_subprocess_exec(
-                'dns-sd', '-B', self.service_type,
+                "dns-sd",
+                "-B",
+                self.service_type,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             # Let it run for timeout seconds to collect results
@@ -274,26 +276,23 @@ class DNSSDDetector:
             # Kill the process
             process.terminate()
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=2.0
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
-                stdout, stderr = b'', b''
+                stdout, stderr = b"", b""
 
             if stdout:
-                output = stdout.decode('utf-8', errors='ignore')
+                output = stdout.decode("utf-8", errors="ignore")
 
                 # Parse dns-sd output
                 # Format: "Timestamp A/R Flags if Domain Service Type Instance Name"
                 # We want the Instance Name column
                 devices = []
-                for line in output.split('\n'):
-                    if 'Add' in line and self.service_type in line:
+                for line in output.split("\n"):
+                    if "Add" in line and self.service_type in line:
                         # Split by multiple spaces and get last part (instance name)
-                        parts = [p for p in line.split('  ') if p.strip()]
+                        parts = [p for p in line.split("  ") if p.strip()]
                         if len(parts) >= 3:
                             instance_name = parts[-1].strip()
 
@@ -322,8 +321,8 @@ class CoreGraphicsDetector:
 
     def __init__(self, config: Dict):
         self.config = config
-        self.max_displays = config.get('max_displays', 32)
-        self.exclude_builtin = config.get('exclude_builtin', True)
+        self.max_displays = config.get("max_displays", 32)
+        self.exclude_builtin = config.get("exclude_builtin", True)
 
     async def detect_displays(self) -> List[str]:
         """Detect displays using Core Graphics"""
@@ -367,24 +366,24 @@ class YabaiDetector:
 
     def __init__(self, config: Dict):
         self.config = config
-        self.timeout = config.get('command_timeout', 3.0)
+        self.timeout = config.get("command_timeout", 3.0)
 
     async def detect_displays(self) -> List[str]:
         """Detect displays using Yabai"""
         try:
             result = await asyncio.create_subprocess_exec(
-                'yabai', '-m', 'query', '--displays',
+                "yabai",
+                "-m",
+                "query",
+                "--displays",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                result.communicate(),
-                timeout=self.timeout
-            )
+            stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=self.timeout)
 
             if result.returncode == 0:
-                displays_data = json.loads(stdout.decode('utf-8'))
+                displays_data = json.loads(stdout.decode("utf-8"))
                 displays = [f"Display {d.get('index', d.get('id'))}" for d in displays_data]
                 logger.debug(f"Yabai detected: {displays}")
                 return displays
@@ -415,7 +414,7 @@ class AdvancedDisplayMonitor:
     - Zero hardcoding
     """
 
-    def __init__(self, config_path: Optional[str] = None, voice_handler = None, vision_analyzer=None):
+    def __init__(self, config_path: Optional[str] = None, voice_handler=None, vision_analyzer=None):
         """
         Initialize advanced display monitor
 
@@ -430,9 +429,7 @@ class AdvancedDisplayMonitor:
         self.websocket_manager = None  # Will be set by main.py
 
         # Initialize components
-        self.cache = DisplayCache(
-            ttl_seconds=self.config['caching']['display_list_ttl_seconds']
-        )
+        self.cache = DisplayCache(ttl_seconds=self.config["caching"]["display_list_ttl_seconds"])
 
         # Initialize detectors
         self.detectors = {}
@@ -446,20 +443,26 @@ class AdvancedDisplayMonitor:
         self.monitoring_task: Optional[asyncio.Task] = None
         self.available_displays: Set[str] = set()
         self.connected_displays: Set[str] = set()
-        self.connecting_displays: Set[str] = set()  # Circuit breaker: displays currently being connected
+        self.connecting_displays: Set[str] = (
+            set()
+        )  # Circuit breaker: displays currently being connected
         self.initial_scan_complete = False  # Track if initial scan is done
-        self.pending_prompt_display: Optional[str] = None  # Track which display has a pending prompt
+        self.pending_prompt_display: Optional[str] = (
+            None  # Track which display has a pending prompt
+        )
 
         # Event callbacks
         self.callbacks: Dict[str, List[Callable]] = {
-            'display_detected': [],
-            'display_lost': [],
-            'display_connected': [],
-            'display_disconnected': [],
-            'error': []
+            "display_detected": [],
+            "display_lost": [],
+            "display_connected": [],
+            "display_disconnected": [],
+            "error": [],
         }
 
-        logger.info(f"[DISPLAY MONITOR] Initialized with {len(self.monitored_displays)} monitored displays")
+        logger.info(
+            f"[DISPLAY MONITOR] Initialized with {len(self.monitored_displays)} monitored displays"
+        )
 
     def set_websocket_manager(self, ws_manager):
         """Set WebSocket manager for UI notifications"""
@@ -470,10 +473,10 @@ class AdvancedDisplayMonitor:
         """Load configuration from file"""
         if config_path is None:
             # Default config path
-            config_path = Path(__file__).parent.parent / 'config' / 'display_monitor_config.json'
+            config_path = Path(__file__).parent.parent / "config" / "display_monitor_config.json"
 
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
             logger.info(f"[DISPLAY MONITOR] Loaded config from {config_path}")
             return config
@@ -486,35 +489,31 @@ class AdvancedDisplayMonitor:
 
     def _init_detectors(self):
         """Initialize detection method instances"""
-        methods = self.config['display_monitoring']['detection_methods']
+        methods = self.config["display_monitoring"]["detection_methods"]
 
-        if 'applescript' in methods and self.config.get('applescript', {}).get('enabled', False):
+        if "applescript" in methods and self.config.get("applescript", {}).get("enabled", False):
             self.detectors[DetectionMethod.APPLESCRIPT] = AppleScriptDetector(
-                self.config['applescript']
+                self.config["applescript"]
             )
 
-        if 'dnssd' in methods and self.config.get('dnssd', {}).get('enabled', False):
-            self.detectors[DetectionMethod.DNSSD] = DNSSDDetector(
-                self.config['dnssd']
-            )
+        if "dnssd" in methods and self.config.get("dnssd", {}).get("enabled", False):
+            self.detectors[DetectionMethod.DNSSD] = DNSSDDetector(self.config["dnssd"])
 
-        if 'coregraphics' in methods and self.config.get('coregraphics', {}).get('enabled', False):
+        if "coregraphics" in methods and self.config.get("coregraphics", {}).get("enabled", False):
             self.detectors[DetectionMethod.COREGRAPHICS] = CoreGraphicsDetector(
-                self.config['coregraphics']
+                self.config["coregraphics"]
             )
 
-        if 'yabai' in methods and self.config.get('yabai', {}).get('enabled', False):
-            self.detectors[DetectionMethod.YABAI] = YabaiDetector(
-                self.config['yabai']
-            )
+        if "yabai" in methods and self.config.get("yabai", {}).get("enabled", False):
+            self.detectors[DetectionMethod.YABAI] = YabaiDetector(self.config["yabai"])
 
         logger.info(f"[DISPLAY MONITOR] Initialized {len(self.detectors)} detection methods")
 
     def _load_monitored_displays(self) -> List[MonitoredDisplay]:
         """Load monitored displays from configuration"""
         displays = []
-        for display_config in self.config['displays']['monitored_displays']:
-            if display_config.get('enabled', True):
+        for display_config in self.config["displays"]["monitored_displays"]:
+            if display_config.get("enabled", True):
                 displays.append(MonitoredDisplay(**display_config))
         return displays
 
@@ -548,12 +547,12 @@ class AdvancedDisplayMonitor:
             logger.warning("[DISPLAY MONITOR] Already monitoring")
             return
 
-        if not self.config['display_monitoring']['enabled']:
+        if not self.config["display_monitoring"]["enabled"]:
             logger.warning("[DISPLAY MONITOR] Monitoring disabled in config")
             return
 
         # Startup delay
-        startup_delay = self.config['display_monitoring']['startup_delay_seconds']
+        startup_delay = self.config["display_monitoring"]["startup_delay_seconds"]
         if startup_delay > 0:
             logger.info(f"[DISPLAY MONITOR] Starting in {startup_delay}s...")
             await asyncio.sleep(startup_delay)
@@ -579,7 +578,7 @@ class AdvancedDisplayMonitor:
 
     async def _monitor_loop(self):
         """Main monitoring loop"""
-        check_interval = self.config['display_monitoring']['check_interval_seconds']
+        check_interval = self.config["display_monitoring"]["check_interval_seconds"]
         logger.info(f"[DISPLAY MONITOR] Monitor loop starting (interval: {check_interval}s)")
 
         try:
@@ -591,14 +590,16 @@ class AdvancedDisplayMonitor:
             logger.info("[DISPLAY MONITOR] Monitoring cancelled")
         except Exception as e:
             logger.error(f"[DISPLAY MONITOR] Error in monitoring loop: {e}")
-            await self._emit_event('error', error=e)
+            await self._emit_event("error", error=e)
 
     async def _check_displays(self):
         """Check for available displays"""
         try:
             # Detect all available displays
             detected_displays = await self._detect_all_displays()
-            logger.debug(f"[DISPLAY MONITOR] Check: detected {len(detected_displays)} displays: {detected_displays}")
+            logger.debug(
+                f"[DISPLAY MONITOR] Check: detected {len(detected_displays)} displays: {detected_displays}"
+            )
 
             # Match against monitored displays
             current_available = set()
@@ -606,61 +607,87 @@ class AdvancedDisplayMonitor:
                 for monitored in self.monitored_displays:
                     if monitored.matches(display_name):
                         current_available.add(monitored.id)
-                        logger.info(f"[DISPLAY MONITOR] MATCH: '{display_name}' → '{monitored.name}' (id: {monitored.id}), in_available={monitored.id in self.available_displays}, initial_complete={self.initial_scan_complete}")
+                        logger.info(
+                            f"[DISPLAY MONITOR] MATCH: '{display_name}' → '{monitored.name}' (id: {monitored.id}), in_available={monitored.id in self.available_displays}, initial_complete={self.initial_scan_complete}"
+                        )
 
                         # New display detected - announce and set pending prompt
                         if monitored.id not in self.available_displays:
                             logger.info(f"[DISPLAY MONITOR] NEW DISPLAY DETECTED: {monitored.name}")
                             if self.initial_scan_complete:
                                 # Display became available after initial scan - announce it!
-                                logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became AVAILABLE")
+                                logger.info(
+                                    f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became AVAILABLE"
+                                )
                                 await self._handle_display_detected(monitored, display_name)
                             else:
                                 # Initial scan - STILL announce it so user can respond!
-                                logger.info(f"[DISPLAY MONITOR] Initial scan found: {monitored.name} - will prompt user")
+                                logger.info(
+                                    f"[DISPLAY MONITOR] Initial scan found: {monitored.name} - will prompt user"
+                                )
                                 await self._handle_display_detected(monitored, display_name)
 
             # Check for lost displays (only after initial scan)
             if self.initial_scan_complete:
                 for display_id in self.available_displays - current_available:
-                    monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
+                    monitored = next(
+                        (d for d in self.monitored_displays if d.id == display_id), None
+                    )
                     if monitored:
-                        logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became UNAVAILABLE")
+                        logger.info(
+                            f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became UNAVAILABLE"
+                        )
                         await self._handle_display_lost(monitored)
 
-            logger.debug(f"[DISPLAY MONITOR] Check: available={list(current_available)}, previous={list(self.available_displays)}")
+            logger.debug(
+                f"[DISPLAY MONITOR] Check: available={list(current_available)}, previous={list(self.available_displays)}"
+            )
             self.available_displays = current_available
 
             # Mark initial scan as complete after first run
             if not self.initial_scan_complete:
                 self.initial_scan_complete = True
-                logger.info(f"[DISPLAY MONITOR] Initial scan complete. Currently available displays: {list(current_available)}")
+                logger.info(
+                    f"[DISPLAY MONITOR] Initial scan complete. Currently available displays: {list(current_available)}"
+                )
 
                 # Announce if displays were found on startup
-                if current_available and self.config['voice_integration']['speak_on_detection']:
-                    # Get time-aware greeting
-                    template = self._get_time_aware_greeting()
+                # Use global coordinator to prevent overlapping with Voice API announcement
+                if current_available and self.config["voice_integration"]["speak_on_detection"]:
+                    from core.startup_announcement_coordinator import get_startup_coordinator
 
-                    # Use first found display name if template needs it, otherwise just use the template as-is
-                    if '{display_name}' in template:
-                        first_display = next(iter(current_available))
-                        monitored = next((d for d in self.monitored_displays if d.id == first_display), None)
-                        if monitored:
-                            message = template.format(display_name=monitored.name)
+                    coordinator = get_startup_coordinator()
+                    should_announce = await coordinator.announce_if_first("display_monitor")
+
+                    if should_announce:
+                        # We won - make the announcement
+                        # Get time-aware greeting
+                        template = self._get_time_aware_greeting()
+
+                        # Use first found display name if template needs it, otherwise just use the template as-is
+                        if "{display_name}" in template:
+                            first_display = next(iter(current_available))
+                            monitored = next(
+                                (d for d in self.monitored_displays if d.id == first_display), None
+                            )
+                            if monitored:
+                                message = template.format(display_name=monitored.name)
+                            else:
+                                message = template
                         else:
                             message = template
-                    else:
-                        message = template
 
-                    logger.info(f"[DISPLAY MONITOR] Initial startup announcement: {message}")
+                        logger.info(f"[DISPLAY MONITOR] Initial startup announcement: {message}")
 
-                    if self.voice_handler:
-                        try:
-                            await self.voice_handler.speak(message)
-                        except:
-                            subprocess.Popen(['say', message])
+                        if self.voice_handler:
+                            try:
+                                await self.voice_handler.speak(message)
+                            except:
+                                subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        logger.info(
+                            "[DISPLAY MONITOR] Another system already announced startup, skipping"
+                        )
 
                 logger.info("[DISPLAY MONITOR] Now monitoring for display changes...")
 
@@ -676,7 +703,7 @@ class AdvancedDisplayMonitor:
             return cached
 
         all_displays = set()
-        preferred_method = self.config['display_monitoring'].get('preferred_detection_method')
+        preferred_method = self.config["display_monitoring"].get("preferred_detection_method")
 
         # Try preferred method first
         if preferred_method:
@@ -692,11 +719,8 @@ class AdvancedDisplayMonitor:
                     return result
 
         # Fallback: Try all methods (parallel if enabled)
-        if self.config['performance']['parallel_detection']:
-            tasks = [
-                detector.detect_displays()
-                for detector in self.detectors.values()
-            ]
+        if self.config["performance"]["parallel_detection"]:
+            tasks = [detector.detect_displays() for detector in self.detectors.values()]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for result in results:
@@ -716,52 +740,64 @@ class AdvancedDisplayMonitor:
         logger.info(f"[DISPLAY MONITOR] Detected: {monitored.name} ({detected_name})")
 
         # Emit event
-        await self._emit_event('display_detected', display=monitored, detected_name=detected_name)
+        await self._emit_event("display_detected", display=monitored, detected_name=detected_name)
 
         # IMPORTANT: Set pending prompt FIRST if we're going to prompt
-        if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
+        if monitored.auto_prompt and self.config["voice_integration"]["speak_on_detection"]:
             # Set pending prompt state so we can handle yes/no responses
             self.pending_prompt_display = monitored.id
-            logger.info(f"[DISPLAY MONITOR] Set pending prompt for {monitored.name} (will prompt user)")
+            logger.info(
+                f"[DISPLAY MONITOR] Set pending prompt for {monitored.name} (will prompt user)"
+            )
 
         # Send WebSocket notification to UI
         if self.websocket_manager:
             try:
                 message = f"Sir, I see your {monitored.name} is now available. Would you like to extend your display to it?"
-                await self.websocket_manager.broadcast({
-                    'type': 'display_detected',
-                    'display_name': monitored.name,
-                    'display_id': monitored.id,
-                    'message': message,
-                    'timestamp': datetime.now().isoformat()
-                })
+                await self.websocket_manager.broadcast(
+                    {
+                        "type": "display_detected",
+                        "display_name": monitored.name,
+                        "display_id": monitored.id,
+                        "message": message,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
                 logger.debug(f"[DISPLAY MONITOR] Broadcasted detection to UI")
             except Exception as e:
                 logger.warning(f"[DISPLAY MONITOR] Failed to broadcast to UI: {e}")
 
         # Voice prompt if enabled
-        if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
+        if monitored.auto_prompt and self.config["voice_integration"]["speak_on_detection"]:
             await self._speak_detection_prompt(monitored)
 
         # Auto-connect if enabled AND not already connected/connecting
-        if monitored.auto_connect and monitored.id not in self.connected_displays and monitored.id not in self.connecting_displays:
+        if (
+            monitored.auto_connect
+            and monitored.id not in self.connected_displays
+            and monitored.id not in self.connecting_displays
+        ):
             logger.info(f"[DISPLAY MONITOR] Auto-connecting to {monitored.name}...")
             await self.connect_display(monitored.id)
         elif monitored.id in self.connected_displays:
-            logger.debug(f"[DISPLAY MONITOR] {monitored.name} already connected, skipping auto-connect")
+            logger.debug(
+                f"[DISPLAY MONITOR] {monitored.name} already connected, skipping auto-connect"
+            )
         elif monitored.id in self.connecting_displays:
-            logger.debug(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, skipping auto-connect")
+            logger.debug(
+                f"[DISPLAY MONITOR] {monitored.name} connection already in progress, skipping auto-connect"
+            )
 
     async def _handle_display_lost(self, monitored: MonitoredDisplay):
         """Handle lost display"""
         logger.info(f"[DISPLAY MONITOR] Lost: {monitored.name}")
 
         # Emit event
-        await self._emit_event('display_lost', display=monitored)
+        await self._emit_event("display_lost", display=monitored)
 
         if monitored.id in self.connected_displays:
             self.connected_displays.remove(monitored.id)
-            await self._emit_event('display_disconnected', display=monitored)
+            await self._emit_event("display_disconnected", display=monitored)
 
     def _get_time_aware_greeting(self) -> str:
         """
@@ -771,50 +807,60 @@ class AdvancedDisplayMonitor:
         """
         from datetime import datetime
 
-        prompt_config = self.config['voice_integration'].get('prompt_templates', {})
+        prompt_config = self.config["voice_integration"].get("prompt_templates", {})
 
         # Handle legacy format (simple list)
         if isinstance(prompt_config, list):
-            return random.choice(prompt_config)
+            return random.choice(prompt_config)  # nosec B311
 
         # Get probability for time-aware greetings (default 35%)
-        time_aware_prob = self.config['voice_integration'].get('time_aware_greeting_probability', 0.35)
+        time_aware_prob = self.config["voice_integration"].get(
+            "time_aware_greeting_probability", 0.35
+        )
 
         # Decide whether to use time-aware or generic
-        use_time_aware = random.random() < time_aware_prob
+        use_time_aware = random.random() < time_aware_prob  # nosec B311
 
         if use_time_aware:
             # Determine time of day
             current_hour = datetime.now().hour
 
             if 5 <= current_hour < 12:
-                time_period = 'morning'
+                time_period = "morning"
             elif 12 <= current_hour < 17:
-                time_period = 'afternoon'
+                time_period = "afternoon"
             elif 17 <= current_hour < 21:
-                time_period = 'evening'
+                time_period = "evening"
             else:
-                time_period = 'night'
+                time_period = "night"
 
-            templates = prompt_config.get(time_period, prompt_config.get('generic', ['JARVIS online.']))
+            templates = prompt_config.get(
+                time_period, prompt_config.get("generic", ["JARVIS online."])
+            )
         else:
-            templates = prompt_config.get('generic', ['JARVIS online.'])
+            templates = prompt_config.get("generic", ["JARVIS online."])
 
-        return random.choice(templates)
+        return random.choice(templates)  # nosec B311
 
     async def _speak_detection_prompt(self, monitored: MonitoredDisplay):
         """Speak detection prompt"""
-        if not self.config['voice_integration']['enabled']:
+        if not self.config["voice_integration"]["enabled"]:
             return
 
         # Get time-aware greeting
         template = self._get_time_aware_greeting()
-        message = template.format(display_name=monitored.name) if '{display_name}' in template else template
+        message = (
+            template.format(display_name=monitored.name)
+            if "{display_name}" in template
+            else template
+        )
 
         logger.info(f"[DISPLAY MONITOR] Voice: {message}")
 
         # Note: pending_prompt_display is already set in _handle_display_detected
-        logger.info(f"[DISPLAY MONITOR] Speaking prompt for {monitored.name} (pending_prompt_display={self.pending_prompt_display})")
+        logger.info(
+            f"[DISPLAY MONITOR] Speaking prompt for {monitored.name} (pending_prompt_display={self.pending_prompt_display})"
+        )
 
         # Use voice handler if available
         if self.voice_handler:
@@ -825,7 +871,7 @@ class AdvancedDisplayMonitor:
         else:
             # Fallback to macOS say command
             try:
-                subprocess.Popen(['say', message])
+                subprocess.Popen(["say", message])
             except Exception as e:
                 logger.error(f"[DISPLAY MONITOR] Say command error: {e}")
 
@@ -854,13 +900,16 @@ class AdvancedDisplayMonitor:
 
         # Circuit breaker: Check if already connected or connecting
         logger.info(f"[DISPLAY MONITOR] 🔍 Circuit breaker check for {monitored.name}")
-        logger.info(f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
+        logger.info(
+            f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}"
+        )
 
         # REAL-TIME VERIFICATION: Don't trust cached state - verify actual connection
         with open("/tmp/jarvis_display_command.log", "a") as f:
             f.write(f"[DISPLAY MONITOR] About to verify connection for {monitored.name}\n")
 
         from .display_state_verifier import get_display_verifier
+
         verifier = get_display_verifier()
 
         with open("/tmp/jarvis_display_command.log", "a") as f:
@@ -869,34 +918,53 @@ class AdvancedDisplayMonitor:
         actual_state = await verifier.verify_actual_connection(monitored.name)
 
         with open("/tmp/jarvis_display_command.log", "a") as f:
-            f.write(f"[DISPLAY MONITOR] Verification complete: {actual_state.get('is_connected')}\n")
+            f.write(
+                f"[DISPLAY MONITOR] Verification complete: {actual_state.get('is_connected')}\n"
+            )
 
-        logger.info(f"[DISPLAY MONITOR] Real-time verification for {monitored.name}: is_connected={actual_state['is_connected']}, confidence={actual_state['confidence']:.2f}")
+        logger.info(
+            f"[DISPLAY MONITOR] Real-time verification for {monitored.name}: is_connected={actual_state['is_connected']}, confidence={actual_state['confidence']:.2f}"
+        )
 
         # Update our cached state based on actual verification
-        if actual_state['is_connected'] and display_id not in self.connected_displays:
-            logger.info(f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is actually connected")
+        if actual_state["is_connected"] and display_id not in self.connected_displays:
+            logger.info(
+                f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is actually connected"
+            )
             self.connected_displays.add(display_id)
-        elif not actual_state['is_connected'] and display_id in self.connected_displays:
-            logger.info(f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is NOT actually connected")
+        elif not actual_state["is_connected"] and display_id in self.connected_displays:
+            logger.info(
+                f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is NOT actually connected"
+            )
             self.connected_displays.discard(display_id)
 
         # Store learning pattern for future predictions
         await self._store_display_pattern(monitored, actual_state)
 
-        if actual_state['is_connected'] and actual_state['confidence'] > 0.7:
-            logger.info(f"[DISPLAY MONITOR] ✅ {monitored.name} verified as connected (method: {actual_state['method']})")
-            return {"success": True, "message": f"{monitored.name} already connected", "cached": True, "verified": True}
+        if actual_state["is_connected"] and actual_state["confidence"] > 0.7:
+            logger.info(
+                f"[DISPLAY MONITOR] ✅ {monitored.name} verified as connected (method: {actual_state['method']})"
+            )
+            return {
+                "success": True,
+                "message": f"{monitored.name} already connected",
+                "cached": True,
+                "verified": True,
+            }
 
         if display_id in self.connecting_displays:
-            logger.info(f"[DISPLAY MONITOR] ⚠️ {monitored.name} was stuck in connecting state, resetting and retrying...")
+            logger.info(
+                f"[DISPLAY MONITOR] ⚠️ {monitored.name} was stuck in connecting state, resetting and retrying..."
+            )
             # Remove from connecting state to allow retry
             self.connecting_displays.discard(display_id)
             logger.info(f"[DISPLAY MONITOR] 🔄 Reset circuit breaker, proceeding with connection")
 
         # Mark as connecting IMMEDIATELY to prevent race conditions
         self.connecting_displays.add(display_id)
-        logger.info(f"[DISPLAY MONITOR] 🔒 Marked {monitored.name} as connecting (circuit breaker engaged)")
+        logger.info(
+            f"[DISPLAY MONITOR] 🔒 Marked {monitored.name} as connecting (circuit breaker engaged)"
+        )
 
         # Immediate voice feedback
         if self.voice_handler:
@@ -923,7 +991,9 @@ class AdvancedDisplayMonitor:
             # Log available clickers
             clicker_info = get_clicker_info()
             logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: INTELLIGENT HYBRID")
-            logger.info(f"[DISPLAY MONITOR] Available clickers: UAE={clicker_info['uae_available']}, SAI={clicker_info['sai_available']}, Adaptive={clicker_info['adaptive_available']}, Basic={clicker_info['basic_available']}")
+            logger.info(
+                f"[DISPLAY MONITOR] Available clickers: UAE={clicker_info['uae_available']}, SAI={clicker_info['sai_available']}, Adaptive={clicker_info['adaptive_available']}, Basic={clicker_info['basic_available']}"
+            )
             logger.info(f"[DISPLAY MONITOR] Recommended: {clicker_info['recommended'].upper()}")
 
             strategies_attempted.append("intelligent_hybrid")
@@ -936,10 +1006,12 @@ class AdvancedDisplayMonitor:
             logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
 
             with open("/tmp/jarvis_display_command.log", "a") as f:
-                f.write(f"[DISPLAY MONITOR] About to call clicker.connect_to_device('{monitored.name}')\n")
+                f.write(
+                    f"[DISPLAY MONITOR] About to call clicker.connect_to_device('{monitored.name}')\n"
+                )
 
             # Use async context manager if available, otherwise call directly
-            if hasattr(clicker, '__aenter__'):
+            if hasattr(clicker, "__aenter__"):
                 async with clicker as c:
                     result = await c.connect_to_device(monitored.name)
             else:
@@ -948,51 +1020,65 @@ class AdvancedDisplayMonitor:
             with open("/tmp/jarvis_display_command.log", "a") as f:
                 f.write(f"[DISPLAY MONITOR] connect_to_device() returned: {result}\n")
 
-            if result.get('success'):
-                total_duration = result.get('duration', 0)
+            if result.get("success"):
+                total_duration = result.get("duration", 0)
 
                 self.connected_displays.add(display_id)
-                await self._emit_event('display_connected', display=monitored)
+                await self._emit_event("display_connected", display=monitored)
 
                 # Speak success message
-                if self.config['voice_integration']['speak_on_connection']:
-                    template = self.config['voice_integration']['connection_success_message']
+                if self.config["voice_integration"]["speak_on_connection"]:
+                    template = self.config["voice_integration"]["connection_success_message"]
                     message = template.format(display_name=monitored.name)
 
                     if self.voice_handler:
                         try:
                             await self.voice_handler.speak(message)
                         except:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        subprocess.Popen(["say", message])
 
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Simple Hardcoded Coordinates in {total_duration:.2f}s")
+                logger.info(
+                    f"[DISPLAY MONITOR] ✅ SUCCESS via Simple Hardcoded Coordinates in {total_duration:.2f}s"
+                )
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
 
                 # Log steps if available (handle both dict and list formats)
-                steps = result.get('steps', {})
+                steps = result.get("steps", {})
                 if isinstance(steps, dict):
                     logger.info(f"[DISPLAY MONITOR] Steps: {len(steps)} actions completed")
                     for step_name, step_data in steps.items():
                         if isinstance(step_data, dict):
-                            logger.info(f"[DISPLAY MONITOR]   {step_name}: {step_data.get('success', False)}")
+                            logger.info(
+                                f"[DISPLAY MONITOR]   {step_name}: {step_data.get('success', False)}"
+                            )
                 elif isinstance(steps, list):
                     logger.info(f"[DISPLAY MONITOR] Steps: {len(steps)}")
                     for step in steps:
-                        logger.info(f"[DISPLAY MONITOR]   {step.get('step')}. {step.get('action')}: {step.get('coordinates')}")
+                        logger.info(
+                            f"[DISPLAY MONITOR]   {step.get('step')}. {step.get('action')}: {step.get('coordinates')}"
+                        )
 
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 # Release circuit breaker
                 logger.info(f"[DISPLAY MONITOR] 🔓 Releasing circuit breaker for {monitored.name}")
-                logger.info(f"[DISPLAY MONITOR] State before release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
+                logger.info(
+                    f"[DISPLAY MONITOR] State before release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}"
+                )
                 if display_id in self.connecting_displays:
                     self.connecting_displays.remove(display_id)
-                    logger.info(f"[DISPLAY MONITOR] ✅ Removed {display_id} from connecting_displays")
+                    logger.info(
+                        f"[DISPLAY MONITOR] ✅ Removed {display_id} from connecting_displays"
+                    )
                 else:
-                    logger.warning(f"[DISPLAY MONITOR] ⚠️  {display_id} was NOT in connecting_displays!")
-                logger.info(f"[DISPLAY MONITOR] State after release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
+                    logger.warning(
+                        f"[DISPLAY MONITOR] ⚠️  {display_id} was NOT in connecting_displays!"
+                    )
+                logger.info(
+                    f"[DISPLAY MONITOR] State after release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}"
+                )
 
                 return {
                     "success": True,
@@ -1001,20 +1087,23 @@ class AdvancedDisplayMonitor:
                     "duration": total_duration,
                     "strategies_attempted": strategies_attempted,
                     "coordinates": {
-                        "control_center": result['control_center_coords'],
-                        "screen_mirroring": result['screen_mirroring_coords'],
-                        "living_room_tv": result['living_room_tv_coords']
+                        "control_center": result["control_center_coords"],
+                        "screen_mirroring": result["screen_mirroring_coords"],
+                        "living_room_tv": result["living_room_tv_coords"],
                     },
-                    "tier": 1
+                    "tier": 1,
                 }
             else:
-                logger.warning(f"[DISPLAY MONITOR] Direct coordinates failed: {result.get('message')}")
+                logger.warning(
+                    f"[DISPLAY MONITOR] Direct coordinates failed: {result.get('message')}"
+                )
                 raise Exception(f"Could not connect to '{monitored.name}': {result.get('message')}")
 
         except Exception as e:
             with open("/tmp/jarvis_display_command.log", "a") as f:
                 f.write(f"[DISPLAY MONITOR] Strategy 1 exception: {e}\n")
                 import traceback
+
                 f.write(f"{traceback.format_exc()}\n")
             logger.warning(f"[DISPLAY MONITOR] Direct coordinates error: {e}", exc_info=True)
             # Note: Don't release circuit breaker here - let it continue to other strategies
@@ -1023,7 +1112,9 @@ class AdvancedDisplayMonitor:
         try:
             from display.airplay_manager import get_airplay_manager
 
-            logger.info(f"[DISPLAY MONITOR] 🥈 STRATEGY 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)")
+            logger.info(
+                f"[DISPLAY MONITOR] 🥈 STRATEGY 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)"
+            )
             logger.info(f"[DISPLAY MONITOR] Direct network protocol for {monitored.name}")
 
             strategies_attempted.append("airplay_protocol")
@@ -1035,36 +1126,40 @@ class AdvancedDisplayMonitor:
                 await airplay_manager.initialize()
 
             # Determine mode
-            mode = monitored.connection_mode if hasattr(monitored, 'connection_mode') else "extend"
+            mode = monitored.connection_mode if hasattr(monitored, "connection_mode") else "extend"
 
             result = await airplay_manager.connect_to_device(monitored.name, mode=mode)
 
-            if result.get('success'):
+            if result.get("success"):
                 self.connected_displays.add(display_id)
-                await self._emit_event('display_connected', display=monitored)
+                await self._emit_event("display_connected", display=monitored)
 
                 duration = asyncio.get_event_loop().time() - connection_start
 
                 # Speak success message
-                if self.config['voice_integration']['speak_on_connection']:
-                    template = self.config['voice_integration']['connection_success_message']
+                if self.config["voice_integration"]["speak_on_connection"]:
+                    template = self.config["voice_integration"]["connection_success_message"]
                     message = template.format(display_name=monitored.name)
 
                     if self.voice_handler:
                         try:
                             await self.voice_handler.speak(message)
                         except:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        subprocess.Popen(["say", message])
 
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Protocol-Level AirPlay in {duration:.2f}s")
+                logger.info(
+                    f"[DISPLAY MONITOR] ✅ SUCCESS via Protocol-Level AirPlay in {duration:.2f}s"
+                )
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 # Release circuit breaker
                 if display_id in self.connecting_displays:
                     self.connecting_displays.remove(display_id)
-                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+                    logger.info(
+                        f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}"
+                    )
 
                 return {
                     "success": True,
@@ -1072,11 +1167,13 @@ class AdvancedDisplayMonitor:
                     "method": "airplay_protocol",
                     "duration": duration,
                     "strategies_attempted": strategies_attempted,
-                    "protocol_method": result.get('method', 'system_native'),
-                    "tier": 2
+                    "protocol_method": result.get("method", "system_native"),
+                    "tier": 2,
                 }
             else:
-                logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay failed: {result.get('message')}")
+                logger.warning(
+                    f"[DISPLAY MONITOR] Protocol-level AirPlay failed: {result.get('message')}"
+                )
 
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay error: {e}")
@@ -1093,17 +1190,20 @@ class AdvancedDisplayMonitor:
             navigator = get_vision_navigator()
 
             # Connect vision analyzer if available
-            if not navigator.vision_analyzer and hasattr(self, 'vision_analyzer'):
+            if not navigator.vision_analyzer and hasattr(self, "vision_analyzer"):
                 navigator.set_vision_analyzer(self.vision_analyzer)
             elif not navigator.vision_analyzer:
                 # Try to get from app.state
                 try:
                     import sys
-                    if hasattr(sys.modules.get('__main__'), 'app'):
-                        app = sys.modules['__main__'].app
-                        if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
+
+                    if hasattr(sys.modules.get("__main__"), "app"):
+                        app = sys.modules["__main__"].app
+                        if hasattr(app, "state") and hasattr(app.state, "vision_analyzer"):
                             navigator.set_vision_analyzer(app.state.vision_analyzer)
-                            logger.info("[DISPLAY MONITOR] Connected vision analyzer from app.state")
+                            logger.info(
+                                "[DISPLAY MONITOR] Connected vision analyzer from app.state"
+                            )
                 except:
                     pass
 
@@ -1112,30 +1212,34 @@ class AdvancedDisplayMonitor:
 
                 if result.success:
                     self.connected_displays.add(display_id)
-                    await self._emit_event('display_connected', display=monitored)
+                    await self._emit_event("display_connected", display=monitored)
 
                     duration = asyncio.get_event_loop().time() - connection_start
 
                     # Speak success message
-                    if self.config['voice_integration']['speak_on_connection']:
-                        template = self.config['voice_integration']['connection_success_message']
+                    if self.config["voice_integration"]["speak_on_connection"]:
+                        template = self.config["voice_integration"]["connection_success_message"]
                         message = template.format(display_name=monitored.name)
 
                         if self.voice_handler:
                             try:
                                 await self.voice_handler.speak(message)
                             except:
-                                subprocess.Popen(['say', message])
+                                subprocess.Popen(["say", message])
                         else:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
 
-                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Vision Navigation in {duration:.2f}s")
+                    logger.info(
+                        f"[DISPLAY MONITOR] ✅ SUCCESS via Vision Navigation in {duration:.2f}s"
+                    )
                     logger.info(f"[DISPLAY MONITOR] ========================================")
 
                     # Release circuit breaker
                     if display_id in self.connecting_displays:
                         self.connecting_displays.remove(display_id)
-                        logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+                        logger.info(
+                            f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}"
+                        )
 
                     return {
                         "success": True,
@@ -1144,12 +1248,14 @@ class AdvancedDisplayMonitor:
                         "duration": duration,
                         "strategies_attempted": strategies_attempted,
                         "steps_completed": result.steps_completed,
-                        "tier": 3
+                        "tier": 3,
                     }
                 else:
                     logger.warning(f"[DISPLAY MONITOR] Vision navigation failed: {result.message}")
             else:
-                logger.warning("[DISPLAY MONITOR] Vision analyzer not available for vision navigation")
+                logger.warning(
+                    "[DISPLAY MONITOR] Vision analyzer not available for vision navigation"
+                )
 
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Vision navigator error: {e}")
@@ -1170,30 +1276,34 @@ class AdvancedDisplayMonitor:
 
                 if result.success:
                     self.connected_displays.add(display_id)
-                    await self._emit_event('display_connected', display=monitored)
+                    await self._emit_event("display_connected", display=monitored)
 
                     duration = asyncio.get_event_loop().time() - connection_start
 
                     # Speak success message
-                    if self.config['voice_integration']['speak_on_connection']:
-                        template = self.config['voice_integration']['connection_success_message']
+                    if self.config["voice_integration"]["speak_on_connection"]:
+                        template = self.config["voice_integration"]["connection_success_message"]
                         message = template.format(display_name=monitored.name)
 
                         if self.voice_handler:
                             try:
                                 await self.voice_handler.speak(message)
                             except:
-                                subprocess.Popen(['say', message])
+                                subprocess.Popen(["say", message])
                         else:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
 
-                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Native Swift Bridge in {duration:.2f}s")
+                    logger.info(
+                        f"[DISPLAY MONITOR] ✅ SUCCESS via Native Swift Bridge in {duration:.2f}s"
+                    )
                     logger.info(f"[DISPLAY MONITOR] ========================================")
 
                     # Release circuit breaker
                     if display_id in self.connecting_displays:
                         self.connecting_displays.remove(display_id)
-                        logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+                        logger.info(
+                            f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}"
+                        )
 
                     return {
                         "success": True,
@@ -1202,7 +1312,7 @@ class AdvancedDisplayMonitor:
                         "duration": duration,
                         "strategies_attempted": strategies_attempted,
                         "fallback_used": result.fallback_used,
-                        "tier": 4
+                        "tier": 4,
                     }
                 else:
                     logger.warning(f"[DISPLAY MONITOR] Native bridge failed: {result.message}")
@@ -1217,26 +1327,28 @@ class AdvancedDisplayMonitor:
             logger.info(f"[DISPLAY MONITOR] STRATEGY 5: AppleScript Fallback")
             strategies_attempted.append("applescript")
 
-            result = await self.detectors[DetectionMethod.APPLESCRIPT].connect_display(monitored.name)
+            result = await self.detectors[DetectionMethod.APPLESCRIPT].connect_display(
+                monitored.name
+            )
 
-            if result['success']:
+            if result["success"]:
                 self.connected_displays.add(display_id)
-                await self._emit_event('display_connected', display=monitored)
+                await self._emit_event("display_connected", display=monitored)
 
                 duration = asyncio.get_event_loop().time() - connection_start
 
                 # Speak success message
-                if self.config['voice_integration']['speak_on_connection']:
-                    template = self.config['voice_integration']['connection_success_message']
+                if self.config["voice_integration"]["speak_on_connection"]:
+                    template = self.config["voice_integration"]["connection_success_message"]
                     message = template.format(display_name=monitored.name)
 
                     if self.voice_handler:
                         try:
                             await self.voice_handler.speak(message)
                         except:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        subprocess.Popen(["say", message])
 
                 logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via AppleScript in {duration:.2f}s")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
@@ -1244,11 +1356,13 @@ class AdvancedDisplayMonitor:
                 # Release circuit breaker
                 if display_id in self.connecting_displays:
                     self.connecting_displays.remove(display_id)
-                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+                    logger.info(
+                        f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}"
+                    )
 
-                result['duration'] = duration
-                result['strategies_attempted'] = strategies_attempted
-                result['tier'] = 5
+                result["duration"] = duration
+                result["strategies_attempted"] = strategies_attempted
+                result["tier"] = 5
                 return result
 
         # Strategy 6: All automated methods failed - provide voice guidance
@@ -1269,7 +1383,7 @@ class AdvancedDisplayMonitor:
             try:
                 await self.voice_handler.speak(guidance_message)
             except:
-                subprocess.Popen(['say', guidance_message])
+                subprocess.Popen(["say", guidance_message])
 
         # Release circuit breaker on failure
         if display_id in self.connecting_displays:
@@ -1283,7 +1397,7 @@ class AdvancedDisplayMonitor:
             "duration": duration,
             "strategies_attempted": strategies_attempted,
             "guidance_provided": True,
-            "tier": 6
+            "tier": 6,
         }
 
     async def change_display_mode(self, display_id: str, mode: str = "extended") -> Dict[str, Any]:
@@ -1312,57 +1426,69 @@ class AdvancedDisplayMonitor:
             from display.control_center_clicker_factory import get_best_clicker
 
             logger.info(f"[DISPLAY MONITOR] Using DIRECT COORDINATES to change mode")
-            logger.info(f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → {mode} → Start")
+            logger.info(
+                f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → {mode} → Start"
+            )
 
             # Get Control Center clicker
             cc_clicker = get_best_clicker(
-                vision_analyzer=self.vision_analyzer,
-                enable_verification=True,
-                prefer_uae=True
+                vision_analyzer=self.vision_analyzer, enable_verification=True, prefer_uae=True
             )
 
             # Execute mode change flow
             logger.info(f"[DISPLAY MONITOR] Executing 4-click mode change flow...")
             result = cc_clicker.change_mirroring_mode(mode)
 
-            if result.get('success'):
+            if result.get("success"):
                 total_duration = asyncio.get_event_loop().time() - mode_start
 
                 # Speak mode change confirmation
-                if self.config['voice_integration'].get('speak_on_connection', True):
-                    template = self.config['voice_integration'].get('mode_change_success_message', 'Mode changed, sir.')
-                    message = template.format(mode=result['mode']) if '{mode}' in template else template
+                if self.config["voice_integration"].get("speak_on_connection", True):
+                    template = self.config["voice_integration"].get(
+                        "mode_change_success_message", "Mode changed, sir."
+                    )
+                    message = (
+                        template.format(mode=result["mode"]) if "{mode}" in template else template
+                    )
 
                     if self.voice_handler:
                         try:
                             await self.voice_handler.speak(message)
                         except:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        subprocess.Popen(["say", message])
 
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS - Changed to {result['mode']} in {total_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}")
-                logger.info(f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}")
+                logger.info(
+                    f"[DISPLAY MONITOR] ✅ SUCCESS - Changed to {result['mode']} in {total_duration:.2f}s"
+                )
+                logger.info(
+                    f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}"
+                )
+                logger.info(
+                    f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}"
+                )
                 logger.info(f"[DISPLAY MONITOR] 3. Change Button: {result['change_button_coords']}")
                 logger.info(f"[DISPLAY MONITOR] 4. Mode: {result['mode_coords']}")
-                logger.info(f"[DISPLAY MONITOR] 5. Start Mirroring: {result['start_mirroring_coords']}")
+                logger.info(
+                    f"[DISPLAY MONITOR] 5. Start Mirroring: {result['start_mirroring_coords']}"
+                )
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 return {
                     "success": True,
                     "message": f"Changed to {result['mode']} mode",
-                    "mode": result['mode'],
+                    "mode": result["mode"],
                     "method": "direct_coordinates",
                     "duration": total_duration,
                     "coordinates": {
-                        "control_center": result['control_center_coords'],
-                        "screen_mirroring": result['screen_mirroring_coords'],
-                        "change_button": result['change_button_coords'],
-                        "mode": result['mode_coords'],
-                        "start_mirroring": result['start_mirroring_coords']
-                    }
+                        "control_center": result["control_center_coords"],
+                        "screen_mirroring": result["screen_mirroring_coords"],
+                        "change_button": result["change_button_coords"],
+                        "mode": result["mode_coords"],
+                        "start_mirroring": result["start_mirroring_coords"],
+                    },
                 }
             else:
                 logger.error(f"[DISPLAY MONITOR] ❌ Mode change failed: {result.get('message')}")
@@ -1379,7 +1505,7 @@ class AdvancedDisplayMonitor:
                 "message": f"Failed to change mode: {str(e)}",
                 "method": "none",
                 "duration": total_duration,
-                "error": str(e)
+                "error": str(e),
             }
 
     async def disconnect_display(self, display_id: str) -> Dict[str, Any]:
@@ -1411,39 +1537,47 @@ class AdvancedDisplayMonitor:
 
             # Get Control Center clicker
             cc_clicker = get_best_clicker(
-                vision_analyzer=self.vision_analyzer,
-                enable_verification=True,
-                prefer_uae=True
+                vision_analyzer=self.vision_analyzer, enable_verification=True, prefer_uae=True
             )
 
             # Execute disconnect flow: Control Center → Screen Mirroring → Stop
             logger.info(f"[DISPLAY MONITOR] Executing 3-click disconnect flow...")
             result = cc_clicker.disconnect_from_living_room_tv()
 
-            if result.get('success'):
+            if result.get("success"):
                 total_duration = asyncio.get_event_loop().time() - disconnect_start
 
                 # Remove from connected displays
                 if display_id in self.connected_displays:
                     self.connected_displays.remove(display_id)
-                await self._emit_event('display_disconnected', display=monitored)
+                await self._emit_event("display_disconnected", display=monitored)
 
                 # Speak disconnection message
-                if self.config['voice_integration']['speak_on_disconnection']:
-                    template = self.config['voice_integration'].get('disconnection_success_message', 'Display disconnected, sir.')
-                    message = template.format(display_name=monitored.name) if '{display_name}' in template else template
+                if self.config["voice_integration"]["speak_on_disconnection"]:
+                    template = self.config["voice_integration"].get(
+                        "disconnection_success_message", "Display disconnected, sir."
+                    )
+                    message = (
+                        template.format(display_name=monitored.name)
+                        if "{display_name}" in template
+                        else template
+                    )
 
                     if self.voice_handler:
                         try:
                             await self.voice_handler.speak(message)
                         except:
-                            subprocess.Popen(['say', message])
+                            subprocess.Popen(["say", message])
                     else:
-                        subprocess.Popen(['say', message])
+                        subprocess.Popen(["say", message])
 
                 logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS - Disconnected in {total_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}")
-                logger.info(f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}")
+                logger.info(
+                    f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}"
+                )
+                logger.info(
+                    f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}"
+                )
                 logger.info(f"[DISPLAY MONITOR] 3. Stop: {result['stop_mirroring_coords']}")
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
@@ -1454,10 +1588,10 @@ class AdvancedDisplayMonitor:
                     "method": "direct_coordinates",
                     "duration": total_duration,
                     "coordinates": {
-                        "control_center": result['control_center_coords'],
-                        "screen_mirroring": result['screen_mirroring_coords'],
-                        "stop": result['stop_mirroring_coords']
-                    }
+                        "control_center": result["control_center_coords"],
+                        "screen_mirroring": result["screen_mirroring_coords"],
+                        "stop": result["stop_mirroring_coords"],
+                    },
                 }
             else:
                 logger.error(f"[DISPLAY MONITOR] ❌ Disconnect failed: {result.get('message')}")
@@ -1474,36 +1608,39 @@ class AdvancedDisplayMonitor:
                 "message": f"Failed to disconnect: {str(e)}",
                 "method": "none",
                 "duration": total_duration,
-                "error": str(e)
+                "error": str(e),
             }
 
-    async def _store_display_pattern(self, monitored: 'MonitoredDisplay', actual_state: Dict[str, Any]):
+    async def _store_display_pattern(
+        self, monitored: "MonitoredDisplay", actual_state: Dict[str, Any]
+    ):
         """
         Store display connection patterns in learning database for future predictions
         """
         try:
             # Get learning database instance
             from backend.intelligence.learning_database import get_learning_database
+
             db = await get_learning_database()
 
             # Create pattern data
             pattern_data = {
-                'pattern_type': 'display_connection',
-                'display_id': monitored.id,
-                'display_name': monitored.name,
-                'is_connected': actual_state['is_connected'],
-                'connection_mode': actual_state.get('connection_mode'),
-                'verification_method': actual_state.get('method'),
-                'confidence': actual_state.get('confidence', 0.5),
-                'context': {
-                    'time_of_day': datetime.now().hour,
-                    'day_of_week': datetime.now().weekday(),
-                    'is_auto_connect': monitored.auto_connect,
-                    'available_displays': len(self.available_displays),
-                    'active_apps': []  # Could be enhanced with actual app context
+                "pattern_type": "display_connection",
+                "display_id": monitored.id,
+                "display_name": monitored.name,
+                "is_connected": actual_state["is_connected"],
+                "connection_mode": actual_state.get("connection_mode"),
+                "verification_method": actual_state.get("method"),
+                "confidence": actual_state.get("confidence", 0.5),
+                "context": {
+                    "time_of_day": datetime.now().hour,
+                    "day_of_week": datetime.now().weekday(),
+                    "is_auto_connect": monitored.auto_connect,
+                    "available_displays": len(self.available_displays),
+                    "active_apps": [],  # Could be enhanced with actual app context
                 },
-                'success_rate': 1.0 if actual_state['is_connected'] else 0.0,
-                'frequency': 1  # Will be incremented by database if pattern exists
+                "success_rate": 1.0 if actual_state["is_connected"] else 0.0,
+                "frequency": 1,  # Will be incremented by database if pattern exists
             }
 
             # Store the pattern (database handles deduplication and aggregation)
@@ -1511,12 +1648,12 @@ class AdvancedDisplayMonitor:
 
             # Store user interaction as an action
             action_data = {
-                'action_type': 'display_query',
-                'action_detail': f"Query about {monitored.name}",
-                'timestamp': datetime.now().isoformat(),
-                'context': pattern_data['context'],
-                'result': 'connected' if actual_state['is_connected'] else 'not_connected',
-                'confidence': actual_state.get('confidence', 0.5)
+                "action_type": "display_query",
+                "action_detail": f"Query about {monitored.name}",
+                "timestamp": datetime.now().isoformat(),
+                "context": pattern_data["context"],
+                "result": "connected" if actual_state["is_connected"] else "not_connected",
+                "confidence": actual_state.get("confidence", 0.5),
             }
 
             await db.store_action(action_data, batch=True)
@@ -1524,7 +1661,9 @@ class AdvancedDisplayMonitor:
             logger.debug(f"[DISPLAY MONITOR] Stored learning pattern for {monitored.name}")
 
         except ImportError:
-            logger.debug("[DISPLAY MONITOR] Learning database not available, skipping pattern storage")
+            logger.debug(
+                "[DISPLAY MONITOR] Learning database not available, skipping pattern storage"
+            )
         except Exception as e:
             logger.error(f"[DISPLAY MONITOR] Failed to store learning pattern: {e}")
 
@@ -1536,7 +1675,7 @@ class AdvancedDisplayMonitor:
             "connected_displays": list(self.connected_displays),
             "monitored_count": len(self.monitored_displays),
             "detection_methods": [m.value for m in self.detectors.keys()],
-            "cache_enabled": self.config['caching']['enabled']
+            "cache_enabled": self.config["caching"]["enabled"],
         }
 
     def get_available_display_details(self) -> list:
@@ -1551,13 +1690,15 @@ class AdvancedDisplayMonitor:
             monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
             if monitored:
                 message = f"Sir, I see your {monitored.name} is now available. Would you like to extend your display to it?"
-                details.append({
-                    "display_name": monitored.name,
-                    "display_id": monitored.id,
-                    "message": message,
-                    "auto_connect": monitored.auto_connect,
-                    "auto_prompt": monitored.auto_prompt
-                })
+                details.append(
+                    {
+                        "display_name": monitored.name,
+                        "display_id": monitored.id,
+                        "message": message,
+                        "auto_connect": monitored.auto_connect,
+                        "auto_prompt": monitored.auto_prompt,
+                    }
+                )
         return details
 
     def has_pending_prompt(self) -> bool:
@@ -1588,44 +1729,54 @@ class AdvancedDisplayMonitor:
         """
         try:
             if not self.has_pending_prompt():
-                return {
-                    "handled": False,
-                    "reason": "No pending prompt"
-                }
+                return {"handled": False, "reason": "No pending prompt"}
 
             # Get the display that has the pending prompt
             display_id = self.pending_prompt_display
-            display_to_connect = next((d for d in self.monitored_displays if d.id == display_id), None)
+            display_to_connect = next(
+                (d for d in self.monitored_displays if d.id == display_id), None
+            )
 
             if not display_to_connect:
-                logger.error(f"[DISPLAY MONITOR] Pending prompt display {display_id} not found in monitored displays")
+                logger.error(
+                    f"[DISPLAY MONITOR] Pending prompt display {display_id} not found in monitored displays"
+                )
                 self.pending_prompt_display = None  # Clear invalid state
-                return {
-                    "handled": False,
-                    "reason": "Display configuration not found"
-                }
+                return {"handled": False, "reason": "Display configuration not found"}
 
             # Parse response
             response_lower = response.lower().strip()
 
             # Affirmative responses
-            if any(word in response_lower for word in ["yes", "yeah", "yep", "sure", "connect", "extend", "mirror"]):
+            if any(
+                word in response_lower
+                for word in ["yes", "yeah", "yep", "sure", "connect", "extend", "mirror"]
+            ):
                 # Clear pending prompt state
                 self.pending_prompt_display = None
-                logger.info(f"[DISPLAY MONITOR] User said yes, connecting to {display_to_connect.name}")
+                logger.info(
+                    f"[DISPLAY MONITOR] User said yes, connecting to {display_to_connect.name}"
+                )
 
                 # Determine mode
-                mode = "mirror" if "mirror" in response_lower else display_to_connect.connection_mode
+                mode = (
+                    "mirror" if "mirror" in response_lower else display_to_connect.connection_mode
+                )
 
                 # Connect to display
-                logger.info(f"[DISPLAY MONITOR] Calling connect_display with id={display_to_connect.id}, mode={mode}")
+                logger.info(
+                    f"[DISPLAY MONITOR] Calling connect_display with id={display_to_connect.id}, mode={mode}"
+                )
                 result = await self.connect_display(display_to_connect.id)
-                logger.info(f"[DISPLAY MONITOR] connect_display returned: success={result.get('success')}, error={result.get('error')}")
+                logger.info(
+                    f"[DISPLAY MONITOR] connect_display returned: success={result.get('success')}, error={result.get('error')}"
+                )
 
                 # Generate dynamic response
                 try:
                     from api.vision_command_handler import vision_command_handler
-                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+
+                    if vision_command_handler and hasattr(vision_command_handler, "intelligence"):
                         prompt = f"""The user asked you to connect to {display_to_connect.name}. You successfully connected.
 
 Generate a brief, natural JARVIS-style confirmation that:
@@ -1636,10 +1787,14 @@ Generate a brief, natural JARVIS-style confirmation that:
 
 Respond ONLY with JARVIS's exact words, no quotes or formatting."""
 
-                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
-                            None, prompt
+                        claude_response = (
+                            await vision_command_handler.intelligence._get_claude_vision_response(
+                                None, prompt
+                            )
                         )
-                        success_response = claude_response.get("response", f"Connected to {display_to_connect.name}, sir.")
+                        success_response = claude_response.get(
+                            "response", f"Connected to {display_to_connect.name}, sir."
+                        )
                     else:
                         success_response = f"Connected to {display_to_connect.name}, sir."
                 except Exception as e:
@@ -1662,7 +1817,7 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                     "mode": mode,
                     "result": result,
                     "response": final_response,
-                    "success": result.get("success", False)
+                    "success": result.get("success", False),
                 }
 
             # Negative responses
@@ -1678,7 +1833,8 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                 # Generate dynamic response
                 try:
                     from api.vision_command_handler import vision_command_handler
-                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+
+                    if vision_command_handler and hasattr(vision_command_handler, "intelligence"):
                         prompt = f"""The user was asked: "Sir, I see your {display_to_connect.name} is now available. Would you like to extend your display to it?"
 
 They responded: "{response}"
@@ -1691,8 +1847,10 @@ Generate a brief, natural JARVIS-style acknowledgment that:
 
 Respond ONLY with JARVIS's exact words, no quotes or formatting."""
 
-                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
-                            None, prompt
+                        claude_response = (
+                            await vision_command_handler.intelligence._get_claude_vision_response(
+                                None, prompt
+                            )
                         )
                         decline_response = claude_response.get("response", "Understood, sir.")
                     else:
@@ -1705,7 +1863,7 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                     "handled": True,
                     "action": "skip",
                     "display_name": display_to_connect.name,
-                    "response": decline_response
+                    "response": decline_response,
                 }
 
             else:
@@ -1713,15 +1871,12 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                 return {
                     "handled": True,
                     "action": "clarify",
-                    "response": "Sir, I didn't quite catch that. Would you like to extend the display? Please say 'yes' or 'no'."
+                    "response": "Sir, I didn't quite catch that. Would you like to extend the display? Please say 'yes' or 'no'.",
                 }
 
         except Exception as e:
             logger.error(f"[DISPLAY MONITOR] Error handling response: {e}", exc_info=True)
-            return {
-                "handled": False,
-                "error": str(e)
-            }
+            return {"handled": False, "error": str(e)}
 
 
 # Singleton instance
@@ -1735,7 +1890,9 @@ def set_app_display_monitor(monitor: AdvancedDisplayMonitor):
     _app_monitor_instance = monitor
 
 
-def get_display_monitor(config_path: Optional[str] = None, voice_handler = None, vision_analyzer = None) -> AdvancedDisplayMonitor:
+def get_display_monitor(
+    config_path: Optional[str] = None, voice_handler=None, vision_analyzer=None
+) -> AdvancedDisplayMonitor:
     """
     Get singleton display monitor instance
 
@@ -1748,12 +1905,16 @@ def get_display_monitor(config_path: Optional[str] = None, voice_handler = None,
 
     # Always prefer the app monitor if available (the one that's actually running)
     if _app_monitor_instance is not None:
-        logger.debug(f"[DISPLAY MONITOR] Using app monitor instance with state: connected={list(_app_monitor_instance.connected_displays)}, connecting={list(_app_monitor_instance.connecting_displays)}")
+        logger.debug(
+            f"[DISPLAY MONITOR] Using app monitor instance with state: connected={list(_app_monitor_instance.connected_displays)}, connecting={list(_app_monitor_instance.connecting_displays)}"
+        )
         return _app_monitor_instance
 
     # Use existing singleton if available
     if _monitor_instance is not None:
-        logger.debug(f"[DISPLAY MONITOR] Using singleton instance with state: connected={list(_monitor_instance.connected_displays)}, connecting={list(_monitor_instance.connecting_displays)}")
+        logger.debug(
+            f"[DISPLAY MONITOR] Using singleton instance with state: connected={list(_monitor_instance.connected_displays)}, connecting={list(_monitor_instance.connecting_displays)}"
+        )
         return _monitor_instance
 
     # Create new singleton instance
@@ -1762,12 +1923,15 @@ def get_display_monitor(config_path: Optional[str] = None, voice_handler = None,
     monitor = _monitor_instance
 
     # Ensure vision analyzer is connected if available and not already set
-    if vision_analyzer is None and (not hasattr(monitor, 'vision_analyzer') or monitor.vision_analyzer is None):
+    if vision_analyzer is None and (
+        not hasattr(monitor, "vision_analyzer") or monitor.vision_analyzer is None
+    ):
         try:
             import sys
-            if hasattr(sys.modules.get('__main__'), 'app'):
-                app = sys.modules['__main__'].app
-                if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
+
+            if hasattr(sys.modules.get("__main__"), "app"):
+                app = sys.modules["__main__"].app
+                if hasattr(app, "state") and hasattr(app.state, "vision_analyzer"):
                     monitor.vision_analyzer = app.state.vision_analyzer
                     logger.debug("[DISPLAY MONITOR] Connected vision analyzer from app.state")
         except:
@@ -1790,8 +1954,8 @@ if __name__ == "__main__":
         async def on_lost(display):
             print(f"❌ Lost: {display.name}")
 
-        monitor.register_callback('display_detected', on_detected)
-        monitor.register_callback('display_lost', on_lost)
+        monitor.register_callback("display_detected", on_detected)
+        monitor.register_callback("display_lost", on_lost)
 
         await monitor.start()
 
