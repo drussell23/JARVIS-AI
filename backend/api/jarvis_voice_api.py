@@ -65,7 +65,7 @@ import sys
 import traceback
 from datetime import datetime
 from functools import wraps
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
