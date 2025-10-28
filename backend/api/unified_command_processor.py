@@ -3725,7 +3725,8 @@ class UnifiedCommandProcessor:
         from context_intelligence.handlers.display_reference_handler import ModeType
 
         display_name = display_ref.display_name
-        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        # Normalize display_id to use underscores to match config format (e.g., living_room_tv)
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "_")
         mode = display_ref.mode
 
         logger.info(f"[DISPLAY-ACTION] Connecting to '{display_name}' (id={display_id})")
@@ -3795,7 +3796,8 @@ class UnifiedCommandProcessor:
     ) -> Dict[str, Any]:
         """Execute DISCONNECT action"""
         display_name = display_ref.display_name
-        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        # Normalize display_id to use underscores to match config format (e.g., living_room_tv)
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "_")
 
         logger.info(f"[DISPLAY-ACTION] Disconnecting from '{display_name}' (id={display_id})")
 
