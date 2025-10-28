@@ -1771,6 +1771,17 @@ async def lifespan(app: FastAPI):
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
 
+    # Notify all WebSocket clients about shutdown
+    try:
+        from api.jarvis_voice_api import broadcast_shutdown_notification
+
+        await broadcast_shutdown_notification()
+        logger.info("✅ Shutdown notifications sent to WebSocket clients")
+        # Give clients a brief moment to receive the notification
+        await asyncio.sleep(0.5)
+    except Exception as e:
+        logger.warning(f"Failed to broadcast shutdown notification: {e}")
+
     # Shutdown Cost Tracking System
     try:
         from core.cost_tracker import get_cost_tracker

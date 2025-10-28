@@ -82,6 +82,34 @@ if backend_dir not in sys.path:
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# WEBSOCKET CONNECTION TRACKING - For shutdown notifications
+# ============================================================================
+
+# Global set to track active WebSocket connections
+active_websockets: set = set()
+
+
+async def broadcast_shutdown_notification():
+    """Broadcast shutdown notification to all connected WebSocket clients"""
+    if not active_websockets:
+        return
+
+    logger.info(f"📢 Broadcasting shutdown notification to {len(active_websockets)} clients")
+
+    notification = {
+        "type": "system_shutdown",
+        "message": "JARVIS backend is shutting down",
+        "timestamp": datetime.now().isoformat(),
+        "reconnect_advised": True,
+    }
+
+    # Send to all clients concurrently
+    await asyncio.gather(
+        *[ws.send_json(notification) for ws in active_websockets], return_exceptions=True
+    )
+
+
+# ============================================================================
 # ASYNC SUBPROCESS HELPERS - Non-blocking subprocess calls
 # ============================================================================
 
@@ -1819,12 +1847,17 @@ class JARVISVoiceAPI:
         await websocket.accept()
         logger.info("[JARVIS WS] WebSocket connection accepted successfully")
 
+        # Track this connection for shutdown notifications
+        active_websockets.add(websocket)
+        logger.info(f"[JARVIS WS] Active connections: {len(active_websockets)}")
+
         if not self.jarvis_available:
             logger.warning("[WEBSOCKET] JARVIS not available - API key required")
             await websocket.send_json(
                 {"type": "error", "message": "JARVIS not available - API key required"}
             )
             await websocket.close()
+            active_websockets.discard(websocket)
             return
 
         try:
@@ -1858,6 +1891,18 @@ class JARVISVoiceAPI:
             while True:
                 # Receive data from client
                 data = await websocket.receive_json()
+
+                # Handle ping/pong for health monitoring
+                if data.get("type") == "ping":
+                    # Respond with pong immediately
+                    await websocket.send_json(
+                        {
+                            "type": "pong",
+                            "timestamp": data.get("timestamp"),
+                            "server_time": datetime.now().isoformat(),
+                        }
+                    )
+                    continue
 
                 if data.get("type") == "command":
                     # Process voice command
@@ -2728,7 +2773,16 @@ class JARVISVoiceAPI:
             logger.info("JARVIS WebSocket disconnected")
         except Exception as e:
             logger.error(f"Error in JARVIS WebSocket: {e}")
-            await websocket.send_json({"type": "error", "message": str(e)})
+            try:
+                await websocket.send_json({"type": "error", "message": str(e)})
+            except:
+                pass  # Client might already be disconnected
+        finally:
+            # Remove connection from tracking
+            active_websockets.discard(websocket)
+            logger.info(
+                f"[JARVIS WS] Connection removed. Active connections: {len(active_websockets)}"
+            )
 
 
 # Create and export the router instance

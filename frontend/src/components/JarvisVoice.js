@@ -1280,6 +1280,17 @@ const JarvisVoice = () => {
           setError(`System: ${data.message}`);
         }
         break;
+      case 'system_shutdown':
+        // Backend is shutting down gracefully
+        console.log('[WS-ADVANCED] 🛑 Backend shutdown notification received');
+        setJarvisStatus('offline');
+        setError('JARVIS backend is shutting down. System will reconnect automatically if backend restarts.');
+        setResponse('Backend shutting down...');
+        // Close current connection gracefully
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+        break;
       case 'display_detected':
         // Handle display monitor notifications
         console.log('🖥️ Display detected:', data);
