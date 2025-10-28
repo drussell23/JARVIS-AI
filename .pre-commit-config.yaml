@@ -10,6 +10,7 @@ repos:
       - id: black
         language_version: python3.10
         args: ['--line-length=100']
+        stages: [pre-commit]
 
   # Import sorting
   - repo: https://github.com/pycqa/isort
@@ -17,6 +18,7 @@ repos:
     hooks:
       - id: isort
         args: ['--profile', 'black', '--line-length', '100']
+        stages: [pre-commit]
 
   # Linting
   - repo: https://github.com/pycqa/flake8
@@ -90,6 +92,7 @@ repos:
           - '--remove-unused-variables'
           - '--remove-duplicate-keys'
           - '--ignore-init-module-imports'
+        stages: [pre-commit]
 
   # Auto-generate GCP startup script from start_system.py
   - repo: local
