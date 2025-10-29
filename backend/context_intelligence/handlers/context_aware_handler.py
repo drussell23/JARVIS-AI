@@ -35,6 +35,8 @@ class ContextAwareCommandHandler:
         self.execution_steps = []
         self.predictive_handler = None  # Lazy initialize
         self.action_handler = None  # Lazy initialize
+        self.message_generator = None  # Lazy initialize
+        self.speaker_verification = None  # Lazy initialize
 
     async def handle_command_with_context(
         self,
@@ -105,14 +107,57 @@ class ContextAwareCommandHandler:
                 )
 
                 if screen_context["requires_unlock"]:
-                    # IMPORTANT: Speak to user FIRST about screen being locked
-                    unlock_notification = screen_context["unlock_message"]
+                    # Generate contextual unlock message
+                    await self._lazy_initialize_services()
+
+                    # Perform speaker verification if audio data available
+                    speaker_verified = False
+                    verification_confidence = 0.0
+                    identified_speaker = speaker_name or "Sir"
+
+                    if audio_data and self.speaker_verification:
+                        try:
+                            verification_result = await self.speaker_verification.verify_speaker(
+                                audio_data, speaker_name
+                            )
+                            speaker_verified = verification_result.get("verified", False)
+                            verification_confidence = verification_result.get("confidence", 0.0)
+                            identified_speaker = verification_result.get(
+                                "speaker_name", speaker_name
+                            )
+                            is_owner = verification_result.get("is_owner", False)
+
+                            logger.info(
+                                f"[CONTEXT AWARE] 🔐 Speaker: {identified_speaker}, "
+                                f"Verified: {speaker_verified}, "
+                                f"Confidence: {verification_confidence:.1%}, "
+                                f"Owner: {is_owner}"
+                            )
+                        except Exception as e:
+                            logger.warning(f"[CONTEXT AWARE] Speaker verification failed: {e}")
+
+                    # Generate intelligent, contextual unlock message
+                    if self.message_generator:
+                        unlock_notification = (
+                            await self.message_generator.generate_screen_unlock_message(
+                                speaker_name=identified_speaker,
+                                original_command=command,
+                                is_owner=speaker_verified,
+                            )
+                        )
+                    else:
+                        # Fallback to screen context message
+                        unlock_notification = screen_context["unlock_message"]
+
                     self._add_step("Screen unlock required", screen_context)
 
                     # Log prominently for debugging
                     logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     logger.warning(f"[CONTEXT AWARE] 🔓 SCREEN LOCKED - UNLOCK REQUIRED")
                     logger.warning(f"[CONTEXT AWARE] 📝 Command: {command}")
+                    logger.warning(
+                        f"[CONTEXT AWARE] 👤 Speaker: {identified_speaker} (verified: {speaker_verified})"
+                    )
                     logger.warning(f"[CONTEXT AWARE] 📢 Unlock Message: '{unlock_notification}'")
                     logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
@@ -474,6 +519,27 @@ class ContextAwareCommandHandler:
         }
 
         return context
+
+    async def _lazy_initialize_services(self):
+        """Lazy initialize speaker verification and message generator"""
+        if self.speaker_verification is None:
+            try:
+                from voice.speaker_verification_service import get_speaker_verification_service
+
+                self.speaker_verification = await get_speaker_verification_service()
+                logger.info("[CONTEXT AWARE] ✅ Speaker verification service initialized")
+            except Exception as e:
+                logger.warning(f"[CONTEXT AWARE] Speaker verification not available: {e}")
+
+        if self.message_generator is None:
+            try:
+                from voice.contextual_message_generator import get_message_generator
+
+                self.message_generator = get_message_generator()
+                await self.message_generator.initialize()
+                logger.info("[CONTEXT AWARE] ✅ Contextual message generator initialized")
+            except Exception as e:
+                logger.warning(f"[CONTEXT AWARE] Message generator not available: {e}")
 
     async def _speak_message(self, message: str, priority: str = "normal"):
         """Speak a message immediately using JARVIS voice through WebSocket and macOS say"""

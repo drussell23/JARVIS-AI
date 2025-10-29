@@ -111,11 +111,22 @@ class IntelligentVoiceUnlockService:
     async def _initialize_speaker_recognition(self):
         """Initialize Speaker Recognition Engine"""
         try:
+            # Try new SpeakerVerificationService first
+            try:
+                from voice.speaker_verification_service import get_speaker_verification_service
+
+                self.speaker_engine = await get_speaker_verification_service()
+                logger.info("✅ Speaker Verification Service connected (new)")
+                return
+            except ImportError:
+                logger.debug("New speaker verification service not available, trying legacy")
+
+            # Fallback to legacy speaker recognition
             from voice.speaker_recognition import get_speaker_recognition_engine
 
             self.speaker_engine = get_speaker_recognition_engine()
             await self.speaker_engine.initialize()
-            logger.info("✅ Speaker Recognition Engine connected")
+            logger.info("✅ Speaker Recognition Engine connected (legacy)")
         except Exception as e:
             logger.error(f"Failed to initialize Speaker Recognition: {e}")
             self.speaker_engine = None
@@ -439,6 +450,12 @@ class IntelligentVoiceUnlockService:
             return None, 0.0
 
         try:
+            # New SpeakerVerificationService
+            if hasattr(self.speaker_engine, "verify_speaker"):
+                result = await self.speaker_engine.verify_speaker(audio_data)
+                return result.get("speaker_name"), result.get("confidence", 0.0)
+
+            # Legacy speaker recognition
             speaker_name, confidence = await self.speaker_engine.identify_speaker(audio_data)
             return speaker_name, confidence
         except Exception as e:
@@ -451,7 +468,12 @@ class IntelligentVoiceUnlockService:
             return 0.0
 
         try:
-            # Re-verify to get confidence
+            # New SpeakerVerificationService
+            if hasattr(self.speaker_engine, "get_speaker_name"):
+                result = await self.speaker_engine.verify_speaker(audio_data, speaker_name)
+                return result.get("confidence", 0.0)
+
+            # Legacy: Re-verify to get confidence
             is_match, confidence = await self.speaker_engine.verify_speaker(
                 audio_data, speaker_name
             )
@@ -471,7 +493,17 @@ class IntelligentVoiceUnlockService:
                 return speaker_name == self.owner_profile.get("speaker_name")
             return False
 
-        return self.speaker_engine.is_owner(speaker_name)
+        # New SpeakerVerificationService - check is_owner from profiles
+        if hasattr(self.speaker_engine, "speaker_profiles"):
+            profile = self.speaker_engine.speaker_profiles.get(speaker_name)
+            if profile:
+                return profile.get("is_primary_user", False)
+
+        # Legacy: use is_owner method
+        if hasattr(self.speaker_engine, "is_owner"):
+            return self.speaker_engine.is_owner(speaker_name)
+
+        return False
 
     async def _verify_speaker_identity(
         self, audio_data: bytes, speaker_name: str
@@ -481,7 +513,19 @@ class IntelligentVoiceUnlockService:
             return False, 0.0
 
         try:
-            # Use verify_speaker with high threshold (0.85)
+            # New SpeakerVerificationService - returns dict
+            if hasattr(self.speaker_engine, "get_speaker_name"):
+                result = await self.speaker_engine.verify_speaker(audio_data, speaker_name)
+                is_verified = result.get("verified", False)
+                confidence = result.get("confidence", 0.0)
+
+                # High threshold check (0.85) for unlock
+                if confidence < 0.85:
+                    is_verified = False
+
+                return is_verified, confidence
+
+            # Legacy: Use verify_speaker with high threshold (0.85)
             is_verified, confidence = await self.speaker_engine.verify_speaker(
                 audio_data, speaker_name
             )
