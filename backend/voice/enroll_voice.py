@@ -20,7 +20,7 @@ import soundfile as sf
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from intelligence.learning_database import LearningDatabase
+from intelligence.learning_database import JARVISLearningDatabase
 from voice.engines.speechbrain_engine import SpeechBrainEngine
 from voice.stt_config import ModelConfig, STTEngine
 
@@ -46,7 +46,7 @@ class VoiceEnrollment:
         logger.info("🚀 Initializing JARVIS Voice Enrollment System...")
 
         # Initialize learning database
-        self.learning_db = LearningDatabase()
+        self.learning_db = JARVISLearningDatabase()
         await self.learning_db.initialize()
 
         # Initialize SpeechBrain engine for speaker embeddings

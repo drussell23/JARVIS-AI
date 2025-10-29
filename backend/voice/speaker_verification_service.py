@@ -13,7 +13,7 @@ import logging
 from typing import Optional
 
 import numpy as np
-from intelligence.learning_database import LearningDatabase
+from intelligence.learning_database import JARVISLearningDatabase
 from voice.engines.speechbrain_engine import SpeechBrainEngine
 from voice.stt_config import ModelConfig, STTEngine
 
@@ -27,7 +27,7 @@ class SpeakerVerificationService:
     Verifies speaker identity using voice biometrics
     """
 
-    def __init__(self, learning_db: Optional[LearningDatabase] = None):
+    def __init__(self, learning_db: Optional[JARVISLearningDatabase] = None):
         """
         Initialize speaker verification service
 
@@ -49,7 +49,7 @@ class SpeakerVerificationService:
 
         # Initialize learning database if not provided
         if self.learning_db is None:
-            self.learning_db = LearningDatabase()
+            self.learning_db = JARVISLearningDatabase()
             await self.learning_db.initialize()
 
         # Initialize SpeechBrain engine for embeddings
@@ -240,7 +240,7 @@ _speaker_verification_service: Optional[SpeakerVerificationService] = None
 
 
 async def get_speaker_verification_service(
-    learning_db: Optional[LearningDatabase] = None,
+    learning_db: Optional[JARVISLearningDatabase] = None,
 ) -> SpeakerVerificationService:
     """
     Get global speaker verification service instance
