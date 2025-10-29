@@ -19,6 +19,9 @@ from voice.stt_config import ModelConfig, STTEngine
 
 logger = logging.getLogger(__name__)
 
+# Global instance for pre-loaded service (set by start_system.py)
+_global_speaker_service = None
+
 
 class SpeakerVerificationService:
     """
@@ -245,15 +248,26 @@ async def get_speaker_verification_service(
     """
     Get global speaker verification service instance
 
+    First checks for pre-loaded service from start_system.py,
+    then falls back to creating new instance if needed.
+
     Args:
         learning_db: LearningDatabase instance (optional)
 
     Returns:
         SpeakerVerificationService instance
     """
-    global _speaker_verification_service
+    global _speaker_verification_service, _global_speaker_service
 
+    # First check if there's a pre-loaded service from start_system.py
+    if _global_speaker_service is not None:
+        logger.info("✅ Using pre-loaded speaker verification service")
+        _speaker_verification_service = _global_speaker_service
+        return _global_speaker_service
+
+    # Otherwise use the singleton pattern
     if _speaker_verification_service is None:
+        logger.info("🔐 Creating new speaker verification service...")
         _speaker_verification_service = SpeakerVerificationService(learning_db)
         await _speaker_verification_service.initialize()
 

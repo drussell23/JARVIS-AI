@@ -701,34 +701,53 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
         logger.warning("⚠️ No audio data for voice verification - using default owner")
         context["verified_speaker_name"] = "Derek"
 
-    # Step 2: Retrieve password from keychain
-    result = subprocess.run(
-        [
-            "security",
-            "find-generic-password",
-            "-s",
-            "com.jarvis.voiceunlock",
-            "-a",
-            "unlock_token",
-            "-w",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    # Step 2: Use enhanced Keychain integration for actual unlock
+    try:
+        from macos_keychain_unlock import MacOSKeychainUnlock
 
-    if result.returncode == 0:
-        password = result.stdout.strip()
+        unlock_service = MacOSKeychainUnlock()
+        verified_speaker = context.get("verified_speaker_name", "Derek")
 
-        # Step 3: Perform unlock
-        unlock_result = await _perform_direct_unlock(password)
+        # Perform actual screen unlock with Keychain password
+        unlock_result = await unlock_service.unlock_screen(verified_speaker=verified_speaker)
 
-        if unlock_result:
-            logger.info(f"🔓 Screen unlocked successfully by {speaker_name or 'verified user'}")
-            return True, f"Screen unlocked by {speaker_name or 'verified user'}"
+        if unlock_result["success"]:
+            logger.info(f"🔓 Screen unlocked successfully for {verified_speaker}")
+            return True, f"Screen unlocked for {verified_speaker}"
         else:
-            return False, "Keychain unlock failed - unable to unlock screen"
+            # Check if setup is required
+            if unlock_result.get("action") == "setup_required":
+                logger.warning("⚠️ Keychain password not configured")
+                return False, "Screen unlock password not configured. Please run setup."
+            else:
+                logger.error(f"❌ Unlock failed: {unlock_result['message']}")
+                return False, unlock_result["message"]
 
-    return False, "Password not found in keychain"
+    except ImportError:
+        logger.error("MacOS Keychain integration not available")
+        # Fallback to old method
+        result = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                "com.jarvis.voiceunlock",
+                "-a",
+                "unlock_token",
+                "-w",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            password = result.stdout.strip()
+            unlock_result = await _perform_direct_unlock(password)
+
+            if unlock_result:
+                return True, f"Screen unlocked by {speaker_name or 'verified user'}"
+
+        return False, "Password not found in keychain"
 
 
 async def _try_manual_unlock_fallback(context: Dict[str, Any]) -> Tuple[bool, str]:

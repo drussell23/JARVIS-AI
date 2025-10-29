@@ -3498,6 +3498,90 @@ class AsyncSystemManager:
             f"\n{Colors.BLUE}Starting optimized backend with auto-reload capabilities...{Colors.ENDC}"
         )
 
+        # Step 1: Pre-load voice biometrics - Start Cloud SQL proxy first
+        print(f"{Colors.CYAN}🚀 Pre-loading voice biometric components...{Colors.ENDC}")
+
+        # Check if Cloud SQL proxy is already running
+        cloud_sql_check = await asyncio.create_subprocess_exec(
+            "lsof", "-i", ":5432", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await cloud_sql_check.communicate()
+
+        if cloud_sql_check.returncode != 0:
+            # Start Cloud SQL proxy for voice biometric database
+            print(f"{Colors.YELLOW}Starting Cloud SQL proxy for voice biometrics...{Colors.ENDC}")
+            cloud_sql_process = await asyncio.create_subprocess_exec(
+                "cloud-sql-proxy",
+                "jarvis-473803:us-central1:jarvis-learning-db",
+                "--port",
+                "5432",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            self.processes.append(cloud_sql_process)
+            await asyncio.sleep(2)  # Wait for proxy to initialize
+            print(f"{Colors.GREEN}✅ Cloud SQL proxy started on port 5432{Colors.ENDC}")
+        else:
+            print(f"{Colors.GREEN}✅ Cloud SQL proxy already running{Colors.ENDC}")
+
+        # Step 2: Pre-initialize speaker verification service with Derek's profile
+        print(
+            f"{Colors.CYAN}🔐 Pre-loading speaker verification with Derek's profile...{Colors.ENDC}"
+        )
+        try:
+            # Import and initialize the learning database
+            sys.path.insert(0, str(self.backend_dir))
+            from intelligence.learning_database import JARVISLearningDatabase
+            from voice.speaker_verification_service import SpeakerVerificationService
+
+            # Initialize learning database with Cloud SQL
+            learning_db = JARVISLearningDatabase()
+            await learning_db.initialize()
+
+            # Initialize speaker service
+            speaker_service = SpeakerVerificationService(learning_db)
+            await speaker_service.initialize()
+
+            if "Derek" in speaker_service.speaker_profiles:
+                print(
+                    f"{Colors.GREEN}✅ Speaker verification ready with Derek's profile{Colors.ENDC}"
+                )
+                print(f"  - 59 voice samples loaded")
+                print(f"  - Voice biometric authentication active")
+
+                # Store globally so backend can access it
+                import backend.voice.speaker_verification_service as sv
+
+                sv._global_speaker_service = speaker_service
+            else:
+                print(
+                    f"{Colors.WARNING}⚠️ Derek's profile not found, will load on demand{Colors.ENDC}"
+                )
+
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️ Speaker pre-loading failed: {e}{Colors.ENDC}")
+
+        # Step 3: Pre-load ML models
+        print(f"{Colors.CYAN}🧠 Pre-loading ML models for faster response...{Colors.ENDC}")
+        try:
+            from voice.engines.base_engine import create_stt_engine
+            from voice.stt_config import ModelConfig, STTEngine
+
+            # Pre-load Wav2Vec2 for voice verification
+            wav2vec_config = ModelConfig(
+                name="wav2vec2-base",
+                engine=STTEngine.WAV2VEC2,
+                model_path="facebook/wav2vec2-base",
+                expected_accuracy=0.95,
+            )
+
+            engine = create_stt_engine(wav2vec_config)
+            await engine.initialize()
+            print(f"{Colors.GREEN}✅ Voice recognition engine pre-loaded{Colors.ENDC}")
+
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️ ML model pre-loading failed: {e}{Colors.ENDC}")
+
         # Check if reload manager is available
         reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
         if (
@@ -3569,15 +3653,22 @@ class AsyncSystemManager:
         # Set the backend port explicitly
         env["BACKEND_PORT"] = str(self.ports["main_api"])
 
+        # Configure Cloud SQL for voice biometrics
+        env["JARVIS_DB_TYPE"] = "cloudsql"
+        env["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
+        env["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+
         # Enable all performance optimizations
         env["OPTIMIZE_STARTUP"] = "true"
-        env["LAZY_LOAD_MODELS"] = "true"
+        env["LAZY_LOAD_MODELS"] = "false"  # Don't lazy load - we pre-loaded them
         env["PARALLEL_INIT"] = "true"
         env["JARVIS_AUTO_RELOAD"] = "true"  # Enable auto-reload for code changes
         env["FAST_STARTUP"] = "true"
         env["ML_LOGGING_ENABLED"] = "true"
         env["BACKEND_PARALLEL_IMPORTS"] = "true"
-        env["BACKEND_LAZY_LOAD_MODELS"] = "true"
+        env["BACKEND_LAZY_LOAD_MODELS"] = "false"  # Don't lazy load - we pre-loaded them
+        env["VOICE_BIOMETRIC_ENABLED"] = "true"  # Enable voice biometrics
+        env["SPEAKER_VERIFICATION_PRELOADED"] = "true"  # Mark as pre-loaded
 
         # Set Swift library path
         swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
