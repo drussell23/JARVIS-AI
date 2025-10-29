@@ -3682,11 +3682,22 @@ class UnifiedCommandProcessor:
             if hasattr(self, "_app") and self._app:
                 if hasattr(self._app.state, "display_monitor"):
                     monitor = self._app.state.display_monitor
+                    logger.info(f"[DISPLAY-ACTION] Got monitor from app.state: {monitor}")
 
             if monitor is None:
                 from display import get_display_monitor
 
                 monitor = get_display_monitor()
+                logger.info(f"[DISPLAY-ACTION] Got monitor from get_display_monitor(): {monitor}")
+
+            if monitor is None:
+                logger.error(
+                    "[DISPLAY-ACTION] ❌ CRITICAL: Display monitor is None! Cannot execute connection."
+                )
+                return {
+                    "success": False,
+                    "response": "Display monitor not initialized. Please restart JARVIS.",
+                }
 
             # Route based on action type
             if display_ref.action == ActionType.CONNECT:
@@ -3989,11 +4000,16 @@ class UnifiedCommandProcessor:
 
         # NEW: Try display reference handler first for intelligent voice command resolution
         display_ref = None
+        logger.info(
+            f"[DISPLAY] display_reference_handler exists: {self.display_reference_handler is not None}"
+        )
         if self.display_reference_handler:
+            logger.info("[DISPLAY] Using display_reference_handler to resolve command")
             try:
                 display_ref = await self.display_reference_handler.handle_voice_command(
                     command_text
                 )
+                logger.info(f"[DISPLAY] display_ref returned: {display_ref}")
 
                 if display_ref:
                     logger.info(
