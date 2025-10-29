@@ -6216,7 +6216,7 @@ async def main():
             try:
                 gcp_project = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
 
-                # List all jarvis-auto-* VMs
+                # List all jarvis-auto-* and jarvis-backend-* VMs (both old and new naming)
                 list_cmd = [
                     "gcloud",
                     "compute",
@@ -6225,7 +6225,7 @@ async def main():
                     "--project",
                     gcp_project,
                     "--filter",
-                    "name:jarvis-auto-*",
+                    "name:jarvis-auto-* OR name:jarvis-backend-*",
                     "--format",
                     "value(name,zone)",
                 ]
