@@ -118,10 +118,10 @@ class AudioQualityAnalyzer:
         self.sample_rate = sample_rate
         self.min_snr_db = 10.0
         self.max_clipping_ratio = 0.02
-        self.min_rms_level = 0.01
+        self.min_rms_level = 0.005
         self.max_rms_level = 0.95
         self.min_vad_ratio = 0.20
-        self.min_quality_score = 0.60
+        self.min_quality_score = 0.50
 
     async def analyze_quality(
         self, audio_data: np.ndarray, verbose: bool = True
@@ -269,7 +269,7 @@ class AudioQualityAnalyzer:
         return float(noise_level)
 
     def _calculate_vad_ratio(
-        self, audio_data: np.ndarray, threshold: float = 0.02
+        self, audio_data: np.ndarray, threshold: float = 0.0001
     ) -> Tuple[float, float]:
         """Calculate voice activity detection ratio"""
         frame_size = int(self.sample_rate * 0.03)  # 30ms frames
