@@ -5384,109 +5384,144 @@ Total: ~8s warmup → 🎉 JARVIS READY
 
 ---
 
-### 🎤 Voice Biometrics & AI/ML Learning System
+### 🎤 Voice Enrollment & Biometric Screen Unlock
 
-JARVIS v17.3+ implements a **unified voice capture system** with **intelligent cost-aware routing** between local (free) and cloud (powerful) AI/ML models for **continuous speaker learning** and **voice-authenticated security**.
+JARVIS v17.4+ implements **real speaker verification** using **SpeechBrain ECAPA-TDNN embeddings** for **voice-authenticated macOS screen unlock** with **Cloud SQL voiceprint storage**.
 
-**Key Features:**
+**System Architecture:**
 ```
-✅ Unified Voice Capture: Browser SpeechRecognition + MediaRecorder simultaneously
-✅ Intelligent Routing: Cost-aware selection between local/cloud models
-✅ Continuous Learning: Every command improves speaker recognition (85% → 98%)
-✅ Budget Protection: Auto-shutdown & daily limits prevent runaway costs
-✅ Owner Detection: Derek J. Russell identified automatically for secure unlock
-✅ Multi-Model Support: Resemblyzer (local), PyAnnote (local), SpeechBrain (cloud)
-```
-
-**AI/ML Models Used:**
-
-| Model | Location | RAM | Accuracy | Latency | Cost | Use Case |
-|-------|----------|-----|----------|---------|------|----------|
-| **Resemblyzer** | Local | 100MB | 85-90% | 50-100ms | **FREE** | Regular commands |
-| **PyAnnote** | Local | 500MB | 88-92% | 100-200ms | **FREE** | Standard verify |
-| **SpeechBrain** | Cloud (GCP) | 2GB | **95-98%** | 200-400ms | $0.005 | Screen unlock, security |
-
-**Why SpeechBrain (Not YOLO/LLaMA)?**
-- **YOLO**: Computer vision (images) ❌ Can't process audio
-- **LLaMA**: Text generation ❌ Can't extract voice features
-- **SpeechBrain**: Speaker recognition ✅ **Designed for voice biometrics**
-  - ECAPA-TDNN architecture (state-of-the-art)
-  - 512-dimensional voice embeddings
-  - Trained on 7,000+ speakers (VoxCeleb dataset)
-  - 95-98% speaker identification accuracy
-
-**Cost Optimization:**
-```
-Daily Budget: $2.40/day limit (auto-shutdown + budget protection)
-
-Typical Usage:
-  • Regular commands (460/day): Resemblyzer → FREE
-  • Unlock commands (20/day): SpeechBrain → $0.10/day
-  • Total daily cost: $0.10/day ($3/month)
-
-Without Intelligent Routing:
-  • All commands via cloud: $2.40/day ($72/month)
-  • Savings: $69/month (96% cost reduction!)
-
-Auto-Shutdown:
-  • GCP VM sleeps after 5min idle → $0/hour when idle
-  • Auto-wake on next high-security command
-  • Additional ~20s boot latency (acceptable for security)
+✅ Real Voice Enrollment: 25+ audio samples → 192-dim ECAPA-TDNN embeddings
+✅ Cloud SQL Storage: Voiceprints stored in PostgreSQL (Cloud SQL) for persistence
+✅ Speaker Verification: Real-time voice identity verification (85%+ confidence)
+✅ macOS Integration: Screen lock detection + keychain password retrieval
+✅ Primary User Detection: Automatic owner identification for security
+✅ Audit Trail: Learning database tracks all unlock attempts with confidence scores
 ```
 
-**Continuous Learning:**
-```
-Voice Sample Collection:
-  Every command → Extract embedding → Store in learning_database.py
+**Voice Enrollment Process:**
+```bash
+# Enroll new speaker (one-time setup)
+python backend/voice/enroll_voice.py --speaker "Derek J. Russell" --samples 25
 
-Profile Improvement:
-  Sample 1: 75% confidence (baseline)
-  Sample 10: 88% confidence (+13%)
-  Sample 25: 94% confidence (+6%)
-  Sample 50: 97% confidence (+3%)
-  Sample 100: 98% confidence (+1%, plateaus)
-
-Learning Database Storage:
-  • speaker_profiles: Embeddings, confidence, is_primary_user
-  • voice_samples: Audio data, duration, quality score
-  • acoustic_adaptations: Phoneme patterns for personalization
+# What happens:
+1. Records 25 audio samples (each 3-5 seconds)
+2. Extracts 192-dimensional ECAPA-TDNN embeddings using SpeechBrain
+3. Stores voiceprint in Cloud SQL PostgreSQL (speaker_profiles table)
+4. Marks speaker as primary_user (owner) for unlock authorization
+5. Calculates recognition confidence score
 ```
 
-**Real-World Flow:**
+**AI/ML Model: SpeechBrain ECAPA-TDNN**
+
+| Feature | Details |
+|---------|---------|
+| **Architecture** | ECAPA-TDNN (Emphasized Channel Attention, Propagation and Aggregation) |
+| **Embedding Dimensions** | 192 (compact yet accurate) |
+| **Training Dataset** | VoxCeleb (7,000+ speakers, 2,000+ hours) |
+| **Accuracy** | 95-98% speaker identification |
+| **Latency** | 200-400ms per verification |
+| **Storage** | Cloud SQL PostgreSQL (persistent, shared across devices) |
+
+**Why SpeechBrain ECAPA-TDNN?**
+- **State-of-the-art**: Best-in-class speaker recognition architecture
+- **Robust**: Works across different microphones, environments, and speaking styles
+- **Efficient**: 192 dimensions (vs 512 in older models) = faster comparison
+- **Pre-trained**: VoxCeleb dataset ensures generalization to new speakers
+- **Research-backed**: Published in INTERSPEECH 2020, widely cited
+
+**Voice-Authenticated Screen Unlock Flow:**
 ```
 User: "Hey JARVIS, unlock my screen"
        ↓
-1. Frontend: Browser captures audio + text simultaneously
-   - SpeechRecognition: "unlock my screen" (instant feedback)
-   - MediaRecorder: 2.3s audio data (voice biometrics)
+1. Context-Aware Handler: Detects screen lock state
+   - Checks is_screen_locked() via Obj-C daemon
+   - Command type: "unlock screen" → Triggers voice unlock flow
        ↓
-2. Backend: Intelligent Router analyzes command
-   - Type: Screen unlock → CRITICAL verification level
-   - Budget: $0.08/$2.40 available ✅
-   - Decision: Use SpeechBrain (highest accuracy)
+2. Voice Unlock Integration: Verify speaker identity
+   - Extract 192-dim ECAPA-TDNN embedding from audio
+   - Compare to Derek's voiceprint in Cloud SQL
+   - Cosine similarity: 0.924 → 92.4% confidence ✅
+   - Threshold check: 92.4% >= 85.0% unlock threshold ✅
        ↓
-3. SpeechBrain (GCP): Extract 512-dim voice embedding
-   - Compare to Derek's profile (stored in learning DB)
-   - Similarity: 96.7% → Owner verified ✅
-   - Latency: 287ms | Cost: $0.005
+3. Keychain Service: Retrieve unlock password
+   - Service: "com.jarvis.voiceunlock"
+   - Account: "unlock_password"
+   - Password retrieved securely from macOS Keychain
        ↓
-4. Learning Database: Update profile
-   - Save new embedding (incremental averaging)
-   - sample_count: 42 → 43
-   - confidence: 96.1% → 96.3% (improved!)
+4. Execute Unlock: AppleScript automation
+   - Wake display via caffeinate
+   - Type password into loginwindow
+   - Press return key
+   - Verify screen unlocked successfully
        ↓
-5. Auto-Shutdown: Start 5-minute idle timer
-   - If idle → GCP VM sleeps (saves money)
+5. Learning Database: Record unlock attempt
+   - Store: speaker_name, confidence, success, timestamp
+   - Update stats: total_attempts, successful_unlocks, success_rate
+   - Audit trail for security monitoring
        ↓
-Result: "Good to see you, Derek. Unlocking now."
+Result: ✅ "Screen unlocked. Welcome, Derek J. Russell!"
 ```
 
-**Documentation:**
-- 📚 **[Complete Voice Biometrics Guide](./docs/VOICE_BIOMETRICS_SYSTEM.md)** - Architecture, models, cost analysis, troubleshooting
-- 🎭 [Speaker Recognition Engine](./backend/voice/speaker_recognition.py) - Voice identification
-- 🧠 [Intelligent Voice Router](./backend/voice/intelligent_voice_router.py) - Cost-aware model selection
-- 💾 [Learning Database](./backend/intelligence/learning_database.py) - Voice profile storage
-- 🔐 [Voice Unlock Integration](./backend/voice_unlock/README.md) - Security integration
+**Security Features:**
+```
+Confidence Thresholds:
+  • General identification: 75% (recognize speaker for personalization)
+  • Screen unlock: 85% (higher security for authentication)
+
+Primary User Detection:
+  • is_primary_user flag in speaker_profiles table
+  • Only primary users authorized to unlock screen
+  • Guest speakers recognized but cannot unlock
+
+Audit Trail:
+  • All unlock attempts logged in learning_database
+  • Records: timestamp, speaker, confidence, success/failure
+  • Failed attempts tracked: low confidence, wrong speaker
+  • Statistics: success_rate, rejection_rate, confidence trends
+
+Keychain Integration:
+  • Unlock password stored in macOS Keychain (secure enclave)
+  • Never hardcoded in code or environment variables
+  • Retrieved only when voice verification succeeds
+```
+
+**Database Schema (Cloud SQL PostgreSQL):**
+```sql
+-- Speaker profiles with voiceprints
+CREATE TABLE speaker_profiles (
+    speaker_id SERIAL PRIMARY KEY,
+    speaker_name TEXT NOT NULL,
+    voiceprint_embedding BYTEA,  -- 192-dim ECAPA-TDNN embedding
+    total_samples INTEGER DEFAULT 0,
+    recognition_confidence REAL DEFAULT 0.0,
+    is_primary_user BOOLEAN DEFAULT FALSE,  -- Owner flag for unlock
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Voice samples for continuous learning
+CREATE TABLE voice_samples (
+    sample_id SERIAL PRIMARY KEY,
+    speaker_id INTEGER REFERENCES speaker_profiles(speaker_id),
+    audio_data BYTEA,  -- Raw audio for retraining
+    sample_duration REAL,
+    quality_score REAL,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Unlock attempt audit trail
+CREATE INDEX idx_speaker_profiles_name ON speaker_profiles(speaker_name);
+CREATE INDEX idx_voice_samples_speaker ON voice_samples(speaker_id);
+```
+
+**Key Components:**
+- 🎤 **[Voice Enrollment](./backend/voice/enroll_voice.py)** - Speaker registration with 25+ samples
+- 🔐 **[Speaker Verification](./backend/voice/speaker_verification.py)** - Real-time voice identity verification
+- 🔓 **[Voice Unlock Integration](./backend/voice/voice_unlock_integration.py)** - Screen unlock with voice auth
+- 🧠 **[Context-Aware Handler](./backend/context_intelligence/handlers/context_aware_handler.py)** - Detects lock state and triggers unlock
+- 🔑 **[Keychain Service](./backend/voice_unlock/services/keychain_service.py)** - Secure password retrieval
+- 📊 **[Learning Database](./backend/intelligence/learning_database.py)** - Voiceprint storage and audit trail
+- 🎙️ **[SpeechBrain Engine](./backend/voice/engines/speechbrain_engine.py)** - ECAPA-TDNN embedding extraction
 
 ---
 
