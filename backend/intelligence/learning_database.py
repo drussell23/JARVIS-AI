@@ -1191,16 +1191,41 @@ class JARVISLearningDatabase:
             self.db = await aiosqlite.connect(str(self.sqlite_path))
             self.db.row_factory = aiosqlite.Row
 
+        # Check if using Cloud SQL (PostgreSQL) or SQLite
+        is_cloud = isinstance(self.db, DatabaseConnectionWrapper) and self.db.is_cloud
+
+        # Helper function to generate auto-increment syntax
+        def auto_increment(column_name: str, col_type: str = "INTEGER") -> str:
+            """Generate auto-increment primary key syntax for current database"""
+            if is_cloud:
+                # PostgreSQL uses SERIAL or BIGSERIAL
+                serial_type = "BIGSERIAL" if col_type == "BIGINT" else "SERIAL"
+                return f"{column_name} {serial_type} PRIMARY KEY"
+            else:
+                # SQLite uses AUTOINCREMENT
+                return f"{column_name} {col_type} PRIMARY KEY AUTOINCREMENT"
+
+        # Helper function to generate boolean default syntax
+        def bool_default(value: int) -> str:
+            """Generate boolean default syntax for current database"""
+            if is_cloud:
+                # PostgreSQL uses TRUE/FALSE
+                return "TRUE" if value else "FALSE"
+            else:
+                # SQLite uses 1/0
+                return str(value)
+
         async with self.db.cursor() as cursor:
-            # Enable WAL mode for better concurrency
-            await cursor.execute("PRAGMA journal_mode=WAL")
-            await cursor.execute("PRAGMA synchronous=NORMAL")
-            await cursor.execute("PRAGMA cache_size=10000")
-            await cursor.execute("PRAGMA temp_store=MEMORY")
+            # Enable WAL mode for better concurrency (SQLite only)
+            if not is_cloud:
+                await cursor.execute("PRAGMA journal_mode=WAL")
+                await cursor.execute("PRAGMA synchronous=NORMAL")
+                await cursor.execute("PRAGMA cache_size=10000")
+                await cursor.execute("PRAGMA temp_store=MEMORY")
 
             # Goals table with enhanced tracking
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS goals (
                     goal_id TEXT PRIMARY KEY,
                     goal_type TEXT NOT NULL,
@@ -1208,7 +1233,7 @@ class JARVISLearningDatabase:
                     description TEXT,
                     confidence REAL,
                     progress REAL DEFAULT 0.0,
-                    is_completed BOOLEAN DEFAULT 0,
+                    is_completed BOOLEAN DEFAULT {bool_default(0)},
                     created_at TIMESTAMP,
                     completed_at TIMESTAMP,
                     predicted_duration REAL,
@@ -1245,7 +1270,7 @@ class JARVISLearningDatabase:
 
             # Enhanced patterns table with ML metadata
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS patterns (
                     pattern_id TEXT PRIMARY KEY,
                     pattern_type TEXT NOT NULL,
@@ -1258,7 +1283,7 @@ class JARVISLearningDatabase:
                     last_seen TIMESTAMP,
                     avg_execution_time REAL,
                     std_execution_time REAL,
-                    decay_applied BOOLEAN DEFAULT 0,
+                    decay_applied BOOLEAN DEFAULT {bool_default(0)},
                     boost_count INTEGER DEFAULT 0,
                     embedding_id TEXT,
                     metadata JSON
@@ -1286,9 +1311,9 @@ class JARVISLearningDatabase:
 
             # Goal-Action mappings with performance metrics
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS goal_action_mappings (
-                    mapping_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('mapping_id')},
                     goal_type TEXT NOT NULL,
                     action_type TEXT NOT NULL,
                     success_count INTEGER DEFAULT 0,
@@ -1305,9 +1330,9 @@ class JARVISLearningDatabase:
 
             # Display patterns with temporal analysis
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS display_patterns (
-                    pattern_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('pattern_id')},
                     display_name TEXT NOT NULL,
                     context JSON,
                     context_hash TEXT,
@@ -1315,7 +1340,7 @@ class JARVISLearningDatabase:
                     day_of_week INTEGER,
                     hour_of_day INTEGER,
                     frequency INTEGER DEFAULT 1,
-                    auto_connect BOOLEAN DEFAULT 0,
+                    auto_connect BOOLEAN DEFAULT {bool_default(0)},
                     last_seen TIMESTAMP,
                     consecutive_successes INTEGER DEFAULT 0,
                     metadata JSON
@@ -1325,9 +1350,9 @@ class JARVISLearningDatabase:
 
             # Learning metrics tracking
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS learning_metrics (
-                    metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('metric_id')},
                     metric_name TEXT NOT NULL,
                     metric_value REAL,
                     timestamp TIMESTAMP,
@@ -1338,9 +1363,9 @@ class JARVISLearningDatabase:
 
             # Pattern similarity cache
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS pattern_similarity_cache (
-                    cache_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('cache_id')},
                     pattern1_id TEXT NOT NULL,
                     pattern2_id TEXT NOT NULL,
                     similarity_score REAL,
@@ -1371,9 +1396,9 @@ class JARVISLearningDatabase:
 
             # Workspace/Space tracking (Yabai integration)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS workspace_usage (
-                    usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('usage_id')},
                     space_id INTEGER NOT NULL,
                     space_label TEXT,
                     app_name TEXT NOT NULL,
@@ -1383,7 +1408,7 @@ class JARVISLearningDatabase:
                     timestamp TIMESTAMP,
                     day_of_week INTEGER,
                     hour_of_day INTEGER,
-                    is_fullscreen BOOLEAN DEFAULT 0,
+                    is_fullscreen BOOLEAN DEFAULT {bool_default(0)},
                     metadata JSON
                 )
             """
@@ -1391,9 +1416,9 @@ class JARVISLearningDatabase:
 
             # App usage patterns (24/7 tracking)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS app_usage_patterns (
-                    pattern_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('pattern_id')},
                     app_name TEXT NOT NULL,
                     space_id INTEGER,
                     usage_frequency INTEGER DEFAULT 1,
@@ -1411,9 +1436,9 @@ class JARVISLearningDatabase:
 
             # User workflows (sequential action patterns)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS user_workflows (
-                    workflow_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('workflow_id')},
                     workflow_name TEXT,
                     action_sequence JSON NOT NULL,
                     space_sequence JSON,
@@ -1432,9 +1457,9 @@ class JARVISLearningDatabase:
 
             # Space transitions (movement between Spaces)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS space_transitions (
-                    transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('transition_id')},
                     from_space_id INTEGER NOT NULL,
                     to_space_id INTEGER NOT NULL,
                     trigger_app TEXT,
@@ -1451,9 +1476,9 @@ class JARVISLearningDatabase:
 
             # Behavioral patterns (high-level user habits)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS behavioral_patterns (
-                    behavior_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('behavior_id')},
                     behavior_type TEXT NOT NULL,
                     behavior_description TEXT,
                     pattern_data JSON NOT NULL,
@@ -1471,15 +1496,15 @@ class JARVISLearningDatabase:
 
             # Temporal patterns (time-based behaviors for leap years too!)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS temporal_patterns (
-                    temporal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('temporal_id')},
                     pattern_type TEXT NOT NULL,
                     time_of_day INTEGER,
                     day_of_week INTEGER,
                     day_of_month INTEGER,
                     month_of_year INTEGER,
-                    is_leap_year BOOLEAN DEFAULT 0,
+                    is_leap_year BOOLEAN DEFAULT {bool_default(0)},
                     action_type TEXT NOT NULL,
                     target TEXT,
                     frequency INTEGER DEFAULT 1,
@@ -1492,9 +1517,9 @@ class JARVISLearningDatabase:
 
             # Proactive suggestions (what JARVIS should suggest)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS proactive_suggestions (
-                    suggestion_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('suggestion_id')},
                     suggestion_type TEXT NOT NULL,
                     suggestion_text TEXT NOT NULL,
                     trigger_pattern_id TEXT,
@@ -1512,9 +1537,9 @@ class JARVISLearningDatabase:
 
             # Conversation history (ALL user-JARVIS interactions for learning)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS conversation_history (
-                    interaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('interaction_id')},
                     timestamp TIMESTAMP NOT NULL,
                     session_id TEXT,
                     user_query TEXT NOT NULL,
@@ -1522,10 +1547,10 @@ class JARVISLearningDatabase:
                     response_type TEXT,
                     confidence_score REAL,
                     execution_time_ms REAL,
-                    success BOOLEAN DEFAULT 1,
+                    success BOOLEAN DEFAULT {bool_default(1)},
                     user_feedback TEXT,
                     feedback_score INTEGER,
-                    was_corrected BOOLEAN DEFAULT 0,
+                    was_corrected BOOLEAN DEFAULT {bool_default(0)},
                     correction_text TEXT,
                     context_snapshot JSON,
                     active_apps JSON,
@@ -1570,16 +1595,16 @@ class JARVISLearningDatabase:
 
             # Learning from corrections (when user corrects JARVIS)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS interaction_corrections (
-                    correction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('correction_id')},
                     interaction_id INTEGER NOT NULL,
                     original_response TEXT NOT NULL,
                     corrected_response TEXT NOT NULL,
                     correction_type TEXT NOT NULL,
                     user_explanation TEXT,
                     applied_at TIMESTAMP NOT NULL,
-                    learned BOOLEAN DEFAULT 0,
+                    learned BOOLEAN DEFAULT {bool_default(0)},
                     pattern_extracted TEXT,
                     metadata JSON,
                     FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id)
@@ -1625,9 +1650,9 @@ class JARVISLearningDatabase:
 
             # Voice transcription accuracy tracking
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS voice_transcriptions (
-                    transcription_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('transcription_id')},
                     interaction_id INTEGER,
                     raw_audio_hash TEXT NOT NULL,
                     transcribed_text TEXT NOT NULL,
@@ -1638,7 +1663,7 @@ class JARVISLearningDatabase:
                     accent_detected TEXT,
                     background_noise_level REAL,
                     retry_count INTEGER DEFAULT 0,
-                    was_misheard BOOLEAN DEFAULT 0,
+                    was_misheard BOOLEAN DEFAULT {bool_default(0)},
                     transcription_engine TEXT DEFAULT 'browser_api',
                     audio_quality_score REAL,
                     timestamp TIMESTAMP NOT NULL,
@@ -1668,9 +1693,9 @@ class JARVISLearningDatabase:
 
             # Speaker/Voiceprint recognition (Derek J. Russell)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS speaker_profiles (
-                    speaker_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('speaker_id')},
                     speaker_name TEXT NOT NULL UNIQUE,
                     voiceprint_embedding BLOB,
                     total_samples INTEGER DEFAULT 0,
@@ -1681,7 +1706,7 @@ class JARVISLearningDatabase:
                     vocabulary_preferences JSON,
                     pronunciation_patterns JSON,
                     recognition_confidence REAL DEFAULT 0.0,
-                    is_primary_user BOOLEAN DEFAULT 0,
+                    is_primary_user BOOLEAN DEFAULT {bool_default(0)},
                     security_level TEXT DEFAULT 'standard',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1698,9 +1723,9 @@ class JARVISLearningDatabase:
 
             # Voice samples for speaker training (Derek's voice patterns)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS voice_samples (
-                    sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('sample_id')},
                     speaker_id INTEGER NOT NULL,
                     audio_hash TEXT NOT NULL,
                     audio_fingerprint BLOB,
@@ -1713,7 +1738,7 @@ class JARVISLearningDatabase:
                     recording_timestamp TIMESTAMP NOT NULL,
                     quality_score REAL,
                     background_noise REAL,
-                    used_for_training BOOLEAN DEFAULT 1,
+                    used_for_training BOOLEAN DEFAULT {bool_default(1)},
                     FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id)
                 )
             """
@@ -1733,9 +1758,9 @@ class JARVISLearningDatabase:
 
             # Acoustic adaptation (learning Derek's accent/pronunciation)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS acoustic_adaptations (
-                    adaptation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('adaptation_id')},
                     speaker_id INTEGER NOT NULL,
                     phoneme_pattern TEXT NOT NULL,
                     expected_pronunciation TEXT NOT NULL,
@@ -1759,9 +1784,9 @@ class JARVISLearningDatabase:
 
             # Misheard queries (for learning what went wrong)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS misheard_queries (
-                    misheard_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('misheard_id')},
                     transcription_id INTEGER NOT NULL,
                     what_jarvis_heard TEXT NOT NULL,
                     what_user_meant TEXT NOT NULL,
@@ -1791,9 +1816,9 @@ class JARVISLearningDatabase:
 
             # Retry patterns (when user has to repeat)
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS query_retries (
-                    retry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {auto_increment('retry_id')},
                     original_transcription_id INTEGER NOT NULL,
                     retry_transcription_id INTEGER NOT NULL,
                     retry_number INTEGER NOT NULL,
