@@ -2894,6 +2894,21 @@ class AsyncSystemManager:
                 f"   • {Colors.GREEN}✓ Monitoring:{Colors.ENDC} Real-time RAM tracking every {self.hybrid_coordinator.monitoring_interval}s"
             )
 
+        # GCP VM Auto-Creation Status
+        gcp_vm_enabled = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
+        if gcp_vm_enabled:
+            print(f"\n{Colors.BOLD}☁️  GCP SPOT VM AUTO-CREATION:{Colors.ENDC}")
+            print(f"   • {Colors.GREEN}✓ Status:{Colors.ENDC} Enabled (memory >85% triggers)")
+            print(f"   • {Colors.CYAN}✓ Machine:{Colors.ENDC} e2-highmem-4 (4 vCPU, 32GB RAM)")
+            print(f"   • {Colors.GREEN}✓ Cost:{Colors.ENDC} $0.029/hour (91% discount!)")
+            print(
+                f"   • {Colors.CYAN}✓ Budget:{Colors.ENDC} ${os.getenv('GCP_VM_DAILY_BUDGET', '5.0')}/day limit"
+            )
+            print(f"   • {Colors.GREEN}✓ Protection:{Colors.ENDC} Auto-terminate after 3 hours")
+            print(
+                f"   • {Colors.CYAN}💡 Check status:{Colors.ENDC} cd backend && python3 core/gcp_vm_status.py"
+            )
+
         # Check for Rust acceleration
         try:
             from backend.vision.rust_startup_integration import get_rust_status
@@ -4784,6 +4799,29 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 logger.warning(f"Hybrid coordinator cleanup failed: {e}")
         else:
             print(f"{Colors.CYAN}🌐 [1/6] Hybrid Cloud Intelligence not active{Colors.ENDC}")
+
+        # Show GCP VM cost summary
+        gcp_vm_enabled = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
+        if gcp_vm_enabled:
+            try:
+                print(f"\n{Colors.CYAN}💰 [1.5/6] GCP VM Cost Summary...{Colors.ENDC}")
+                sys.path.insert(0, str(Path(__file__).parent / "backend"))
+                from core.gcp_vm_status import show_vm_status
+
+                # Show brief VM status without full details
+                result = await show_vm_status(verbose=False)
+                if result.get("vms"):
+                    print(
+                        f"   ├─ {Colors.YELLOW}⚠️  Active VMs will be terminated by backend{Colors.ENDC}"
+                    )
+                    print(
+                        f"   └─ {Colors.CYAN}ℹ️  Check backend logs for termination costs{Colors.ENDC}"
+                    )
+                else:
+                    print(f"   └─ {Colors.GREEN}✓ No active VMs (no costs){Colors.ENDC}")
+            except Exception as e:
+                print(f"   └─ {Colors.YELLOW}⚠️  Could not retrieve VM status: {e}{Colors.ENDC}")
+                logger.debug(f"GCP VM status check failed: {e}")
 
         # Close all open file handles first
         print(f"\n{Colors.CYAN}📁 [2/6] Closing file handles...{Colors.ENDC}")
