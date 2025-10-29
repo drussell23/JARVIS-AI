@@ -843,9 +843,18 @@ class UnifiedWebSocketManager:
                 # Process through async pipeline for non-blocking execution
                 websocket = self.connections.get(client_id)
 
+                # Debug: Log audio data from frontend
+                audio_data_received = message.get("audio_data")
+                if audio_data_received:
+                    logger.info(
+                        f"[WS] Received audio data from frontend: {len(audio_data_received)} bytes"
+                    )
+                else:
+                    logger.warning("[WS] No audio data in message from frontend")
+
                 result = await self.pipeline.process_async(
                     text=message.get("text", message.get("command", "")),
-                    audio_data=message.get("audio_data"),
+                    audio_data=audio_data_received,
                     speaker_name=message.get("speaker_name"),
                     metadata={
                         "message": message,
