@@ -226,7 +226,7 @@ class AudioPreprocessor:
 
     @staticmethod
     def apply_bandpass_filter(
-        audio: torch.Tensor, lowcut: float = 80.0, highcut: float = 8000.0
+        audio: torch.Tensor, lowcut: float = 80.0, highcut: float = 7500.0
     ) -> torch.Tensor:
         """
         Apply bandpass filter to focus on speech frequencies
@@ -243,6 +243,11 @@ class AudioPreprocessor:
         nyquist = 16000 / 2
         low = lowcut / nyquist
         high = highcut / nyquist
+
+        # Ensure frequencies are valid (must be 0 < Wn < 1)
+        low = max(0.001, min(low, 0.99))
+        high = max(low + 0.01, min(high, 0.99))
+
         b, a = butter(4, [low, high], btype="band")
 
         # Apply filter (forward and backward for zero phase)
@@ -696,16 +701,16 @@ class SpeechBrainEngine(BaseSTTEngine):
         try:
             # 1. Bandpass filter (focus on speech frequencies)
             audio_tensor = self.preprocessor.apply_bandpass_filter(
-                audio_tensor, lowcut=80.0, highcut=8000.0
+                audio_tensor, lowcut=80.0, highcut=7500.0
             )
 
             # 2. Voice activity detection and trimming
             audio_tensor, vad_ratio = self.preprocessor.voice_activity_detection(
-                audio_tensor, threshold=0.02
+                audio_tensor, threshold=0.0001
             )
 
             # Skip further processing if no voice detected
-            if vad_ratio < 0.1:
+            if vad_ratio < 0.05:
                 logger.debug(f"Low VAD ratio: {vad_ratio:.2%}, skipping noise reduction")
                 return audio_tensor
 
