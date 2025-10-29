@@ -1215,6 +1215,16 @@ class JARVISLearningDatabase:
                 # SQLite uses 1/0
                 return str(value)
 
+        # Helper function to generate binary data type
+        def blob_type() -> str:
+            """Generate binary data type for current database"""
+            if is_cloud:
+                # PostgreSQL uses BYTEA
+                return "BYTEA"
+            else:
+                # SQLite uses BLOB
+                return "BLOB"
+
         async with self.db.cursor() as cursor:
             # Enable WAL mode for better concurrency (SQLite only)
             if not is_cloud:
@@ -1377,11 +1387,11 @@ class JARVISLearningDatabase:
 
             # Context embeddings metadata
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS context_embeddings (
                     embedding_id TEXT PRIMARY KEY,
                     context_hash TEXT UNIQUE,
-                    embedding_vector BLOB,
+                    embedding_vector {blob_type()},
                     dimension INTEGER,
                     created_at TIMESTAMP,
                     access_count INTEGER DEFAULT 0,
@@ -1627,13 +1637,13 @@ class JARVISLearningDatabase:
 
             # Semantic embeddings for conversation search
             await cursor.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS conversation_embeddings (
                     embedding_id TEXT PRIMARY KEY,
                     interaction_id INTEGER NOT NULL,
-                    query_embedding BLOB,
-                    response_embedding BLOB,
-                    combined_embedding BLOB,
+                    query_embedding {blob_type()},
+                    response_embedding {blob_type()},
+                    combined_embedding {blob_type()},
                     embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id)
@@ -1697,7 +1707,7 @@ class JARVISLearningDatabase:
                 CREATE TABLE IF NOT EXISTS speaker_profiles (
                     {auto_increment('speaker_id')},
                     speaker_name TEXT NOT NULL UNIQUE,
-                    voiceprint_embedding BLOB,
+                    voiceprint_embedding {blob_type()},
                     total_samples INTEGER DEFAULT 0,
                     average_pitch_hz REAL,
                     speech_rate_wpm REAL,
@@ -1728,8 +1738,8 @@ class JARVISLearningDatabase:
                     {auto_increment('sample_id')},
                     speaker_id INTEGER NOT NULL,
                     audio_hash TEXT NOT NULL,
-                    audio_fingerprint BLOB,
-                    mfcc_features BLOB,
+                    audio_fingerprint {blob_type()},
+                    mfcc_features {blob_type()},
                     duration_ms REAL NOT NULL,
                     transcription TEXT,
                     pitch_mean REAL,
@@ -3262,34 +3272,64 @@ class JARVISLearningDatabase:
         """Get comprehensive real-time learning metrics"""
         metrics = {}
 
+        # Check if using Cloud SQL (PostgreSQL) or SQLite
+        is_cloud = isinstance(self.db, DatabaseConnectionWrapper) and self.db.is_cloud
+
         async with self.db.cursor() as cursor:
             # Goal metrics
-            await cursor.execute(
+            if is_cloud:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_goals,
+                        AVG(confidence) as avg_confidence,
+                        SUM(CASE WHEN is_completed THEN 1 ELSE 0 END) as completed_goals,
+                        AVG(actual_duration) as avg_duration
+                    FROM goals
+                    WHERE created_at >= NOW() - INTERVAL '30 days'
                 """
-                SELECT
-                    COUNT(*) as total_goals,
-                    AVG(confidence) as avg_confidence,
-                    SUM(is_completed) as completed_goals,
-                    AVG(actual_duration) as avg_duration
-                FROM goals
-                WHERE created_at >= datetime('now', '-30 days')
-            """
-            )
+                )
+            else:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_goals,
+                        AVG(confidence) as avg_confidence,
+                        SUM(is_completed) as completed_goals,
+                        AVG(actual_duration) as avg_duration
+                    FROM goals
+                    WHERE created_at >= datetime('now', '-30 days')
+                """
+                )
             metrics["goals"] = dict(await cursor.fetchone())
 
             # Action metrics
-            await cursor.execute(
+            if is_cloud:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_actions,
+                        AVG(confidence) as avg_confidence,
+                        SUM(CASE WHEN success THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
+                        AVG(execution_time) as avg_execution_time,
+                        AVG(retry_count) as avg_retries
+                    FROM actions
+                    WHERE timestamp >= NOW() - INTERVAL '30 days'
                 """
-                SELECT
-                    COUNT(*) as total_actions,
-                    AVG(confidence) as avg_confidence,
-                    SUM(success) * 100.0 / COUNT(*) as success_rate,
-                    AVG(execution_time) as avg_execution_time,
-                    AVG(retry_count) as avg_retries
-                FROM actions
-                WHERE timestamp >= datetime('now', '-30 days')
-            """
-            )
+                )
+            else:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_actions,
+                        AVG(confidence) as avg_confidence,
+                        SUM(success) * 100.0 / COUNT(*) as success_rate,
+                        AVG(execution_time) as avg_execution_time,
+                        AVG(retry_count) as avg_retries
+                    FROM actions
+                    WHERE timestamp >= datetime('now', '-30 days')
+                """
+                )
             metrics["actions"] = dict(await cursor.fetchone())
 
             # Pattern metrics
@@ -3307,16 +3347,28 @@ class JARVISLearningDatabase:
             metrics["patterns"] = dict(await cursor.fetchone())
 
             # Display pattern metrics
-            await cursor.execute(
+            if is_cloud:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_display_patterns,
+                        SUM(CASE WHEN auto_connect THEN 1 ELSE 0 END) as auto_connect_enabled,
+                        MAX(frequency) as max_frequency,
+                        AVG(consecutive_successes) as avg_consecutive_successes
+                    FROM display_patterns
                 """
-                SELECT
-                    COUNT(*) as total_display_patterns,
-                    SUM(auto_connect) as auto_connect_enabled,
-                    MAX(frequency) as max_frequency,
-                    AVG(consecutive_successes) as avg_consecutive_successes
-                FROM display_patterns
-            """
-            )
+                )
+            else:
+                await cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total_display_patterns,
+                        SUM(auto_connect) as auto_connect_enabled,
+                        MAX(frequency) as max_frequency,
+                        AVG(consecutive_successes) as avg_consecutive_successes
+                    FROM display_patterns
+                """
+                )
             metrics["display_patterns"] = dict(await cursor.fetchone())
 
             # Goal-action mapping insights
