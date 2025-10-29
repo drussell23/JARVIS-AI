@@ -3530,7 +3530,16 @@ class AsyncSystemManager:
         )
         try:
             # Import and initialize the learning database
-            sys.path.insert(0, str(self.backend_dir))
+            if str(self.backend_dir) not in sys.path:
+                sys.path.insert(0, str(self.backend_dir))
+
+            # Set environment variables for Cloud SQL BEFORE importing
+            os.environ["JARVIS_DB_TYPE"] = "cloudsql"
+            os.environ["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
+            os.environ["JARVIS_DB_HOST"] = "127.0.0.1"
+            os.environ["JARVIS_DB_PORT"] = "5432"
+            os.environ["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+
             from intelligence.learning_database import JARVISLearningDatabase
             from voice.speaker_verification_service import SpeakerVerificationService
 

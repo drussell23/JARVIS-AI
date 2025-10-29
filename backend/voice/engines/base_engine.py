@@ -55,3 +55,30 @@ class BaseSTTEngine(ABC):
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(model={self.model_config.name}, initialized={self.initialized})>"
+
+
+def create_stt_engine(model_config: ModelConfig) -> BaseSTTEngine:
+    """Factory function to create STT engines based on configuration"""
+
+    if model_config.engine == STTEngine.WAV2VEC2:
+        from .wav2vec2_engine import Wav2Vec2Engine
+
+        return Wav2Vec2Engine(model_config)
+    elif model_config.engine == STTEngine.SPEECHBRAIN:
+        from .speechbrain_engine import SpeechBrainEngine
+
+        return SpeechBrainEngine(model_config)
+    elif model_config.engine == STTEngine.WHISPER:
+        from .whisper_engine import WhisperEngine
+
+        return WhisperEngine(model_config)
+    elif model_config.engine == STTEngine.VOSK:
+        from .vosk_engine import VoskEngine
+
+        return VoskEngine(model_config)
+    elif model_config.engine == STTEngine.MLKIT:
+        from .mlkit_engine import MLKitEngine
+
+        return MLKitEngine(model_config)
+    else:
+        raise ValueError(f"Unknown STT engine: {model_config.engine}")
