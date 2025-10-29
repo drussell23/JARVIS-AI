@@ -966,27 +966,70 @@ class UnifiedCommandProcessor:
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
 
-        # Perform speaker verification if audio data provided
-        speaker_verification_result = None
-        if audio_data and self.speaker_verification:
+        # NEW: Use speaker-aware command handler with CAI/SAI if audio provided
+        if audio_data:
             try:
-                speaker_verification_result = await self.speaker_verification.verify_speaker(
-                    audio_data, speaker_name
+                from voice.speaker_aware_command_handler import get_speaker_aware_handler
+
+                speaker_handler = await get_speaker_aware_handler()
+
+                # Process command with full speaker verification + CAI/SAI
+                async def command_executor(transcription, context):
+                    """Execute the actual command with context"""
+                    # Continue with normal command processing below
+                    # We'll return results after classification
+                    return {"executed_via": "unified_processor"}
+
+                speaker_result = await speaker_handler.process_voice_command(
+                    audio_data=audio_data,
+                    transcription=command_text,
+                    command_handler=command_executor,
                 )
+
+                # Store speaker verification for later use
+                self.current_speaker_verification = speaker_result.get("speaker")
+                speaker_verification_result = speaker_result.get("speaker")
 
                 logger.info(
-                    f"[VOICE-AUTH] Speaker: {speaker_verification_result['speaker_name']}, "
-                    f"Verified: {speaker_verification_result['verified']}, "
-                    f"Confidence: {speaker_verification_result['confidence']:.1%}, "
-                    f"Owner: {speaker_verification_result['is_owner']}"
+                    f"[SPEAKER-AWARE] {speaker_result.get('speaker', {}).get('name', 'Unknown')}: "
+                    f"verified={speaker_result.get('speaker', {}).get('verified', False)}, "
+                    f"confidence={speaker_result.get('speaker', {}).get('confidence', 0.0):.1%}"
                 )
 
-                # Store verification result for security-sensitive operations
-                self.current_speaker_verification = speaker_verification_result
+                # If unlock was performed, note it
+                if speaker_result.get("unlock", {}).get("success"):
+                    logger.info(f"🔓 Auto-unlocked screen for {speaker_result['speaker']['name']}")
+
+                # Add greeting to response if present
+                self._speaker_greeting = speaker_result.get("greeting", "")
 
             except Exception as e:
-                logger.warning(f"[VOICE-AUTH] Speaker verification failed: {e}")
+                logger.warning(
+                    f"[SPEAKER-AWARE] Handler failed, falling back to basic verification: {e}"
+                )
                 speaker_verification_result = None
+        else:
+            # Fallback to basic speaker verification if no audio
+            speaker_verification_result = None
+            if self.speaker_verification:
+                try:
+                    speaker_verification_result = await self.speaker_verification.verify_speaker(
+                        audio_data, speaker_name
+                    )
+
+                    logger.info(
+                        f"[VOICE-AUTH] Speaker: {speaker_verification_result['speaker_name']}, "
+                        f"Verified: {speaker_verification_result['verified']}, "
+                        f"Confidence: {speaker_verification_result['confidence']:.1%}, "
+                        f"Owner: {speaker_verification_result['is_owner']}"
+                    )
+
+                    # Store verification result for security-sensitive operations
+                    self.current_speaker_verification = speaker_verification_result
+
+                except Exception as e:
+                    logger.warning(f"[VOICE-AUTH] Speaker verification failed: {e}")
+                    speaker_verification_result = None
 
         # NEW: Get context-aware handler for ALL commands
         from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
@@ -1327,14 +1370,26 @@ class UnifiedCommandProcessor:
             self._save_learned_data()
 
         # Return the formatted result with complexity information
+        response_text = result.get("summary", actual_result.get("response", ""))
+
+        # Prepend personalized greeting if speaker was verified
+        if hasattr(self, "_speaker_greeting") and self._speaker_greeting:
+            response_text = f"{self._speaker_greeting} {response_text}"
+            # Clear greeting for next command
+            self._speaker_greeting = ""
+
         result_dict = {
             "success": actual_result.get("success", False),
-            "response": result.get("summary", actual_result.get("response", "")),
+            "response": response_text,
             "command_type": command_type.value,
             "context_aware": True,
             "system_context": system_context,
             **actual_result,
         }
+
+        # Add speaker verification info if available
+        if speaker_verification_result:
+            result_dict["speaker_verified"] = speaker_verification_result
 
         # Add query complexity information if available
         if classified_query:
