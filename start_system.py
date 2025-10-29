@@ -4805,7 +4805,13 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         if gcp_vm_enabled:
             try:
                 print(f"\n{Colors.CYAN}💰 [1.5/6] GCP VM Cost Summary...{Colors.ENDC}")
-                sys.path.insert(0, str(Path(__file__).parent / "backend"))
+
+                # Ensure backend directory is in path
+                backend_path = str(Path(__file__).parent / "backend")
+                if backend_path not in sys.path:
+                    sys.path.insert(0, backend_path)
+
+                # Import after path is set
                 from core.gcp_vm_status import show_vm_status
 
                 # Show brief VM status without full details
@@ -4819,6 +4825,9 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                     )
                 else:
                     print(f"   └─ {Colors.GREEN}✓ No active VMs (no costs){Colors.ENDC}")
+            except ImportError as e:
+                print(f"   └─ {Colors.YELLOW}⚠️  VM status module not available{Colors.ENDC}")
+                logger.debug(f"GCP VM status import failed: {e}")
             except Exception as e:
                 print(f"   └─ {Colors.YELLOW}⚠️  Could not retrieve VM status: {e}{Colors.ENDC}")
                 logger.debug(f"GCP VM status check failed: {e}")
