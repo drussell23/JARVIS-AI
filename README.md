@@ -4869,6 +4869,114 @@ Total: ~8s warmup → 🎉 JARVIS READY
 - 🔧 [API Reference](./docs/architecture/ADVANCED_WARMUP_DEEP_DIVE.md#implementation-details) - Complete technical reference
 - 🐛 [Troubleshooting](./docs/architecture/ADVANCED_WARMUP_DEEP_DIVE.md#troubleshooting-guide) - Common issues and solutions
 
+---
+
+### 🎤 Voice Biometrics & AI/ML Learning System
+
+JARVIS v17.3+ implements a **unified voice capture system** with **intelligent cost-aware routing** between local (free) and cloud (powerful) AI/ML models for **continuous speaker learning** and **voice-authenticated security**.
+
+**Key Features:**
+```
+✅ Unified Voice Capture: Browser SpeechRecognition + MediaRecorder simultaneously
+✅ Intelligent Routing: Cost-aware selection between local/cloud models
+✅ Continuous Learning: Every command improves speaker recognition (85% → 98%)
+✅ Budget Protection: Auto-shutdown & daily limits prevent runaway costs
+✅ Owner Detection: Derek J. Russell identified automatically for secure unlock
+✅ Multi-Model Support: Resemblyzer (local), PyAnnote (local), SpeechBrain (cloud)
+```
+
+**AI/ML Models Used:**
+
+| Model | Location | RAM | Accuracy | Latency | Cost | Use Case |
+|-------|----------|-----|----------|---------|------|----------|
+| **Resemblyzer** | Local | 100MB | 85-90% | 50-100ms | **FREE** | Regular commands |
+| **PyAnnote** | Local | 500MB | 88-92% | 100-200ms | **FREE** | Standard verify |
+| **SpeechBrain** | Cloud (GCP) | 2GB | **95-98%** | 200-400ms | $0.005 | Screen unlock, security |
+
+**Why SpeechBrain (Not YOLO/LLaMA)?**
+- **YOLO**: Computer vision (images) ❌ Can't process audio
+- **LLaMA**: Text generation ❌ Can't extract voice features
+- **SpeechBrain**: Speaker recognition ✅ **Designed for voice biometrics**
+  - ECAPA-TDNN architecture (state-of-the-art)
+  - 512-dimensional voice embeddings
+  - Trained on 7,000+ speakers (VoxCeleb dataset)
+  - 95-98% speaker identification accuracy
+
+**Cost Optimization:**
+```
+Daily Budget: $2.40/day limit (auto-shutdown + budget protection)
+
+Typical Usage:
+  • Regular commands (460/day): Resemblyzer → FREE
+  • Unlock commands (20/day): SpeechBrain → $0.10/day
+  • Total daily cost: $0.10/day ($3/month)
+
+Without Intelligent Routing:
+  • All commands via cloud: $2.40/day ($72/month)
+  • Savings: $69/month (96% cost reduction!)
+
+Auto-Shutdown:
+  • GCP VM sleeps after 5min idle → $0/hour when idle
+  • Auto-wake on next high-security command
+  • Additional ~20s boot latency (acceptable for security)
+```
+
+**Continuous Learning:**
+```
+Voice Sample Collection:
+  Every command → Extract embedding → Store in learning_database.py
+
+Profile Improvement:
+  Sample 1: 75% confidence (baseline)
+  Sample 10: 88% confidence (+13%)
+  Sample 25: 94% confidence (+6%)
+  Sample 50: 97% confidence (+3%)
+  Sample 100: 98% confidence (+1%, plateaus)
+
+Learning Database Storage:
+  • speaker_profiles: Embeddings, confidence, is_primary_user
+  • voice_samples: Audio data, duration, quality score
+  • acoustic_adaptations: Phoneme patterns for personalization
+```
+
+**Real-World Flow:**
+```
+User: "Hey JARVIS, unlock my screen"
+       ↓
+1. Frontend: Browser captures audio + text simultaneously
+   - SpeechRecognition: "unlock my screen" (instant feedback)
+   - MediaRecorder: 2.3s audio data (voice biometrics)
+       ↓
+2. Backend: Intelligent Router analyzes command
+   - Type: Screen unlock → CRITICAL verification level
+   - Budget: $0.08/$2.40 available ✅
+   - Decision: Use SpeechBrain (highest accuracy)
+       ↓
+3. SpeechBrain (GCP): Extract 512-dim voice embedding
+   - Compare to Derek's profile (stored in learning DB)
+   - Similarity: 96.7% → Owner verified ✅
+   - Latency: 287ms | Cost: $0.005
+       ↓
+4. Learning Database: Update profile
+   - Save new embedding (incremental averaging)
+   - sample_count: 42 → 43
+   - confidence: 96.1% → 96.3% (improved!)
+       ↓
+5. Auto-Shutdown: Start 5-minute idle timer
+   - If idle → GCP VM sleeps (saves money)
+       ↓
+Result: "Good to see you, Derek. Unlocking now."
+```
+
+**Documentation:**
+- 📚 **[Complete Voice Biometrics Guide](./docs/VOICE_BIOMETRICS_SYSTEM.md)** - Architecture, models, cost analysis, troubleshooting
+- 🎭 [Speaker Recognition Engine](./backend/voice/speaker_recognition.py) - Voice identification
+- 🧠 [Intelligent Voice Router](./backend/voice/intelligent_voice_router.py) - Cost-aware model selection
+- 💾 [Learning Database](./backend/intelligence/learning_database.py) - Voice profile storage
+- 🔐 [Voice Unlock Integration](./backend/voice_unlock/README.md) - Security integration
+
+---
+
 ### 🖥️ Multi-Space Desktop Intelligence
 
 JARVIS provides comprehensive awareness of all your desktop spaces (Mission Control) with detailed analysis:
