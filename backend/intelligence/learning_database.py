@@ -1621,10 +1621,19 @@ class JARVISLearningDatabase:
                     common_phrases JSON,
                     vocabulary_preferences JSON,
                     pronunciation_patterns JSON,
+                    recognition_confidence REAL DEFAULT 0.0,
+                    is_primary_user BOOLEAN DEFAULT 0,
+                    security_level TEXT DEFAULT 'standard',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_speaker_name (speaker_name)
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """
+            )
+
+            # Create index for speaker_profiles
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_speaker_name ON speaker_profiles(speaker_name)
             """
             )
 
@@ -1646,10 +1655,20 @@ class JARVISLearningDatabase:
                     quality_score REAL,
                     background_noise REAL,
                     used_for_training BOOLEAN DEFAULT 1,
-                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id),
-                    INDEX idx_speaker (speaker_id),
-                    INDEX idx_quality (quality_score)
+                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id)
                 )
+            """
+            )
+
+            # Create indexes for voice_samples
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_speaker ON voice_samples(speaker_id)
+            """
+            )
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_quality ON voice_samples(quality_score)
             """
             )
 
@@ -1667,9 +1686,15 @@ class JARVISLearningDatabase:
                     context_words JSON,
                     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_observed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id),
-                    INDEX idx_speaker_phoneme (speaker_id, phoneme_pattern)
+                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id)
                 )
+            """
+            )
+
+            # Create index for acoustic_adaptations
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_speaker_phoneme ON acoustic_adaptations(speaker_id, phoneme_pattern)
             """
             )
 
