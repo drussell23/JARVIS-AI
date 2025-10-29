@@ -650,6 +650,12 @@ const JarvisVoice = () => {
   const continuousListeningRef = useRef(false);
   const isWaitingForCommandRef = useRef(false);
 
+  // 🎤 Unified Voice Capture - Records audio while browser SpeechRecognition runs
+  const voiceAudioStreamRef = useRef(null); // Audio stream for voice biometrics
+  const voiceAudioRecorderRef = useRef(null); // MediaRecorder for continuous audio capture
+  const voiceAudioChunksRef = useRef([]); // Audio chunks buffer
+  const isRecordingVoiceRef = useRef(false); // Track recording state
+
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
   const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
@@ -2193,6 +2199,9 @@ const JarvisVoice = () => {
     isWaitingForCommandRef.current = true;
     setIsListening(true);
 
+    // 🎤 Start audio capture for voice biometrics
+    startVoiceAudioCapture();
+
     // Wake word detected - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
     // Don't send anything to backend - we're handling the wake word response locally
@@ -2206,9 +2215,10 @@ const JarvisVoice = () => {
     setTimeout(() => {
       setIsWaitingForCommand((currentWaiting) => {
         if (currentWaiting) {
-          console.log('⏱️ Command timeout - stopping listening');
+          console.log('⏱️ Command timeout - stopping listening and audio capture');
           setIsListening(false);
           isWaitingForCommandRef.current = false;
+          stopVoiceAudioCapture(); // Clean up audio recording
           return false;
         }
         return currentWaiting;
@@ -2216,13 +2226,21 @@ const JarvisVoice = () => {
     }, 30000);
   };
 
-  const handleVoiceCommand = (command, confidenceInfo = {}) => {
+  const handleVoiceCommand = async (command, confidenceInfo = {}) => {
     console.log('🎯 handleVoiceCommand called with:', command);
     console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
     setTranscript(command);
 
     // Track command start time for adaptive learning
     const commandStartTime = Date.now();
+
+    // 🎤 Stop audio capture and get the recorded audio for voice biometrics
+    const audioData = await stopVoiceAudioCapture();
+    if (audioData) {
+      console.log(`🎤 [VoiceCapture] Audio captured for command: ${audioData.length} chars`);
+    } else {
+      console.log('🎤 [VoiceCapture] No audio data captured (may not affect functionality)');
+    }
 
     // Check for autonomy activation commands
     const lowerCommand = command.toLowerCase();
@@ -2245,9 +2263,9 @@ const JarvisVoice = () => {
       return;
     }
 
-    // Send via WebSocket instead of REST API
+    // Send via WebSocket with audio_data for voice biometrics
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
+      const message = {
         type: 'command',
         text: command,
         mode: autonomousMode ? 'autonomous' : 'manual',
@@ -2255,7 +2273,15 @@ const JarvisVoice = () => {
           ...confidenceInfo,
           startTime: commandStartTime,
         }
-      }));
+      };
+
+      // Include audio_data if available for voice biometric verification
+      if (audioData) {
+        message.audio_data = audioData;
+        console.log('🎤 Sending command with audio data for voice verification');
+      }
+
+      wsRef.current.send(JSON.stringify(message));
       setResponse('⚙️ Processing...');
     } else {
       // Fallback to REST API if WebSocket not connected
@@ -2391,6 +2417,123 @@ const JarvisVoice = () => {
 
       // Keep listening if user wants
     }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🎤 UNIFIED VOICE CAPTURE - Audio Recording for Voice Biometrics
+  // ═══════════════════════════════════════════════════════════════
+
+  const startVoiceAudioCapture = async () => {
+    if (isRecordingVoiceRef.current) {
+      console.log('🎤 [VoiceCapture] Already recording');
+      return;
+    }
+
+    try {
+      console.log('🎤 [VoiceCapture] Starting audio capture for voice biometrics...');
+
+      // Get microphone access
+      voiceAudioStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,  // Mono
+          sampleRate: 16000, // 16kHz optimal for speech recognition
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      // Try different MIME types for compatibility
+      const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/wav'
+      ];
+
+      let selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+      if (!selectedMimeType) {
+        console.warn('🎤 [VoiceCapture] No supported MIME type, using default');
+        selectedMimeType = '';
+      }
+
+      voiceAudioRecorderRef.current = new MediaRecorder(
+        voiceAudioStreamRef.current,
+        selectedMimeType ? { mimeType: selectedMimeType } : {}
+      );
+
+      // Collect audio chunks
+      voiceAudioChunksRef.current = [];
+      voiceAudioRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      // Start recording with 100ms chunks for continuous capture
+      voiceAudioRecorderRef.current.start(100);
+      isRecordingVoiceRef.current = true;
+
+      console.log(`🎤 [VoiceCapture] Recording started (${selectedMimeType || 'default'})`);
+    } catch (error) {
+      console.error('🎤 [VoiceCapture] Failed to start recording:', error);
+    }
+  };
+
+  const stopVoiceAudioCapture = async () => {
+    if (!isRecordingVoiceRef.current) {
+      return null;
+    }
+
+    console.log('🎤 [VoiceCapture] Stopping audio capture...');
+
+    return new Promise((resolve) => {
+      if (voiceAudioRecorderRef.current && voiceAudioRecorderRef.current.state !== 'inactive') {
+        voiceAudioRecorderRef.current.onstop = async () => {
+          console.log(`🎤 [VoiceCapture] Recording stopped, captured ${voiceAudioChunksRef.current.length} chunks`);
+
+          if (voiceAudioChunksRef.current.length === 0) {
+            resolve(null);
+            return;
+          }
+
+          // Create audio blob
+          const audioBlob = new Blob(voiceAudioChunksRef.current, {
+            type: voiceAudioRecorderRef.current.mimeType || 'audio/webm'
+          });
+
+          console.log(`🎤 [VoiceCapture] Audio blob created: ${audioBlob.size} bytes`);
+
+          // Convert to base64
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Audio = reader.result.split(',')[1]; // Remove data:audio/...;base64, prefix
+            console.log(`🎤 [VoiceCapture] Converted to base64: ${base64Audio.length} chars`);
+            resolve(base64Audio);
+          };
+          reader.onerror = () => {
+            console.error('🎤 [VoiceCapture] Failed to convert to base64');
+            resolve(null);
+          };
+          reader.readAsDataURL(audioBlob);
+
+          // Clean up audio chunks
+          voiceAudioChunksRef.current = [];
+        };
+
+        voiceAudioRecorderRef.current.stop();
+      } else {
+        resolve(null);
+      }
+
+      // Stop audio stream
+      if (voiceAudioStreamRef.current) {
+        voiceAudioStreamRef.current.getTracks().forEach(track => track.stop());
+        voiceAudioStreamRef.current = null;
+      }
+
+      isRecordingVoiceRef.current = false;
+    });
   };
 
   const enableContinuousListening = () => {
