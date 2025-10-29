@@ -589,7 +589,9 @@ class AdvancedAsyncPipeline:
                 "unlock the screen",
             ]
         ):
-            return await self._fast_lock_unlock(text, user_name, metadata)
+            return await self._fast_lock_unlock(
+                text, user_name, metadata, audio_data=audio_data, speaker_name=speaker_name
+            )
 
         # Create pipeline context
         command_id = f"cmd_{int(time.time() * 1000)}"
@@ -638,7 +640,12 @@ class AdvancedAsyncPipeline:
                 pass
 
     async def _fast_lock_unlock(
-        self, text: str, user_name: str, metadata: Optional[Dict[str, Any]] = None
+        self,
+        text: str,
+        user_name: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        audio_data: Optional[bytes] = None,
+        speaker_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fast path for lock/unlock commands - with voice authentication when audio available"""
 
@@ -650,8 +657,12 @@ class AdvancedAsyncPipeline:
         is_lock = "lock" in text_lower and "unlock" not in text_lower
         is_unlock = not is_lock
 
-        # Check if audio data is available for voice authentication
-        audio_data = metadata.get("audio_data") if metadata else None
+        # Log if audio data is available for voice authentication
+        if audio_data:
+            logger.info(
+                f"[FAST PATH] Audio data available ({len(audio_data)} bytes), "
+                f"will use voice authentication"
+            )
 
         # Execute command with voice authentication if available
         async def execute_command():
