@@ -282,3 +282,17 @@ nohup.out
 
 # GitHub Actions service account (sensitive)
 /tmp/github-actions-key*.json
+
+# Model checkpoints and training data
+model_checkpoints/
+*.ckpt
+*.pt
+*.checkpoint
+
+# SpeechBrain cache and models
+.cache/jarvis/speechbrain/
+~/.cache/jarvis/speechbrain/
+
+# Voice enrollment data
+backend/voice/voice_samples/
+backend/voice/voiceprints/
