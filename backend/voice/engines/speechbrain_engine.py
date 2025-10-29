@@ -333,6 +333,19 @@ class SpeechBrainEngine(BaseSTTEngine):
         start_time = time.time()
 
         try:
+            # Suppress noisy HuggingFace/transformers warnings
+            warnings.filterwarnings(
+                "ignore", message=".*weights.*not initialized.*", category=UserWarning
+            )
+            warnings.filterwarnings("ignore", message=".*TRAIN this model.*", category=UserWarning)
+
+            # Suppress SpeechBrain logger messages about frozen models
+            import logging as stdlib_logging
+
+            stdlib_logging.getLogger(
+                "speechbrain.lobes.models.huggingface_transformers.huggingface"
+            ).setLevel(stdlib_logging.ERROR)
+
             # Import in initialize to avoid loading if not needed
             from speechbrain.inference.ASR import EncoderDecoderASR
 

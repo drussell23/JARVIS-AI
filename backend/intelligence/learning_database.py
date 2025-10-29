@@ -1943,6 +1943,11 @@ class JARVISLearningDatabase:
     async def _init_chromadb(self):
         """Initialize ChromaDB for embeddings and semantic search"""
         try:
+            # Suppress ChromaDB telemetry errors (benign version mismatch issues)
+            import warnings
+
+            warnings.filterwarnings("ignore", message=".*telemetry.*", category=Exception)
+
             # Initialize ChromaDB client with persistent storage
             self.chroma_client = chromadb.PersistentClient(
                 path=str(self.chroma_path),
