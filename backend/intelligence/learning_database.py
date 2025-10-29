@@ -4857,15 +4857,20 @@ class JARVISLearningDatabase:
         Returns list of profile dicts with embeddings and metadata.
         """
         try:
-            async with self.db.execute(
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT speaker_id, speaker_name, voiceprint_embedding,
+                           total_samples, average_pitch_hz, recognition_confidence,
+                           is_primary_user, security_level, created_at, last_updated
+                    FROM speaker_profiles
                 """
-                SELECT speaker_id, speaker_name, voiceprint_embedding,
-                       total_samples, average_pitch_hz, recognition_confidence,
-                       is_primary_user, security_level, created_at, last_updated
-                FROM speaker_profiles
-            """
-            ) as cursor:
+                )
                 rows = await cursor.fetchall()
+                logger.debug(f"Got {len(rows) if rows else 0} speaker profile rows")
+                logger.debug(
+                    f"Type of rows: {type(rows)}, Type of first row: {type(rows[0]) if rows else 'empty'}"
+                )
 
                 profiles = []
                 for row in rows:
