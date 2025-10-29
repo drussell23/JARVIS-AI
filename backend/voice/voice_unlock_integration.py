@@ -197,7 +197,7 @@ class VoiceUnlockIntegration:
         try:
             # Try to get password from keychain
             password = self.keychain_service.get_password(
-                service="com.jarvis.voiceunlock", account="unlock_password"
+                service="com.jarvis.voiceunlock", account="unlock_token"
             )
 
             if password:
