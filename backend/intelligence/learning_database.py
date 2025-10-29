@@ -4896,7 +4896,7 @@ class JARVISLearningDatabase:
                     (
                         embedding,
                         confidence,
-                        1 if is_primary_user else 0,
+                        is_primary_user,  # PostgreSQL expects boolean, not int
                         "admin" if is_primary_user else "standard",
                         speaker_id,
                     ),
