@@ -941,7 +941,7 @@ async def lifespan(app: FastAPI):
         # Register memory pressure callback for GCP VM creation
         if GCP_VM_ENABLED:
             logger.info("☁️  GCP VM auto-creation enabled")
-            dynamic_component_manager.register_callback(memory_pressure_callback)
+            dynamic_component_manager.memory_monitor.register_callback(memory_pressure_callback)
             logger.info("✅ Memory pressure callback registered")
 
         # Start memory pressure monitoring
