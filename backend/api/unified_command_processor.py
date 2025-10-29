@@ -3023,7 +3023,7 @@ class UnifiedCommandProcessor:
                         },
                     )()
 
-                    result = await handler.handle_command(command_text, jarvis_instance)
+                    result = await handler.handle_command(command_text, websocket, jarvis_instance)
                     return {
                         "success": result.get("success", result.get("type") == "voice_unlock"),
                         "response": result.get("message", result.get("response", "")),
