@@ -289,7 +289,7 @@ class DatabaseCursorWrapper:
         - Dynamic column description generation
 
         Args:
-            sql: SQL query string
+            sql: SQL query string (with %s or $1 style placeholders)
             parameters: Query parameters tuple
 
         Returns:
@@ -299,6 +299,14 @@ class DatabaseCursorWrapper:
             Exception: Database errors with detailed logging
         """
         try:
+            # Convert %s placeholders to $1, $2, etc. for PostgreSQL/asyncpg
+            if "%s" in sql:
+                # Simple sequential replacement
+                i = 1
+                while "%s" in sql:
+                    sql = sql.replace("%s", f"${i}", 1)
+                    i += 1
+
             # Reset state for new query
             self._last_query = sql
             self._last_params = parameters
