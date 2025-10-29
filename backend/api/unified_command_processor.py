@@ -958,6 +958,12 @@ class UnifiedCommandProcessor:
         self.current_audio_data = audio_data
         self.current_speaker_name = speaker_name
 
+        # Debug: Log audio data availability
+        if audio_data:
+            logger.info(f"[UNIFIED] Audio data available: {len(audio_data)} bytes")
+        else:
+            logger.info("[UNIFIED] No audio data provided for this command")
+
         # Ensure resolvers are initialized (lazy init on first use)
         if not self._resolvers_initialized:
             logger.info("[UNIFIED] Lazy-initializing resolvers on first command...")
@@ -3022,6 +3028,14 @@ class UnifiedCommandProcessor:
                             "last_speaker_name": self.current_speaker_name,
                         },
                     )()
+
+                    # Debug: Log audio passthrough
+                    if self.current_audio_data:
+                        logger.info(
+                            f"[UNIFIED] Passing audio to voice unlock handler: {len(self.current_audio_data)} bytes"
+                        )
+                    else:
+                        logger.warning("[UNIFIED] No audio data to pass to voice unlock handler!")
 
                     result = await handler.handle_command(command_text, websocket, jarvis_instance)
                     return {
