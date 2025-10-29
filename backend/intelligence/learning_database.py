@@ -1943,10 +1943,33 @@ class JARVISLearningDatabase:
     async def _init_chromadb(self):
         """Initialize ChromaDB for embeddings and semantic search"""
         try:
-            # Suppress ChromaDB telemetry errors (benign version mismatch issues)
-            import warnings
+            # Disable ChromaDB telemetry via environment variable (belt and suspenders)
+            import os
 
-            warnings.filterwarnings("ignore", message=".*telemetry.*", category=Exception)
+            os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+            # Suppress ChromaDB telemetry errors and logging
+            import logging as stdlib_logging
+
+            stdlib_logging.getLogger("chromadb.telemetry").setLevel(stdlib_logging.CRITICAL)
+
+            # Monkey-patch ChromaDB telemetry to prevent errors in older versions
+            try:
+                from chromadb.telemetry.product import posthog
+
+                # Replace capture method with no-op to prevent API mismatch errors
+                if hasattr(posthog, "Posthog"):
+                    original_capture = (
+                        posthog.Posthog.capture if hasattr(posthog.Posthog, "capture") else None
+                    )
+                    if original_capture:
+
+                        def noop_capture(self, *args, **kwargs):
+                            pass
+
+                        posthog.Posthog.capture = noop_capture
+            except (ImportError, AttributeError):
+                pass  # Telemetry module not available or already disabled
 
             # Initialize ChromaDB client with persistent storage
             self.chroma_client = chromadb.PersistentClient(
