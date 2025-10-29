@@ -640,50 +640,80 @@ class AdvancedAsyncPipeline:
     async def _fast_lock_unlock(
         self, text: str, user_name: str, metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Fast path for lock/unlock commands - minimal overhead, maximum speed"""
-        import asyncio
-
-        from api.simple_unlock_handler import handle_unlock_command
+        """Fast path for lock/unlock commands - with voice authentication when audio available"""
 
         logger.info(f"[FAST PATH] Processing lock/unlock: {text}")
         start_time = time.time()
 
-        # Determine action and prepare response in parallel
+        # Determine action
         text_lower = text.lower()
         is_lock = "lock" in text_lower and "unlock" not in text_lower
+        is_unlock = not is_lock
 
-        # Execute command and prepare response concurrently
+        # Check if audio data is available for voice authentication
+        audio_data = metadata.get("audio_data") if metadata else None
+
+        # Execute command with voice authentication if available
         async def execute_command():
             try:
+                # If unlocking with audio, use context-aware handler for voice verification
+                if is_unlock and audio_data and self.jarvis:
+                    logger.info("[FAST PATH] Using context-aware handler with voice authentication")
+                    try:
+                        # Get context-aware handler from jarvis instance
+                        from context_intelligence.handlers.context_aware_handler import (
+                            ContextAwareHandler,
+                        )
+
+                        context_handler = ContextAwareHandler(self.jarvis)
+                        await context_handler.initialize()
+
+                        # Use voice unlock integration
+                        unlock_result = await context_handler.handle_screen_lock_context(
+                            command=text, audio_data=audio_data, speaker_name=user_name
+                        )
+
+                        # Extract response and success from tuple
+                        if isinstance(unlock_result, tuple):
+                            success, message = unlock_result
+                            return {"success": success, "response": message}
+                        else:
+                            return unlock_result
+
+                    except Exception as voice_error:
+                        logger.warning(
+                            f"[FAST PATH] Voice authentication failed: {voice_error}, falling back to simple unlock"
+                        )
+
+                # Fallback to simple unlock (no voice auth)
+                from api.simple_unlock_handler import handle_unlock_command
+
                 result = await handle_unlock_command(text, self.jarvis)
                 return result
+
             except Exception as e:
                 logger.error(f"[FAST PATH] Command execution error: {e}")
                 return {"success": False, "error": str(e)}
 
-        async def prepare_response(is_lock_cmd: bool):
-            if is_lock_cmd:
-                return "Of course, Sir. Locking for you."
-            else:
-                return "Of course, Sir. Unlocking for you."
-
-        # Execute both tasks in parallel for maximum speed
-        command_task = asyncio.create_task(execute_command())
-        response_task = asyncio.create_task(prepare_response(is_lock))
-
-        # Start voice synthesis immediately (don't wait for command to complete)
-        immediate_response = await response_task
-
-        # Get command result
-        result = await command_task
+        # Get command result (includes personalized response from voice unlock integration)
+        result = await execute_command()
 
         elapsed = (time.time() - start_time) * 1000
         logger.info(f"[FAST PATH] Command completed in {elapsed:.1f}ms")
 
-        # Return immediately with pre-generated response
+        # Use personalized response from handler, or fallback to generic
+        response_message = result.get("response") or result.get("message")
+        if not response_message:
+            # Fallback if handler doesn't provide response
+            if is_lock:
+                response_message = "Of course, Sir. Locking for you."
+            else:
+                response_message = "Of course, Sir. Unlocking for you."
+
+        # Return with personalized response
         return {
             "success": result.get("success", False),
-            "response": immediate_response,
+            "response": response_message,
             "action": result.get("action", "lock" if is_lock else "unlock"),
             "metadata": {
                 "handled_by": "fast_lock_unlock",
