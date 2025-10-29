@@ -51,6 +51,9 @@ class SpeakerRecognitionEngine:
         self.initialized = False
         self.learning_db = None
 
+        # Intelligent voice router (cost-aware local/cloud routing)
+        self.voice_router = None
+
         # Similarity thresholds
         self.recognition_threshold = 0.75  # Minimum similarity to recognize speaker
         self.verification_threshold = 0.85  # Higher threshold for security commands
@@ -66,6 +69,17 @@ class SpeakerRecognitionEngine:
 
         logger.info("🎭 Initializing Speaker Recognition Engine...")
 
+        # Initialize intelligent voice router (handles model selection)
+        try:
+            from voice.intelligent_voice_router import get_voice_router
+
+            self.voice_router = get_voice_router()
+            await self.voice_router.initialize()
+            logger.info("✅ Intelligent voice router initialized (cost-aware local/cloud)")
+        except Exception as e:
+            logger.warning(f"Voice router unavailable: {e}")
+
+        # Legacy: Try to load local model as fallback
         try:
             # Try to use pre-trained speaker embedding model
             # Option 1: SpeechBrain (best for speaker recognition)
@@ -91,7 +105,7 @@ class SpeakerRecognitionEngine:
 
         except Exception as e:
             logger.warning(f"Could not load speaker recognition model: {e}")
-            logger.warning("Speaker recognition will use fallback methods")
+            logger.warning("Speaker recognition will use voice router")
             self.model = None
 
         # Load existing voice profiles from database
@@ -165,14 +179,18 @@ class SpeakerRecognitionEngine:
             logger.error(f"Failed to load speaker profiles from database: {e}")
 
     async def identify_speaker(
-        self, audio_data: bytes, return_confidence: bool = True
+        self,
+        audio_data: bytes,
+        return_confidence: bool = True,
+        verification_level: str = "standard",
     ) -> Tuple[Optional[str], float]:
         """
-        Identify speaker from audio.
+        Identify speaker from audio using intelligent routing.
 
         Args:
             audio_data: Raw audio bytes
             return_confidence: Return confidence score
+            verification_level: "quick", "standard", "high", "critical"
 
         Returns:
             (speaker_name, confidence) or (None, 0.0) if unknown
@@ -180,7 +198,47 @@ class SpeakerRecognitionEngine:
         if not self.initialized:
             await self.initialize()
 
-        # If no model available, try heuristic methods
+        # Try intelligent voice router first (cost-aware local/cloud routing)
+        if self.voice_router:
+            try:
+                from voice.intelligent_voice_router import VerificationLevel
+
+                # Map string to enum
+                level_map = {
+                    "quick": VerificationLevel.QUICK,
+                    "standard": VerificationLevel.STANDARD,
+                    "high": VerificationLevel.HIGH,
+                    "critical": VerificationLevel.CRITICAL,
+                }
+                level = level_map.get(verification_level, VerificationLevel.STANDARD)
+
+                # Use intelligent router
+                result = await self.voice_router.recognize_speaker(
+                    audio_data, verification_level=level
+                )
+
+                # Save embedding to learning database for continuous improvement
+                if result.speaker_name != "Unknown":
+                    await self._save_voice_sample(
+                        speaker_name=result.speaker_name,
+                        audio_data=audio_data,
+                        embedding=result.embedding,
+                        confidence=result.confidence,
+                        model_used=result.model_used.value,
+                    )
+
+                logger.info(
+                    f"🎭 Speaker identified via {result.model_used.value}: "
+                    f"{result.speaker_name} (confidence: {result.confidence:.2f}, "
+                    f"latency: {result.latency_ms:.0f}ms, cost: ${result.cost_cents/100:.4f})"
+                )
+
+                return result.speaker_name, result.confidence
+
+            except Exception as e:
+                logger.warning(f"Voice router failed, falling back to legacy: {e}")
+
+        # Fallback to legacy local model
         if self.model is None:
             return await self._identify_speaker_heuristic(audio_data)
 
@@ -205,7 +263,7 @@ class SpeakerRecognitionEngine:
             # Check if similarity meets threshold
             if best_similarity >= self.recognition_threshold:
                 logger.info(
-                    f"🎭 Speaker identified: {best_match} (confidence: {best_similarity:.2f})"
+                    f"🎭 Speaker identified (legacy): {best_match} (confidence: {best_similarity:.2f})"
                 )
 
                 # Update profile with new sample (continuous learning)
@@ -400,6 +458,55 @@ class SpeakerRecognitionEngine:
             return 0.0
 
         return dot_product / (norm1 * norm2)
+
+    async def _save_voice_sample(
+        self,
+        speaker_name: str,
+        audio_data: bytes,
+        embedding: np.ndarray,
+        confidence: float,
+        model_used: str,
+    ):
+        """
+        Save voice sample to learning database for continuous improvement.
+
+        This enables the system to learn and improve voice recognition over time.
+        """
+        try:
+            if not self.learning_db:
+                from intelligence.learning_database import get_learning_database
+
+                self.learning_db = get_learning_database()
+
+            # Store embedding in database
+            embedding_bytes = embedding.astype(np.float32).tobytes()
+
+            # Update speaker profile with new embedding
+            speaker_id = await self.learning_db.get_or_create_speaker_profile(speaker_name)
+
+            await self.learning_db.update_speaker_embedding(
+                speaker_id=speaker_id,
+                embedding=embedding_bytes,
+                confidence=confidence,
+                is_primary_user=(speaker_name == "Derek J. Russell"),
+            )
+
+            # Also record the voice sample
+            audio_duration_ms = len(audio_data) / 16  # Rough estimate (16kHz)
+            await self.learning_db.record_voice_sample(
+                speaker_name=speaker_name,
+                audio_data=audio_data,
+                transcription="",  # Transcription handled elsewhere
+                audio_duration_ms=audio_duration_ms,
+                quality_score=confidence,
+            )
+
+            logger.debug(
+                f"💾 Saved voice sample for {speaker_name} ({model_used}, confidence: {confidence:.2f})"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to save voice sample to learning database: {e}")
 
     async def _identify_speaker_heuristic(self, audio_data: bytes) -> Tuple[Optional[str], float]:
         """
