@@ -99,9 +99,9 @@ class UnifiedWebSocketManager:
 
         # Self-healing configuration (dynamic, loaded from config or learned)
         self.config = {
-            "health_check_interval": 5.0,
-            "message_timeout": 30.0,
-            "ping_interval": 15.0,
+            "health_check_interval": 10.0,  # Increased from 5s to reduce overhead
+            "message_timeout": 60.0,  # Increased from 30s - frontend pings every 15s, give more buffer
+            "ping_interval": 20.0,  # Increased from 15s to reduce ping traffic
             "max_recovery_attempts": 5,
             "circuit_breaker_threshold": 3,
             "circuit_breaker_timeout": 60.0,
@@ -188,13 +188,26 @@ class UnifiedWebSocketManager:
                     # Check message timeout
                     time_since_message = current_time - health.last_message_time
 
+                    # Log health check details every 30s for debugging
+                    if int(current_time) % 30 == 0:
+                        logger.debug(
+                            f"[UNIFIED-WS] Health check: {client_id} | "
+                            f"state={health.state.value} | "
+                            f"score={health.health_score:.1f} | "
+                            f"time_since_msg={time_since_message:.1f}s | "
+                            f"latency={health.latency_ms:.1f}ms"
+                        )
+
                     if time_since_message > self.config["message_timeout"]:
                         # Degraded connection
                         if health.state == ConnectionState.HEALTHY:
                             health.state = ConnectionState.DEGRADED
                             health.health_score = max(0, health.health_score - 20)
                             logger.warning(
-                                f"[UNIFIED-WS] Connection {client_id} degraded (no messages for {time_since_message:.1f}s)"
+                                f"[UNIFIED-WS] ⚠️ Connection {client_id} DEGRADED | "
+                                f"No messages for {time_since_message:.1f}s (timeout: {self.config['message_timeout']}s) | "
+                                f"Last ping: {current_time - health.last_ping_time:.1f}s ago | "
+                                f"Health score: {health.health_score:.1f}"
                             )
 
                             # Notify SAI of degradation
@@ -224,9 +237,12 @@ class UnifiedWebSocketManager:
             ping_time = time.time()
             await health.websocket.send_json({"type": "ping", "timestamp": ping_time})
             health.last_ping_time = ping_time
-            logger.debug(f"[UNIFIED-WS] Sent ping to {health.client_id}")
+            logger.debug(
+                f"[UNIFIED-WS] 🏓 Sent ping to {health.client_id} | "
+                f"Health: {health.health_score:.1f} | State: {health.state.value}"
+            )
         except Exception as e:
-            logger.error(f"[UNIFIED-WS] Failed to send ping to {health.client_id}: {e}")
+            logger.error(f"[UNIFIED-WS] ❌ Failed to send ping to {health.client_id}: {e}")
             health.errors += 1
             health.health_score = max(0, health.health_score - 10)
 
@@ -1264,6 +1280,10 @@ async def unified_websocket_endpoint(websocket: WebSocket):
                         "timestamp": data.get("timestamp"),
                         "server_time": datetime.now().isoformat(),
                     }
+                )
+                logger.debug(
+                    f"[UNIFIED-WS] 🏓 Received ping from {client_id}, sent pong | "
+                    f"Health: {ws_manager.connection_health[client_id].health_score:.1f}"
                 )
                 continue
 
