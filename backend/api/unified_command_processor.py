@@ -3012,8 +3012,18 @@ class UnifiedCommandProcessor:
                         **result,
                     }
                 else:
-                    # Other voice unlock commands - use the handler
-                    result = await handler.handle_command(command_text, websocket)
+                    # Other voice unlock commands - use the handler with audio data
+                    # Create jarvis_instance with audio data for voice verification
+                    jarvis_instance = type(
+                        "obj",
+                        (object,),
+                        {
+                            "last_audio_data": self.current_audio_data,
+                            "last_speaker_name": self.current_speaker_name,
+                        },
+                    )()
+
+                    result = await handler.handle_command(command_text, jarvis_instance)
                     return {
                         "success": result.get("success", result.get("type") == "voice_unlock"),
                         "response": result.get("message", result.get("response", "")),

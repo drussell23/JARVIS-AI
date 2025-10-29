@@ -329,7 +329,7 @@ async def _generate_contextual_response(action: str, context: Dict[str, Any], re
 
     # Default fast responses with speaker name
     return f"Of course, {speaker_name}. " + (
-        "Unlocking for you. 🎤" if action == "unlock_screen" else "Locking for you. 🎤"
+        "Unlocking for you." if action == "unlock_screen" else "Locking for you."
     )
 
 
