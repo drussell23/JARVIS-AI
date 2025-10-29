@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 sys.path.append(str(Path(__file__).parent.parent))
 
 from intelligence.learning_database import JARVISLearningDatabase
-from voice.speaker_verification import SpeakerVerificationService
+from voice.speaker_verification_service import SpeakerVerificationService
 from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
 from voice_unlock.services.keychain_service import KeychainService
 
