@@ -1532,13 +1532,39 @@ class JARVISLearningDatabase:
                     current_space TEXT,
                     system_state JSON,
                     embedding_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_timestamp (timestamp),
-                    INDEX idx_session (session_id),
-                    INDEX idx_response_type (response_type),
-                    INDEX idx_success (success),
-                    INDEX idx_feedback_score (feedback_score)
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """
+            )
+
+            # Create index for conversation_history
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_timestamp ON conversation_history(timestamp)
+            """
+            )
+            # Create index for conversation_history
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_session ON conversation_history(session_id)
+            """
+            )
+            # Create index for conversation_history
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_response_type ON conversation_history(response_type)
+            """
+            )
+            # Create index for conversation_history
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_success ON conversation_history(success)
+            """
+            )
+            # Create index for conversation_history
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_score ON conversation_history(feedback_score)
             """
             )
 
@@ -1556,10 +1582,21 @@ class JARVISLearningDatabase:
                     learned BOOLEAN DEFAULT 0,
                     pattern_extracted TEXT,
                     metadata JSON,
-                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
-                    INDEX idx_correction_type (correction_type),
-                    INDEX idx_learned (learned)
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id)
                 )
+            """
+            )
+
+            # Create index for interaction_corrections
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_correction_type ON interaction_corrections(correction_type)
+            """
+            )
+            # Create index for interaction_corrections
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_learned ON interaction_corrections(learned)
             """
             )
 
@@ -1574,9 +1611,15 @@ class JARVISLearningDatabase:
                     combined_embedding BLOB,
                     embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
-                    INDEX idx_interaction (interaction_id)
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id)
                 )
+            """
+            )
+
+            # Create index for conversation_embeddings
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_interaction ON conversation_embeddings(interaction_id)
             """
             )
 
@@ -1599,11 +1642,27 @@ class JARVISLearningDatabase:
                     transcription_engine TEXT DEFAULT 'browser_api',
                     audio_quality_score REAL,
                     timestamp TIMESTAMP NOT NULL,
-                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
-                    INDEX idx_was_misheard (was_misheard),
-                    INDEX idx_confidence (confidence_score),
-                    INDEX idx_retry_count (retry_count)
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id)
                 )
+            """
+            )
+
+            # Create index for voice_transcriptions
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_was_misheard ON voice_transcriptions(was_misheard)
+            """
+            )
+            # Create index for voice_transcriptions
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_confidence ON voice_transcriptions(confidence_score)
+            """
+            )
+            # Create index for voice_transcriptions
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_retry_count ON voice_transcriptions(retry_count)
             """
             )
 
@@ -1712,10 +1771,21 @@ class JARVISLearningDatabase:
                     context_clues JSON,
                     learned_pattern TEXT,
                     occurred_at TIMESTAMP NOT NULL,
-                    FOREIGN KEY (transcription_id) REFERENCES voice_transcriptions(transcription_id),
-                    INDEX idx_similarity (acoustic_similarity_score),
-                    INDEX idx_occurred (occurred_at)
+                    FOREIGN KEY (transcription_id) REFERENCES voice_transcriptions(transcription_id)
                 )
+            """
+            )
+
+            # Create index for misheard_queries
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_similarity ON misheard_queries(acoustic_similarity_score)
+            """
+            )
+            # Create index for misheard_queries
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_occurred ON misheard_queries(occurred_at)
             """
             )
 
@@ -1733,9 +1803,15 @@ class JARVISLearningDatabase:
                     eventually_succeeded BOOLEAN,
                     timestamp TIMESTAMP NOT NULL,
                     FOREIGN KEY (original_transcription_id) REFERENCES voice_transcriptions(transcription_id),
-                    FOREIGN KEY (retry_transcription_id) REFERENCES voice_transcriptions(transcription_id),
-                    INDEX idx_retry_number (retry_number)
+                    FOREIGN KEY (retry_transcription_id) REFERENCES voice_transcriptions(transcription_id)
                 )
+            """
+            )
+
+            # Create index for query_retries
+            await cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_retry_number ON query_retries(retry_number)
             """
             )
 
