@@ -19,6 +19,7 @@ import hashlib
 import io
 import logging
 import time
+import warnings
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,9 @@ from scipy.signal import butter, filtfilt, medfilt
 from .base_engine import BaseSTTEngine, STTResult
 
 logger = logging.getLogger(__name__)
+
+# Suppress MPS FFT fallback warnings (expected behavior for unsupported ops)
+warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarning)
 
 
 @dataclass
@@ -112,7 +116,10 @@ class AudioPreprocessor:
             noise_factor: Noise reduction aggressiveness (1.0-3.0)
         """
         try:
-            # Convert to numpy for scipy processing and ensure contiguous
+            # Store original device to restore later
+            original_device = audio.device
+
+            # Move to CPU for scipy processing (avoids MPS FFT warning)
             audio_np = audio.cpu().numpy().copy()
 
             # Estimate noise from first 0.5 seconds
@@ -148,7 +155,8 @@ class AudioPreprocessor:
             # Ensure contiguous array
             audio_clean = np.ascontiguousarray(audio_clean)
 
-            return torch.from_numpy(audio_clean).float()
+            # Convert back to tensor on original device
+            return torch.from_numpy(audio_clean).float().to(original_device)
         except Exception as e:
             logger.warning(f"Spectral subtraction failed: {e}, returning original audio")
             return audio
