@@ -35,7 +35,7 @@ class VoiceEnrollment:
         self.speaker_name = speaker_name
         self.num_samples = num_samples
         self.sample_rate = 16000  # 16kHz for SpeechBrain
-        self.duration_seconds = 3  # 3 seconds per sample
+        self.duration_seconds = 10  # 10 seconds per sample
         self.learning_db = None
         self.speechbrain_engine = None
         self.collected_samples = []
@@ -82,10 +82,15 @@ class VoiceEnrollment:
         print(f"Sample {sample_num}/{self.num_samples}")
         print(f"{'='*60}")
         print(f'\n📝 Please say: "{phrase}"')
-        print(f"\n⏳ Recording will start in 5 seconds...")
-        await asyncio.sleep(5)
+        print(f"\n⏳ Get ready! Recording will start in...")
 
-        print(f"🎙️  RECORDING NOW... (speak clearly for {self.duration_seconds} seconds)")
+        # Countdown
+        for i in range(5, 0, -1):
+            print(f"   {i}...")
+            await asyncio.sleep(1)
+
+        print(f"\n🎙️  RECORDING NOW... (speak clearly for {self.duration_seconds} seconds)")
+        print("=" * 60)
 
         # Record audio
         audio_data = sd.rec(
