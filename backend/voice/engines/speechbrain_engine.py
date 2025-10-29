@@ -71,7 +71,7 @@ class SpeechBrainEngine(BaseSTTEngine):
 
         try:
             # Import in initialize to avoid loading if not needed
-            from speechbrain.pretrained import EncoderDecoderASR
+            from speechbrain.inference.ASR import EncoderDecoderASR
 
             # Determine device (GPU if available, CPU otherwise)
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
