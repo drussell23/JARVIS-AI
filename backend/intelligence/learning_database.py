@@ -2631,31 +2631,46 @@ class JARVISLearningDatabase:
         Derek J. Russell is the primary user.
         """
         try:
-            # Use adapter for database operations to handle SQL dialect differences
-            query_select = await self.db_adapter.adapt_query(
-                "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?"
-            )
-            result = await self.db_adapter.execute_query(query_select, (speaker_name,))
+            # Check if using Cloud SQL (PostgreSQL) or SQLite
+            is_cloud = isinstance(self.db, DatabaseConnectionWrapper) and self.db.is_cloud
 
-            if result:
-                return result[0]["speaker_id"]
+            async with self.db.cursor() as cursor:
+                # Check if profile exists
+                if is_cloud:
+                    await cursor.execute(
+                        "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = %s",
+                        (speaker_name,),
+                    )
+                else:
+                    await cursor.execute(
+                        "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?",
+                        (speaker_name,),
+                    )
+                row = await cursor.fetchone()
 
-            # Create new profile
-            query_insert = await self.db_adapter.adapt_query(
-                "INSERT INTO speaker_profiles (speaker_name) VALUES (?)"
-            )
-            await self.db_adapter.execute_query(query_insert, (speaker_name,))
+                if row:
+                    return row["speaker_id"] if isinstance(row, dict) else row[0]
 
-            # Get the ID of the newly created profile
-            query_select_new = await self.db_adapter.adapt_query(
-                "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?"
-            )
-            result = await self.db_adapter.execute_query(query_select_new, (speaker_name,))
-            speaker_id = result[0]["speaker_id"] if result else -1
+                # Create new profile
+                if is_cloud:
+                    await cursor.execute(
+                        "INSERT INTO speaker_profiles (speaker_name) VALUES (%s) RETURNING speaker_id",
+                        (speaker_name,),
+                    )
+                    row = await cursor.fetchone()
+                    speaker_id = row["speaker_id"] if isinstance(row, dict) else row[0]
+                else:
+                    await cursor.execute(
+                        "INSERT INTO speaker_profiles (speaker_name) VALUES (?)",
+                        (speaker_name,),
+                    )
+                    speaker_id = cursor.lastrowid
 
-            logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
+                await self.db.commit()
 
-            return speaker_id
+                logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
+
+                return speaker_id
 
         except Exception as e:
             logger.error(f"Failed to get/create speaker profile: {e}")
