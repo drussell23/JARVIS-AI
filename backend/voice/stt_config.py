@@ -18,6 +18,7 @@ class STTEngine(Enum):
     VOSK = "vosk"
     WHISPER_LOCAL = "whisper_local"
     WHISPER_GCP = "whisper_gcp"
+    SPEECHBRAIN = "speechbrain"
     BROWSER_API = "browser_api"
 
 
@@ -256,7 +257,64 @@ class STTConfig:
                 cost_per_minute=0.006,  # $0.006/min on GCP
                 requires_gpu=True,
                 requires_internet=True,
-                model_path="large-v3",
+            ),
+            # SpeechBrain models (local, adaptive, noise-robust)
+            "speechbrain-asr-crdnn": ModelConfig(
+                name="speechbrain-asr-crdnn",
+                engine=STTEngine.SPEECHBRAIN,
+                disk_size_mb=450,
+                ram_required_gb=2.5,
+                vram_required_gb=2.0,
+                expected_accuracy=0.94,
+                avg_latency_ms=180,
+                cost_per_minute=0.0,
+                requires_gpu=False,  # Works on CPU but faster on GPU
+                supports_fine_tuning=True,
+                supports_streaming=True,
+                model_path="speechbrain/asr-crdnn-rnnlm-librispeech",
+                metadata={
+                    "description": "CRDNN with RNN language model - robust to noise",
+                    "specialization": "command_words",
+                    "noise_robustness": "high",
+                },
+            ),
+            "speechbrain-wav2vec2": ModelConfig(
+                name="speechbrain-wav2vec2",
+                engine=STTEngine.SPEECHBRAIN,
+                disk_size_mb=380,
+                ram_required_gb=2.0,
+                vram_required_gb=1.8,
+                expected_accuracy=0.96,
+                avg_latency_ms=150,
+                cost_per_minute=0.0,
+                requires_gpu=False,
+                supports_fine_tuning=True,
+                supports_streaming=True,
+                model_path="speechbrain/asr-wav2vec2-commonvoice-en",
+                metadata={
+                    "description": "Wav2Vec2-based for high accuracy",
+                    "specialization": "general",
+                    "noise_robustness": "medium",
+                },
+            ),
+            "speechbrain-transformer": ModelConfig(
+                name="speechbrain-transformer",
+                engine=STTEngine.SPEECHBRAIN,
+                disk_size_mb=520,
+                ram_required_gb=3.0,
+                vram_required_gb=2.5,
+                expected_accuracy=0.97,
+                avg_latency_ms=220,
+                cost_per_minute=0.0,
+                requires_gpu=False,
+                supports_fine_tuning=True,
+                supports_streaming=False,
+                model_path="speechbrain/asr-transformer-transformerlm-librispeech",
+                metadata={
+                    "description": "Transformer-based for long-form speech",
+                    "specialization": "long_form",
+                    "noise_robustness": "medium",
+                },
             ),
         }
 

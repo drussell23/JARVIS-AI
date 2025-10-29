@@ -217,6 +217,12 @@ class HybridSTTRouter:
                 engine = WhisperGCPEngine(model)
                 await engine.initialize()
 
+            elif model.engine == STTEngine.SPEECHBRAIN:
+                from .engines.speechbrain_engine import SpeechBrainEngine
+
+                engine = SpeechBrainEngine(model)
+                await engine.initialize()
+
             else:
                 raise ValueError(f"Unknown engine: {model.engine}")
 
