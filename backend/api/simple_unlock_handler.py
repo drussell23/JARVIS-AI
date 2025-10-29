@@ -308,25 +308,28 @@ async def _analyze_command_context(
 
 
 async def _generate_contextual_response(action: str, context: Dict[str, Any], response_gen) -> str:
-    """Generate dynamic, contextual response based on action and context - SPEED OPTIMIZED."""
+    """Generate dynamic, contextual response with speaker name if verified - SPEED OPTIMIZED."""
+
+    # Get speaker name if verified
+    speaker_name = context.get("verified_speaker_name", "Sir")
 
     # FAST PATH: Use pre-generated responses for speed (no dynamic generation overhead)
     # This eliminates the response_gen overhead while keeping contextual awareness
 
     if action == "unlock_screen" and context.get("screen_state") == "unlocked":
-        return "Your screen is already unlocked."
+        return f"Your screen is already unlocked, {speaker_name}."
 
-    # Use fast fallback responses (no random selection overhead)
+    # Use fast fallback responses with speaker name
     if context.get("urgency") == "high":
-        return "Right away! " + (
+        return f"Right away, {speaker_name}! " + (
             "Unlocking your screen now."
             if action == "unlock_screen"
             else "Locking your screen now."
         )
 
-    # Default fast responses
-    return "Of course, Sir. " + (
-        "Unlocking for you." if action == "unlock_screen" else "Locking for you."
+    # Default fast responses with speaker name
+    return f"Of course, {speaker_name}. " + (
+        "Unlocking for you. 🎤" if action == "unlock_screen" else "Locking for you. 🎤"
     )
 
 
@@ -622,10 +625,10 @@ async def _try_system_lock_command(context: Dict[str, Any]) -> Tuple[bool, str]:
 
 async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
     """
-    Try keychain-based unlock method with voice verification.
+    Try keychain-based unlock method with voice verification using 25 voice samples.
 
     Security Flow:
-    1. Verify speaker identity from audio (if available)
+    1. Verify speaker identity from audio using 25 biometric samples
     2. Check if speaker is the device owner
     3. Retrieve password from keychain
     4. Perform unlock
@@ -635,55 +638,43 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
     speaker_name = context.get("speaker_name")
 
     if audio_data:
-        # Verify speaker using voice biometrics
+        # Verify speaker using NEW speaker verification service (with 25 samples)
         try:
-            from voice.speaker_recognition import get_speaker_recognition_engine
+            from voice.speaker_verification_service import get_speaker_verification_service
 
-            speaker_engine = get_speaker_recognition_engine()
-            await speaker_engine.initialize()
+            speaker_service = await get_speaker_verification_service()
 
-            # Identify speaker if not already identified
-            if not speaker_name:
-                speaker_name, confidence = await speaker_engine.identify_speaker(audio_data)
-                logger.info(
-                    f"🔐 Speaker identified for unlock: {speaker_name} (confidence: {confidence:.2f})"
-                )
-            else:
-                # Verify claimed speaker
-                is_verified, confidence = await speaker_engine.verify_speaker(
-                    audio_data, speaker_name
-                )
-                logger.info(
-                    f"🔐 Speaker verification for unlock: {speaker_name} - {'✅ VERIFIED' if is_verified else '❌ FAILED'} (confidence: {confidence:.2f})"
-                )
+            # Verify speaker using voice biometrics from database
+            verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
 
-                if not is_verified:
-                    logger.warning(
-                        f"🚫 Voice verification failed for {speaker_name} - unlock denied"
-                    )
-                    return (
-                        False,
-                        f"Voice verification failed (confidence: {confidence:.2%}). Unlock denied for security.",
-                    )
+            speaker_name = verification_result["speaker_name"]
+            is_verified = verification_result["verified"]
+            confidence = verification_result["confidence"]
+            is_owner = verification_result["is_owner"]
+
+            logger.info(
+                f"🔐 Speaker verification: {speaker_name} - "
+                f"{'✅ VERIFIED' if is_verified else '❌ FAILED'} "
+                f"(confidence: {confidence:.1%}, owner: {is_owner})"
+            )
+
+            if not is_verified:
+                logger.warning(f"🚫 Voice verification failed for {speaker_name} - unlock denied")
+                return (
+                    False,
+                    f"I couldn't verify your identity. For security, unlock is denied.",
+                )
 
             # Check if speaker is the device owner
-            if not speaker_engine.is_owner(speaker_name):
+            if not is_owner:
                 logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
                 return (
                     False,
-                    f"Only the device owner can unlock the screen via voice. User '{speaker_name}' does not have unlock privileges.",
+                    f"Only the device owner can unlock the screen via voice.",
                 )
 
-            # Get security clearance
-            security_clearance = speaker_engine.get_security_clearance(speaker_name)
-            if security_clearance != "admin":
-                logger.warning(
-                    f"🚫 User {speaker_name} lacks admin clearance for unlock (level: {security_clearance})"
-                )
-                return (
-                    False,
-                    f"Insufficient security clearance for screen unlock. Required: admin, Current: {security_clearance}",
-                )
+            # Store verified speaker name in context for personalized response
+            context["verified_speaker_name"] = speaker_name
 
             logger.info(f"✅ Voice verification passed for owner: {speaker_name}")
 
@@ -699,6 +690,8 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             return False, "Voice verification required for screen unlock. No audio data provided."
         else:
             logger.info("⚠️  Voice verification bypassed by admin flag")
+            # Set default speaker name for bypass case
+            context["verified_speaker_name"] = "Sir"
 
     # Step 2: Retrieve password from keychain
     result = subprocess.run(
