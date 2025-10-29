@@ -111,38 +111,47 @@ class AudioPreprocessor:
             audio: Input audio tensor
             noise_factor: Noise reduction aggressiveness (1.0-3.0)
         """
-        # Convert to numpy for scipy processing
-        audio_np = audio.cpu().numpy()
+        try:
+            # Convert to numpy for scipy processing and ensure contiguous
+            audio_np = audio.cpu().numpy().copy()
 
-        # Estimate noise from first 0.5 seconds
-        noise_duration = min(8000, len(audio_np) // 4)
-        noise_profile = audio_np[:noise_duration]
+            # Estimate noise from first 0.5 seconds
+            noise_duration = min(8000, len(audio_np) // 4)
+            noise_profile = audio_np[:noise_duration]
 
-        # Compute STFT
-        f, t, stft = signal.stft(audio_np, fs=16000, nperseg=512)
-        _, _, noise_stft = signal.stft(noise_profile, fs=16000, nperseg=512)
+            # Compute STFT
+            f, t, stft = signal.stft(audio_np, fs=16000, nperseg=512)
+            _, _, noise_stft = signal.stft(noise_profile, fs=16000, nperseg=512)
 
-        # Estimate noise spectrum (mean magnitude)
-        noise_magnitude = np.mean(np.abs(noise_stft), axis=1, keepdims=True)
+            # Estimate noise spectrum (mean magnitude)
+            noise_magnitude = np.mean(np.abs(noise_stft), axis=1, keepdims=True)
 
-        # Subtract noise
-        magnitude = np.abs(stft)
-        phase = np.angle(stft)
+            # Subtract noise
+            magnitude = np.abs(stft)
+            phase = np.angle(stft)
 
-        # Spectral subtraction with oversubtraction
-        magnitude_clean = np.maximum(magnitude - noise_factor * noise_magnitude, 0.1 * magnitude)
+            # Spectral subtraction with oversubtraction
+            magnitude_clean = np.maximum(
+                magnitude - noise_factor * noise_magnitude, 0.1 * magnitude
+            )
 
-        # Reconstruct signal
-        stft_clean = magnitude_clean * np.exp(1j * phase)
-        _, audio_clean = signal.istft(stft_clean, fs=16000, nperseg=512)
+            # Reconstruct signal
+            stft_clean = magnitude_clean * np.exp(1j * phase)
+            _, audio_clean = signal.istft(stft_clean, fs=16000, nperseg=512)
 
-        # Ensure same length
-        if len(audio_clean) > len(audio_np):
-            audio_clean = audio_clean[: len(audio_np)]
-        elif len(audio_clean) < len(audio_np):
-            audio_clean = np.pad(audio_clean, (0, len(audio_np) - len(audio_clean)))
+            # Ensure same length
+            if len(audio_clean) > len(audio_np):
+                audio_clean = audio_clean[: len(audio_np)]
+            elif len(audio_clean) < len(audio_np):
+                audio_clean = np.pad(audio_clean, (0, len(audio_np) - len(audio_clean)))
 
-        return torch.from_numpy(audio_clean).float()
+            # Ensure contiguous array
+            audio_clean = np.ascontiguousarray(audio_clean)
+
+            return torch.from_numpy(audio_clean).float()
+        except Exception as e:
+            logger.warning(f"Spectral subtraction failed: {e}, returning original audio")
+            return audio
 
     @staticmethod
     def automatic_gain_control(
@@ -236,24 +245,31 @@ class AudioPreprocessor:
             lowcut: Low cutoff frequency (Hz)
             highcut: High cutoff frequency (Hz)
         """
-        # Convert to numpy
-        audio_np = audio.cpu().numpy()
+        try:
+            # Convert to numpy and ensure contiguous array
+            audio_np = audio.cpu().numpy().copy()
 
-        # Design Butterworth bandpass filter
-        nyquist = 16000 / 2
-        low = lowcut / nyquist
-        high = highcut / nyquist
+            # Design Butterworth bandpass filter
+            nyquist = 16000 / 2
+            low = lowcut / nyquist
+            high = highcut / nyquist
 
-        # Ensure frequencies are valid (must be 0 < Wn < 1)
-        low = max(0.001, min(low, 0.99))
-        high = max(low + 0.01, min(high, 0.99))
+            # Ensure frequencies are valid (must be 0 < Wn < 1)
+            low = max(0.001, min(low, 0.99))
+            high = max(low + 0.01, min(high, 0.99))
 
-        b, a = butter(4, [low, high], btype="band")
+            b, a = butter(4, [low, high], btype="band")
 
-        # Apply filter (forward and backward for zero phase)
-        filtered = filtfilt(b, a, audio_np)
+            # Apply filter (forward and backward for zero phase)
+            filtered = filtfilt(b, a, audio_np)
 
-        return torch.from_numpy(filtered).float()
+            # Ensure contiguous array before converting to tensor
+            filtered = np.ascontiguousarray(filtered)
+
+            return torch.from_numpy(filtered).float()
+        except Exception as e:
+            logger.warning(f"Bandpass filter failed: {e}, returning original audio")
+            return audio
 
 
 class SpeechBrainEngine(BaseSTTEngine):
@@ -697,34 +713,53 @@ class SpeechBrainEngine(BaseSTTEngine):
             ]
 
     async def _preprocess_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
-        """Apply noise-robust preprocessing pipeline"""
+        """Apply noise-robust preprocessing pipeline with graceful fallback"""
+        original_audio = audio_tensor.clone()
+
         try:
             # 1. Bandpass filter (focus on speech frequencies)
-            audio_tensor = self.preprocessor.apply_bandpass_filter(
-                audio_tensor, lowcut=80.0, highcut=7500.0
-            )
+            try:
+                audio_tensor = self.preprocessor.apply_bandpass_filter(
+                    audio_tensor, lowcut=80.0, highcut=7500.0
+                )
+            except Exception as e:
+                logger.debug(f"Bandpass filter skipped: {e}")
 
             # 2. Voice activity detection and trimming
-            audio_tensor, vad_ratio = self.preprocessor.voice_activity_detection(
-                audio_tensor, threshold=0.0001
-            )
+            try:
+                audio_tensor, vad_ratio = self.preprocessor.voice_activity_detection(
+                    audio_tensor, threshold=0.0001
+                )
 
-            # Skip further processing if no voice detected
-            if vad_ratio < 0.05:
-                logger.debug(f"Low VAD ratio: {vad_ratio:.2%}, skipping noise reduction")
-                return audio_tensor
+                # Skip further processing if no voice detected
+                if vad_ratio < 0.05:
+                    logger.debug(f"Low VAD ratio: {vad_ratio:.2%}, skipping noise reduction")
+                    return audio_tensor
+            except Exception as e:
+                logger.debug(f"VAD skipped: {e}")
+                vad_ratio = 1.0  # Assume voice present
 
             # 3. Spectral subtraction for noise reduction
-            audio_tensor = self.preprocessor.spectral_subtraction(audio_tensor, noise_factor=1.5)
+            try:
+                audio_tensor = self.preprocessor.spectral_subtraction(
+                    audio_tensor, noise_factor=1.5
+                )
+            except Exception as e:
+                logger.debug(f"Spectral subtraction skipped: {e}")
 
             # 4. Automatic gain control
-            audio_tensor = self.preprocessor.automatic_gain_control(audio_tensor, target_level=0.5)
+            try:
+                audio_tensor = self.preprocessor.automatic_gain_control(
+                    audio_tensor, target_level=0.5
+                )
+            except Exception as e:
+                logger.debug(f"AGC skipped: {e}")
 
             return audio_tensor
 
         except Exception as e:
             logger.warning(f"Preprocessing error: {e}, using original audio")
-            return audio_tensor
+            return original_audio
 
     def _normalize_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
         """Normalize audio to [-1, 1] range"""
