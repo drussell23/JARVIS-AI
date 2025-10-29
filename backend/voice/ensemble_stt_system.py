@@ -75,6 +75,7 @@ class EnsembleSTTSystem:
         self,
         stt_router,
         learning_db=None,
+        gcp_optimizer=None,
         confidence_threshold=0.75,
         retry_threshold=0.60,
         max_retries=2,
@@ -85,12 +86,14 @@ class EnsembleSTTSystem:
         Args:
             stt_router: HybridSTTRouter instance
             learning_db: LearningDatabase instance (optional)
+            gcp_optimizer: IntelligentGCPOptimizer instance (optional)
             confidence_threshold: Minimum confidence for ensemble voting
             retry_threshold: Minimum confidence before retry
             max_retries: Maximum retry attempts
         """
         self.stt_router = stt_router
         self.learning_db = learning_db
+        self.gcp_optimizer = gcp_optimizer
         self.confidence_threshold = confidence_threshold
         self.retry_threshold = retry_threshold
         self.max_retries = max_retries
@@ -102,10 +105,15 @@ class EnsembleSTTSystem:
         # Adaptive weights (learned over time)
         self.model_weights = defaultdict(lambda: 1.0)
 
+        # Cost tracking
+        self.total_cloud_requests = 0
+        self.total_cloud_cost = 0.0
+
         logger.info("🎯 Ensemble STT System initialized")
         logger.info(f"   Confidence threshold: {confidence_threshold}")
         logger.info(f"   Retry threshold: {retry_threshold}")
         logger.info(f"   Max retries: {max_retries}")
+        logger.info(f"   GCP Optimizer: {'enabled' if gcp_optimizer else 'disabled'}")
 
     async def transcribe_with_ensemble(
         self,
@@ -416,12 +424,65 @@ class EnsembleSTTSystem:
         return "vosk-small"
 
     async def _select_accurate_models(self) -> List[str]:
-        """Select most accurate models for escalation"""
-        return [
+        """
+        Select most accurate models for escalation
+
+        Respects GCP Spot VM budget - excludes cloud models if budget exceeded
+        """
+        accurate_models = [
             "speechbrain-wav2vec2",
             "whisper-small",
             "wav2vec2-large",
         ]
+
+        # Check if we should avoid cloud models
+        if await self._should_avoid_cloud():
+            # Filter out GCP models
+            accurate_models = [m for m in accurate_models if not m.endswith("-gcp")]
+            logger.info("[GCP-AWARE] Budget exceeded, using only local models")
+
+        return accurate_models
+
+    async def _should_avoid_cloud(self) -> bool:
+        """
+        Check if we should avoid cloud models due to GCP budget
+
+        Returns:
+            True if cloud models should be avoided
+        """
+        if not self.gcp_optimizer:
+            return False  # No optimizer, allow cloud
+
+        try:
+            # Check if GCP optimizer recommends avoiding cloud
+            from core.intelligent_gcp_optimizer import get_gcp_optimizer
+
+            optimizer = self.gcp_optimizer or get_gcp_optimizer()
+
+            # Check budget status
+            budget_info = await optimizer.get_budget_status()
+
+            # Avoid cloud if:
+            # 1. Daily budget exceeded
+            # 2. Close to budget limit (> 90%)
+            # 3. Optimizer explicitly says no
+
+            if budget_info.get("exceeded", False):
+                logger.warning("[GCP-AWARE] ❌ Daily budget exceeded, blocking cloud models")
+                return True
+
+            budget_used_pct = budget_info.get("percent_used", 0)
+            if budget_used_pct > 90:
+                logger.warning(
+                    f"[GCP-AWARE] ⚠️ Budget {budget_used_pct:.0f}% used, avoiding cloud models"
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"[GCP-AWARE] Error checking budget (allowing cloud): {e}")
+            return False  # On error, allow cloud (fail open)
 
     def _convert_to_ensemble_result(
         self, results: List[STTResult], retry_count: int = 0
