@@ -696,10 +696,24 @@ class AdvancedAsyncPipeline:
                             f"[FAST PATH] Voice authentication failed: {voice_error}, falling back to simple unlock"
                         )
 
-                # Fallback to simple unlock (no voice auth)
+                # Fallback to simple unlock - create jarvis_instance with audio data
                 from api.simple_unlock_handler import handle_unlock_command
 
-                result = await handle_unlock_command(text, self.jarvis)
+                # Create jarvis_instance with audio data for voice verification
+                jarvis_instance = type(
+                    "obj",
+                    (object,),
+                    {
+                        "last_audio_data": audio_data,
+                        "last_speaker_name": speaker_name,
+                    },
+                )()
+
+                logger.info(
+                    f"[FAST PATH] Calling handle_unlock_command with audio: {len(audio_data) if audio_data else 0} bytes"
+                )
+
+                result = await handle_unlock_command(text, jarvis_instance)
                 return result
 
             except Exception as e:
