@@ -223,6 +223,11 @@ class UnifiedCommandProcessor:
         self.vision_router = None
         self._vision_router_initialized = False
 
+        # Initialize Speaker Verification Service (voice biometric authentication)
+        self.speaker_verification = None
+        self.message_generator = None
+        self._speaker_verification_initialized = False
+
     async def _initialize_resolvers(self):
         """Initialize both resolver systems for comprehensive query understanding"""
 
@@ -824,6 +829,27 @@ class UnifiedCommandProcessor:
             if not INTELLIGENT_ROUTER_AVAILABLE:
                 logger.warning("[UNIFIED] Intelligent Vision Router not available")
 
+        # Initialize Speaker Verification Service
+        if not self._speaker_verification_initialized:
+            try:
+                from voice.contextual_message_generator import get_message_generator
+                from voice.speaker_verification_service import get_speaker_verification_service
+
+                self.speaker_verification = await get_speaker_verification_service()
+                self.message_generator = get_message_generator()
+                await self.message_generator.initialize()
+
+                self._speaker_verification_initialized = True
+
+                logger.info("[UNIFIED] ✅ Speaker Verification Service initialized")
+                logger.info("[UNIFIED] ✅ Contextual Message Generator initialized")
+
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Speaker verification not available: {e}", exc_info=True)
+                self.speaker_verification = None
+                self.message_generator = None
+                self._speaker_verification_initialized = False
+
         self._resolvers_initialized = True
 
     async def warmup_components(self):
@@ -939,6 +965,28 @@ class UnifiedCommandProcessor:
 
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
+
+        # Perform speaker verification if audio data provided
+        speaker_verification_result = None
+        if audio_data and self.speaker_verification:
+            try:
+                speaker_verification_result = await self.speaker_verification.verify_speaker(
+                    audio_data, speaker_name
+                )
+
+                logger.info(
+                    f"[VOICE-AUTH] Speaker: {speaker_verification_result['speaker_name']}, "
+                    f"Verified: {speaker_verification_result['verified']}, "
+                    f"Confidence: {speaker_verification_result['confidence']:.1%}, "
+                    f"Owner: {speaker_verification_result['is_owner']}"
+                )
+
+                # Store verification result for security-sensitive operations
+                self.current_speaker_verification = speaker_verification_result
+
+            except Exception as e:
+                logger.warning(f"[VOICE-AUTH] Speaker verification failed: {e}")
+                speaker_verification_result = None
 
         # NEW: Get context-aware handler for ALL commands
         from context_intelligence.handlers.context_aware_handler import get_context_aware_handler

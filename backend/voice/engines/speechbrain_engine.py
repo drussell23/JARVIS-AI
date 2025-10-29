@@ -313,3 +313,108 @@ class SpeechBrainEngine(BaseSTTEngine):
     def is_fine_tuned(self) -> bool:
         """Check if model has been fine-tuned on user voice"""
         return self.fine_tuned and len(self.speaker_embeddings) > 0
+
+    async def extract_speaker_embedding(self, audio_data: bytes) -> np.ndarray:
+        """
+        Extract speaker embedding from audio for verification
+
+        Args:
+            audio_data: Raw audio bytes (WAV format)
+
+        Returns:
+            Speaker embedding as numpy array
+        """
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            # Convert audio to tensor
+            audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
+
+            # Resample if needed
+            if sample_rate != 16000:
+                audio_tensor = self.resampler(audio_tensor)
+
+            # Normalize
+            audio_tensor = audio_tensor / (torch.max(torch.abs(audio_tensor)) + 1e-8)
+
+            # Extract statistical features as embedding
+            # TODO: Replace with actual SpeechBrain speaker encoder
+            embedding = np.array(
+                [
+                    float(torch.mean(audio_tensor).item()),
+                    float(torch.std(audio_tensor).item()),
+                    float(torch.max(audio_tensor).item()),
+                    float(torch.min(audio_tensor).item()),
+                    float(torch.median(audio_tensor).item()),
+                    float(torch.quantile(audio_tensor, 0.25).item()),
+                    float(torch.quantile(audio_tensor, 0.75).item()),
+                    float(len(audio_tensor)),
+                ]
+            )
+
+            return embedding
+
+        except Exception as e:
+            logger.error(f"Speaker embedding extraction error: {e}", exc_info=True)
+            return np.zeros(8)  # Return zero embedding on error
+
+    async def verify_speaker(
+        self, audio_data: bytes, known_embedding: np.ndarray, threshold: float = 0.75
+    ) -> tuple[bool, float]:
+        """
+        Verify if audio matches known speaker embedding
+
+        Args:
+            audio_data: Audio to verify
+            known_embedding: Known speaker embedding from enrollment
+            threshold: Similarity threshold for verification (0.0-1.0)
+
+        Returns:
+            Tuple of (is_verified, confidence_score)
+        """
+        try:
+            # Extract embedding from current audio
+            current_embedding = await self.extract_speaker_embedding(audio_data)
+
+            # Compute cosine similarity
+            similarity = self._cosine_similarity(current_embedding, known_embedding)
+
+            # Normalize to 0-1 range (cosine is -1 to 1)
+            confidence = (similarity + 1.0) / 2.0
+
+            is_verified = confidence >= threshold
+
+            logger.debug(
+                f"[Speaker Verification] Confidence: {confidence:.2%}, "
+                f"Threshold: {threshold:.2%}, Verified: {is_verified}"
+            )
+
+            return is_verified, confidence
+
+        except Exception as e:
+            logger.error(f"Speaker verification error: {e}", exc_info=True)
+            return False, 0.0
+
+    def _cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """
+        Compute cosine similarity between two embeddings
+
+        Args:
+            embedding1: First embedding
+            embedding2: Second embedding
+
+        Returns:
+            Similarity score (-1.0 to 1.0)
+        """
+        # Handle zero vectors
+        norm1 = np.linalg.norm(embedding1)
+        norm2 = np.linalg.norm(embedding2)
+
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+
+        # Cosine similarity
+        similarity = np.dot(embedding1, embedding2) / (norm1 * norm2)
+
+        return float(similarity)
