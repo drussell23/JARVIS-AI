@@ -2232,7 +2232,7 @@ class JARVISLearningDatabase:
                 interaction_id = cursor.lastrowid
 
                 # Generate embeddings asynchronously (non-blocking)
-                if self.enable_embeddings:
+                if self.enable_ml:
                     asyncio.create_task(
                         self._generate_conversation_embeddings(
                             interaction_id, embedding_id, user_query, jarvis_response
