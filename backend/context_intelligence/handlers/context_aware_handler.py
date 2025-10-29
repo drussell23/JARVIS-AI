@@ -37,6 +37,7 @@ class ContextAwareCommandHandler:
         self.action_handler = None  # Lazy initialize
         self.message_generator = None  # Lazy initialize
         self.speaker_verification = None  # Lazy initialize
+        self.voice_unlock_integration = None  # Lazy initialize - new integrated unlock service
 
     async def handle_command_with_context(
         self,
@@ -177,11 +178,40 @@ class ContextAwareCommandHandler:
                     logger.info(
                         f"[CONTEXT AWARE] 🔓 Now unlocking screen with voice verification..."
                     )
-                    unlock_success, unlock_message = (
-                        await self.screen_lock_detector.handle_screen_lock_context(
-                            command, audio_data=audio_data, speaker_name=speaker_name
+
+                    # Use new integrated voice unlock service if available
+                    if audio_data and self.voice_unlock_integration:
+                        try:
+                            unlock_success, unlock_message, unlock_confidence = (
+                                await self.voice_unlock_integration.verify_and_unlock(
+                                    audio_data=audio_data,
+                                    speaker_name=identified_speaker,
+                                    command_text=command,
+                                )
+                            )
+
+                            logger.info(
+                                f"[CONTEXT AWARE] Voice unlock result: success={unlock_success}, "
+                                f"confidence={unlock_confidence:.2%}, message={unlock_message}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[CONTEXT AWARE] Voice unlock integration error: {e}",
+                                exc_info=True,
+                            )
+                            # Fallback to old method
+                            unlock_success, unlock_message = (
+                                await self.screen_lock_detector.handle_screen_lock_context(
+                                    command, audio_data=audio_data, speaker_name=speaker_name
+                                )
+                            )
+                    else:
+                        # Fallback to old method if audio data not available or service not initialized
+                        unlock_success, unlock_message = (
+                            await self.screen_lock_detector.handle_screen_lock_context(
+                                command, audio_data=audio_data, speaker_name=speaker_name
+                            )
                         )
-                    )
 
                     if unlock_success:
                         self._add_step("Screen unlocked successfully", {"unlocked": True})
@@ -524,9 +554,10 @@ class ContextAwareCommandHandler:
         """Lazy initialize speaker verification and message generator"""
         if self.speaker_verification is None:
             try:
-                from voice.speaker_verification_service import get_speaker_verification_service
+                from voice.speaker_verification import SpeakerVerificationService
 
-                self.speaker_verification = await get_speaker_verification_service()
+                self.speaker_verification = SpeakerVerificationService()
+                await self.speaker_verification.initialize()
                 logger.info("[CONTEXT AWARE] ✅ Speaker verification service initialized")
             except Exception as e:
                 logger.warning(f"[CONTEXT AWARE] Speaker verification not available: {e}")
@@ -540,6 +571,15 @@ class ContextAwareCommandHandler:
                 logger.info("[CONTEXT AWARE] ✅ Contextual message generator initialized")
             except Exception as e:
                 logger.warning(f"[CONTEXT AWARE] Message generator not available: {e}")
+
+        if self.voice_unlock_integration is None:
+            try:
+                from voice.voice_unlock_integration import get_voice_unlock_integration
+
+                self.voice_unlock_integration = await get_voice_unlock_integration()
+                logger.info("[CONTEXT AWARE] ✅ Voice unlock integration initialized")
+            except Exception as e:
+                logger.warning(f"[CONTEXT AWARE] Voice unlock integration not available: {e}")
 
     async def _speak_message(self, message: str, priority: str = "normal"):
         """Speak a message immediately using JARVIS voice through WebSocket and macOS say"""
