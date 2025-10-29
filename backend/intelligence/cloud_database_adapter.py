@@ -4,30 +4,33 @@ Cloud Database Adapter for JARVIS
 Supports both local SQLite and GCP Cloud SQL (PostgreSQL)
 Seamless switching between local and cloud databases
 """
-import os
 import json
 import logging
-import asyncio
-from pathlib import Path
-from typing import Dict, Any, Optional
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Optional
 
 # Database drivers
 import aiosqlite  # For local SQLite
 
 try:
     import asyncpg  # For PostgreSQL/Cloud SQL
+
     ASYNCPG_AVAILABLE = True
 except ImportError:
     ASYNCPG_AVAILABLE = False
     logging.warning("asyncpg not available - install with: pip install asyncpg")
 
 try:
-    from google.cloud.sql.connector import Connector
+    pass
+
     CLOUD_SQL_CONNECTOR_AVAILABLE = True
 except ImportError:
     CLOUD_SQL_CONNECTOR_AVAILABLE = False
-    logging.warning("Cloud SQL Connector not available - install with: pip install cloud-sql-python-connector[asyncpg]")
+    logging.warning(
+        "Cloud SQL Connector not available - install with: pip install cloud-sql-python-connector[asyncpg]"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +39,14 @@ class DatabaseConfig:
     """Configuration for database connection"""
 
     def __init__(self):
-        self.db_type = os.getenv('JARVIS_DB_TYPE', 'sqlite')  # 'sqlite' or 'cloudsql'
-
-        # Cloud SQL config
-        self.connection_name = os.getenv('JARVIS_DB_CONNECTION_NAME')
-        self.db_host = os.getenv('JARVIS_DB_HOST', '127.0.0.1')
-        self.db_port = int(os.getenv('JARVIS_DB_PORT', '5432'))
-        self.db_name = os.getenv('JARVIS_DB_NAME', 'jarvis_learning')
-        self.db_user = os.getenv('JARVIS_DB_USER', 'jarvis')
-        self.db_password = os.getenv('JARVIS_DB_PASSWORD', '')
+        # Initialize all attributes with defaults
+        self.db_type = "sqlite"
+        self.connection_name = None
+        self.db_host = "127.0.0.1"
+        self.db_port = 5432
+        self.db_name = "jarvis_learning"
+        self.db_user = "jarvis"
+        self.db_password = ""  # nosec - default empty password, overridden by config
 
         # Local SQLite config
         self.sqlite_path = Path.home() / ".jarvis" / "learning" / "jarvis_learning.db"
@@ -52,21 +54,32 @@ class DatabaseConfig:
         # Load from config file if exists
         self._load_from_config()
 
+        # Environment variables can override config file
+        self.db_type = os.getenv("JARVIS_DB_TYPE", "cloudsql" if self.connection_name else "sqlite")
+        self.connection_name = os.getenv("JARVIS_DB_CONNECTION_NAME", self.connection_name)
+        self.db_host = os.getenv("JARVIS_DB_HOST", self.db_host)
+        self.db_port = int(os.getenv("JARVIS_DB_PORT", str(self.db_port)))
+        self.db_name = os.getenv("JARVIS_DB_NAME", self.db_name)
+        self.db_user = os.getenv("JARVIS_DB_USER", self.db_user)
+        self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
+
     def _load_from_config(self):
         """Load config from JSON file"""
         config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     config = json.load(f)
-                    cloud_sql = config.get('cloud_sql', {})
-                    self.connection_name = cloud_sql.get('connection_name', self.connection_name)
+                    cloud_sql = config.get("cloud_sql", {})
+                    self.connection_name = cloud_sql.get("connection_name", self.connection_name)
                     # Don't override db_host - keep 127.0.0.1 for local proxy
                     # self.db_host = cloud_sql.get('private_ip', self.db_host)
-                    self.db_port = cloud_sql.get('port', self.db_port)
-                    self.db_name = cloud_sql.get('database', self.db_name)
-                    self.db_user = cloud_sql.get('user', self.db_user)
-                    self.db_password = cloud_sql.get('password', self.db_password)
+                    self.db_port = cloud_sql.get("port", self.db_port)
+                    self.db_name = cloud_sql.get("database", self.db_name)
+                    self.db_user = cloud_sql.get("user", self.db_user)
+
+                    self.db_password = cloud_sql.get("password", self.db_password)
+
                     logger.info(f"✅ Loaded database config from {config_path}")
             except Exception as e:
                 logger.warning(f"Failed to load config from {config_path}: {e}")
@@ -75,10 +88,10 @@ class DatabaseConfig:
     def use_cloud_sql(self) -> bool:
         """Check if we should use Cloud SQL"""
         return (
-            self.db_type == 'cloudsql' and
-            ASYNCPG_AVAILABLE and
-            self.db_password and
-            self.connection_name
+            self.db_type == "cloudsql"
+            and ASYNCPG_AVAILABLE
+            and self.db_password
+            and self.connection_name
         )
 
 
@@ -115,7 +128,9 @@ class CloudDatabaseAdapter:
 
             # Use direct connection via Cloud SQL Proxy (simpler and no event loop issues)
             # Cloud SQL Proxy must be running locally: ~/.local/bin/cloud-sql-proxy <connection-name>
-            logger.info(f"Connecting to Cloud SQL via proxy at {self.config.db_host}:{self.config.db_port}")
+            logger.info(
+                f"Connecting to Cloud SQL via proxy at {self.config.db_host}:{self.config.db_port}"
+            )
             self.pool = await asyncpg.create_pool(
                 host=self.config.db_host,
                 port=self.config.db_port,
@@ -124,7 +139,7 @@ class CloudDatabaseAdapter:
                 password=self.config.db_password,
                 min_size=2,
                 max_size=10,
-                command_timeout=60
+                command_timeout=60,
             )
 
             logger.info("✅ Cloud SQL connection pool created")
@@ -227,7 +242,6 @@ class CloudSQLConnection:
 
     async def commit(self):
         """No-op for PostgreSQL (auto-commit)"""
-        pass
 
     def _convert_placeholders(self, query: str) -> str:
         """Convert SQLite ? placeholders to PostgreSQL $1, $2, etc"""
@@ -235,13 +249,13 @@ class CloudSQLConnection:
         param_num = 1
         i = 0
         while i < len(query):
-            if query[i] == '?':
-                result.append(f'${param_num}')
+            if query[i] == "?":
+                result.append(f"${param_num}")
                 param_num += 1
             else:
                 result.append(query[i])
             i += 1
-        return ''.join(result)
+        return "".join(result)
 
 
 # Global adapter instance
