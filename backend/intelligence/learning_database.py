@@ -5,6 +5,7 @@ Hybrid architecture: SQLite (structured) + ChromaDB (embeddings) + Async + ML-po
 """
 
 import asyncio
+import calendar
 import hashlib
 import json
 import logging
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import aiosqlite
 
@@ -1112,7 +1113,8 @@ class JARVISLearningDatabase:
         self.chroma_path = self.db_dir / "chroma_embeddings"
 
         # Async SQLite connection (will be initialized in async context)
-        self.db: Optional[aiosqlite.Connection] = None
+        # Type is Optional during __init__ but guaranteed non-None after initialize()
+        self.db: Union[aiosqlite.Connection, "DatabaseConnectionWrapper", None] = None  # type: ignore[assignment]
         self._db_lock = asyncio.Lock()
 
         # Adaptive caching
@@ -1168,6 +1170,11 @@ class JARVISLearningDatabase:
         logger.info(f"   Cache: {self.cache_size} entries, {self.cache_ttl}s TTL")
         logger.info(f"   ML Features: {self.enable_ml}")
         logger.info(f"   Auto-optimize: {self.auto_optimize}")
+
+    def _ensure_db_initialized(self) -> Union[aiosqlite.Connection, "DatabaseConnectionWrapper"]:
+        """Assert that database is initialized and return it with proper type."""
+        assert self.db is not None, "Database not initialized. Call initialize() first."
+        return self.db
 
     async def _init_sqlite(self):
         """Initialize async database (SQLite or Cloud SQL) with enhanced schema"""
@@ -1225,7 +1232,8 @@ class JARVISLearningDatabase:
                 # SQLite uses BLOB
                 return "BLOB"
 
-        async with self.db.cursor() as cursor:
+        db = self._ensure_db_initialized()
+        async with db.cursor() as cursor:
             # Enable WAL mode for better concurrency (SQLite only)
             if not is_cloud:
                 await cursor.execute("PRAGMA journal_mode=WAL")
@@ -2631,10 +2639,11 @@ class JARVISLearningDatabase:
         Derek J. Russell is the primary user.
         """
         try:
+            db = self._ensure_db_initialized()
             # Check if using Cloud SQL (PostgreSQL) or SQLite
-            is_cloud = isinstance(self.db, DatabaseConnectionWrapper) and self.db.is_cloud
+            is_cloud = isinstance(db, DatabaseConnectionWrapper) and db.is_cloud
 
-            async with self.db.cursor() as cursor:
+            async with db.cursor() as cursor:
                 # Check if profile exists
                 if is_cloud:
                     await cursor.execute(
@@ -2666,7 +2675,7 @@ class JARVISLearningDatabase:
                     )
                     speaker_id = cursor.lastrowid
 
-                await self.db.commit()
+                await db.commit()
 
                 logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
 
