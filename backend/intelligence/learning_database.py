@@ -2631,32 +2631,31 @@ class JARVISLearningDatabase:
         Derek J. Russell is the primary user.
         """
         try:
-            async with self.db.cursor() as cursor:
-                # Check if profile exists
-                await cursor.execute(
-                    "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?",
-                    (speaker_name,),
-                )
-                row = await cursor.fetchone()
+            # Use adapter for database operations to handle SQL dialect differences
+            query_select = await self.db_adapter.adapt_query(
+                "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?"
+            )
+            result = await self.db_adapter.execute_query(query_select, (speaker_name,))
 
-                if row:
-                    return row["speaker_id"]
+            if result:
+                return result[0]["speaker_id"]
 
-                # Create new profile
-                await cursor.execute(
-                    """
-                    INSERT INTO speaker_profiles (speaker_name)
-                    VALUES (?)
-                """,
-                    (speaker_name,),
-                )
+            # Create new profile
+            query_insert = await self.db_adapter.adapt_query(
+                "INSERT INTO speaker_profiles (speaker_name) VALUES (?)"
+            )
+            await self.db_adapter.execute_query(query_insert, (speaker_name,))
 
-                await self.db.commit()
-                speaker_id = cursor.lastrowid
+            # Get the ID of the newly created profile
+            query_select_new = await self.db_adapter.adapt_query(
+                "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?"
+            )
+            result = await self.db_adapter.execute_query(query_select_new, (speaker_name,))
+            speaker_id = result[0]["speaker_id"] if result else -1
 
-                logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
+            logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
 
-                return speaker_id
+            return speaker_id
 
         except Exception as e:
             logger.error(f"Failed to get/create speaker profile: {e}")

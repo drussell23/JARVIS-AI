@@ -146,7 +146,11 @@ class SpeechBrainEngine(BaseSTTEngine):
             )
 
             # Extract text and compute confidence
+            # transcribe_batch returns a list of predictions, get first one
             text = transcription[0] if transcription else ""
+            # If text is still a list, join it or take first element
+            if isinstance(text, list):
+                text = " ".join(text) if text else ""
             confidence = await self._compute_confidence(audio_tensor, text)
 
             latency_ms = (time.time() - start_time) * 1000

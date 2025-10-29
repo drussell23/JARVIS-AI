@@ -82,8 +82,8 @@ class VoiceEnrollment:
         print(f"Sample {sample_num}/{self.num_samples}")
         print(f"{'='*60}")
         print(f'\n📝 Please say: "{phrase}"')
-        print(f"\n⏳ Recording will start in 2 seconds...")
-        await asyncio.sleep(2)
+        print(f"\n⏳ Recording will start in 5 seconds...")
+        await asyncio.sleep(5)
 
         print(f"🎙️  RECORDING NOW... (speak clearly for {self.duration_seconds} seconds)")
 
@@ -212,8 +212,8 @@ class VoiceEnrollment:
                     speaker_name=self.speaker_name,
                     audio_data=audio_bytes,
                     transcription=transcription,
-                    confidence=result.confidence,
-                    duration_ms=self.duration_seconds * 1000,
+                    audio_duration_ms=self.duration_seconds * 1000,
+                    quality_score=result.confidence,
                 )
 
                 logger.info(f"✅ Sample {i+1} recorded and stored")
