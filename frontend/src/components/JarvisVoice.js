@@ -1897,6 +1897,7 @@ const JarvisVoice = () => {
             // If there's a command after the wake word, process it directly (for final or high-confidence results)
             if (commandAfterWakeWord.length > 5 && (isFinal || isHighConfidence)) {
               console.log('🎯 Command found after wake word:', commandAfterWakeWord, `(${isFinal ? 'final' : 'high-confidence'})`);
+
               // Process the command immediately with confidence info
               handleVoiceCommand(commandAfterWakeWord, {
                 confidence: enhancedConfidence,
@@ -2242,6 +2243,12 @@ const JarvisVoice = () => {
       console.log('🎤 [VoiceCapture] No audio data captured (may not affect functionality)');
     }
 
+    // 🎤 Restart audio capture if continuous listening is still active
+    if (continuousListeningRef.current && !isRecordingVoiceRef.current) {
+      console.log('🎤 [VoiceCapture] Restarting audio capture for next command');
+      startVoiceAudioCapture();
+    }
+
     // Check for autonomy activation commands
     const lowerCommand = command.toLowerCase();
     if (lowerCommand.includes('activate full autonomy') ||
@@ -2541,6 +2548,12 @@ const JarvisVoice = () => {
       setContinuousListening(true);
       continuousListeningRef.current = true;
       setIsListening(true);
+
+      // 🎤 Start audio capture for voice biometrics when continuous listening begins
+      if (!isRecordingVoiceRef.current) {
+        console.log('🎤 Starting continuous audio capture for voice biometrics');
+        startVoiceAudioCapture();
+      }
 
       // Configure for INDEFINITE continuous listening
       recognitionRef.current.continuous = true;

@@ -5498,13 +5498,15 @@ Total: ~8s warmup → 🎉 JARVIS READY
 
 ### 🎤 Voice Enrollment & Biometric Screen Unlock
 
-JARVIS v17.4+ implements **real speaker verification** using **SpeechBrain ECAPA-TDNN embeddings** for **voice-authenticated macOS screen unlock** with **Cloud SQL voiceprint storage**.
+JARVIS v17.4+ implements **real speaker verification** using **SpeechBrain ECAPA-TDNN embeddings** for **voice-authenticated macOS screen unlock** with **Cloud SQL voiceprint storage** and **continuous audio capture** for seamless speaker identification.
 
 **System Architecture:**
 ```
 ✅ Real Voice Enrollment: 25+ audio samples → 192-dim ECAPA-TDNN embeddings
 ✅ Cloud SQL Storage: Voiceprints stored in PostgreSQL (Cloud SQL) for persistence
 ✅ Speaker Verification: Real-time voice identity verification (85%+ confidence)
+✅ Continuous Audio Capture: Automatic recording during voice interactions
+✅ Personalized Responses: Uses verified speaker name in responses ("Of course, Derek")
 ✅ macOS Integration: Screen lock detection + keychain password retrieval
 ✅ Primary User Detection: Automatic owner identification for security
 ✅ Audit Trail: Learning database tracks all unlock attempts with confidence scores
@@ -5545,33 +5547,53 @@ python backend/voice/enroll_voice.py --speaker "Derek J. Russell" --samples 25
 ```
 User: "Hey JARVIS, unlock my screen"
        ↓
-1. Context-Aware Handler: Detects screen lock state
+1. Frontend Audio Capture: Continuous recording during voice interaction
+   - Continuous listening enabled → MediaRecorder starts capturing audio
+   - User speaks command → Audio recorded as WebM/Opus format
+   - Command detected → Stop recording, extract audio as base64
+   - WebSocket transmission → Send command + audio_data to backend
+       ↓
+2. Backend Audio Processing: Extract speaker embedding
+   - Decode base64 audio → Convert to WAV format
+   - SpeechBrain ECAPA-TDNN → Extract 192-dim embedding
+   - Embedding normalization → Prepare for similarity comparison
+       ↓
+3. Context-Aware Handler: Detects screen lock state
    - Checks is_screen_locked() via Obj-C daemon
    - Command type: "unlock screen" → Triggers voice unlock flow
        ↓
-2. Voice Unlock Integration: Verify speaker identity
-   - Extract 192-dim ECAPA-TDNN embedding from audio
-   - Compare to Derek's voiceprint in Cloud SQL
-   - Cosine similarity: 0.924 → 92.4% confidence ✅
+4. Voice Verification: Compare against enrolled voiceprint
+   - Load Derek's voiceprint from Cloud SQL (averaged from 25 samples)
+   - Cosine similarity calculation → Compare embeddings
+   - Similarity score: 0.924 → 92.4% confidence ✅
    - Threshold check: 92.4% >= 85.0% unlock threshold ✅
+   - Identity confirmed: Derek J. Russell (is_owner: true)
        ↓
-3. Keychain Service: Retrieve unlock password
+5. Keychain Service: Retrieve unlock password
    - Service: "com.jarvis.voiceunlock"
    - Account: "unlock_password"
    - Password retrieved securely from macOS Keychain
        ↓
-4. Execute Unlock: AppleScript automation
+6. Execute Unlock: AppleScript automation
    - Wake display via caffeinate
    - Type password into loginwindow
    - Press return key
    - Verify screen unlocked successfully
        ↓
-5. Learning Database: Record unlock attempt
+7. Learning Database: Record unlock attempt
    - Store: speaker_name, confidence, success, timestamp
    - Update stats: total_attempts, successful_unlocks, success_rate
    - Audit trail for security monitoring
        ↓
-Result: ✅ "Screen unlocked. Welcome, Derek J. Russell!"
+8. Personalized Response: Use verified speaker name
+   - Generate response with speaker name
+   - Response: "Of course, Derek. Unlocking for you."
+       ↓
+9. Restart Audio Capture: Prepare for next command
+   - If continuous listening still active → Restart MediaRecorder
+   - Ready to capture next voice command seamlessly
+       ↓
+Result: ✅ "Of course, Derek. Unlocking for you."
 ```
 
 **Security Features:**
@@ -5626,14 +5648,86 @@ CREATE INDEX idx_speaker_profiles_name ON speaker_profiles(speaker_name);
 CREATE INDEX idx_voice_samples_speaker ON voice_samples(speaker_id);
 ```
 
+**Continuous Audio Capture Implementation:**
+
+The system uses browser MediaRecorder API for seamless voice biometric capture:
+
+```javascript
+// Frontend: JarvisVoice.js
+
+// 1. Start recording when continuous listening begins
+const enableContinuousListening = () => {
+  // Start SpeechRecognition for transcription
+  recognitionRef.current.start();
+
+  // Start MediaRecorder for voice biometrics
+  if (!isRecordingVoiceRef.current) {
+    startVoiceAudioCapture(); // Records audio in parallel
+  }
+};
+
+// 2. Capture audio while user speaks
+const startVoiceAudioCapture = async () => {
+  // Get microphone access
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      channelCount: 1,      // Mono
+      sampleRate: 16000,    // 16kHz (optimal for speech)
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  });
+
+  // Start MediaRecorder with WebM/Opus codec
+  voiceAudioRecorderRef.current = new MediaRecorder(stream, {
+    mimeType: 'audio/webm;codecs=opus'
+  });
+
+  voiceAudioRecorderRef.current.start(100); // 100ms chunks
+};
+
+// 3. Stop recording and extract audio when command detected
+const handleVoiceCommand = async (command) => {
+  // Stop recording and get base64 audio
+  const audioData = await stopVoiceAudioCapture();
+
+  // Send command + audio to backend
+  websocket.send(JSON.stringify({
+    type: 'command',
+    text: command,
+    audio_data: audioData  // Base64-encoded audio
+  }));
+
+  // Restart recording for next command (if continuous listening active)
+  if (continuousListeningRef.current) {
+    startVoiceAudioCapture();
+  }
+};
+```
+
+**Key Features:**
+- ✅ **Parallel Capture**: MediaRecorder runs alongside SpeechRecognition (transcription + biometrics)
+- ✅ **Per-Command Audio**: Each command gets its own audio segment (not hours of continuous audio)
+- ✅ **Automatic Restart**: Recording restarts after each command for seamless operation
+- ✅ **Optimized Format**: 16kHz mono audio with noise suppression for accurate embeddings
+- ✅ **Base64 Transmission**: Audio sent as base64 over WebSocket for easy backend processing
+
+**Why This Matters:**
+- 🔐 **Security**: Every voice command includes biometric verification
+- 🎯 **Personalization**: JARVIS knows who's speaking and uses your name in responses
+- 📊 **Learning**: System tracks who issues commands for adaptive behavior
+- 🚫 **Fail-Closed**: Missing audio = verification fails = sensitive operations denied
+
 **Key Components:**
 - 🎤 **[Voice Enrollment](./backend/voice/enroll_voice.py)** - Speaker registration with 25+ samples
-- 🔐 **[Speaker Verification](./backend/voice/speaker_verification.py)** - Real-time voice identity verification
-- 🔓 **[Voice Unlock Integration](./backend/voice/voice_unlock_integration.py)** - Screen unlock with voice auth
+- 🔐 **[Speaker Verification Service](./backend/voice/speaker_verification_service.py)** - Real-time voice identity verification
+- 🎙️ **[SpeechBrain Engine](./backend/voice/engines/speechbrain_engine.py)** - ECAPA-TDNN embedding extraction
+- 🔓 **[Voice Unlock Handler](./backend/api/voice_unlock_handler.py)** - Screen unlock with voice auth
+- 🌐 **[Frontend Audio Capture](./frontend/src/components/JarvisVoice.js)** - Continuous MediaRecorder integration (lines 2426-2537, 2546-2556)
 - 🧠 **[Context-Aware Handler](./backend/context_intelligence/handlers/context_aware_handler.py)** - Detects lock state and triggers unlock
 - 🔑 **[Keychain Service](./backend/voice_unlock/services/keychain_service.py)** - Secure password retrieval
 - 📊 **[Learning Database](./backend/intelligence/learning_database.py)** - Voiceprint storage and audit trail
-- 🎙️ **[SpeechBrain Engine](./backend/voice/engines/speechbrain_engine.py)** - ECAPA-TDNN embedding extraction
 
 ---
 
