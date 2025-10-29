@@ -104,3 +104,13 @@ repos:
         pass_filenames: false
         files: ^start_system\.py$
         always_run: false
+
+  # Block duplicate files (macOS creates "file 2.py" when copying)
+  - repo: local
+    hooks:
+      - id: block-duplicate-files
+        name: Block duplicate files with " 2" suffix
+        entry: bash -c 'if git diff --cached --name-only --diff-filter=A | grep -E " 2\.(py|json|yaml|yml|txt|sh)$"; then echo "Error Attempting to commit duplicate files with 2 suffix. Please rename or delete these files."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -268,6 +268,10 @@ import_times = {}
 dynamic_component_manager = None
 DYNAMIC_LOADING_ENABLED = False
 
+# GCP VM Manager
+gcp_vm_manager = None
+GCP_VM_ENABLED = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
+
 try:
     from core.dynamic_component_manager import get_component_manager
 
@@ -843,6 +847,84 @@ def _apply_config_to_integration(integration, config):
         logger.debug(f"Could not apply all config settings: {e}")
 
 
+async def memory_pressure_callback(pressure_level: str):
+    """
+    Callback for memory pressure changes - triggers GCP VM creation if needed
+
+    Args:
+        pressure_level: 'low', 'medium', 'high', 'critical'
+    """
+    global gcp_vm_manager  #
+
+    logger.info(f"📊 Memory pressure changed: {pressure_level}")
+
+    # Only create VM on high or critical pressure
+    if pressure_level not in ["high", "critical"]:
+        return
+
+    if not GCP_VM_ENABLED:
+        logger.info("⚠️  GCP VM creation disabled (GCP_VM_ENABLED=false)")
+        return
+
+    try:
+        # Check if GCP VM Manager is initialized
+        if gcp_vm_manager is None:  # Check if gcp_vm_manager is initialized
+            # Initialize GCP VM Manager
+            from core.gcp_vm_manager import get_gcp_vm_manager
+
+            # Get GCP VM Manager instance
+            gcp_vm_manager = await get_gcp_vm_manager()
+
+        # Get current memory snapshot
+        from core.platform_memory_monitor import get_memory_monitor
+
+        memory_monitor = get_memory_monitor()
+        snapshot = memory_monitor.capture_snapshot()
+
+        # Determine if VM should be created based on memory pressure level
+        should_create, reason, confidence = await gcp_vm_manager.should_create_vm(
+            snapshot,  # Memory snapshot
+            trigger_reason=f"Memory pressure: {pressure_level}",  # Trigger reason
+        )
+
+        if should_create:
+            logger.info(f"🚀 Creating GCP Spot VM: {reason} (confidence: {confidence:.2%})")
+
+            # Determine which components to offload
+            components_to_offload = []
+            if pressure_level == "critical":
+                # Offload heavy components
+                components_to_offload = ["VISION", "CHATBOTS", "ML_MODELS", "LOCAL_LLM"]
+            else:
+                # Just offload the heaviest
+                components_to_offload = ["VISION", "CHATBOTS"]
+
+            # Create GCP VM instance
+            vm_instance = await gcp_vm_manager.create_vm(
+                components=components_to_offload,  # Components to offload
+                trigger_reason=f"Memory pressure: {pressure_level} - {reason}",  # Trigger reason
+                # Metadata for tracking
+                metadata={
+                    "pressure_level": pressure_level,  # Pressure level
+                    "confidence": confidence,  # Confidence
+                    "local_ram_gb": snapshot.total_gb if snapshot else 0,  # Local RAM GB
+                    "used_ram_gb": snapshot.used_gb if snapshot else 0,  # Used RAM GB
+                },
+            )
+
+            if vm_instance:
+                logger.info(f"✅ GCP VM created: {vm_instance.name}")
+                logger.info(f"   IP: {vm_instance.ip_address}")
+                logger.info(f"   Components: {', '.join(vm_instance.components)}")
+            else:
+                logger.error("❌ Failed to create GCP VM")
+        else:
+            logger.info(f"ℹ️  VM creation not needed: {reason}")
+
+    except Exception as e:
+        logger.error(f"Error in memory pressure callback: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
@@ -850,11 +932,17 @@ async def lifespan(app: FastAPI):
     start_time = time.time()
 
     # Initialize dynamic component manager if enabled
-    global dynamic_component_manager, DYNAMIC_LOADING_ENABLED
+    global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
     if DYNAMIC_LOADING_ENABLED and get_component_manager:
         logger.info("🧩 Initializing Dynamic Component Management System...")
         dynamic_component_manager = get_component_manager()
         app.state.component_manager = dynamic_component_manager
+
+        # Register memory pressure callback for GCP VM creation
+        if GCP_VM_ENABLED:
+            logger.info("☁️  GCP VM auto-creation enabled")
+            dynamic_component_manager.register_callback(memory_pressure_callback)
+            logger.info("✅ Memory pressure callback registered")
 
         # Start memory pressure monitoring
         asyncio.create_task(dynamic_component_manager.start_monitoring())
@@ -1804,6 +1892,16 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(0.5)
     except Exception as e:
         logger.warning(f"Failed to broadcast shutdown notification: {e}")
+
+    # Cleanup GCP VM Manager (before cost tracker to finalize costs)
+    try:
+        # Get GCP VM Manager instance
+        if gcp_vm_manager:  # Check if gcp_vm_manager is initialized
+            logger.info("🧹 Cleaning up GCP VMs...")
+            await gcp_vm_manager.cleanup()  # Cleanup GCP VM Manager
+            logger.info("✅ GCP VM Manager cleanup complete")
+    except Exception as e:
+        logger.error(f"Failed to cleanup GCP VM Manager: {e}")
 
     # Shutdown Cost Tracking System
     try:
