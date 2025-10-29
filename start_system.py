@@ -34,13 +34,14 @@ The JARVIS backend loads 9 critical components + 6 intelligent systems:
 7. VOICE_UNLOCK - Intelligent Voice-Authenticated Screen Unlock (UPGRADED!)
    ✨ Manual Unlock: "Hey JARVIS, unlock my screen" - Direct control 24/7
    ✨ Context-Aware: Automatically unlocks when needed for tasks
-   🧠 NEW: Intelligent Voice Authentication with Learning
+   🧠 NEW: Cloud SQL Voice Biometric Authentication
+   • Cloud SQL Storage: 59 voice samples + 768-byte averaged embedding (PostgreSQL)
+   • Speaker Recognition: Personalized responses using verified speaker identity
+   • Owner Detection: Automatically rejects non-owner voices (75% threshold)
    • Hybrid STT System: Wav2Vec, Vosk, Whisper with intelligent routing
-   • Speaker Recognition: Learns your voice over time (voice biometrics)
-   • Owner Detection: Automatically rejects non-owner voices
    • Context-Aware Intelligence (CAI): Screen state, time, location analysis
    • Scenario-Aware Intelligence (SAI): Routine/emergency/suspicious detection
-   • Learning Database: Records all attempts for continuous improvement
+   • GCP Cloud Database: Secure biometric profile storage via Cloud SQL proxy
    • Anti-Spoofing: High verification threshold (0.85) for security
    • Fail-Closed Security: Denies unlock on any verification error
    • No quiet hours restrictions - works anytime
@@ -2941,7 +2942,10 @@ class AsyncSystemManager:
         # Intelligent Voice-Authenticated Unlock
         print(f"\n{Colors.BOLD}🔐 INTELLIGENT VOICE-AUTHENTICATED UNLOCK:{Colors.ENDC}")
         print(
-            f"   • {Colors.GREEN}✓ Speaker Recognition:{Colors.ENDC} Learns your voice over time (biometric auth)"
+            f"   • {Colors.GREEN}✓ Cloud SQL Biometrics:{Colors.ENDC} 59 voice samples + 768-byte embedding (PostgreSQL)"
+        )
+        print(
+            f"   • {Colors.GREEN}✓ Speaker Recognition:{Colors.ENDC} Personalized responses using verified identity"
         )
         print(
             f"   • {Colors.CYAN}✓ Hybrid STT:{Colors.ENDC} Wav2Vec + Vosk + Whisper intelligent routing"
@@ -2953,10 +2957,12 @@ class AsyncSystemManager:
             f"   • {Colors.PURPLE}✓ Scenario-Aware (SAI):{Colors.ENDC} Routine/emergency/suspicious detection"
         )
         print(
-            f"   • {Colors.GREEN}✓ Learning Database:{Colors.ENDC} Records attempts for continuous improvement"
+            f"   • {Colors.GREEN}✓ Cloud Database:{Colors.ENDC} GCP Cloud SQL for voice profile storage"
         )
-        print(f"   • {Colors.CYAN}✓ Anti-Spoofing:{Colors.ENDC} High verification threshold (0.85)")
-        print(f"   • {Colors.YELLOW}✓ Fail-Closed:{Colors.ENDC} Denies unlock on any error")
+        print(f"   • {Colors.CYAN}✓ Anti-Spoofing:{Colors.ENDC} High verification threshold (0.75)")
+        print(
+            f"   • {Colors.YELLOW}✓ Fail-Closed:{Colors.ENDC} Denies unlock if voice doesn't match"
+        )
         print(
             f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey JARVIS, unlock my screen' (voice verified)"
         )
