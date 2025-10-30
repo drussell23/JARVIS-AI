@@ -1,0 +1,517 @@
+name: Live System Monitoring & Alerts
+
+on:
+  schedule:
+    # Check every 15 minutes during active hours (8 AM - 11 PM)
+    - cron: '*/15 8-23 * * *'
+  workflow_dispatch:
+    inputs:
+      check_type:
+        description: 'Check to perform'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - health
+          - performance
+          - stuck_commands
+          - timeouts
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  BACKEND_URL: 'http://localhost:8010'
+  HEALTH_CHECK_TIMEOUT: 30
+  COMMAND_TIMEOUT: 60
+  MAX_RESPONSE_TIME: 10000  # 10 seconds
+
+jobs:
+  monitor-live-system:
+    name: Monitor Live System
+    runs-on: self-hosted  # Must run on machine where JARVIS is running
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create Monitoring Script
+        run: |
+          mkdir -p .github/workflows/scripts/monitoring
+          cat > .github/workflows/scripts/monitoring/live_monitor.py << 'EOFSCRIPT'
+          #!/usr/bin/env python3
+          """
+          Live System Monitoring - Detect Hanging Commands & Performance Issues
+
+          Monitors:
+          - Health endpoint responsiveness
+          - Command execution timeouts
+          - Lock/unlock command hanging
+          - Performance degradation
+          - Log analysis for stuck processes
+          """
+
+          import asyncio
+          import json
+          import logging
+          import os
+          import re
+          import subprocess
+          import sys
+          import time
+          from dataclasses import dataclass, field
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          from typing import Dict, List, Optional
+
+          try:
+              import aiohttp
+          except ImportError:
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "aiohttp"])
+              import aiohttp
+
+          logging.basicConfig(
+              level=logging.INFO,
+              format='%(asctime)s - %(levelname)s - %(message)s'
+          )
+          logger = logging.getLogger(__name__)
+
+
+          @dataclass
+          class MonitoringAlert:
+              """Alert raised by monitoring"""
+              severity: str  # critical, warning, info
+              category: str  # health, performance, timeout, stuck
+              message: str
+              details: Dict = field(default_factory=dict)
+              timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+          @dataclass
+          class MonitoringReport:
+              """Complete monitoring report"""
+              start_time: float = field(default_factory=time.time)
+              end_time: Optional[float] = None
+              health_status: str = "unknown"
+              backend_responsive: bool = False
+              stuck_commands: List[str] = field(default_factory=list)
+              slow_commands: List[Dict] = field(default_factory=list)
+              alerts: List[MonitoringAlert] = field(default_factory=list)
+              metrics: Dict = field(default_factory=dict)
+
+              def add_alert(self, alert: MonitoringAlert):
+                  self.alerts.append(alert)
+                  icon = "🔴" if alert.severity == "critical" else "⚠️" if alert.severity == "warning" else "ℹ️"
+                  print(f"{icon} {alert.category.upper()}: {alert.message}")
+
+              def finalize(self):
+                  self.end_time = time.time()
+                  duration = self.end_time - self.start_time
+
+                  print("\n" + "="*80)
+                  print("🔍 Live System Monitoring Report")
+                  print(f"Duration: {duration:.2f}s")
+                  print(f"Health: {self.health_status}")
+                  print(f"Backend Responsive: {'✅' if self.backend_responsive else '❌'}")
+
+                  if self.stuck_commands:
+                      print(f"\n🚨 Stuck Commands ({len(self.stuck_commands)}):")
+                      for cmd in self.stuck_commands:
+                          print(f"  - {cmd}")
+
+                  if self.slow_commands:
+                      print(f"\n⏱️  Slow Commands ({len(self.slow_commands)}):")
+                      for cmd in self.slow_commands:
+                          print(f"  - {cmd['command']}: {cmd['duration_ms']:.0f}ms")
+
+                  # Count alerts by severity
+                  critical = sum(1 for a in self.alerts if a.severity == "critical")
+                  warnings = sum(1 for a in self.alerts if a.severity == "warning")
+
+                  print(f"\nAlerts: {critical} critical, {warnings} warnings")
+                  print("="*80 + "\n")
+
+                  return critical == 0
+
+
+          class LiveSystemMonitor:
+              """Monitor live JARVIS instance for issues"""
+
+              def __init__(self, backend_url: str, config: Dict):
+                  self.backend_url = backend_url
+                  self.config = config
+                  self.session: Optional[aiohttp.ClientSession] = None
+
+              async def __aenter__(self):
+                  timeout = aiohttp.ClientTimeout(total=self.config.get("health_check_timeout", 30))
+                  self.session = aiohttp.ClientSession(timeout=timeout)
+                  return self
+
+              async def __aexit__(self, exc_type, exc_val, exc_tb):
+                  if self.session:
+                      await self.session.close()
+
+              async def check_health_endpoint(self) -> MonitoringAlert:
+                  """Check if health endpoint is responsive"""
+                  try:
+                      start = time.time()
+                      async with self.session.get(f"{self.backend_url}/health") as response:
+                          duration_ms = (time.time() - start) * 1000
+
+                          if response.status == 200:
+                              data = await response.json()
+
+                              if duration_ms > self.config.get("max_response_time", 10000):
+                                  return MonitoringAlert(
+                                      severity="warning",
+                                      category="performance",
+                                      message=f"Health endpoint slow ({duration_ms:.0f}ms)",
+                                      details={"duration_ms": duration_ms, "data": data}
+                                  )
+
+                              return MonitoringAlert(
+                                  severity="info",
+                                  category="health",
+                                  message="Health endpoint OK",
+                                  details={"duration_ms": duration_ms, "status": data.get("status")}
+                              )
+                          else:
+                              return MonitoringAlert(
+                                  severity="critical",
+                                  category="health",
+                                  message=f"Health endpoint returned {response.status}",
+                                  details={"status_code": response.status}
+                              )
+
+                  except asyncio.TimeoutError:
+                      return MonitoringAlert(
+                          severity="critical",
+                          category="timeout",
+                          message="Health endpoint timed out",
+                          details={"timeout": self.config.get("health_check_timeout")}
+                      )
+
+                  except Exception as e:
+                      return MonitoringAlert(
+                          severity="critical",
+                          category="health",
+                          message=f"Health check failed: {str(e)}",
+                          details={"error": str(e)}
+                      )
+
+              async def check_stuck_lock_commands(self) -> List[MonitoringAlert]:
+                  """Check for stuck lock/unlock commands in logs"""
+                  alerts = []
+
+                  # Find recent log file
+                  log_dir = Path("backend/logs")
+                  if not log_dir.exists():
+                      return [MonitoringAlert(
+                          severity="warning",
+                          category="config",
+                          message="Log directory not found",
+                          details={"path": str(log_dir)}
+                      )]
+
+                  log_files = sorted(log_dir.glob("jarvis_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+
+                  if not log_files:
+                      return [MonitoringAlert(
+                          severity="warning",
+                          category="config",
+                          message="No log files found"
+                      )]
+
+                  recent_log = log_files[0]
+
+                  try:
+                      # Read last 500 lines
+                      with open(recent_log, 'r') as f:
+                          lines = f.readlines()[-500:]
+
+                      # Look for stuck patterns
+                      stuck_patterns = [
+                          (r'Processing.*lock.*screen', r'(Locked|Unlocked|Error|Failed)'),
+                          (r'⚙️.*Processing', r'(✅|❌|Error|Complete)'),
+                          (r'Executing.*lock', r'(completed|failed|error)'),
+                      ]
+
+                      for start_pattern, end_pattern in stuck_patterns:
+                          # Find commands that started but never completed
+                          started = []
+                          completed = set()
+
+                          for i, line in enumerate(lines):
+                              if re.search(start_pattern, line, re.IGNORECASE):
+                                  # Extract timestamp if available
+                                  timestamp_match = re.search(r'(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2})', line)
+                                  if timestamp_match:
+                                      started.append((i, timestamp_match.group(1), line.strip()))
+
+                              if re.search(end_pattern, line, re.IGNORECASE):
+                                  # Mark as completed (any completion in next 20 lines counts)
+                                  for j in range(max(0, i-20), i+1):
+                                      if j < len(started):
+                                          completed.add(started[j][0])
+
+                          # Check for commands that never completed
+                          for idx, timestamp, line in started:
+                              if idx not in completed:
+                                  # Check if > 2 minutes old
+                                  try:
+                                      cmd_time = datetime.fromisoformat(timestamp.replace(' ', 'T'))
+                                      age_seconds = (datetime.now() - cmd_time).total_seconds()
+
+                                      if age_seconds > 120:  # 2 minutes
+                                          alerts.append(MonitoringAlert(
+                                              severity="critical",
+                                              category="stuck",
+                                              message=f"Command stuck for {age_seconds:.0f}s",
+                                              details={
+                                                  "command": line[:100],
+                                                  "age_seconds": age_seconds,
+                                                  "timestamp": timestamp
+                                              }
+                                          ))
+                                  except:
+                                      pass
+
+                      # Look for explicit "stuck" or "hanging" mentions
+                      for line in lines[-50:]:  # Last 50 lines
+                          if any(word in line.lower() for word in ['stuck', 'hanging', 'frozen', 'deadlock']):
+                              alerts.append(MonitoringAlert(
+                                  severity="critical",
+                                  category="stuck",
+                                  message="Explicit stuck/hanging mention in logs",
+                                  details={"log_line": line.strip()}
+                              ))
+
+                  except Exception as e:
+                      alerts.append(MonitoringAlert(
+                          severity="warning",
+                          category="monitoring",
+                          message=f"Log analysis failed: {str(e)}"
+                      ))
+
+                  return alerts if alerts else [MonitoringAlert(
+                      severity="info",
+                      category="stuck",
+                      message="No stuck commands detected"
+                  )]
+
+              async def check_process_health(self) -> List[MonitoringAlert]:
+                  """Check if backend process is healthy"""
+                  alerts = []
+
+                  try:
+                      # Check if backend process is running
+                      result = subprocess.run(
+                          ["pgrep", "-f", "backend/main.py"],
+                          capture_output=True,
+                          text=True,
+                          timeout=5
+                      )
+
+                      if result.returncode == 0:
+                          pids = result.stdout.strip().split('\n')
+                          alerts.append(MonitoringAlert(
+                              severity="info",
+                              category="health",
+                              message=f"Backend process running (PIDs: {', '.join(pids)})"
+                          ))
+                      else:
+                          alerts.append(MonitoringAlert(
+                              severity="critical",
+                              category="health",
+                              message="Backend process not found"
+                          ))
+
+                  except Exception as e:
+                      alerts.append(MonitoringAlert(
+                          severity="warning",
+                          category="monitoring",
+                          message=f"Process check failed: {str(e)}"
+                      ))
+
+                  return alerts
+
+              async def check_response_times(self) -> List[MonitoringAlert]:
+                  """Check API response times"""
+                  alerts = []
+
+                  endpoints = [
+                      "/health",
+                      "/api/status",
+                  ]
+
+                  for endpoint in endpoints:
+                      try:
+                          start = time.time()
+                          async with self.session.get(f"{self.backend_url}{endpoint}") as response:
+                              duration_ms = (time.time() - start) * 1000
+
+                              if duration_ms > 5000:  # 5 seconds
+                                  alerts.append(MonitoringAlert(
+                                      severity="warning",
+                                      category="performance",
+                                      message=f"{endpoint} slow ({duration_ms:.0f}ms)"
+                                  ))
+                              elif duration_ms > 1000:  # 1 second
+                                  alerts.append(MonitoringAlert(
+                                      severity="info",
+                                      category="performance",
+                                      message=f"{endpoint} slower than expected ({duration_ms:.0f}ms)"
+                                  ))
+                      except:
+                          pass  # Already caught by health check
+
+                  return alerts if alerts else [MonitoringAlert(
+                      severity="info",
+                      category="performance",
+                      message="Response times OK"
+                  )]
+
+
+          async def main():
+              """Run live system monitoring"""
+
+              backend_url = os.getenv("BACKEND_URL", "http://localhost:8010")
+
+              config = {
+                  "health_check_timeout": int(os.getenv("HEALTH_CHECK_TIMEOUT", "30")),
+                  "command_timeout": int(os.getenv("COMMAND_TIMEOUT", "60")),
+                  "max_response_time": int(os.getenv("MAX_RESPONSE_TIME", "10000")),
+              }
+
+              logger.info("🔍 Starting live system monitoring")
+              logger.info(f"Backend URL: {backend_url}")
+
+              report = MonitoringReport()
+
+              async with LiveSystemMonitor(backend_url, config) as monitor:
+                  # Run all checks
+                  checks = [
+                      ("Health Endpoint", monitor.check_health_endpoint()),
+                      ("Stuck Commands", monitor.check_stuck_lock_commands()),
+                      ("Process Health", monitor.check_process_health()),
+                      ("Response Times", monitor.check_response_times()),
+                  ]
+
+                  for check_name, check_coro in checks:
+                      logger.info(f"\n▶️  Running: {check_name}")
+
+                      try:
+                          result = await check_coro
+
+                          # Handle both single alerts and lists
+                          if isinstance(result, list):
+                              for alert in result:
+                                  report.add_alert(alert)
+
+                                  # Track specific issues
+                                  if alert.category == "stuck":
+                                      if "command" in alert.details:
+                                          report.stuck_commands.append(alert.details["command"])
+
+                                  if alert.category == "health" and alert.severity == "info":
+                                      report.backend_responsive = True
+                                      report.health_status = "healthy"
+                          else:
+                              report.add_alert(result)
+
+                              if result.category == "health" and result.severity == "info":
+                                  report.backend_responsive = True
+                                  report.health_status = "healthy"
+
+                      except Exception as e:
+                          logger.error(f"Check failed: {e}")
+                          report.add_alert(MonitoringAlert(
+                              severity="critical",
+                              category="monitoring",
+                              message=f"{check_name} check failed: {str(e)}"
+                          ))
+
+              # Finalize report
+              success = report.finalize()
+
+              # Output for GitHub Actions
+              if os.getenv("GITHUB_OUTPUT"):
+                  with open(os.getenv("GITHUB_OUTPUT"), "a") as f:
+                      f.write(f"health_status={report.health_status}\n")
+                      f.write(f"backend_responsive={report.backend_responsive}\n")
+                      f.write(f"stuck_commands={len(report.stuck_commands)}\n")
+                      f.write(f"critical_alerts={sum(1 for a in report.alerts if a.severity == 'critical')}\n")
+
+              # Exit with appropriate code
+              sys.exit(0 if success else 1)
+
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          EOFSCRIPT
+
+          chmod +x .github/workflows/scripts/monitoring/live_monitor.py
+
+      - name: Run Live Monitoring
+        id: monitor
+        continue-on-error: true
+        run: |
+          python3 .github/workflows/scripts/monitoring/live_monitor.py
+
+      - name: Generate Report
+        if: always()
+        run: |
+          echo "## 🔍 Live System Monitoring" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Health:** ${{ steps.monitor.outputs.health_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend Responsive:** ${{ steps.monitor.outputs.backend_responsive }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Stuck Commands:** ${{ steps.monitor.outputs.stuck_commands }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Critical Alerts:** ${{ steps.monitor.outputs.critical_alerts }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create Alert Issue
+        if: steps.monitor.outputs.critical_alerts > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const stuckCommands = ${{ steps.monitor.outputs.stuck_commands }};
+            const criticalAlerts = ${{ steps.monitor.outputs.critical_alerts }};
+
+            let body = `## 🚨 Live System Alert\n\n`;
+            body += `**Time:** ${new Date().toISOString()}\n`;
+            body += `**Critical Alerts:** ${criticalAlerts}\n`;
+            body += `**Stuck Commands:** ${stuckCommands}\n\n`;
+            body += `### Action Required\n\n`;
+            body += `The live system monitoring detected critical issues.\n\n`;
+            body += `[View Run](${context.payload.repository.html_url}/actions/runs/${context.runId})\n`;
+
+            // Check for existing open alert
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'live-monitoring-alert',
+              per_page: 1
+            });
+
+            if (issues.data.length > 0) {
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: body
+              });
+            } else {
+              // Create new issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Live System Alert - Stuck Commands Detected',
+                body: body,
+                labels: ['bug', 'live-monitoring-alert', 'automated', 'critical']
+              });
+            }

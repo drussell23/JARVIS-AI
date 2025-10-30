@@ -775,6 +775,20 @@ class AdvancedAsyncPipeline:
         }
         return context
 
+    def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:
+        """Generate error response for failed commands."""
+        return {
+            "success": False,
+            "response": f"I encountered an error: {str(error)}",
+            "error": str(error),
+            "command_id": context.command_id,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {
+                "stage": context.stage.value if hasattr(context, "stage") else "unknown",
+                "command": context.text if hasattr(context, "text") else ""
+            }
+        }
+
     def _init_followup_system(self):
         """Initialize follow-up handling system components.
 
@@ -1003,7 +1017,12 @@ class AdvancedAsyncPipeline:
                 pass
 
     async def _fast_lock_unlock(
-        self, text: str, user_name: str, metadata: Optional[Dict] = None
+        self,
+        text: str,
+        user_name: str,
+        metadata: Optional[Dict] = None,
+        audio_data: Optional[bytes] = None,
+        speaker_name: Optional[str] = None,
     ) -> Dict:
         """Fast lock/unlock handler for voice commands.
 
@@ -1014,6 +1033,8 @@ class AdvancedAsyncPipeline:
             text: Command text
             user_name: User name
             metadata: Optional metadata dict
+            audio_data: Optional voice audio data for authentication
+            speaker_name: Optional identified speaker name
 
         Returns:
             Result dict with success status, response message, and timing
