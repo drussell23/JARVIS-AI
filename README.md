@@ -403,7 +403,7 @@ response = f"Of course, {speaker_name}. Unlocking for you."
     "connection_name": "jarvis-473803:us-central1:jarvis-learning-db",
     "database": "jarvis_learning",
     "user": "jarvis",
-    "password": "JarvisDB2024",
+    "password": "YOUR_DATABASE_PASSWORD_HERE",
     "port": 5432,
     "host": "127.0.0.1"  # Cloud SQL Proxy
   }
@@ -417,7 +417,7 @@ os.environ["JARVIS_DB_TYPE"] = "cloudsql"
 os.environ["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
 os.environ["JARVIS_DB_HOST"] = "127.0.0.1"  # Always localhost for proxy
 os.environ["JARVIS_DB_PORT"] = "5432"
-os.environ["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+os.environ["JARVIS_DB_PASSWORD"] = os.getenv("JARVIS_DB_PASSWORD")  # Set in environment
 ```
 
 ### Verification
@@ -482,7 +482,7 @@ ps aux | grep cloud-sql-proxy
 grep "JARVIS_DB" /tmp/jarvis_restart.log
 
 # Test database connection
-PGPASSWORD=JarvisDB2024 psql -h 127.0.0.1 -U jarvis -d jarvis_learning -c "SELECT COUNT(*) FROM speaker_profiles;"
+PGPASSWORD=$JARVIS_DB_PASSWORD psql -h 127.0.0.1 -U jarvis -d jarvis_learning -c "SELECT COUNT(*) FROM speaker_profiles;"
 ```
 
 ### Performance Impact

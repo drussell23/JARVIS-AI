@@ -8,6 +8,7 @@ This script addresses the two main issues:
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,7 +49,7 @@ class VoiceAuthenticationFix:
             # Force Cloud SQL mode
             config = DatabaseConfig()
             config.db_type = "cloudsql"
-            config.db_password = "JarvisDB2024"  # Ensure correct password
+            config.db_password = os.getenv("JARVIS_DB_PASSWORD")  # Get from environment
 
             self.db_adapter = CloudDatabaseAdapter(config)
             await self.db_adapter.initialize()

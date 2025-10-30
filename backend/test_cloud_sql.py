@@ -13,13 +13,14 @@ logger = logging.getLogger(__name__)
 
 async def test_connection():
     """Test direct connection to Cloud SQL via proxy"""
+    import os
 
     config = {
         "host": "127.0.0.1",
         "port": 5432,
         "database": "jarvis_learning",
         "user": "jarvis",
-        "password": "JarvisDB2024",
+        "password": os.getenv("JARVIS_DB_PASSWORD", "YOUR_PASSWORD_HERE"),
     }
 
     logger.info(f"Connecting to Cloud SQL at {config['host']}:{config['port']}")

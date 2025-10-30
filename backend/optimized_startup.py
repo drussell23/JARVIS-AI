@@ -159,7 +159,9 @@ class OptimizedJARVISStartup:
         # Set environment variables for Cloud SQL
         os.environ["JARVIS_DB_TYPE"] = "cloudsql"
         os.environ["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
-        os.environ["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+        # Password should be set in environment before running
+        if "JARVIS_DB_PASSWORD" not in os.environ:
+            raise ValueError("JARVIS_DB_PASSWORD environment variable must be set")
 
         # Import and run backend main
         try:
