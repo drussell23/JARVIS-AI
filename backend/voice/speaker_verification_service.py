@@ -7,9 +7,12 @@ Features:
 - Confidence scoring
 - Primary user (owner) detection
 - Integration with learning database
+- Background pre-loading for instant unlock
 """
 
+import asyncio
 import logging
+import threading
 from typing import Optional
 
 import numpy as np
@@ -42,9 +45,90 @@ class SpeakerVerificationService:
         self.initialized = False
         self.speaker_profiles = {}  # Cache of speaker profiles
         self.verification_threshold = 0.75  # 75% confidence for verification
+        self._preload_thread = None
+        self._encoder_preloading = False
+        self._encoder_preloaded = False
 
-    async def initialize(self):
-        """Initialize service and load speaker profiles"""
+    async def initialize_fast(self):
+        """
+        Fast initialization with background encoder pre-loading.
+
+        Loads profiles immediately, starts encoder loading in background.
+        JARVIS starts fast (~2s), encoder ready in ~10s total.
+        """
+        if self.initialized:
+            return
+
+        logger.info("🔐 Initializing Speaker Verification Service (fast mode)...")
+
+        # Initialize learning database if not provided
+        if self.learning_db is None:
+            self.learning_db = JARVISLearningDatabase()
+            await self.learning_db.initialize()
+
+        # Initialize SpeechBrain engine for embeddings
+        model_config = ModelConfig(
+            name="speechbrain-wav2vec2",
+            engine=STTEngine.SPEECHBRAIN,
+            disk_size_mb=380,
+            ram_required_gb=2.0,
+            vram_required_gb=1.8,
+            expected_accuracy=0.96,
+            avg_latency_ms=150,
+            supports_fine_tuning=True,
+            model_path="speechbrain/asr-wav2vec2-commonvoice-en",
+        )
+
+        self.speechbrain_engine = SpeechBrainEngine(model_config)
+        await self.speechbrain_engine.initialize()
+
+        # Load speaker profiles from database
+        await self._load_speaker_profiles()
+
+        self.initialized = True
+        logger.info(
+            f"✅ Speaker Verification Service ready ({len(self.speaker_profiles)} profiles loaded)"
+        )
+
+        # Start background pre-loading of encoder
+        logger.info("🔄 Pre-loading speaker encoder in background...")
+        self._start_background_preload()
+
+    def _start_background_preload(self):
+        """Start background thread to pre-load speaker encoder"""
+        if self._encoder_preloading or self._encoder_preloaded:
+            return
+
+        self._encoder_preloading = True
+
+        def preload_worker():
+            """Worker function to pre-load encoder in background thread"""
+            try:
+                # Run async function in thread's event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.speechbrain_engine._load_speaker_encoder())
+                loop.close()
+
+                self._encoder_preloaded = True
+                self._encoder_preloading = False
+                logger.info("✅ Speaker encoder pre-loaded in background - unlock is now instant!")
+
+            except Exception as e:
+                logger.error(f"Background encoder pre-loading failed: {e}", exc_info=True)
+                self._encoder_preloading = False
+
+        self._preload_thread = threading.Thread(target=preload_worker, daemon=True)
+        self._preload_thread.start()
+
+    async def initialize(self, preload_encoder: bool = True):
+        """
+        Initialize service and load speaker profiles
+
+        Args:
+            preload_encoder: If True, pre-loads ECAPA-TDNN encoder during initialization
+                           for instant unlock (adds ~10s to startup, but unlock is instant)
+        """
         if self.initialized:
             return
 
@@ -73,6 +157,12 @@ class SpeakerVerificationService:
 
         # Load speaker profiles from database
         await self._load_speaker_profiles()
+
+        # Pre-load speaker encoder for instant unlock (if enabled)
+        if preload_encoder:
+            logger.info("🔄 Pre-loading speaker encoder (ECAPA-TDNN) for instant unlock...")
+            await self.speechbrain_engine._load_speaker_encoder()
+            logger.info("✅ Speaker encoder pre-loaded - unlock will be instant!")
 
         self.initialized = True
         logger.info(

@@ -3669,6 +3669,43 @@ class AsyncSystemManager:
         # Set the backend port explicitly
         env["BACKEND_PORT"] = str(self.ports["main_api"])
 
+        # ============================================================================
+        # CLOUD SQL PROXY MANAGEMENT (Advanced, Dynamic, Robust)
+        # ============================================================================
+        # Ensure Cloud SQL proxy is running BEFORE starting backend
+        # This enables voice biometric authentication with Cloud SQL database
+        # ============================================================================
+        try:
+            sys.path.insert(0, str(self.backend_dir))
+            from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+
+            proxy_manager = get_proxy_manager()
+
+            # Check if proxy is running, start if needed
+            if not proxy_manager.is_running():
+                print(
+                    f"{Colors.CYAN}☁️  Starting Cloud SQL proxy for voice biometrics...{Colors.ENDC}"
+                )
+                if proxy_manager.start(force_restart=False):
+                    print(f"{Colors.GREEN}✅ Cloud SQL proxy ready{Colors.ENDC}")
+                else:
+                    print(
+                        f"{Colors.YELLOW}⚠️  Cloud SQL proxy failed to start - will use SQLite fallback{Colors.ENDC}"
+                    )
+            else:
+                print(f"{Colors.GREEN}✅ Cloud SQL proxy already running{Colors.ENDC}")
+
+            # Start health monitor in background (auto-recovery)
+            # This will restart proxy if it crashes during JARVIS runtime
+            asyncio.create_task(proxy_manager.monitor(check_interval=60))
+
+        except FileNotFoundError as e:
+            print(f"{Colors.YELLOW}⚠️  Cloud SQL proxy not configured: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Voice biometrics will use SQLite fallback{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠️  Cloud SQL proxy error: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Voice biometrics will use SQLite fallback{Colors.ENDC}")
+
         # Configure Cloud SQL for voice biometrics
         # Load database config securely
         import json

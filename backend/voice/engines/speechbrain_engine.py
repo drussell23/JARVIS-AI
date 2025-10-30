@@ -447,7 +447,11 @@ class SpeechBrainEngine(BaseSTTEngine):
 
         try:
             # Check cache first
-            audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
+            # Ensure audio_data is bytes for hashing
+            audio_bytes = (
+                audio_data if isinstance(audio_data, bytes) else audio_data.encode("utf-8")
+            )
+            audio_hash = hashlib.md5(audio_bytes, usedforsecurity=False).hexdigest()
             cached_result = self.transcription_cache.get(audio_hash)
             if cached_result is not None:
                 logger.debug(f"[Cache HIT] Returning cached transcription")
@@ -639,7 +643,11 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             for audio_data in audio_batch:
                 # Check cache first
-                audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
+                # Ensure audio_data is bytes for hashing
+                audio_bytes = (
+                    audio_data if isinstance(audio_data, bytes) else audio_data.encode("utf-8")
+                )
+                audio_hash = hashlib.md5(audio_bytes, usedforsecurity=False).hexdigest()
                 cached_result = self.transcription_cache.get(audio_hash)
 
                 if cached_result is not None:
@@ -984,7 +992,11 @@ class SpeechBrainEngine(BaseSTTEngine):
 
         try:
             # Check embedding cache
-            audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
+            # Ensure audio_data is bytes for hashing
+            audio_bytes = (
+                audio_data if isinstance(audio_data, bytes) else audio_data.encode("utf-8")
+            )
+            audio_hash = hashlib.md5(audio_bytes, usedforsecurity=False).hexdigest()
             if audio_hash in self.embedding_cache:
                 logger.debug("[Embedding Cache HIT]")
                 return self.embedding_cache[audio_hash]
