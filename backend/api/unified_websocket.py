@@ -149,7 +149,7 @@ class UnifiedWebSocketManager:
 
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
         logger.info(
-            "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | GCP billing: ✅"
+            "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | GitHub Actions: ✅"
         )
 
     def set_intelligence_engines(self, uae=None, sai=None, learning_db=None):
