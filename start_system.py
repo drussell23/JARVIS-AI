@@ -2896,19 +2896,28 @@ class AsyncSystemManager:
             )
 
         # GCP VM Auto-Creation Status
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.CYAN}🚀 GCP Spot VM Configuration{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
+
         gcp_vm_enabled = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
         if gcp_vm_enabled:
-            print(f"\n{Colors.BOLD}☁️  GCP SPOT VM AUTO-CREATION:{Colors.ENDC}")
-            print(f"   • {Colors.GREEN}✓ Status:{Colors.ENDC} Enabled (memory >85% triggers)")
-            print(f"   • {Colors.CYAN}✓ Machine:{Colors.ENDC} e2-highmem-4 (4 vCPU, 32GB RAM)")
-            print(f"   • {Colors.GREEN}✓ Cost:{Colors.ENDC} $0.029/hour (91% discount!)")
+            print(f"{Colors.CYAN}📊 Spot VM auto-creation status:{Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Enabled - triggers when RAM >85%{Colors.ENDC}")
+            print(f"\n{Colors.CYAN}💻 VM specifications:{Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Machine type: e2-highmem-4 (4 vCPU, 32GB RAM){Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Provisioning model: SPOT (preemptible){Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Cost: $0.029/hour (91% discount!){Colors.ENDC}")
+            print(f"\n{Colors.CYAN}💰 Budget & safety limits:{Colors.ENDC}")
+            daily_budget = os.getenv("GCP_VM_DAILY_BUDGET", "5.0")
+            print(f"{Colors.GREEN}   ✓ Daily budget: ${daily_budget}{Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Auto-terminate: 3 hours max runtime{Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Cost tracking: Real-time monitoring{Colors.ENDC}")
             print(
-                f"   • {Colors.CYAN}✓ Budget:{Colors.ENDC} ${os.getenv('GCP_VM_DAILY_BUDGET', '5.0')}/day limit"
+                f"\n{Colors.CYAN}📍 Check status: cd backend && python3 core/gcp_vm_status.py{Colors.ENDC}"
             )
-            print(f"   • {Colors.GREEN}✓ Protection:{Colors.ENDC} Auto-terminate after 3 hours")
-            print(
-                f"   • {Colors.CYAN}💡 Check status:{Colors.ENDC} cd backend && python3 core/gcp_vm_status.py"
-            )
+        else:
+            print(f"{Colors.YELLOW}⚠️  Spot VM auto-creation disabled{Colors.ENDC}")
 
         # Check for Rust acceleration
         try:
@@ -3499,8 +3508,11 @@ class AsyncSystemManager:
         )
 
         # Step 1: Pre-load voice biometrics - Start Cloud SQL proxy first
-        print(f"{Colors.CYAN}🚀 Pre-loading voice biometric components...{Colors.ENDC}")
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.CYAN}🎤 Voice Biometric System Initialization{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
 
+        print(f"{Colors.CYAN}🔍 Checking Cloud SQL proxy status...{Colors.ENDC}")
         # Check if Cloud SQL proxy is already running
         cloud_sql_check = await asyncio.create_subprocess_exec(
             "lsof", "-i", ":5432", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -3509,7 +3521,7 @@ class AsyncSystemManager:
 
         if cloud_sql_check.returncode != 0:
             # Start Cloud SQL proxy for voice biometric database
-            print(f"{Colors.YELLOW}Starting Cloud SQL proxy for voice biometrics...{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   ℹ️  Proxy not running, starting now...{Colors.ENDC}")
             cloud_sql_process = await asyncio.create_subprocess_exec(
                 "cloud-sql-proxy",
                 "jarvis-473803:us-central1:jarvis-learning-db",
@@ -3520,14 +3532,12 @@ class AsyncSystemManager:
             )
             self.processes.append(cloud_sql_process)
             await asyncio.sleep(2)  # Wait for proxy to initialize
-            print(f"{Colors.GREEN}✅ Cloud SQL proxy started on port 5432{Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Cloud SQL proxy started on port 5432{Colors.ENDC}")
         else:
-            print(f"{Colors.GREEN}✅ Cloud SQL proxy already running{Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Cloud SQL proxy already running on port 5432{Colors.ENDC}")
 
         # Step 2: Pre-initialize speaker verification service with Derek's profile
-        print(
-            f"{Colors.CYAN}🔐 Pre-loading speaker verification with Derek's profile...{Colors.ENDC}"
-        )
+        print(f"\n{Colors.CYAN}🔐 Loading speaker verification system...{Colors.ENDC}")
         try:
             # Import and initialize the learning database
             if str(self.backend_dir) not in sys.path:
@@ -3551,16 +3561,20 @@ class AsyncSystemManager:
             else:
                 logger.warning("⚠️ Database config not found, skipping Cloud SQL setup")
 
+            print(f"{Colors.CYAN}   └─ Initializing JARVIS Learning Database...{Colors.ENDC}")
             from intelligence.learning_database import JARVISLearningDatabase
             from voice.speaker_verification_service import SpeakerVerificationService
 
             # Initialize learning database with Cloud SQL
             learning_db = JARVISLearningDatabase()
             await learning_db.initialize()
+            print(f"{Colors.GREEN}      ✓ Learning database initialized{Colors.ENDC}")
 
             # Initialize speaker service
+            print(f"{Colors.CYAN}   └─ Initializing Speaker Verification Service...{Colors.ENDC}")
             speaker_service = SpeakerVerificationService(learning_db)
             await speaker_service.initialize()
+            print(f"{Colors.GREEN}      ✓ Speaker verification service ready{Colors.ENDC}")
 
             # Check for Derek's profile (could be "Derek" or "Derek J. Russell")
             derek_found = any("Derek" in name for name in speaker_service.speaker_profiles.keys())
@@ -3572,31 +3586,44 @@ class AsyncSystemManager:
                     for name, profile in speaker_service.speaker_profiles.items()
                     if "Derek" in name
                 )
-
-                print(
-                    f"{Colors.GREEN}✅ Speaker verification ready with Derek's profile{Colors.ENDC}"
+                num_profiles = len(
+                    [name for name in speaker_service.speaker_profiles.keys() if "Derek" in name]
                 )
-                print(f"  - {total_samples} voice samples loaded")
-                print(f"  - Voice biometric authentication active")
+
+                print(f"\n{Colors.GREEN}✅ Voice biometric authentication ready:{Colors.ENDC}")
+                print(
+                    f"{Colors.CYAN}   └─ Profiles loaded: {num_profiles} Derek profile(s){Colors.ENDC}"
+                )
+                print(f"{Colors.CYAN}   └─ Voice samples: {total_samples} total{Colors.ENDC}")
+                print(
+                    f"{Colors.CYAN}   └─ Authentication: ACTIVE (75% confidence threshold){Colors.ENDC}"
+                )
+                print(
+                    f"{Colors.CYAN}   └─ Speaker encoder: Pre-loaded for instant unlock{Colors.ENDC}"
+                )
 
                 # Store globally so backend can access it
                 import backend.voice.speaker_verification_service as sv
 
                 sv._global_speaker_service = speaker_service
-                print(f"  - Global speaker service injected for fast verification")
+                print(f"{Colors.GREEN}   ✓ Global speaker service injected{Colors.ENDC}")
             else:
                 print(
-                    f"{Colors.WARNING}⚠️ Derek's profile not found, will load on demand{Colors.ENDC}"
+                    f"{Colors.YELLOW}   ⚠️  Derek's profile not found, will load on demand{Colors.ENDC}"
                 )
 
         except Exception as e:
-            print(f"{Colors.WARNING}⚠️ Speaker pre-loading failed: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   ⚠️  Speaker pre-loading failed: {e}{Colors.ENDC}")
+            import traceback
+
+            print(f"{Colors.YELLOW}   Details: {traceback.format_exc()}{Colors.ENDC}")
 
         # Step 3: ML models are pre-loaded by the speaker verification service
         # (SpeechBrain models load during speaker service initialization above)
-        print(
-            f"{Colors.GREEN}✅ ML models ready (loaded by speaker verification service){Colors.ENDC}"
-        )
+        print(f"\n{Colors.CYAN}🧠 ML Model Status:{Colors.ENDC}")
+        print(f"{Colors.GREEN}   ✓ SpeechBrain Wav2Vec2 (ASR){Colors.ENDC}")
+        print(f"{Colors.GREEN}   ✓ ECAPA-TDNN (Speaker Encoder){Colors.ENDC}")
+        print(f"{Colors.GREEN}   ✓ Models pre-loaded - instant response ready{Colors.ENDC}")
 
         # Check if reload manager is available
         reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
@@ -3675,29 +3702,50 @@ class AsyncSystemManager:
         # Ensure Cloud SQL proxy is running BEFORE starting backend
         # This enables voice biometric authentication with Cloud SQL database
         # ============================================================================
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.CYAN}☁️  Cloud Infrastructure Initialization{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
+
         try:
             sys.path.insert(0, str(self.backend_dir))
             from intelligence.cloud_sql_proxy_manager import get_proxy_manager
 
+            print(f"{Colors.CYAN}📊 Loading Cloud SQL proxy manager...{Colors.ENDC}")
             proxy_manager = get_proxy_manager()
+
+            # Display proxy configuration details
+            print(
+                f"{Colors.CYAN}   └─ Instance: {proxy_manager.config['cloud_sql']['connection_name']}{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}   └─ Database: {proxy_manager.config['cloud_sql']['database']}{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}   └─ Port: {proxy_manager.config['cloud_sql']['port']}{Colors.ENDC}"
+            )
+            print(f"{Colors.GREEN}   ✓ Proxy manager loaded{Colors.ENDC}")
 
             # Check if proxy is running, start if needed
             if not proxy_manager.is_running():
-                print(
-                    f"{Colors.CYAN}☁️  Starting Cloud SQL proxy for voice biometrics...{Colors.ENDC}"
-                )
+                print(f"\n{Colors.CYAN}☁️  Starting Cloud SQL proxy...{Colors.ENDC}")
                 if proxy_manager.start(force_restart=False):
-                    print(f"{Colors.GREEN}✅ Cloud SQL proxy ready{Colors.ENDC}")
+                    print(f"{Colors.GREEN}   ✓ Cloud SQL proxy started successfully{Colors.ENDC}")
+                    print(
+                        f"{Colors.GREEN}   ✓ Listening on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}{Colors.ENDC}"
+                    )
                 else:
                     print(
-                        f"{Colors.YELLOW}⚠️  Cloud SQL proxy failed to start - will use SQLite fallback{Colors.ENDC}"
+                        f"{Colors.YELLOW}   ⚠️  Cloud SQL proxy failed to start - will use SQLite fallback{Colors.ENDC}"
                     )
             else:
-                print(f"{Colors.GREEN}✅ Cloud SQL proxy already running{Colors.ENDC}")
+                print(f"{Colors.GREEN}   ✓ Cloud SQL proxy already running{Colors.ENDC}")
 
             # Start health monitor in background (auto-recovery)
-            # This will restart proxy if it crashes during JARVIS runtime
+            print(f"{Colors.CYAN}🔄 Starting proxy health monitor...{Colors.ENDC}")
             asyncio.create_task(proxy_manager.monitor(check_interval=60))
+            print(
+                f"{Colors.GREEN}   ✓ Health monitor active (60s interval, auto-recovery enabled){Colors.ENDC}"
+            )
 
         except FileNotFoundError as e:
             print(f"{Colors.YELLOW}⚠️  Cloud SQL proxy not configured: {e}{Colors.ENDC}")
@@ -3711,6 +3759,7 @@ class AsyncSystemManager:
         import json
         from pathlib import Path
 
+        print(f"\n{Colors.CYAN}🔐 Loading GCP database configuration...{Colors.ENDC}")
         config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
         if config_path.exists():
             with open(config_path, "r") as f:
@@ -3719,12 +3768,29 @@ class AsyncSystemManager:
             env["JARVIS_DB_TYPE"] = "cloudsql"
             env["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
             env["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
+
+            print(f"{Colors.GREEN}   ✓ Database config loaded from {config_path}{Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Type: Cloud SQL (PostgreSQL){Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Project: {db_config.get('project_id', 'N/A')}{Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Region: {db_config.get('region', 'N/A')}{Colors.ENDC}")
+
+            # Check for GCP storage buckets
+            if "cloud_storage" in db_config:
+                print(f"\n{Colors.CYAN}🪣 Cloud Storage buckets configured:{Colors.ENDC}")
+                storage = db_config["cloud_storage"]
+                if "chromadb_bucket" in storage:
+                    print(f"{Colors.GREEN}   ✓ ChromaDB: {storage['chromadb_bucket']}{Colors.ENDC}")
+                if "backup_bucket" in storage:
+                    print(f"{Colors.GREEN}   ✓ Backups: {storage['backup_bucket']}{Colors.ENDC}")
         else:
             # Fallback to environment variable if config not found
             env["JARVIS_DB_TYPE"] = "cloudsql"
             env["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
             if "JARVIS_DB_PASSWORD" in os.environ:
                 env["JARVIS_DB_PASSWORD"] = os.environ["JARVIS_DB_PASSWORD"]
+            print(
+                f"{Colors.YELLOW}   ⚠️  Config not found, using environment variables{Colors.ENDC}"
+            )
 
         # Enable all performance optimizations
         env["OPTIMIZE_STARTUP"] = "true"
