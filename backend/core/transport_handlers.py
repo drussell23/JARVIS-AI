@@ -20,60 +20,77 @@ async def applescript_handler(action: str, context: Dict[str, Any], **kwargs) ->
 
     Most reliable method, works even when network services are down.
     Fast execution, low latency.
+    Uses actual MacOSKeychainUnlock for unlock and system commands for lock.
     """
     logger.info(f"[APPLESCRIPT] Executing {action}")
 
     try:
         if action == "unlock_screen":
-            # Wake display first
-            await _applescript_wake_display()
+            # Use MacOSKeychainUnlock for actual unlock
+            from macos_keychain_unlock import MacOSKeychainUnlock
 
-            # Unlock screen
-            script = """
-            tell application "System Events"
-                keystroke return
-            end tell
-            """
+            unlock_service = MacOSKeychainUnlock()
+            verified_speaker = context.get("verified_speaker_name", "Derek")
+
+            # Perform actual screen unlock with Keychain password
+            unlock_result = await unlock_service.unlock_screen(verified_speaker=verified_speaker)
+
+            if unlock_result["success"]:
+                logger.info(f"[APPLESCRIPT] ✅ {action} succeeded for {verified_speaker}")
+                return {
+                    "success": True,
+                    "method": "applescript",
+                    "action": action,
+                    "verified_speaker": verified_speaker,
+                }
+            else:
+                logger.error(f"[APPLESCRIPT] ❌ Failed: {unlock_result['message']}")
+                return {
+                    "success": False,
+                    "error": "unlock_failed",
+                    "message": unlock_result["message"],
+                }
 
         elif action == "lock_screen":
+            # Use Command+Control+Q to lock screen (native macOS shortcut)
             script = """
             tell application "System Events"
-                tell application "System Events" to keystroke "q" using {command down, control down}
+                keystroke "q" using {command down, control down}
             end tell
             """
+
+            # Execute AppleScript
+            process = await asyncio.create_subprocess_exec(
+                "osascript",
+                "-e",
+                script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                logger.info(f"[APPLESCRIPT] ✅ {action} succeeded")
+                return {
+                    "success": True,
+                    "method": "applescript",
+                    "action": action,
+                }
+            else:
+                error_msg = stderr.decode().strip() if stderr else "unknown error"
+                logger.error(f"[APPLESCRIPT] ❌ Failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": "applescript_failed",
+                    "message": error_msg,
+                }
 
         else:
             return {
                 "success": False,
                 "error": "unknown_action",
                 "message": f"Unknown action: {action}",
-            }
-
-        # Execute AppleScript
-        process = await asyncio.create_subprocess_exec(
-            "osascript",
-            "-e",
-            script,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await process.communicate()
-
-        if process.returncode == 0:
-            logger.info(f"[APPLESCRIPT] ✅ {action} succeeded")
-            return {
-                "success": True,
-                "method": "applescript",
-                "action": action,
-            }
-        else:
-            error_msg = stderr.decode().strip() if stderr else "unknown error"
-            logger.error(f"[APPLESCRIPT] ❌ Failed: {error_msg}")
-            return {
-                "success": False,
-                "error": "applescript_failed",
-                "message": error_msg,
             }
 
     except Exception as e:
@@ -208,17 +225,24 @@ async def system_api_handler(action: str, context: Dict[str, Any], **kwargs) -> 
     """
     System API transport handler - macOS system APIs.
 
-    Uses pmset, screensaver, and other system tools.
+    Uses AppleScript shortcut for lock, delegates to AppleScript handler for unlock.
     Most compatible with macOS system features.
     """
     logger.info(f"[SYSTEM-API] Executing {action}")
 
     try:
         if action == "lock_screen":
-            # Use pmset to lock screen
+            # Use AppleScript with Command+Control+Q (reliable macOS shortcut)
+            script = """
+            tell application "System Events"
+                keystroke "q" using {command down, control down}
+            end tell
+            """
+
             process = await asyncio.create_subprocess_exec(
-                "/usr/bin/pmset",
-                "displaysleepnow",
+                "osascript",
+                "-e",
+                script,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -234,13 +258,9 @@ async def system_api_handler(action: str, context: Dict[str, Any], **kwargs) -> 
                 }
 
         elif action == "unlock_screen":
-            # System APIs can't unlock, must use AppleScript
-            logger.warning("[SYSTEM-API] Unlock not supported, use AppleScript")
-            return {
-                "success": False,
-                "error": "not_supported",
-                "message": "System API cannot unlock screen",
-            }
+            # Delegate to AppleScript handler which has MacOSKeychainUnlock
+            logger.info("[SYSTEM-API] Delegating unlock to AppleScript handler")
+            return await applescript_handler(action, context, **kwargs)
 
         return {
             "success": False,
