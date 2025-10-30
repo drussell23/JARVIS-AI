@@ -31,7 +31,6 @@ Example:
 
 import asyncio
 import hashlib
-import io
 import logging
 import time
 import warnings
@@ -57,7 +56,7 @@ warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarnin
 @dataclass
 class StreamingChunk:
     """Represents a chunk of streaming audio with partial results.
-    
+
     Attributes:
         text: Transcribed text for this chunk
         is_final: Whether this is a final result or partial
@@ -76,7 +75,7 @@ class StreamingChunk:
 @dataclass
 class ConfidenceScores:
     """Detailed confidence breakdown from multiple model components.
-    
+
     Attributes:
         decoder_prob: Decoder probability score (0.0-1.0)
         acoustic_confidence: Acoustic model confidence based on audio quality
@@ -94,10 +93,10 @@ class ConfidenceScores:
 
 class LRUModelCache:
     """LRU cache for transcription results and model states.
-    
+
     Provides efficient caching of transcription results with automatic eviction
     of least recently used items when capacity is exceeded.
-    
+
     Attributes:
         cache: Ordered dictionary storing cached results
         max_size: Maximum number of items to cache
@@ -107,7 +106,7 @@ class LRUModelCache:
 
     def __init__(self, max_size: int = 1000):
         """Initialize LRU cache.
-        
+
         Args:
             max_size: Maximum number of items to cache
         """
@@ -118,10 +117,10 @@ class LRUModelCache:
 
     def get(self, key: str) -> Optional[STTResult]:
         """Get cached result and update access order.
-        
+
         Args:
             key: Cache key (typically audio hash)
-            
+
         Returns:
             Cached STTResult if found, None otherwise
         """
@@ -135,7 +134,7 @@ class LRUModelCache:
 
     def put(self, key: str, value: STTResult):
         """Store result in cache with LRU eviction.
-        
+
         Args:
             key: Cache key (typically audio hash)
             value: STTResult to cache
@@ -150,7 +149,7 @@ class LRUModelCache:
 
     def get_stats(self) -> Dict:
         """Get cache performance statistics.
-        
+
         Returns:
             Dictionary with cache statistics including hit rate
         """
@@ -167,7 +166,7 @@ class LRUModelCache:
 
 class AudioPreprocessor:
     """Advanced audio preprocessing for noise robustness.
-    
+
     Provides various audio enhancement techniques to improve speech recognition
     accuracy in noisy environments.
     """
@@ -418,16 +417,16 @@ class SpeechBrainEngine(BaseSTTEngine):
         >>> config = ModelConfig(name="speechbrain-asr", engine="speechbrain")
         >>> engine = SpeechBrainEngine(config)
         >>> await engine.initialize()
-        >>> 
+        >>>
         >>> # Basic transcription
         >>> result = await engine.transcribe(audio_bytes)
         >>> print(f"Text: {result.text}")
         >>> print(f"Confidence: {result.confidence:.2%}")
-        >>> 
+        >>>
         >>> # Streaming transcription
         >>> async for chunk in engine.transcribe_streaming(audio_stream):
         >>>     print(f"Partial: {chunk.text} (final: {chunk.is_final})")
-        >>> 
+        >>>
         >>> # Speaker verification
         >>> embedding = await engine.extract_speaker_embedding(enrollment_audio)
         >>> is_verified, confidence = await engine.verify_speaker(test_audio, embedding)
@@ -435,7 +434,7 @@ class SpeechBrainEngine(BaseSTTEngine):
 
     def __init__(self, model_config):
         """Initialize SpeechBrain engine.
-        
+
         Args:
             model_config: Model configuration object with engine settings
         """
@@ -470,10 +469,10 @@ class SpeechBrainEngine(BaseSTTEngine):
 
     async def initialize(self):
         """Initialize SpeechBrain models with lazy loading.
-        
+
         Loads the ASR model and sets up the processing pipeline. Speaker encoder
         is loaded lazily when first needed to optimize startup time.
-        
+
         Raises:
             Exception: If model initialization fails
         """
@@ -548,10 +547,10 @@ class SpeechBrainEngine(BaseSTTEngine):
 
     async def _load_speaker_encoder(self):
         """Lazy load speaker encoder only when needed.
-        
+
         Loads the ECAPA-TDNN speaker encoder for speaker verification and
         embedding extraction. Called automatically when speaker features are used.
-        
+
         Raises:
             Exception: If speaker encoder loading fails
         """
@@ -582,10 +581,10 @@ class SpeechBrainEngine(BaseSTTEngine):
 
     def _get_optimal_device(self) -> str:
         """Determine optimal device for inference.
-        
+
         Selects the best available compute device in order of preference:
         CUDA GPU > Apple Silicon MPS > CPU
-        
+
         Returns:
             Device string: "cuda", "mps", or "cpu"
         """
@@ -737,7 +736,7 @@ class SpeechBrainEngine(BaseSTTEngine):
             >>> async def audio_generator():
             >>>     for chunk in audio_chunks:
             >>>         yield chunk
-            >>> 
+            >>>
             >>> async for result in engine.transcribe_streaming(audio_generator()):
             >>>     if result.is_final:
             >>>         print(f"Final: {result.text}")
@@ -830,15 +829,27 @@ class SpeechBrainEngine(BaseSTTEngine):
         if not self.initialized:
             await self.initialize()
 
-        start_time = time.time()
+        time.time()
         results = []
 
         try:
             # Convert all audio to tensors
-            audio_tensors = []
-            audio_lengths = []
-            audio_hashes = []
+            pass
 
             for audio_data in audio_batch:
                 # Check cache first
                 # Ensure audio_data is bytes for hashing
+                if isinstance(audio_data, np.ndarray):
+                    audio_data.tobytes()
+                else:
+                    pass
+
+                # TODO: Complete implementation
+
+            # Return empty results for now
+            return results
+
+        except Exception as e:
+            logger.error(f"Batch transcription failed: {e}", exc_info=True)
+            # Return empty results list on error
+            return []

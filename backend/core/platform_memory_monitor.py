@@ -29,7 +29,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Callable, Any
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import psutil
 
@@ -39,10 +39,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MemoryPressureSnapshot:
     """Platform-aware memory pressure snapshot containing comprehensive memory metrics.
-    
+
     This dataclass captures both raw memory statistics and platform-specific pressure
     indicators to provide accurate memory pressure assessment across different operating systems.
-    
+
     Attributes:
         timestamp: When this snapshot was taken
         platform: Operating system platform ("darwin" or "linux")
@@ -91,11 +91,11 @@ class MemoryPressureSnapshot:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert snapshot to dictionary format for serialization.
-        
+
         Returns:
             Dictionary representation of the snapshot with rounded numeric values
             and ISO-formatted timestamp.
-            
+
         Example:
             >>> snapshot = MemoryPressureSnapshot(...)
             >>> data = snapshot.to_dict()
@@ -132,17 +132,17 @@ class MemoryPressureSnapshot:
 
 class PlatformMemoryMonitor:
     """Platform-aware memory pressure monitoring system.
-    
+
     This class provides accurate memory pressure detection across different operating
     systems to prevent unnecessary GCP VM creation. It uses OS-native methods to
     distinguish between high memory usage (which may be cache) and actual memory
     pressure that could lead to OOM conditions.
-    
+
     The monitor uses different strategies per platform:
     - macOS: memory_pressure command + vm_stat page outs
     - Linux: PSI (Pressure Stall Information) + /proc/meminfo analysis
     - Fallback: Conservative percentage-based thresholds
-    
+
     Attributes:
         platform: Current operating system platform
         is_macos: Whether running on macOS
@@ -157,7 +157,7 @@ class PlatformMemoryMonitor:
 
     def __init__(self) -> None:
         """Initialize the platform memory monitor.
-        
+
         Detects the current platform and sets up platform-specific monitoring
         capabilities including PSI availability on Linux and threshold configuration.
         """
@@ -194,15 +194,15 @@ class PlatformMemoryMonitor:
 
     async def get_memory_pressure(self) -> MemoryPressureSnapshot:
         """Get current memory pressure using platform-native methods.
-        
+
         Collects comprehensive memory metrics using the most appropriate method
         for the current platform, then analyzes the data to determine actual
         memory pressure levels.
-        
+
         Returns:
             MemoryPressureSnapshot containing all relevant memory metrics and
             pressure assessment for the current platform.
-            
+
         Example:
             >>> monitor = PlatformMemoryMonitor()
             >>> snapshot = await monitor.get_memory_pressure()
@@ -238,12 +238,12 @@ class PlatformMemoryMonitor:
 
     async def _add_macos_pressure(self, snapshot: MemoryPressureSnapshot) -> None:
         """Add macOS-specific memory pressure detection to snapshot.
-        
+
         Uses macOS-native tools to detect memory pressure:
         1. memory_pressure command for system pressure levels
         2. vm_stat for page out detection (swapping activity)
         3. Rate-based analysis to detect active swapping
-        
+
         Args:
             snapshot: MemoryPressureSnapshot to populate with macOS metrics
         """
@@ -315,12 +315,12 @@ class PlatformMemoryMonitor:
 
     async def _add_linux_pressure(self, snapshot: MemoryPressureSnapshot) -> None:
         """Add Linux-specific memory pressure detection using PSI + reclaimable memory.
-        
+
         Uses Linux-specific mechanisms to detect real memory pressure:
         1. PSI (Pressure Stall Information) for actual process stalls
         2. /proc/meminfo analysis to distinguish cache from unavailable memory
         3. Combined analysis to avoid false alarms from cached memory
-        
+
         Args:
             snapshot: MemoryPressureSnapshot to populate with Linux metrics
         """
@@ -396,11 +396,11 @@ class PlatformMemoryMonitor:
 
     def _add_fallback_pressure(self, snapshot: MemoryPressureSnapshot) -> None:
         """Add fallback pressure detection for unknown platforms.
-        
+
         Uses conservative percentage-based thresholds when platform-specific
         monitoring is not available. This provides basic protection but may
         not be as accurate as native platform methods.
-        
+
         Args:
             snapshot: MemoryPressureSnapshot to populate with fallback metrics
         """
@@ -428,14 +428,14 @@ class PlatformMemoryMonitor:
 
     async def _get_macos_memory_pressure_cmd(self) -> str:
         """Get macOS memory pressure level using memory_pressure command.
-        
+
         Executes the macOS memory_pressure command to get the system's
         assessment of current memory pressure levels.
-        
+
         Returns:
             Memory pressure level: "normal", "warn", "critical", or "unknown"
             if the command fails or times out.
-            
+
         Raises:
             No exceptions raised - errors are logged and "unknown" returned.
         """
@@ -467,13 +467,13 @@ class PlatformMemoryMonitor:
 
     async def _get_macos_page_outs(self) -> int:
         """Get macOS cumulative page outs from vm_stat command.
-        
+
         Executes vm_stat to get the cumulative number of pages that have
         been paged out to disk, which indicates swapping activity.
-        
+
         Returns:
             Cumulative number of pages paged out, or 0 if command fails.
-            
+
         Raises:
             No exceptions raised - errors are logged and 0 returned.
         """
@@ -498,16 +498,16 @@ class PlatformMemoryMonitor:
 
     async def _get_linux_psi(self) -> Tuple[Optional[float], Optional[float]]:
         """Get Linux PSI (Pressure Stall Information) metrics.
-        
+
         Reads PSI memory metrics from /proc/pressure/memory to get accurate
         information about memory pressure from the kernel's perspective.
-        
+
         Returns:
             Tuple of (psi_some_avg10, psi_full_avg10) where:
             - psi_some: % of time at least one process stalled on memory
             - psi_full: % of time ALL processes stalled on memory (severe)
             Both values are None if PSI is not available.
-            
+
         Raises:
             No exceptions raised - errors are logged and (None, None) returned.
         """
@@ -544,17 +544,17 @@ class PlatformMemoryMonitor:
 
     async def _get_linux_reclaimable(self) -> Tuple[Optional[float], Optional[float]]:
         """Get Linux reclaimable memory from /proc/meminfo.
-        
+
         Analyzes /proc/meminfo to determine how much memory is actually
         reclaimable (cache/buffers) vs truly unavailable, providing a more
         accurate picture of memory pressure than simple usage percentages.
-        
+
         Returns:
             Tuple of (reclaimable_gb, actual_pressure_gb) where:
             - reclaimable_gb: Cache + buffers that can be instantly freed
             - actual_pressure_gb: Real available memory (MemAvailable - considers reclaimable)
             Both values are None if /proc/meminfo is not available.
-            
+
         Raises:
             No exceptions raised - errors are logged and (None, None) returned.
         """
@@ -598,18 +598,18 @@ class PlatformMemoryMonitor:
 
     def should_create_gcp_vm(self, snapshot: MemoryPressureSnapshot) -> Tuple[bool, str]:
         """Decide if we should create a GCP VM based on memory pressure.
-        
+
         Analyzes the memory pressure snapshot to determine whether GCP VM
         creation is warranted based on the current memory situation.
-        
+
         Args:
             snapshot: MemoryPressureSnapshot containing current memory metrics
-            
+
         Returns:
             Tuple of (should_create, reason) where:
             - should_create: Boolean indicating if VM creation is recommended
             - reason: Human-readable explanation of the decision
-            
+
         Example:
             >>> should_create, reason = monitor.should_create_gcp_vm(snapshot)
             >>> if should_create:
@@ -624,23 +624,23 @@ class PlatformMemoryMonitor:
         return False, f"NOT NEEDED: {snapshot.reasoning}"
 
     async def continuous_monitor(
-        self, 
-        interval_seconds: int = 5, 
-        callback: Optional[Callable[[MemoryPressureSnapshot], Any]] = None
+        self,
+        interval_seconds: int = 5,
+        callback: Optional[Callable[[MemoryPressureSnapshot], Any]] = None,
     ) -> None:
         """Continuously monitor memory pressure and call callback on changes.
-        
+
         Runs an infinite loop monitoring memory pressure at regular intervals.
         Calls the provided callback function whenever the pressure level changes,
         and logs warnings when GCP VM creation is recommended.
-        
+
         Args:
             interval_seconds: Time between pressure checks in seconds
             callback: Optional async function(snapshot) called on pressure level changes
-            
+
         Raises:
             No exceptions propagated - errors are logged and monitoring continues.
-            
+
         Example:
             >>> async def on_pressure_change(snapshot):
             ...     print(f"Pressure changed to: {snapshot.pressure_level}")
@@ -682,14 +682,14 @@ _monitor: Optional[PlatformMemoryMonitor] = None
 
 def get_memory_monitor() -> PlatformMemoryMonitor:
     """Get global memory monitor instance.
-    
+
     Returns the singleton PlatformMemoryMonitor instance, creating it
     if it doesn't exist. This ensures consistent monitoring across
     the application.
-    
+
     Returns:
         PlatformMemoryMonitor: Global monitor instance
-        
+
     Example:
         >>> monitor = get_memory_monitor()
         >>> snapshot = await monitor.get_memory_pressure()
@@ -702,17 +702,17 @@ def get_memory_monitor() -> PlatformMemoryMonitor:
 
 async def test_memory_monitor() -> None:
     """Test the memory monitor functionality.
-    
+
     Comprehensive test function that demonstrates the memory monitor's
     capabilities by taking a snapshot and displaying all relevant metrics
     in a formatted output.
-    
+
     Example:
         >>> await test_memory_monitor()
         ================================================================================
         Platform Memory Monitor Test
         ================================================================================
-        
+
         Platform: darwin
         Total RAM: 16.0GB
         Used RAM: 12.5GB (78.1%)
@@ -742,4 +742,4 @@ async def test_memory_monitor() -> None:
     elif snapshot.platform == "linux":
         print("Linux Metrics:")
         print(f"  PSI some (avg10): {snapshot.linux_psi_some_avg10}%")
-        print(f
+        print(f"  PSI full (avg10): {snapshot.linux_psi_full_avg10}%")
