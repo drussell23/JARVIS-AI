@@ -4882,16 +4882,16 @@ class JARVISLearningDatabase:
                 for row in rows:
                     profiles.append(
                         {
-                            "speaker_id": row[0],
-                            "speaker_name": row[1],
-                            "voiceprint_embedding": row[2],
-                            "total_samples": row[3],
-                            "average_pitch_hz": row[4],
-                            "recognition_confidence": row[5],
-                            "is_primary_user": bool(row[6]),
-                            "security_level": row[7] or "standard",
-                            "created_at": row[8],
-                            "last_updated": row[9],
+                            "speaker_id": row["speaker_id"],
+                            "speaker_name": row["speaker_name"],
+                            "voiceprint_embedding": row["voiceprint_embedding"],
+                            "total_samples": row["total_samples"],
+                            "average_pitch_hz": row["average_pitch_hz"],
+                            "recognition_confidence": row["recognition_confidence"],
+                            "is_primary_user": bool(row["is_primary_user"]),
+                            "security_level": row["security_level"] or "standard",
+                            "created_at": row["created_at"],
+                            "last_updated": row["last_updated"],
                         }
                     )
 
