@@ -1,6 +1,24 @@
 """
 Memory Management API for AI-Powered Chatbot
-Provides REST endpoints for memory monitoring and control
+
+This module provides REST endpoints for memory monitoring and control in an AI-powered
+chatbot system. It includes comprehensive memory management capabilities, intelligent
+optimization, and real-time monitoring with alerts.
+
+The API supports:
+- Real-time memory status monitoring
+- Component registration and lifecycle management
+- Intelligent memory optimization for different modes (e.g., LangChain)
+- Emergency cleanup procedures
+- Memory alerts and notifications
+
+Example:
+    >>> from memory_api import MemoryAPI
+    >>> from memory_manager import M1MemoryManager
+    >>> 
+    >>> memory_manager = M1MemoryManager()
+    >>> api = MemoryAPI(memory_manager)
+    >>> # API routes are now available via api.router
 """
 
 from fastapi import APIRouter, HTTPException
@@ -21,19 +39,38 @@ from .intelligent_memory_optimizer import (
 )
 
 class ComponentRegistration(BaseModel):
-    """Request model for component registration"""
+    """Request model for component registration.
+    
+    Attributes:
+        name: Unique identifier for the component
+        priority: Priority level ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+        estimated_memory_mb: Estimated memory usage in megabytes
+    """
 
     name: str
     priority: str  # "CRITICAL", "HIGH", "MEDIUM", "LOW"
     estimated_memory_mb: int
 
 class LoadComponentRequest(BaseModel):
-    """Request model for loading a component"""
+    """Request model for loading a component.
+    
+    Attributes:
+        name: Name of the component to load
+    """
 
     name: str
 
 class MemoryStateResponse(BaseModel):
-    """Response model for memory state"""
+    """Response model for memory state information.
+    
+    Attributes:
+        state: Current memory state (HEALTHY, WARNING, CRITICAL, EMERGENCY)
+        percent_used: Percentage of memory currently in use
+        available_mb: Available memory in megabytes
+        used_mb: Used memory in megabytes
+        total_mb: Total system memory in megabytes
+        timestamp: ISO timestamp of when the snapshot was taken
+    """
 
     state: str
     percent_used: float
@@ -43,7 +80,18 @@ class MemoryStateResponse(BaseModel):
     timestamp: str
 
 class ComponentStatusResponse(BaseModel):
-    """Response model for component status"""
+    """Response model for component status information.
+    
+    Attributes:
+        name: Component name
+        priority: Component priority level
+        is_loaded: Whether the component is currently loaded
+        estimated_mb: Estimated memory usage in megabytes
+        actual_mb: Actual memory usage in megabytes (if loaded)
+        last_used: ISO timestamp of last usage
+        can_load: Whether the component can be loaded given current memory state
+        load_reason: Explanation of why component can/cannot be loaded
+    """
 
     name: str
     priority: str
@@ -55,7 +103,14 @@ class ComponentStatusResponse(BaseModel):
     load_reason: Optional[str]
 
 class MemoryReportResponse(BaseModel):
-    """Response model for full memory report"""
+    """Response model for comprehensive memory report.
+    
+    Attributes:
+        current_state: Current memory state information
+        components: List of all registered components with their status
+        analysis: Memory usage analysis and recommendations
+        thresholds: Memory threshold configuration
+    """
 
     current_state: Dict[str, Any]
     components: List[Dict[str, Any]]
@@ -63,12 +118,26 @@ class MemoryReportResponse(BaseModel):
     thresholds: Dict[str, float]
 
 class OptimizeLangChainRequest(BaseModel):
-    """Request model for optimizing memory for LangChain"""
+    """Request model for optimizing memory for LangChain operations.
+    
+    Attributes:
+        force: Force optimization even if memory is already below threshold
+    """
     
     force: bool = False  # Force optimization even if already below threshold
 
 class OptimizationReportResponse(BaseModel):
-    """Response model for memory optimization report"""
+    """Response model for memory optimization report.
+    
+    Attributes:
+        success: Whether optimization was successful
+        initial_percent: Memory usage percentage before optimization
+        final_percent: Memory usage percentage after optimization
+        memory_freed_mb: Amount of memory freed in megabytes
+        actions_taken: List of optimization actions performed
+        target_percent: Target memory usage percentage
+        message: Human-readable optimization result message
+    """
     
     success: bool
     initial_percent: float
@@ -79,9 +148,30 @@ class OptimizationReportResponse(BaseModel):
     message: str
 
 class MemoryAPI:
-    """API for memory management functionality"""
+    """API for memory management functionality.
+    
+    Provides REST endpoints for monitoring and controlling memory usage in an
+    AI-powered chatbot system. Includes intelligent optimization capabilities
+    and real-time monitoring.
+    
+    Attributes:
+        memory_manager: The M1MemoryManager instance for core memory operations
+        router: FastAPI router containing all API endpoints
+        intelligent_optimizer: Intelligent memory optimization engine
+        optimization_api: API for memory optimization suggestions
+    
+    Example:
+        >>> memory_manager = M1MemoryManager()
+        >>> api = MemoryAPI(memory_manager)
+        >>> app.include_router(api.router, prefix="/memory")
+    """
 
     def __init__(self, memory_manager: M1MemoryManager):
+        """Initialize the Memory API.
+        
+        Args:
+            memory_manager: The M1MemoryManager instance to use for memory operations
+        """
         self.memory_manager = memory_manager
         self.router = APIRouter()
         
@@ -94,8 +184,12 @@ class MemoryAPI:
 
         # Memory monitoring will be started on first request or via startup event
 
-    def _register_routes(self):
-        """Register API routes"""
+    def _register_routes(self) -> None:
+        """Register all API routes with the FastAPI router.
+        
+        Sets up all endpoints for memory management including status monitoring,
+        component management, and optimization operations.
+        """
         self.router.add_api_route(
             "/status",
             self.get_memory_status,
@@ -149,12 +243,25 @@ class MemoryAPI:
             methods=["GET"]
         )
 
-    async def _start_monitoring(self):
-        """Start memory monitoring on initialization"""
+    async def _start_monitoring(self) -> None:
+        """Start memory monitoring on initialization.
+        
+        Initializes the memory monitoring system to begin tracking memory usage
+        and component states.
+        """
         await self.memory_manager.start_monitoring()
 
     async def get_memory_status(self) -> MemoryStateResponse:
-        """Get current memory status"""
+        """Get current memory status.
+        
+        Returns:
+            MemoryStateResponse: Current memory state including usage percentages,
+                available memory, and timestamp
+        
+        Example:
+            >>> status = await api.get_memory_status()
+            >>> print(f"Memory usage: {status.percent_used}%")
+        """
         snapshot = await self.memory_manager.get_memory_snapshot()
 
         return MemoryStateResponse(
@@ -167,12 +274,30 @@ class MemoryAPI:
         )
 
     async def get_memory_report(self) -> MemoryReportResponse:
-        """Get detailed memory report"""
+        """Get detailed memory report.
+        
+        Returns:
+            MemoryReportResponse: Comprehensive memory report including current state,
+                component information, analysis, and threshold configuration
+        
+        Example:
+            >>> report = await api.get_memory_report()
+            >>> print(f"Components loaded: {len(report.components)}")
+        """
         report = await self.memory_manager.get_memory_report()
         return MemoryReportResponse(**report)
 
     async def list_components(self) -> List[ComponentStatusResponse]:
-        """List all registered components with status"""
+        """List all registered components with their current status.
+        
+        Returns:
+            List[ComponentStatusResponse]: List of all components with their
+                priority, load status, memory usage, and availability
+        
+        Example:
+            >>> components = await api.list_components()
+            >>> loaded = [c for c in components if c.is_loaded]
+        """
         components = []
 
         for name, info in self.memory_manager.components.items():
@@ -198,7 +323,26 @@ class MemoryAPI:
     async def register_component(
         self, request: ComponentRegistration
     ) -> Dict[str, str]:
-        """Register a new component for memory management"""
+        """Register a new component for memory management.
+        
+        Args:
+            request: Component registration details including name, priority,
+                and estimated memory usage
+        
+        Returns:
+            Dict[str, str]: Success/failure status and message
+        
+        Raises:
+            HTTPException: If priority is invalid (400) or registration fails (500)
+        
+        Example:
+            >>> request = ComponentRegistration(
+            ...     name="llm_model",
+            ...     priority="HIGH",
+            ...     estimated_memory_mb=2048
+            ... )
+            >>> result = await api.register_component(request)
+        """
         try:
             priority = ComponentPriority[request.priority]
             self.memory_manager.register_component(
@@ -214,7 +358,26 @@ class MemoryAPI:
             raise HTTPException(500, str(e))
 
     async def load_component(self, component_name: str) -> Dict[str, Any]:
-        """Load a component (actual loading logic would be in main.py)"""
+        """Check if a component can be loaded and provide guidance.
+        
+        Note: This endpoint only checks if loading is possible. Actual loading
+        must be initiated from the main application.
+        
+        Args:
+            component_name: Name of the component to check for loading
+        
+        Returns:
+            Dict[str, Any]: Loading feasibility information including whether
+                the component can be loaded and the reason
+        
+        Raises:
+            HTTPException: If component is not found (404)
+        
+        Example:
+            >>> result = await api.load_component("llm_model")
+            >>> if result["can_load"]:
+            ...     # Proceed with loading in main application
+        """
         if component_name not in self.memory_manager.components:
             raise HTTPException(404, f"Component {component_name} not found")
 
@@ -228,7 +391,21 @@ class MemoryAPI:
         }
 
     async def unload_component(self, component_name: str) -> Dict[str, str]:
-        """Unload a component"""
+        """Unload a component from memory.
+        
+        Args:
+            component_name: Name of the component to unload
+        
+        Returns:
+            Dict[str, str]: Success/failure status and message
+        
+        Raises:
+            HTTPException: If component is not found (404)
+        
+        Example:
+            >>> result = await api.unload_component("embedding_model")
+            >>> print(result["message"])
+        """
         if component_name not in self.memory_manager.components:
             raise HTTPException(404, f"Component {component_name} not found")
 
@@ -245,7 +422,22 @@ class MemoryAPI:
     async def get_component_status(
         self, component_name: str
     ) -> ComponentStatusResponse:
-        """Get status of a specific component"""
+        """Get detailed status of a specific component.
+        
+        Args:
+            component_name: Name of the component to query
+        
+        Returns:
+            ComponentStatusResponse: Detailed component status including
+                priority, load state, memory usage, and availability
+        
+        Raises:
+            HTTPException: If component is not found (404)
+        
+        Example:
+            >>> status = await api.get_component_status("llm_model")
+            >>> print(f"Component loaded: {status.is_loaded}")
+        """
         if component_name not in self.memory_manager.components:
             raise HTTPException(404, f"Component {component_name} not found")
 
@@ -264,7 +456,18 @@ class MemoryAPI:
         )
 
     async def optimize_memory(self) -> Dict[str, Any]:
-        """Manually trigger memory optimization"""
+        """Manually trigger memory optimization.
+        
+        Forces garbage collection and component unloading to free up memory.
+        
+        Returns:
+            Dict[str, Any]: Optimization results including memory freed and
+                before/after usage percentages
+        
+        Example:
+            >>> result = await api.optimize_memory()
+            >>> print(f"Freed {result['freed_mb']:.1f} MB")
+        """
         snapshot_before = await self.memory_manager.get_memory_snapshot()
 
         # Force optimization
@@ -285,7 +488,19 @@ class MemoryAPI:
         }
 
     async def emergency_cleanup(self) -> Dict[str, Any]:
-        """Trigger emergency cleanup"""
+        """Trigger emergency memory cleanup.
+        
+        Performs aggressive memory cleanup by unloading non-critical components
+        and forcing garbage collection. Used when memory usage reaches critical levels.
+        
+        Returns:
+            Dict[str, Any]: Cleanup results including lists of unloaded and
+                remaining components
+        
+        Example:
+            >>> result = await api.emergency_cleanup()
+            >>> print(f"Unloaded: {result['unloaded_components']}")
+        """
         # Get list of loaded components before cleanup
         loaded_before = [
             name
@@ -312,7 +527,23 @@ class MemoryAPI:
         }
     
     async def optimize_for_langchain(self, request: OptimizeLangChainRequest) -> OptimizationReportResponse:
-        """Intelligently optimize memory for LangChain mode"""
+        """Intelligently optimize memory for LangChain operations.
+        
+        Performs targeted optimization to ensure sufficient memory is available
+        for LangChain operations while preserving critical components.
+        
+        Args:
+            request: Optimization request with force flag
+        
+        Returns:
+            OptimizationReportResponse: Detailed optimization report including
+                memory freed, actions taken, and success status
+        
+        Example:
+            >>> request = OptimizeLangChainRequest(force=True)
+            >>> result = await api.optimize_for_langchain(request)
+            >>> print(f"Optimization success: {result.success}")
+        """
         # Check current memory
         snapshot = await self.memory_manager.get_memory_snapshot()
         
@@ -342,13 +573,37 @@ class MemoryAPI:
         )
     
     async def get_optimization_suggestions(self) -> Dict[str, Any]:
-        """Get memory optimization suggestions"""
+        """Get memory optimization suggestions.
+        
+        Analyzes current memory usage and provides intelligent suggestions
+        for optimization without actually performing any changes.
+        
+        Returns:
+            Dict[str, Any]: Optimization suggestions including recommended
+                actions and potential memory savings
+        
+        Example:
+            >>> suggestions = await api.get_optimization_suggestions()
+            >>> for action in suggestions.get("recommendations", []):
+            ...     print(f"Suggestion: {action['description']}")
+        """
         result = await self.optimization_api.get_suggestions()
         return result
 
 # Webhook for memory alerts (can be used by frontend)
 class MemoryAlert(BaseModel):
-    """Memory alert notification"""
+    """Memory alert notification model.
+    
+    Used for real-time memory state change notifications that can be sent
+    to frontend clients via WebSocket or other notification mechanisms.
+    
+    Attributes:
+        timestamp: ISO timestamp when the alert was generated
+        state: Current memory state (HEALTHY, WARNING, CRITICAL, EMERGENCY)
+        percent_used: Current memory usage percentage
+        message: Human-readable alert message
+        severity: Alert severity level ("info", "warning", "error", "critical")
+    """
 
     timestamp: str
     state: str
@@ -357,9 +612,30 @@ class MemoryAlert(BaseModel):
     severity: str  # "info", "warning", "error", "critical"
 
 async def create_memory_alert_callback(websocket_manager=None):
-    """Create a callback for memory state changes"""
+    """Create a callback function for memory state change alerts.
+    
+    Creates an async callback that can be registered with the memory manager
+    to receive notifications when memory state changes occur.
+    
+    Args:
+        websocket_manager: Optional WebSocket manager for broadcasting alerts
+            to connected clients
+    
+    Returns:
+        Callable: Async callback function that processes memory snapshots
+            and generates alerts
+    
+    Example:
+        >>> callback = await create_memory_alert_callback(ws_manager)
+        >>> memory_manager.register_callback(callback)
+    """
 
     async def memory_alert_callback(snapshot: MemorySnapshot):
+        """Process memory snapshot and generate alert.
+        
+        Args:
+            snapshot: Memory snapshot containing current state information
+        """
         alert = MemoryAlert(
             timestamp=snapshot.timestamp.isoformat(),
             state=snapshot.state.value,
@@ -392,4 +668,3 @@ async def create_memory_alert_callback(websocket_manager=None):
             await websocket_manager.broadcast(alert.dict())
 
     return memory_alert_callback
-

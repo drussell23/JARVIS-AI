@@ -11,6 +11,10 @@ Implements intelligent OCR with fallback strategies:
 
 Uses Error Handling Matrix for graceful degradation.
 
+This module provides a comprehensive OCR solution with intelligent model selection,
+caching, and robust error handling. It supports multiple OCR engines and provides
+graceful degradation when primary methods fail.
+
 Author: Derek Russell
 Date: 2025-10-19
 """
@@ -59,7 +63,19 @@ except ImportError:
 
 @dataclass
 class CachedOCR:
-    """Cached OCR result with metadata"""
+    """Cached OCR result with metadata.
+    
+    Stores OCR results with timestamp and confidence information for efficient
+    caching and retrieval of previously processed images.
+    
+    Attributes:
+        text: Extracted text content
+        image_hash: MD5 hash of the source image
+        timestamp: When the OCR was performed
+        method: OCR method used ("claude_vision", "tesseract", "metadata")
+        confidence: Confidence score from 0.0 to 1.0
+        metadata: Additional metadata about the OCR result
+    """
     text: str
     image_hash: str
     timestamp: datetime
@@ -68,32 +84,45 @@ class CachedOCR:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def is_valid(self, max_age_seconds: float = 300.0) -> bool:
-        """Check if cache is still valid (default 5 minutes)"""
+        """Check if cache entry is still valid.
+        
+        Args:
+            max_age_seconds: Maximum age in seconds (default 5 minutes)
+            
+        Returns:
+            True if cache entry is still valid, False otherwise
+        """
         age = (datetime.now() - self.timestamp).total_seconds()
         return age < max_age_seconds
 
     def age_seconds(self) -> float:
-        """Get age in seconds"""
+        """Get age of cache entry in seconds.
+        
+        Returns:
+            Age in seconds since the OCR was performed
+        """
         return (datetime.now() - self.timestamp).total_seconds()
 
 
 class OCRCache:
-    """
-    Manages cached OCR results with TTL
+    """Manages cached OCR results with TTL.
 
     Features:
     - Time-based expiration
     - Image hash-based caching
     - Automatic cleanup
+    - Memory-efficient storage
+    
+    The cache uses MD5 hashes of images as keys to avoid storing duplicate
+    OCR results for the same image content.
     """
 
     def __init__(self, default_ttl: float = 300.0, max_entries: int = 200):
-        """
-        Initialize OCR cache
+        """Initialize OCR cache.
 
         Args:
-            default_ttl: Default time-to-live in seconds (5 minutes)
-            max_entries: Maximum cache entries
+            default_ttl: Default time-to-live in seconds (default 5 minutes)
+            max_entries: Maximum number of cache entries to store
         """
         self.default_ttl = default_ttl
         self.max_entries = max_entries
@@ -104,15 +133,14 @@ class OCRCache:
         logger.info(f"[OCR-CACHE] Initialized (ttl={default_ttl}s, max_entries={max_entries})")
 
     def get(self, image_hash: str, max_age: Optional[float] = None) -> Optional[CachedOCR]:
-        """
-        Get cached OCR result by image hash
+        """Get cached OCR result by image hash.
 
         Args:
-            image_hash: Image hash (MD5)
+            image_hash: MD5 hash of the image
             max_age: Maximum age in seconds (uses default if not provided)
 
         Returns:
-            CachedOCR if valid, None otherwise
+            CachedOCR if valid entry exists, None otherwise
         """
         max_age = max_age or self.default_ttl
 
@@ -129,7 +157,11 @@ class OCRCache:
         return None
 
     def store(self, ocr_result: CachedOCR):
-        """Store OCR result in cache"""
+        """Store OCR result in cache.
+        
+        Args:
+            ocr_result: CachedOCR instance to store
+        """
         self._cache[ocr_result.image_hash] = ocr_result
 
         # Cleanup if too many entries
@@ -138,7 +170,10 @@ class OCRCache:
         logger.debug(f"[OCR-CACHE] Stored result for {ocr_result.image_hash[:8]} (method={ocr_result.method})")
 
     def _cleanup_old_entries(self):
-        """Remove old entries if cache is too large"""
+        """Remove old entries if cache exceeds maximum size.
+        
+        Removes the oldest 10% of entries when the cache is full.
+        """
         if len(self._cache) > self.max_entries:
             # Remove oldest entries
             entries = [(h, c.timestamp) for h, c in self._cache.items()]
@@ -152,12 +187,17 @@ class OCRCache:
             logger.info(f"[OCR-CACHE] Cleaned up {remove_count} old entries")
 
     def clear(self):
-        """Clear all cache"""
+        """Clear all cached entries."""
         self._cache.clear()
         logger.info("[OCR-CACHE] Cleared all cache")
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics.
+        
+        Returns:
+            Dictionary containing cache statistics including total entries,
+            maximum entries, and default TTL
+        """
         return {
             "total_entries": len(self._cache),
             "max_entries": self.max_entries,
@@ -170,18 +210,24 @@ class OCRCache:
 # ============================================================================
 
 class ImageHasher:
-    """Compute image hashes for cache keys"""
+    """Compute image hashes for cache keys.
+    
+    Provides methods to generate consistent hash values for images,
+    used as cache keys to identify duplicate content.
+    """
 
     @staticmethod
     def compute_hash(image_path: str) -> str:
-        """
-        Compute MD5 hash of image file
+        """Compute MD5 hash of image file.
 
         Args:
-            image_path: Path to image file
+            image_path: Path to the image file
 
         Returns:
-            MD5 hash as hex string
+            MD5 hash as hexadecimal string
+            
+        Raises:
+            Exception: If file cannot be read (returns fallback hash)
         """
         try:
             hasher = hashlib.md5()
@@ -198,18 +244,27 @@ class ImageHasher:
 
 
 class ImageMetadataExtractor:
-    """Extract metadata from images"""
+    """Extract metadata from images.
+    
+    Provides functionality to extract image properties and EXIF data
+    for use in OCR processing and fallback scenarios.
+    """
 
     @staticmethod
     async def extract_metadata(image_path: str) -> Dict[str, Any]:
-        """
-        Extract image metadata
+        """Extract image metadata including dimensions, format, and EXIF data.
 
         Args:
-            image_path: Path to image file
+            image_path: Path to the image file
 
         Returns:
-            Dictionary with image metadata
+            Dictionary containing image metadata including width, height,
+            format, mode, file size, filename, and EXIF data if available
+            
+        Example:
+            >>> metadata = await ImageMetadataExtractor.extract_metadata("image.jpg")
+            >>> print(metadata["width"], metadata["height"])
+            1920 1080
         """
         try:
             img = Image.open(image_path)
@@ -244,32 +299,41 @@ class ImageMetadataExtractor:
 # ============================================================================
 
 class ClaudeVisionOCR:
-    """
-    Claude Vision API for OCR
+    """Claude Vision API for OCR.
 
-    Primary OCR method with highest accuracy
+    Primary OCR method with highest accuracy using Anthropic's Claude Vision
+    model for text extraction from images.
+    
+    Attributes:
+        api_client: Anthropic API client instance
     """
 
     def __init__(self, api_client: Any = None):
-        """
-        Initialize Claude Vision OCR
+        """Initialize Claude Vision OCR.
 
         Args:
-            api_client: Anthropic API client (optional)
+            api_client: Anthropic API client instance (optional)
         """
         self.api_client = api_client
         logger.info("[OCR] Claude Vision OCR initialized")
 
     async def extract_text(self, image_path: str, prompt: Optional[str] = None) -> Tuple[str, float]:
-        """
-        Extract text from image using Claude Vision
+        """Extract text from image using Claude Vision API.
 
         Args:
-            image_path: Path to image file
-            prompt: Optional custom prompt (default: OCR extraction)
+            image_path: Path to the image file
+            prompt: Optional custom prompt for OCR (uses default if not provided)
 
         Returns:
-            (extracted_text, confidence)
+            Tuple of (extracted_text, confidence_score)
+            
+        Raises:
+            Exception: If API client is not initialized or API call fails
+            
+        Example:
+            >>> ocr = ClaudeVisionOCR(api_client)
+            >>> text, confidence = await ocr.extract_text("document.jpg")
+            >>> print(f"Extracted: {text} (confidence: {confidence})")
         """
         if not self.api_client:
             raise Exception("Claude API client not initialized")
@@ -334,19 +398,26 @@ class ClaudeVisionOCR:
 
 
 class TesseractOCR:
-    """
-    Local Tesseract OCR
+    """Local Tesseract OCR engine.
 
-    Fallback OCR method when Claude Vision is unavailable
+    Fallback OCR method using local Tesseract installation when
+    Claude Vision is unavailable or fails.
+    
+    Attributes:
+        is_available: Whether Tesseract is installed and available
     """
 
     def __init__(self):
-        """Initialize Tesseract OCR"""
+        """Initialize Tesseract OCR and check availability."""
         self.is_available = self._check_tesseract()
         logger.info(f"[OCR] Tesseract OCR {'available' if self.is_available else 'not available'}")
 
     def _check_tesseract(self) -> bool:
-        """Check if Tesseract is installed"""
+        """Check if Tesseract is installed and accessible.
+        
+        Returns:
+            True if Tesseract is available, False otherwise
+        """
         try:
             result = subprocess.run(
                 ["tesseract", "--version"],
@@ -359,14 +430,21 @@ class TesseractOCR:
             return False
 
     async def extract_text(self, image_path: str) -> Tuple[str, float]:
-        """
-        Extract text from image using Tesseract
+        """Extract text from image using Tesseract OCR.
 
         Args:
-            image_path: Path to image file
+            image_path: Path to the image file
 
         Returns:
-            (extracted_text, confidence)
+            Tuple of (extracted_text, confidence_score)
+            
+        Raises:
+            Exception: If Tesseract is not available or OCR fails
+            
+        Example:
+            >>> ocr = TesseractOCR()
+            >>> if ocr.is_available:
+            ...     text, confidence = await ocr.extract_text("document.jpg")
         """
         if not self.is_available:
             raise Exception("Tesseract is not installed. Install with: brew install tesseract")
@@ -409,7 +487,14 @@ class TesseractOCR:
             raise
 
     def _parse_confidence(self, tsv_output: str) -> float:
-        """Parse average confidence from Tesseract TSV output"""
+        """Parse average confidence from Tesseract TSV output.
+        
+        Args:
+            tsv_output: TSV format output from Tesseract
+            
+        Returns:
+            Average confidence score from 0.0 to 1.0
+        """
         try:
             lines = tsv_output.strip().split('\n')
             confidences = []
@@ -441,7 +526,21 @@ class TesseractOCR:
 
 @dataclass
 class OCRResult:
-    """OCR result with metadata"""
+    """OCR result with comprehensive metadata.
+    
+    Contains the result of an OCR operation including success status,
+    extracted text, confidence score, and execution details.
+    
+    Attributes:
+        success: Whether OCR operation succeeded
+        text: Extracted text content
+        confidence: Confidence score from 0.0 to 1.0
+        method: OCR method used ("claude_vision", "tesseract", "cached", "metadata")
+        image_hash: MD5 hash of the processed image
+        metadata: Additional metadata about the operation
+        error: Error message if operation failed
+        execution_time: Time taken for the operation in seconds
+    """
     success: bool
     text: str
     confidence: float
@@ -453,8 +552,7 @@ class OCRResult:
 
 
 class OCRStrategyManager:
-    """
-    Manages intelligent OCR with fallback strategies
+    """Manages intelligent OCR with fallback strategies.
 
     Implements the OCR fallback chain:
     1. Primary: Claude Vision API
@@ -462,7 +560,17 @@ class OCRStrategyManager:
     3. Fallback 2: Local OCR (Tesseract)
     4. Fallback 3: Return image metadata only
 
-    Uses Error Handling Matrix for graceful degradation.
+    Uses Error Handling Matrix for graceful degradation and supports
+    intelligent model selection through the Hybrid Orchestrator.
+    
+    Attributes:
+        cache: OCR result cache
+        image_hasher: Image hash computation utility
+        metadata_extractor: Image metadata extraction utility
+        use_intelligent_selection: Whether to use intelligent model selection
+        claude_vision: Claude Vision OCR engine
+        tesseract: Tesseract OCR engine
+        error_matrix: Error handling matrix for fallback management
     """
 
     def __init__(
@@ -473,15 +581,14 @@ class OCRStrategyManager:
         enable_error_matrix: bool = True,
         use_intelligent_selection: bool = True
     ):
-        """
-        Initialize OCR strategy manager
+        """Initialize OCR strategy manager.
 
         Args:
-            api_client: Anthropic API client
+            api_client: Anthropic API client for Claude Vision
             cache_ttl: Cache time-to-live in seconds (default 5 minutes)
-            max_cache_entries: Maximum cache entries
-            enable_error_matrix: Use Error Handling Matrix
-            use_intelligent_selection: Use intelligent model selection (default: True)
+            max_cache_entries: Maximum number of cache entries
+            enable_error_matrix: Whether to use Error Handling Matrix
+            use_intelligent_selection: Whether to use intelligent model selection
         """
         self.cache = OCRCache(default_ttl=cache_ttl, max_entries=max_cache_entries)
         self.image_hasher = ImageHasher()
@@ -515,16 +622,22 @@ class OCRStrategyManager:
         image_hash: str,
         prompt: Optional[str] = None
     ) -> Tuple[str, float, str]:
-        """
-        Extract text using intelligent model selection
+        """Extract text using intelligent model selection.
+
+        Uses the Hybrid Orchestrator to automatically select the best
+        vision model for OCR based on image characteristics and context.
 
         Args:
-            image_path: Path to image file
-            image_hash: MD5 hash of image
+            image_path: Path to the image file
+            image_hash: MD5 hash of the image
             prompt: Optional custom prompt for OCR
 
         Returns:
-            Tuple of (extracted_text, confidence, method)
+            Tuple of (extracted_text, confidence, method_used)
+            
+        Raises:
+            ImportError: If Hybrid Orchestrator is not available
+            Exception: If OCR operation fails
         """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
@@ -632,17 +745,27 @@ class OCRStrategyManager:
         cache_max_age: Optional[float] = None,
         skip_cache: bool = False
     ) -> OCRResult:
-        """
-        Extract text with intelligent fallbacks
+        """Extract text with intelligent fallbacks.
+
+        Main entry point for OCR operations. Attempts multiple strategies
+        in order of preference with graceful degradation.
 
         Args:
-            image_path: Path to image file
+            image_path: Path to the image file
             prompt: Optional custom prompt for Claude Vision
             cache_max_age: Maximum cache age in seconds (default 5 minutes)
-            skip_cache: Skip cache lookup
+            skip_cache: Whether to skip cache lookup
 
         Returns:
-            OCRResult with extracted text and metadata
+            OCRResult containing extracted text and operation metadata
+            
+        Example:
+            >>> manager = OCRStrategyManager(api_client)
+            >>> result = await manager.extract_text_with_fallbacks("document.jpg")
+            >>> if result.success:
+            ...     print(f"Extracted: {result.text}")
+            ...     print(f"Method: {result.method}")
+            ...     print(f"Confidence: {result.confidence}")
         """
         start_time = time.time()
 
@@ -710,7 +833,21 @@ class OCRStrategyManager:
         cache_max_age: float,
         skip_cache: bool
     ) -> OCRResult:
-        """Extract text using Error Handling Matrix"""
+        """Extract text using Error Handling Matrix.
+        
+        Uses the Error Handling Matrix to manage fallback strategies
+        with proper error handling and recovery.
+
+        Args:
+            image_path: Path to the image file
+            image_hash: MD5 hash of the image
+            prompt: Optional custom prompt for Claude Vision
+            cache_max_age: Maximum cache age in seconds
+            skip_cache: Whether to skip cache lookup
+
+        Returns:
+            OCRResult with extraction results and execution metadata
+        """
         logger.info(f"[OCR-STRATEGY] Using Error Handling Matrix")
 
         # Build fallback chain
@@ -754,235 +891,4 @@ class OCRStrategyManager:
             else:
                 chain.add_primary(use_cache, name="cache", timeout=1.0)
 
-        # 3. Fallback 2: Local OCR (Tesseract)
-        if self.tesseract.is_available:
-            async def extract_with_tesseract():
-                logger.info(f"[OCR-STRATEGY] Attempting Tesseract OCR")
-                text, confidence = await self.tesseract.extract_text(image_path)
-
-                # Cache the result
-                cached = CachedOCR(
-                    text=text,
-                    image_hash=image_hash,
-                    timestamp=datetime.now(),
-                    method="tesseract",
-                    confidence=confidence
-                )
-                self.cache.store(cached)
-
-                return (text, confidence, "tesseract")
-
-            chain.add_secondary(extract_with_tesseract, name="tesseract", timeout=30.0)
-
-        # 4. Fallback 3: Return image metadata only
-        async def extract_metadata():
-            logger.info(f"[OCR-STRATEGY] Attempting metadata extraction")
-            metadata = await self.metadata_extractor.extract_metadata(image_path)
-
-            # Format metadata as text
-            text = f"Image: {metadata.get('width', '?')}x{metadata.get('height', '?')}"
-            if 'filename' in metadata:
-                text += f", {metadata['filename']}"
-
-            return (text, 0.0, "metadata")
-
-        chain.add_last_resort(extract_metadata, name="metadata", timeout=5.0)
-
-        # Execute chain
-        report = await self.error_matrix.execute_chain(chain, stop_on_success=True)
-
-        # Process result
-        if report.success and report.final_result:
-            text, confidence, method = report.final_result
-
-            return OCRResult(
-                success=True,
-                text=text,
-                confidence=confidence,
-                method=method,
-                image_hash=image_hash,
-                metadata={
-                    "execution_report": {
-                        "quality": report.final_status.value if hasattr(report, 'final_status') else "unknown",
-                        "methods_attempted": len(report.methods_attempted),
-                        "warnings": report.warnings if hasattr(report, 'warnings') else []
-                    }
-                }
-            )
-        else:
-            # Generate user-friendly error
-            error_msg = ErrorMessageGenerator.generate_message(
-                report,
-                include_technical=False,
-                include_suggestions=True
-            )
-
-            logger.error(f"[OCR-STRATEGY] ❌ OCR failed:\n{error_msg}")
-
-            return OCRResult(
-                success=False,
-                text="",
-                confidence=0.0,
-                method="failed",
-                image_hash=image_hash,
-                error=f"Unable to extract text from image"
-            )
-
-    async def _extract_sequential(
-        self,
-        image_path: str,
-        image_hash: str,
-        prompt: Optional[str],
-        cache_max_age: float,
-        skip_cache: bool
-    ) -> OCRResult:
-        """Fallback sequential extraction (without Error Handling Matrix)"""
-        logger.warning("[OCR-STRATEGY] Error Handling Matrix not available, using sequential fallback")
-
-        # 1. Try Claude Vision
-        if self.claude_vision:
-            try:
-                logger.info(f"[OCR-STRATEGY] Attempting Claude Vision OCR")
-                text, confidence = await asyncio.wait_for(
-                    self.claude_vision.extract_text(image_path, prompt),
-                    timeout=60.0
-                )
-
-                if text:
-                    # Cache and return
-                    cached = CachedOCR(
-                        text=text,
-                        image_hash=image_hash,
-                        timestamp=datetime.now(),
-                        method="claude_vision",
-                        confidence=confidence
-                    )
-                    self.cache.store(cached)
-
-                    return OCRResult(
-                        success=True,
-                        text=text,
-                        confidence=confidence,
-                        method="claude_vision",
-                        image_hash=image_hash
-                    )
-
-            except Exception as e:
-                logger.warning(f"[OCR-STRATEGY] Claude Vision OCR failed: {e}")
-
-        # 2. Try cache
-        if not skip_cache:
-            try:
-                logger.info(f"[OCR-STRATEGY] Attempting cache lookup")
-                cached = self.cache.get(image_hash, max_age=cache_max_age)
-                if cached:
-                    return OCRResult(
-                        success=True,
-                        text=cached.text,
-                        confidence=cached.confidence,
-                        method=f"cached_{cached.method}",
-                        image_hash=image_hash
-                    )
-            except Exception as e:
-                logger.warning(f"[OCR-STRATEGY] Cache lookup failed: {e}")
-
-        # 3. Try Tesseract
-        if self.tesseract.is_available:
-            try:
-                logger.info(f"[OCR-STRATEGY] Attempting Tesseract OCR")
-                text, confidence = await asyncio.wait_for(
-                    self.tesseract.extract_text(image_path),
-                    timeout=30.0
-                )
-
-                if text:
-                    # Cache and return
-                    cached = CachedOCR(
-                        text=text,
-                        image_hash=image_hash,
-                        timestamp=datetime.now(),
-                        method="tesseract",
-                        confidence=confidence
-                    )
-                    self.cache.store(cached)
-
-                    return OCRResult(
-                        success=True,
-                        text=text,
-                        confidence=confidence,
-                        method="tesseract",
-                        image_hash=image_hash
-                    )
-
-            except Exception as e:
-                logger.warning(f"[OCR-STRATEGY] Tesseract OCR failed: {e}")
-
-        # 4. Return metadata only
-        try:
-            logger.info(f"[OCR-STRATEGY] Attempting metadata extraction")
-            metadata = await self.metadata_extractor.extract_metadata(image_path)
-
-            text = f"Image: {metadata.get('width', '?')}x{metadata.get('height', '?')}"
-            if 'filename' in metadata:
-                text += f", {metadata['filename']}"
-
-            return OCRResult(
-                success=True,
-                text=text,
-                confidence=0.0,
-                method="metadata",
-                image_hash=image_hash,
-                metadata=metadata
-            )
-
-        except Exception as e:
-            logger.error(f"[OCR-STRATEGY] Metadata extraction failed: {e}")
-
-        # 5. All methods failed
-        logger.error(f"[OCR-STRATEGY] All OCR methods failed")
-        return OCRResult(
-            success=False,
-            text="",
-            confidence=0.0,
-            method="failed",
-            image_hash=image_hash,
-            error="Unable to extract text from image"
-        )
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        return self.cache.get_stats()
-
-    def clear_cache(self):
-        """Clear all cache"""
-        self.cache.clear()
-
-
-# ============================================================================
-# GLOBAL INSTANCE
-# ============================================================================
-
-_global_manager: Optional[OCRStrategyManager] = None
-
-
-def get_ocr_strategy_manager() -> Optional[OCRStrategyManager]:
-    """Get the global OCR strategy manager instance"""
-    return _global_manager
-
-
-def initialize_ocr_strategy_manager(
-    api_client: Any = None,
-    cache_ttl: float = 300.0,
-    max_cache_entries: int = 200,
-    enable_error_matrix: bool = True
-) -> OCRStrategyManager:
-    """Initialize the global OCR strategy manager"""
-    global _global_manager
-    _global_manager = OCRStrategyManager(
-        api_client=api_client,
-        cache_ttl=cache_ttl,
-        max_cache_entries=max_cache_entries,
-        enable_error_matrix=enable_error_matrix
-    )
-    logger.info("[OCR-STRATEGY] Global instance initialized")
-    return _global_manager
+        # 3. Fallback 2: Local OCR

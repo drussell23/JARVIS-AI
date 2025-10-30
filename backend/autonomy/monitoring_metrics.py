@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
 """
-Monitoring and Metrics System for JARVIS
-Tracks performance, health, and usage metrics across all components
+Monitoring and Metrics System for JARVIS.
+
+This module provides comprehensive monitoring and metrics collection capabilities
+for the JARVIS autonomous system. It tracks performance, health, and usage metrics
+across all components, providing real-time insights and alerting capabilities.
+
+The system includes:
+- Metric collection with different types (counter, gauge, histogram, rate)
+- Performance threshold monitoring
+- Health score tracking for components
+- Anomaly detection
+- Alert generation
+- Comprehensive reporting
+
+Example:
+    >>> from autonomy.monitoring_metrics import system_monitor
+    >>> system_monitor.record_capture(0.15)
+    >>> system_monitor.update_component_health('vision', 0.95)
+    >>> report = system_monitor.get_monitoring_report()
 """
 
 import asyncio
@@ -17,7 +34,14 @@ import statistics
 logger = logging.getLogger(__name__)
 
 class MetricType(Enum):
-    """Types of metrics to track"""
+    """Types of metrics to track.
+    
+    Attributes:
+        COUNTER: Incremental count that only increases
+        GAUGE: Current value that can go up or down
+        HISTOGRAM: Distribution of values over time
+        RATE: Rate per time unit calculation
+    """
     COUNTER = "counter"      # Incremental count
     GAUGE = "gauge"          # Current value
     HISTOGRAM = "histogram"  # Distribution of values
@@ -25,14 +49,35 @@ class MetricType(Enum):
 
 @dataclass
 class MetricPoint:
-    """Single metric data point"""
+    """Single metric data point with timestamp and labels.
+    
+    Attributes:
+        timestamp: When the metric was recorded
+        value: The numeric value of the metric
+        labels: Optional key-value pairs for metric categorization
+    """
     timestamp: datetime
     value: float
     labels: Dict[str, str] = field(default_factory=dict)
 
 @dataclass
 class MetricSummary:
-    """Summary statistics for a metric"""
+    """Summary statistics for a metric over a time window.
+    
+    Attributes:
+        name: Name of the metric
+        type: Type of metric (counter, gauge, etc.)
+        count: Number of data points
+        sum: Sum of all values
+        min: Minimum value
+        max: Maximum value
+        mean: Average value
+        median: Median value
+        std_dev: Standard deviation
+        percentile_95: 95th percentile value
+        rate_per_minute: Rate of change per minute
+        labels: Associated labels
+    """
     name: str
     type: MetricType
     count: int
@@ -47,7 +92,12 @@ class MetricSummary:
     labels: Dict[str, Any]
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """Convert metric summary to dictionary format.
+        
+        Returns:
+            Dictionary representation of the metric summary with
+            rounded numeric values for readability.
+        """
         return {
             'name': self.name,
             'type': self.type.value,
@@ -64,9 +114,30 @@ class MetricSummary:
         }
 
 class MetricCollector:
-    """Collects and manages metrics"""
+    """Collects and manages metrics with time-based windowing.
+    
+    This class handles the collection, storage, and analysis of metrics
+    with automatic cleanup of old data and alert generation based on
+    configurable thresholds.
+    
+    Attributes:
+        window_size: Time window for keeping metric data
+        metrics: Storage for metric data points
+        metric_types: Type mapping for each metric
+        metric_labels: Label storage for metrics
+        performance_thresholds: Performance alert thresholds
+        health_metrics: Current health indicator values
+        alerts: List of generated alerts
+        alert_thresholds: Threshold values for alerts
+    """
     
     def __init__(self, window_size_minutes: int = 60):
+        """Initialize the metric collector.
+        
+        Args:
+            window_size_minutes: Size of the time window in minutes
+                for keeping metric data. Defaults to 60 minutes.
+        """
         self.window_size = timedelta(minutes=window_size_minutes)
         self.metrics: Dict[str, Deque[MetricPoint]] = defaultdict(lambda: deque())
         self.metric_types: Dict[str, MetricType] = {}
@@ -103,7 +174,18 @@ class MetricCollector:
     def record_metric(self, name: str, value: float, 
                      metric_type: MetricType = MetricType.GAUGE,
                      labels: Optional[Dict[str, str]] = None):
-        """Record a metric value"""
+        """Record a metric value with timestamp and optional labels.
+        
+        Args:
+            name: Name of the metric
+            value: Numeric value to record
+            metric_type: Type of metric (defaults to GAUGE)
+            labels: Optional key-value pairs for categorization
+            
+        Example:
+            >>> collector.record_metric('response_time', 0.5, MetricType.HISTOGRAM)
+            >>> collector.record_metric('requests', 1, MetricType.COUNTER, {'endpoint': '/api'})
+        """
         # Store metric type
         if name not in self.metric_types:
             self.metric_types[name] = metric_type
@@ -130,7 +212,17 @@ class MetricCollector:
         
     def increment_counter(self, name: str, increment: float = 1.0,
                          labels: Optional[Dict[str, str]] = None):
-        """Increment a counter metric"""
+        """Increment a counter metric by the specified amount.
+        
+        Args:
+            name: Name of the counter metric
+            increment: Amount to increment by (defaults to 1.0)
+            labels: Optional labels for categorization
+            
+        Example:
+            >>> collector.increment_counter('requests_total')
+            >>> collector.increment_counter('bytes_processed', 1024)
+        """
         current = self._get_current_value(name) or 0
         self.record_metric(
             name, 
@@ -141,16 +233,40 @@ class MetricCollector:
         
     def set_gauge(self, name: str, value: float,
                  labels: Optional[Dict[str, str]] = None):
-        """Set a gauge metric"""
+        """Set a gauge metric to a specific value.
+        
+        Args:
+            name: Name of the gauge metric
+            value: Value to set
+            labels: Optional labels for categorization
+            
+        Example:
+            >>> collector.set_gauge('cpu_usage', 75.5)
+            >>> collector.set_gauge('queue_size', 10)
+        """
         self.record_metric(name, value, MetricType.GAUGE, labels)
         
     def record_duration(self, name: str, duration: float,
                        labels: Optional[Dict[str, str]] = None):
-        """Record a duration/timing metric"""
+        """Record a duration/timing metric for histogram analysis.
+        
+        Args:
+            name: Name of the duration metric
+            duration: Duration value in seconds
+            labels: Optional labels for categorization
+            
+        Example:
+            >>> collector.record_duration('api_response_time', 0.25)
+            >>> collector.record_duration('db_query_time', 0.1)
+        """
         self.record_metric(name, duration, MetricType.HISTOGRAM, labels)
         
     def _clean_old_data(self, metric_name: str):
-        """Remove data older than window size"""
+        """Remove metric data older than the configured window size.
+        
+        Args:
+            metric_name: Name of the metric to clean
+        """
         cutoff = datetime.now() - self.window_size
         
         while (self.metrics[metric_name] and 
@@ -158,13 +274,25 @@ class MetricCollector:
             self.metrics[metric_name].popleft()
             
     def _get_current_value(self, name: str) -> Optional[float]:
-        """Get current value of a metric"""
+        """Get the most recent value of a metric.
+        
+        Args:
+            name: Name of the metric
+            
+        Returns:
+            The most recent metric value, or None if no data exists
+        """
         if name in self.metrics and self.metrics[name]:
             return self.metrics[name][-1].value
         return None
         
     def _check_alerts(self, metric_name: str, value: float):
-        """Check if metric triggers any alerts"""
+        """Check if a metric value triggers any configured alerts.
+        
+        Args:
+            metric_name: Name of the metric to check
+            value: Current value of the metric
+        """
         # Check performance thresholds
         if metric_name in self.performance_thresholds:
             threshold = self.performance_thresholds[metric_name]
@@ -187,7 +315,12 @@ class MetricCollector:
             )
             
     def _create_alert(self, alert_type: str, message: str):
-        """Create an alert"""
+        """Create and store an alert with timestamp.
+        
+        Args:
+            alert_type: Type/category of the alert
+            message: Human-readable alert message
+        """
         alert = {
             'type': alert_type,
             'message': message,
@@ -203,7 +336,19 @@ class MetricCollector:
             self.alerts = self.alerts[-100:]
             
     def get_metric_summary(self, name: str) -> Optional[MetricSummary]:
-        """Get summary statistics for a metric"""
+        """Get comprehensive summary statistics for a metric.
+        
+        Args:
+            name: Name of the metric to summarize
+            
+        Returns:
+            MetricSummary object with statistical analysis, or None
+            if the metric doesn't exist or has no data
+            
+        Example:
+            >>> summary = collector.get_metric_summary('response_time')
+            >>> print(f"Average: {summary.mean:.2f}s")
+        """
         if name not in self.metrics or not self.metrics[name]:
             return None
             
@@ -239,7 +384,16 @@ class MetricCollector:
         )
         
     def get_all_summaries(self) -> Dict[str, MetricSummary]:
-        """Get summaries for all metrics"""
+        """Get summary statistics for all collected metrics.
+        
+        Returns:
+            Dictionary mapping metric names to their MetricSummary objects
+            
+        Example:
+            >>> summaries = collector.get_all_summaries()
+            >>> for name, summary in summaries.items():
+            ...     print(f"{name}: {summary.mean:.2f}")
+        """
         summaries = {}
         
         for name in self.metrics:
@@ -250,9 +404,24 @@ class MetricCollector:
         return summaries
 
 class SystemMonitor:
-    """High-level system monitoring"""
+    """High-level system monitoring and health tracking.
+    
+    This class provides a comprehensive monitoring interface for the JARVIS
+    system, tracking performance metrics, component health, and generating
+    detailed reports. It includes automatic anomaly detection and continuous
+    monitoring capabilities.
+    
+    Attributes:
+        metric_collector: Underlying metric collection system
+        start_time: When monitoring started
+        monitoring_task: Background monitoring task
+        is_monitoring: Whether continuous monitoring is active
+        component_health: Health scores for system components
+        system_metrics: High-level system counters
+    """
     
     def __init__(self):
+        """Initialize the system monitor with default settings."""
         self.metric_collector = MetricCollector()
         self.start_time = datetime.now()
         self.monitoring_task = None
@@ -272,29 +441,69 @@ class SystemMonitor:
         }
         
     def record_capture(self, duration: float):
-        """Record a screen capture"""
+        """Record a screen capture operation.
+        
+        Args:
+            duration: Time taken for the capture in seconds
+            
+        Example:
+            >>> monitor.record_capture(0.15)
+        """
         self.metric_collector.record_duration('capture_duration', duration)
         self.metric_collector.increment_counter('total_captures')
         self.system_metrics['total_captures'] += 1
         
     def record_ocr(self, duration: float, text_regions: int):
-        """Record OCR processing"""
+        """Record OCR processing operation.
+        
+        Args:
+            duration: Time taken for OCR processing in seconds
+            text_regions: Number of text regions detected
+            
+        Example:
+            >>> monitor.record_ocr(0.5, 15)
+        """
         self.metric_collector.record_duration('ocr_duration', duration)
         self.metric_collector.set_gauge('ocr_regions', text_regions)
         
     def record_analysis(self, duration: float, windows_analyzed: int):
-        """Record window analysis"""
+        """Record window analysis operation.
+        
+        Args:
+            duration: Time taken for analysis in seconds
+            windows_analyzed: Number of windows analyzed
+            
+        Example:
+            >>> monitor.record_analysis(0.2, 5)
+        """
         self.metric_collector.record_duration('analysis_duration', duration)
         self.metric_collector.set_gauge('windows_analyzed', windows_analyzed)
         
     def record_decision(self, duration: float, decisions_made: int):
-        """Record decision making"""
+        """Record decision making process.
+        
+        Args:
+            duration: Time taken for decision making in seconds
+            decisions_made: Number of decisions made
+            
+        Example:
+            >>> monitor.record_decision(0.1, 3)
+        """
         self.metric_collector.record_duration('decision_duration', duration)
         self.metric_collector.increment_counter('total_decisions', decisions_made)
         self.system_metrics['total_decisions'] += decisions_made
         
     def record_action_execution(self, duration: float, success: bool):
-        """Record action execution"""
+        """Record action execution with success/failure tracking.
+        
+        Args:
+            duration: Time taken for action execution in seconds
+            success: Whether the action was successful
+            
+        Example:
+            >>> monitor.record_action_execution(1.5, True)
+            >>> monitor.record_action_execution(0.5, False)
+        """
         self.metric_collector.record_duration('action_execution', duration)
         self.metric_collector.increment_counter('total_actions')
         self.system_metrics['total_actions'] += 1
@@ -307,7 +516,16 @@ class SystemMonitor:
             self.system_metrics['failed_actions'] += 1
             
     def record_error(self, component: str, severity: str):
-        """Record an error"""
+        """Record an error occurrence in a system component.
+        
+        Args:
+            component: Name of the component where error occurred
+            severity: Severity level of the error (low, medium, high)
+            
+        Example:
+            >>> monitor.record_error('vision', 'medium')
+            >>> monitor.record_error('ocr', 'low')
+        """
         self.metric_collector.increment_counter('total_errors')
         self.metric_collector.increment_counter(
             f'errors_{component}',
@@ -316,7 +534,16 @@ class SystemMonitor:
         self.system_metrics['total_errors'] += 1
         
     def update_component_health(self, component: str, health_score: float):
-        """Update component health score"""
+        """Update the health score for a system component.
+        
+        Args:
+            component: Name of the component
+            health_score: Health score between 0.0 and 1.0
+            
+        Example:
+            >>> monitor.update_component_health('vision_pipeline', 0.95)
+            >>> monitor.update_component_health('decision_engine', 0.88)
+        """
         self.component_health[component] = health_score
         self.metric_collector.set_gauge(
             f'health_{component}',
@@ -324,15 +551,36 @@ class SystemMonitor:
         )
         
     def record_queue_depth(self, depth: int):
-        """Record action queue depth"""
+        """Record the current depth of the action queue.
+        
+        Args:
+            depth: Number of items in the queue
+            
+        Example:
+            >>> monitor.record_queue_depth(5)
+        """
         self.metric_collector.set_gauge('queue_depth', depth)
         
     def record_websocket_latency(self, latency: float):
-        """Record WebSocket latency"""
+        """Record WebSocket communication latency.
+        
+        Args:
+            latency: Latency in seconds
+            
+        Example:
+            >>> monitor.record_websocket_latency(0.05)
+        """
         self.metric_collector.record_duration('websocket_latency', latency)
         
     async def start_monitoring(self):
-        """Start continuous monitoring"""
+        """Start continuous background monitoring.
+        
+        Begins the monitoring loop that calculates system health,
+        detects anomalies, and updates metrics every 30 seconds.
+        
+        Example:
+            >>> await monitor.start_monitoring()
+        """
         if self.is_monitoring:
             return
             
@@ -341,7 +589,14 @@ class SystemMonitor:
         logger.info("System monitoring started")
         
     async def stop_monitoring(self):
-        """Stop monitoring"""
+        """Stop continuous monitoring.
+        
+        Cancels the background monitoring task and stops
+        automatic health calculations.
+        
+        Example:
+            >>> await monitor.stop_monitoring()
+        """
         self.is_monitoring = False
         
         if self.monitoring_task:
@@ -350,7 +605,14 @@ class SystemMonitor:
         logger.info("System monitoring stopped")
         
     async def _monitoring_loop(self):
-        """Continuous monitoring loop"""
+        """Internal continuous monitoring loop.
+        
+        Runs every 30 seconds to calculate system health and
+        detect anomalies. Should not be called directly.
+        
+        Raises:
+            Exception: Logs any errors that occur during monitoring
+        """
         while self.is_monitoring:
             try:
                 # Calculate system health
@@ -366,7 +628,11 @@ class SystemMonitor:
                 await asyncio.sleep(30)
                 
     async def _calculate_system_health(self):
-        """Calculate overall system health"""
+        """Calculate overall system health metrics.
+        
+        Computes success rates, error rates, and overall system
+        health based on component health and performance metrics.
+        """
         # Calculate success rate
         total_actions = self.system_metrics['total_actions']
         if total_actions > 0:
@@ -396,7 +662,11 @@ class SystemMonitor:
         self.metric_collector.set_gauge('system_health', system_health)
         
     def _detect_anomalies(self):
-        """Detect anomalies in metrics"""
+        """Detect anomalies in collected metrics.
+        
+        Analyzes metric summaries for high variance and other
+        anomalous patterns, logging warnings when detected.
+        """
         summaries = self.metric_collector.get_all_summaries()
         
         for name, summary in summaries.items():
@@ -408,7 +678,18 @@ class SystemMonitor:
                 )
                 
     def get_monitoring_report(self) -> Dict[str, Any]:
-        """Get comprehensive monitoring report"""
+        """Get comprehensive monitoring report with all metrics.
+        
+        Returns:
+            Dictionary containing uptime, system metrics, component health,
+            performance metrics, throughput metrics, current values, and
+            recent alerts.
+            
+        Example:
+            >>> report = monitor.get_monitoring_report()
+            >>> print(f"System uptime: {report['uptime']['hours']}h")
+            >>> print(f"Success rate: {report['current_values']['success_rate']:.2%}")
+        """
         uptime = datetime.now() - self.start_time
         summaries = self.metric_collector.get_all_summaries()
         
@@ -438,11 +719,19 @@ class SystemMonitor:
             'alerts': self.metric_collector.alerts[-10:]  # Last 10 alerts
         }
 
-# Global system monitor
+# Global system monitor instance
 system_monitor = SystemMonitor()
 
 async def test_monitoring():
-    """Test monitoring system"""
+    """Test the monitoring system with simulated operations.
+    
+    Demonstrates the monitoring system by simulating various operations
+    including captures, OCR, analysis, decisions, actions, and errors.
+    Generates a comprehensive report showing all collected metrics.
+    
+    Example:
+        >>> await test_monitoring()
+    """
     print("📊 Testing Monitoring and Metrics System")
     print("=" * 50)
     

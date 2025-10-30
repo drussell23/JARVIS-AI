@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
-"""
-Python-Swift Bridge for JARVIS Command Classifier
-Provides seamless integration between Python and Swift classifier
+"""Python-Swift Bridge for JARVIS Command Classifier.
+
+This module provides seamless integration between Python and Swift classifier
+components, enabling high-performance natural language processing for command
+classification in the JARVIS system.
+
+The module includes:
+- SwiftCommandClassifier: Direct interface to Swift-based ML classifier
+- IntelligentCommandRouter: Smart routing system using ML classification
+- Fallback mechanisms for environments without Swift support
+
+Example:
+    >>> router = IntelligentCommandRouter()
+    >>> handler, details = await router.route_command("close safari")
+    >>> print(f"Route to: {handler}")
+    Route to: system
 """
 
 import subprocess
@@ -27,13 +40,40 @@ try:
 except:
     pass
 
+
 class SwiftCommandClassifier:
-    """
-    Python wrapper for Swift Command Classifier
-    Uses subprocess or dynamic library for communication
+    """Python wrapper for Swift Command Classifier.
+    
+    Provides a Python interface to the Swift-based machine learning classifier
+    for natural language command processing. Supports both subprocess and
+    dynamic library communication modes for optimal performance.
+    
+    Attributes:
+        use_dynamic_lib (bool): Whether to use dynamic library for communication
+        swift_bridge_dir (Path): Directory containing Swift bridge components
+        classifier_path (Path): Path to compiled Swift classifier executable
+        lib_path (Path): Path to dynamic library file
+        executor (ThreadPoolExecutor): Thread pool for async operations
+        _lib: Loaded dynamic library instance
+        _classifier: Swift classifier instance handle
+    
+    Example:
+        >>> classifier = SwiftCommandClassifier(use_dynamic_lib=True)
+        >>> result = await classifier.classify_command("open safari")
+        >>> print(result['type'])
+        system
     """
     
     def __init__(self, use_dynamic_lib: bool = False):
+        """Initialize the Swift Command Classifier.
+        
+        Args:
+            use_dynamic_lib: If True, use dynamic library for faster performance.
+                           If False or library unavailable, use subprocess mode.
+        
+        Raises:
+            RuntimeError: If Swift is not available and classifier cannot be built.
+        """
         self.use_dynamic_lib = use_dynamic_lib
         self.swift_bridge_dir = Path(__file__).parent
         self.classifier_path = self.swift_bridge_dir / ".build/release/jarvis-classifier"
@@ -51,7 +91,14 @@ class SwiftCommandClassifier:
             self._init_dynamic_lib()
         
     def _build_swift_package(self):
-        """Build the Swift package"""
+        """Build the Swift package if not already built.
+        
+        Compiles the Swift classifier package in release mode for optimal
+        performance. Logs build progress and handles build failures gracefully.
+        
+        Raises:
+            RuntimeError: If Swift is not available or build fails.
+        """
         if not SWIFT_AVAILABLE:
             logger.warning("Swift not available, using Python fallback classifier")
             raise RuntimeError("Swift not available")
@@ -69,9 +116,16 @@ class SwiftCommandClassifier:
             logger.error(f"Failed to build Swift classifier: {e}")
             raise RuntimeError(f"Swift build failed: {e}")
     
-    # Init dynamic library if available and use_dynamic_lib is True 
     def _init_dynamic_lib(self):
-        """Initialize dynamic library for faster performance"""
+        """Initialize dynamic library for faster performance.
+        
+        Loads the compiled Swift dynamic library and sets up function signatures
+        for direct C-style function calls. Falls back to subprocess mode if
+        library loading fails.
+        
+        Note:
+            This method modifies self.use_dynamic_lib to False if initialization fails.
+        """
         try:
             # Load the dynamic library 
             self._lib = ctypes.CDLL(str(self.lib_path))
@@ -92,11 +146,28 @@ class SwiftCommandClassifier:
             self.use_dynamic_lib = False
     
     async def classify_command(self, text: str) -> Dict[str, Any]:
-        """
-        Classify a command using Swift classifier
+        """Classify a command using Swift classifier.
+        
+        Processes natural language text to determine command type, intent,
+        and extract relevant entities. Uses async execution to avoid blocking
+        the main thread.
+        
+        Args:
+            text: The natural language command to classify.
         
         Returns:
-            Dict with keys: type, intent, confidence, entities, reasoning
+            Dictionary containing classification results with keys:
+            - type (str): Command type ('system', 'vision', 'conversation')
+            - intent (str): Specific intent within the type
+            - confidence (float): Classification confidence (0.0-1.0)
+            - entities (dict): Extracted entities from the command
+            - reasoning (str): Human-readable explanation of classification
+            - processing_time_ms (float): Time taken for classification
+        
+        Example:
+            >>> result = await classifier.classify_command("close safari")
+            >>> print(f"Type: {result['type']}, Confidence: {result['confidence']}")
+            Type: system, Confidence: 0.95
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
@@ -106,7 +177,17 @@ class SwiftCommandClassifier:
         )
     
     def _classify_sync(self, text: str) -> Dict[str, Any]:
-        """Synchronous classification"""
+        """Synchronous classification implementation.
+        
+        Performs the actual classification using either dynamic library calls
+        or subprocess execution, depending on initialization mode.
+        
+        Args:
+            text: The command text to classify.
+        
+        Returns:
+            Classification result dictionary with timing information.
+        """
         start_time = time.time()
         
         try:
@@ -145,7 +226,17 @@ class SwiftCommandClassifier:
             return self._fallback_classification(text)
     
     def _fallback_classification(self, text: str) -> Dict[str, Any]:
-        """Fallback classification using simple rules"""
+        """Fallback classification using simple rules.
+        
+        Provides basic classification when the Swift classifier is unavailable
+        or fails. Uses simple keyword matching and linguistic patterns.
+        
+        Args:
+            text: The command text to classify.
+        
+        Returns:
+            Basic classification result with lower confidence scores.
+        """
         text_lower = text.lower()
         
         # Simple rule-based fallback
@@ -184,7 +275,21 @@ class SwiftCommandClassifier:
             }
     
     async def learn_from_feedback(self, command: str, actual_type: str, was_correct: bool):
-        """Teach the classifier from user feedback"""
+        """Teach the classifier from user feedback.
+        
+        Provides supervised learning capability by feeding back correct
+        classifications to improve future performance.
+        
+        Args:
+            command: The original command that was classified.
+            actual_type: The correct command type that should have been predicted.
+            was_correct: Whether the original classification was correct.
+        
+        Example:
+            >>> await classifier.learn_from_feedback(
+            ...     "close safari", "system", True
+            ... )
+        """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             self.executor,
@@ -193,7 +298,17 @@ class SwiftCommandClassifier:
         )
     
     def _learn_sync(self, command: str, actual_type: str, was_correct: bool):
-        """Synchronous learning"""
+        """Synchronous learning implementation.
+        
+        Updates the classifier's internal model based on feedback. For dynamic
+        library mode, calls the Swift learning function directly. For subprocess
+        mode, could save feedback to a file for batch learning.
+        
+        Args:
+            command: The command text.
+            actual_type: Correct classification type.
+            was_correct: Whether original classification was accurate.
+        """
         try:
             if self.use_dynamic_lib and self._classifier:
                 self._lib.learnFromFeedback(
@@ -210,20 +325,49 @@ class SwiftCommandClassifier:
             logger.error(f"Learning error: {e}")
     
     async def get_stats(self) -> Dict[str, Any]:
-        """Get classifier statistics"""
+        """Get classifier statistics and performance metrics.
+        
+        Returns:
+            Dictionary containing classifier statistics:
+            - learned_patterns (int): Number of learned patterns
+            - total_classifications (int): Total classifications performed
+        
+        Note:
+            Current implementation returns placeholder values.
+            Full implementation would call Swift stats method.
+        """
         # Implementation would call Swift stats method
         return {
             "learned_patterns": 0,
             "total_classifications": 0
         }
 
+
 class IntelligentCommandRouter:
-    """
-    Intelligent command router using Swift classification
-    Replaces hardcoded routing logic with ML-based decisions
+    """Intelligent command router using Swift classification.
+    
+    Replaces hardcoded routing logic with ML-based decisions for determining
+    which handler should process each command. Includes caching for performance
+    and fallback mechanisms for reliability.
+    
+    Attributes:
+        classification_cache (dict): Cache of recent classifications
+        cache_ttl (int): Time-to-live for cache entries in seconds
+        classifier: The underlying command classifier instance
+    
+    Example:
+        >>> router = IntelligentCommandRouter()
+        >>> handler, details = await router.route_command("open safari")
+        >>> print(f"Route to {handler} handler")
+        Route to system handler
     """
     
     def __init__(self):
+        """Initialize the intelligent command router.
+        
+        Attempts to use Swift-based classifier first, falling back to Python
+        implementation if Swift is unavailable. Sets up caching and logging.
+        """
         self.classification_cache = {}
         self.cache_ttl = 60  # seconds
         
@@ -244,11 +388,25 @@ class IntelligentCommandRouter:
             self.classifier.learn_from_feedback = self.classifier.learn
         
     async def route_command(self, text: str, context: Optional[Dict] = None) -> Tuple[str, Dict[str, Any]]:
-        """
-        Route command to appropriate handler based on intelligent classification
+        """Route command to appropriate handler based on intelligent classification.
+        
+        Analyzes the input command using ML classification to determine the most
+        appropriate handler. Uses caching to improve performance for repeated
+        commands.
+        
+        Args:
+            text: The natural language command to route.
+            context: Optional context information (currently unused).
         
         Returns:
-            Tuple of (handler_type, classification_details)
+            Tuple containing:
+            - handler_type (str): The handler to use ('system', 'vision', 'conversation')
+            - classification_details (dict): Full classification results
+        
+        Example:
+            >>> handler, details = await router.route_command("what's on my screen?")
+            >>> print(f"Handler: {handler}, Confidence: {details['confidence']}")
+            Handler: vision, Confidence: 0.92
         """
         # Check cache first
         cache_key = text.lower().strip()
@@ -276,7 +434,17 @@ class IntelligentCommandRouter:
         return handler_type, classification
     
     def _determine_handler(self, classification: Dict[str, Any]) -> str:
-        """Determine which handler to use based on classification"""
+        """Determine which handler to use based on classification.
+        
+        Maps classification results to specific handler types using confidence
+        thresholds and intent analysis for edge cases.
+        
+        Args:
+            classification: Classification result dictionary from classifier.
+        
+        Returns:
+            Handler type string ('vision', 'system', or 'conversation').
+        """
         command_type = classification.get('type', 'system')
         confidence = classification.get('confidence', 0.5)
         
@@ -300,7 +468,21 @@ class IntelligentCommandRouter:
         return 'system'
     
     async def provide_feedback(self, command: str, used_handler: str, was_successful: bool):
-        """Provide feedback to improve classification"""
+        """Provide feedback to improve classification accuracy.
+        
+        Enables supervised learning by reporting back whether the routing
+        decision was correct. This helps the classifier improve over time.
+        
+        Args:
+            command: The original command that was routed.
+            used_handler: Which handler was actually used.
+            was_successful: Whether the handler successfully processed the command.
+        
+        Example:
+            >>> await router.provide_feedback(
+            ...     "close safari", "system", True
+            ... )
+        """
         # Map handler to command type
         handler_to_type = {
             'vision': 'vision',
@@ -316,9 +498,21 @@ class IntelligentCommandRouter:
         if cache_key in self.classification_cache:
             del self.classification_cache[cache_key]
 
-# Example usage
+
 async def test_classifier():
-    """Test the classifier with various commands"""
+    """Test the classifier with various commands.
+    
+    Demonstrates the classifier's capabilities by testing it with a variety
+    of command types and printing detailed results for each classification.
+    
+    Example:
+        >>> await test_classifier()
+        Command: 'close whatsapp'
+        Handler: system
+        Type: system (confidence: 0.95)
+        Intent: app_control
+        Reasoning: Action verb with application target detected
+    """
     router = IntelligentCommandRouter()
     
     test_commands = [
@@ -341,6 +535,7 @@ async def test_classifier():
         print(f"Type: {details['type']} (confidence: {details['confidence']:.2f})")
         print(f"Intent: {details['intent']}")
         print(f"Reasoning: {details['reasoning']}")
+
 
 if __name__ == "__main__":
     # Run test

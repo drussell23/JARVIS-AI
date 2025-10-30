@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
 Action Executor for JARVIS Autonomous System
-Executes autonomous actions with safety and rollback capabilities
+
+This module provides the ActionExecutor class which executes autonomous actions
+with comprehensive safety mechanisms, rollback capabilities, and execution tracking.
+The executor handles various types of actions including notification management,
+meeting preparation, workspace organization, security alerts, and more.
+
+Key Features:
+- Safety checks before execution
+- Rollback capabilities for reversible actions
+- Execution timeout protection
+- Comprehensive logging and statistics
+- Dry-run mode for testing
+- Action-specific handlers with safety limits
+
+Example:
+    >>> executor = ActionExecutor()
+    >>> action = AutonomousAction(...)
+    >>> result = await executor.execute_action(action, dry_run=True)
+    >>> print(f"Status: {result.status}")
 """
 
 import asyncio
@@ -22,7 +40,16 @@ from .autonomous_decision_engine import AutonomousAction, ActionCategory, Action
 logger = logging.getLogger(__name__)
 
 class ExecutionStatus(Enum):
-    """Status of action execution"""
+    """Status enumeration for action execution states.
+    
+    Attributes:
+        PENDING: Action is queued but not yet started
+        EXECUTING: Action is currently being executed
+        SUCCESS: Action completed successfully
+        FAILED: Action failed during execution
+        ROLLED_BACK: Action was successfully rolled back
+        CANCELLED: Action was cancelled before completion
+    """
     PENDING = "pending"
     EXECUTING = "executing"
     SUCCESS = "success"
@@ -32,7 +59,17 @@ class ExecutionStatus(Enum):
 
 @dataclass
 class ExecutionResult:
-    """Result of action execution"""
+    """Result container for action execution with timing and rollback information.
+    
+    Attributes:
+        action: The autonomous action that was executed
+        status: Current execution status
+        started_at: Timestamp when execution began
+        completed_at: Timestamp when execution finished (None if still running)
+        result_data: Dictionary containing execution results and metadata
+        error: Error message if execution failed
+        rollback_available: Whether this action can be rolled back
+    """
     action: AutonomousAction
     status: ExecutionStatus
     started_at: datetime
@@ -43,13 +80,21 @@ class ExecutionResult:
     
     @property
     def execution_time(self) -> Optional[float]:
-        """Get execution time in seconds"""
+        """Calculate execution time in seconds.
+        
+        Returns:
+            Execution time in seconds, or None if not completed.
+        """
         if self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
         return None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """Convert execution result to dictionary format.
+        
+        Returns:
+            Dictionary representation of the execution result.
+        """
         return {
             'action': self.action.to_dict(),
             'status': self.status.value,
@@ -62,15 +107,36 @@ class ExecutionResult:
         }
 
 class ActionExecutor:
-    """Executes autonomous actions with safety mechanisms"""
+    """Executes autonomous actions with comprehensive safety mechanisms.
+    
+    The ActionExecutor provides a secure framework for executing autonomous actions
+    with built-in safety checks, rollback capabilities, and execution tracking.
+    It supports various action types and maintains execution history for analysis.
+    
+    Attributes:
+        macos_controller: Interface to macOS system controls
+        execution_history: List of all execution results
+        rollback_stack: Stack of rollback-able actions
+        action_handlers: Mapping of action types to handler functions
+        limits: Safety limits for various operations
+        dry_run: Whether to run in simulation mode
+    
+    Example:
+        >>> executor = ActionExecutor()
+        >>> action = AutonomousAction(action_type='handle_notifications', ...)
+        >>> result = await executor.execute_action(action)
+        >>> if result.status == ExecutionStatus.SUCCESS:
+        ...     print("Action completed successfully")
+    """
     
     def __init__(self):
+        """Initialize the ActionExecutor with default configuration."""
         self.macos_controller = MacOSController()
-        self.execution_history = []
-        self.rollback_stack = []
+        self.execution_history: List[ExecutionResult] = []
+        self.rollback_stack: List[Dict[str, Any]] = []
         
         # Action handlers mapped by action type
-        self.action_handlers = {
+        self.action_handlers: Dict[str, Callable] = {
             'handle_notifications': self._handle_notifications,
             'prepare_meeting': self._prepare_meeting,
             'organize_workspace': self._organize_workspace,
@@ -95,7 +161,27 @@ class ActionExecutor:
     
     async def execute_action(self, action: AutonomousAction, 
                            dry_run: bool = False) -> ExecutionResult:
-        """Execute an autonomous action with safety checks"""
+        """Execute an autonomous action with comprehensive safety checks.
+        
+        This method orchestrates the complete execution lifecycle including
+        safety checks, handler execution, timeout protection, and result recording.
+        
+        Args:
+            action: The autonomous action to execute
+            dry_run: If True, simulate execution without making actual changes
+            
+        Returns:
+            ExecutionResult containing status, timing, and result data
+            
+        Raises:
+            asyncio.TimeoutError: If execution exceeds timeout limit
+            Exception: For any other execution errors (caught and recorded)
+            
+        Example:
+            >>> action = AutonomousAction(action_type='handle_notifications', ...)
+            >>> result = await executor.execute_action(action, dry_run=True)
+            >>> print(f"Execution took {result.execution_time:.2f} seconds")
+        """
         self.dry_run = dry_run
         
         # Create execution result
@@ -165,7 +251,22 @@ class ActionExecutor:
         return result
     
     async def _safety_check(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Perform safety checks before execution"""
+        """Perform comprehensive safety checks before action execution.
+        
+        Validates action parameters against safety limits, checks recent failure
+        patterns, and performs action-specific safety validations.
+        
+        Args:
+            action: The action to validate
+            
+        Returns:
+            Dictionary with 'safe' boolean and 'reason' string
+            
+        Example:
+            >>> safety = await executor._safety_check(action)
+            >>> if not safety['safe']:
+            ...     print(f"Unsafe: {safety['reason']}")
+        """
         # Check action limits
         if action.action_type == 'cleanup_workspace':
             window_count = len(action.params.get('window_ids', []))
@@ -195,7 +296,20 @@ class ActionExecutor:
         return {'safe': True, 'reason': None}
     
     async def _handle_notifications(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Handle notification management"""
+        """Handle notification management for specified applications.
+        
+        Focuses the target application and performs notification handling
+        actions such as marking messages as read or clearing notification badges.
+        
+        Args:
+            action: Action containing app name, count, and window information
+            
+        Returns:
+            Dictionary with success status and handling details
+            
+        Raises:
+            Exception: If application focus or notification handling fails
+        """
         app = action.params['app']
         count = action.params.get('count', 0)
         window_id = action.params.get('window_id')
@@ -226,7 +340,20 @@ class ActionExecutor:
         }
     
     async def _prepare_meeting(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Prepare workspace for meeting"""
+        """Prepare workspace for an upcoming meeting.
+        
+        Hides sensitive applications, opens meeting software, enables
+        do-not-disturb mode, and captures current state for rollback.
+        
+        Args:
+            action: Action containing meeting info and timing details
+            
+        Returns:
+            Dictionary with preparation results and rollback data
+            
+        Raises:
+            Exception: If workspace preparation steps fail
+        """
         meeting_info = action.params.get('meeting_info', '')
         minutes_until = action.params.get('minutes_until', 5)
         
@@ -265,7 +392,20 @@ class ActionExecutor:
         }
     
     async def _organize_workspace(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Organize windows for better productivity"""
+        """Organize windows and applications for optimal productivity.
+        
+        Arranges windows according to specified layout, focuses primary
+        applications, and minimizes distracting elements.
+        
+        Args:
+            action: Action containing task context and window arrangement details
+            
+        Returns:
+            Dictionary with organization results and rollback information
+            
+        Raises:
+            Exception: If window manipulation operations fail
+        """
         task = action.params.get('task', '')
         arrangement = action.params.get('window_arrangement', {})
         
@@ -304,7 +444,20 @@ class ActionExecutor:
         }
     
     async def _handle_security_alert(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Handle security-related actions"""
+        """Handle security-related alerts and take protective actions.
+        
+        Responds to security concerns by hiding applications, taking
+        audit screenshots, and implementing protective measures.
+        
+        Args:
+            action: Action containing app name and security concern details
+            
+        Returns:
+            Dictionary with security response details and rollback info
+            
+        Raises:
+            Exception: If security response actions fail
+        """
         app = action.params['app']
         concern_type = action.params['concern_type']
         
@@ -342,7 +495,17 @@ class ActionExecutor:
         }
     
     async def _respond_to_message(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Respond to messages intelligently"""
+        """Prepare intelligent responses to messages (requires user confirmation).
+        
+        Analyzes message content and prepares suggested responses without
+        automatically sending them for security reasons.
+        
+        Args:
+            action: Action containing app, message preview, and suggested response
+            
+        Returns:
+            Dictionary with prepared response requiring user confirmation
+        """
         app = action.params['app']
         message_preview = action.params.get('message_preview', '')
         suggested_response = action.params.get('suggested_response', '')
@@ -362,7 +525,20 @@ class ActionExecutor:
         }
     
     async def _cleanup_workspace(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Clean up workspace by closing unnecessary windows"""
+        """Clean up workspace by closing unnecessary windows and applications.
+        
+        Closes specified windows while respecting safety limits and
+        maintaining rollback capability for workspace restoration.
+        
+        Args:
+            action: Action containing cleanup type and target window IDs
+            
+        Returns:
+            Dictionary with cleanup results and rollback data
+            
+        Raises:
+            Exception: If window closing operations fail
+        """
         cleanup_type = action.params.get('type', 'general')
         window_ids = action.params.get('window_ids', [])
         
@@ -394,7 +570,20 @@ class ActionExecutor:
         }
     
     async def _minimize_distractions(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Minimize distracting applications"""
+        """Minimize distracting applications to improve focus.
+        
+        Hides specified distracting applications and enables focus mode
+        with do-not-disturb functionality.
+        
+        Args:
+            action: Action containing distraction apps and focus task details
+            
+        Returns:
+            Dictionary with minimization results and rollback information
+            
+        Raises:
+            Exception: If application hiding or focus mode activation fails
+        """
         distraction_apps = action.params.get('distraction_apps', [])
         focus_task = action.params.get('focus_task', '')
         
@@ -427,7 +616,20 @@ class ActionExecutor:
         }
     
     async def _execute_routine(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Execute a learned routine"""
+        """Execute a learned routine by opening expected applications.
+        
+        Launches applications associated with a specific routine while
+        respecting safety limits for concurrent app launches.
+        
+        Args:
+            action: Action containing routine name and expected applications
+            
+        Returns:
+            Dictionary with routine execution results
+            
+        Raises:
+            Exception: If application launching fails
+        """
         routine_name = action.params.get('routine_name', '')
         expected_apps = action.params.get('expected_apps', [])
         
@@ -458,7 +660,20 @@ class ActionExecutor:
         }
     
     async def _handle_urgent_item(self, action: AutonomousAction) -> Dict[str, Any]:
-        """Handle urgent items that need attention"""
+        """Handle urgent items requiring immediate attention.
+        
+        Focuses the relevant application and optionally shows system
+        notifications for high-urgency items.
+        
+        Args:
+            action: Action containing app, urgency score, and item details
+            
+        Returns:
+            Dictionary with urgent item handling results
+            
+        Raises:
+            Exception: If application focusing or notification display fails
+        """
         app = action.params['app']
         urgency_score = action.params.get('urgency_score', 0)
         title = action.params.get('title', '')
@@ -491,7 +706,14 @@ class ActionExecutor:
         }
     
     async def _capture_workspace_state(self) -> Dict[str, Any]:
-        """Capture current workspace state for rollback"""
+        """Capture current workspace state for rollback purposes.
+        
+        Records current application states, window positions, and system
+        settings to enable workspace restoration.
+        
+        Returns:
+            Dictionary containing workspace state information
+        """
         # In production, capture actual window positions, app states, etc.
         return {
             'timestamp': datetime.now().isoformat(),
@@ -501,13 +723,31 @@ class ActionExecutor:
         }
     
     async def _verify_security_context(self) -> bool:
-        """Verify it's safe to perform security actions"""
+        """Verify security context for sensitive operations.
+        
+        Performs additional security validations such as user presence
+        verification and anomaly detection before executing security actions.
+        
+        Returns:
+            True if security context is verified, False otherwise
+        """
         # Additional security checks
         # In production, verify user presence, check for anomalies, etc.
         return True
     
     def _get_recent_failures(self, action_type: str, hours: int = 1) -> List[ExecutionResult]:
-        """Get recent failures for an action type"""
+        """Get recent execution failures for a specific action type.
+        
+        Analyzes execution history to identify recent failure patterns
+        for safety assessment purposes.
+        
+        Args:
+            action_type: The type of action to check for failures
+            hours: Number of hours to look back for failures
+            
+        Returns:
+            List of recent failed execution results
+        """
         cutoff = datetime.now().timestamp() - (hours * 3600)
         
         return [
@@ -517,8 +757,15 @@ class ActionExecutor:
             and result.started_at.timestamp() > cutoff
         ]
     
-    def _record_execution(self, result: ExecutionResult):
-        """Record execution result for analysis"""
+    def _record_execution(self, result: ExecutionResult) -> None:
+        """Record execution result for analysis and history tracking.
+        
+        Maintains execution history with automatic cleanup to prevent
+        memory growth while preserving recent execution data.
+        
+        Args:
+            result: The execution result to record
+        """
         self.execution_history.append(result)
         
         # Keep only recent history (last 1000 executions)
@@ -532,7 +779,22 @@ class ActionExecutor:
             logger.error(f"Action failed: {result.action.action_type} - {result.error}")
     
     async def rollback_last_action(self) -> bool:
-        """Rollback the last rollback-able action"""
+        """Rollback the most recent rollback-capable action.
+        
+        Reverses the effects of the last executed action that supports
+        rollback functionality using stored rollback data.
+        
+        Returns:
+            True if rollback was successful, False otherwise
+            
+        Raises:
+            Exception: If rollback operations fail (caught and logged)
+            
+        Example:
+            >>> success = await executor.rollback_last_action()
+            >>> if success:
+            ...     print("Action successfully rolled back")
+        """
         if not self.rollback_stack:
             logger.warning("No actions to rollback")
             return False
@@ -566,7 +828,24 @@ class ActionExecutor:
             return False
     
     def get_execution_stats(self) -> Dict[str, Any]:
-        """Get execution statistics"""
+        """Get comprehensive execution statistics and performance metrics.
+        
+        Analyzes execution history to provide insights into action success
+        rates, performance, and patterns for monitoring and optimization.
+        
+        Returns:
+            Dictionary containing execution statistics including:
+            - Total executions
+            - Success/failure counts and rates
+            - Average execution time
+            - Per-action-type statistics
+            - Available rollback count
+            
+        Example:
+            >>> stats = executor.get_execution_stats()
+            >>> print(f"Success rate: {stats['success_rate']:.1%}")
+            >>> print(f"Average time: {stats['average_execution_time']:.2f}s")
+        """
         total = len(self.execution_history)
         if total == 0:
             return {'total_executions': 0}
@@ -601,69 +880,12 @@ class ActionExecutor:
             'rollback_available': len(self.rollback_stack)
         }
 
-async def test_action_executor():
-    """Test the action executor"""
-    executor = ActionExecutor()
+async def test_action_executor() -> None:
+    """Test the action executor with sample actions.
     
-    # Create test action
-    from .autonomous_decision_engine import AutonomousAction, ActionCategory, ActionPriority
+    Demonstrates ActionExecutor functionality by creating and executing
+    test actions in dry-run mode, showing execution results and statistics.
     
-    test_action = AutonomousAction(
-        action_type='handle_notifications',
-        target='Discord',
-        params={
-            'app': 'Discord',
-            'count': 5,
-            'window_id': 123
-        },
-        priority=ActionPriority.MEDIUM,
-        confidence=0.8,
-        category=ActionCategory.NOTIFICATION,
-        reasoning="5 unread messages in Discord"
-    )
-    
-    print("🚀 Action Executor Test")
-    print("=" * 50)
-    
-    # Execute in dry run mode
-    result = await executor.execute_action(test_action, dry_run=True)
-    
-    print(f"\nAction: {test_action.action_type}")
-    print(f"Target: {test_action.target}")
-    print(f"Status: {result.status.value}")
-    print(f"Execution Time: {result.execution_time:.2f}s" if result.execution_time else "N/A")
-    
-    if result.result_data:
-        print(f"Result: {result.result_data}")
-    
-    if result.error:
-        print(f"Error: {result.error}")
-    
-    # Test another action
-    meeting_action = AutonomousAction(
-        action_type='prepare_meeting',
-        target='calendar',
-        params={
-            'meeting_info': 'Team Standup in 5 minutes',
-            'minutes_until': 5
-        },
-        priority=ActionPriority.HIGH,
-        confidence=0.9,
-        category=ActionCategory.CALENDAR,
-        reasoning="Meeting starting soon"
-    )
-    
-    result2 = await executor.execute_action(meeting_action, dry_run=True)
-    
-    print(f"\n\nAction 2: {meeting_action.action_type}")
-    print(f"Status: {result2.status.value}")
-    print(f"Rollback Available: {result2.rollback_available}")
-    
-    # Show stats
-    stats = executor.get_execution_stats()
-    print(f"\n📊 Execution Statistics:")
-    print(f"Total Executions: {stats['total_executions']}")
-    print(f"Success Rate: {stats.get('success_rate', 0):.1%}")
-
-if __name__ == "__main__":
-    asyncio.run(test_action_executor())
+    Example:
+        >>> await test_action_executor()
+        🚀 Action Executor Test

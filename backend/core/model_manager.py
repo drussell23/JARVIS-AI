@@ -1,6 +1,18 @@
-"""
-Model Manager - Brain Switcher for JARVIS
-Implements tiered model loading with automatic switching based on complexity and memory
+"""Model Manager - Brain Switcher for JARVIS.
+
+This module implements a tiered model loading system with automatic switching based on
+task complexity and available memory. It manages multiple language models of different
+sizes and capabilities, ensuring optimal performance while respecting memory constraints.
+
+The system uses three tiers:
+- TINY: Always-loaded lightweight model for instant responses
+- STANDARD: Medium-capability model loaded on demand
+- ADVANCED: High-capability model for complex tasks
+
+Example:
+    >>> manager = ModelManager()
+    >>> model, tier = await manager.get_model_for_task("code", 0.8, 1000)
+    >>> print(f"Selected {tier.value} model")
 """
 
 import os
@@ -8,24 +20,57 @@ import logging
 import psutil
 import asyncio
 from pathlib import Path
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple, List
 from enum import Enum
 from datetime import datetime, timedelta
 import json
 
 logger = logging.getLogger(__name__)
 
+
 class ModelTier(Enum):
-    """Model tiers for different complexity levels"""
+    """Model tiers for different complexity levels.
+    
+    Attributes:
+        TINY: Lightweight model (1GB) - Always loaded for instant responses
+        STANDARD: Medium model (2GB) - Loaded on demand for balanced tasks
+        ADVANCED: Heavy model (4GB) - For complex tasks requiring high capability
+    """
     TINY = "tiny"      # TinyLlama - 1GB - Always loaded
     STANDARD = "std"   # Phi-2 - 2GB - On-demand
     ADVANCED = "adv"   # Mistral-7B - 4GB - Complex tasks
-    
+
 
 class ModelInfo:
-    """Information about a model"""
+    """Information about a language model.
+    
+    Stores metadata about a model including its capabilities, performance metrics,
+    and usage statistics for intelligent model management.
+    
+    Attributes:
+        name: Human-readable model name
+        path: File path to the model
+        size_gb: Model size in gigabytes
+        tier: Model tier classification
+        capabilities: Dictionary of capability scores (0-1) for different task types
+        context_size: Maximum context length in tokens
+        last_used: Timestamp of last usage
+        load_count: Number of times model has been loaded
+        avg_response_time: Average response time in seconds
+    """
+    
     def __init__(self, name: str, path: str, size_gb: float, tier: ModelTier, 
-                 capabilities: Dict[str, float], context_size: int = 2048):
+                 capabilities: Dict[str, float], context_size: int = 2048) -> None:
+        """Initialize model information.
+        
+        Args:
+            name: Human-readable name for the model
+            path: Relative path to model file
+            size_gb: Model size in gigabytes
+            tier: Model tier classification
+            capabilities: Dictionary mapping task types to capability scores (0-1)
+            context_size: Maximum context length in tokens
+        """
         self.name = name
         self.path = path
         self.size_gb = size_gb
@@ -35,12 +80,33 @@ class ModelInfo:
         self.last_used: Optional[datetime] = None
         self.load_count = 0
         self.avg_response_time = 0.0
-        
+
 
 class ModelManager:
-    """Manages tiered model loading and switching"""
+    """Manages tiered model loading and switching.
     
-    def __init__(self, models_dir: str = "models"):
+    This class implements intelligent model management with automatic tier selection
+    based on task complexity, memory pressure, and performance requirements. It
+    maintains a registry of available models and handles loading/unloading based
+    on system resources.
+    
+    Attributes:
+        models_dir: Directory containing model files
+        models: Registry of available models by tier
+        loaded_models: Cache of currently loaded models
+        performance_stats: Performance tracking data
+        memory_thresholds: Memory usage thresholds for different states
+    """
+    
+    def __init__(self, models_dir: str = "models") -> None:
+        """Initialize the model manager.
+        
+        Sets up model registry, creates models directory if needed, and schedules
+        loading of the tiny model for instant responses.
+        
+        Args:
+            models_dir: Directory path for storing model files
+        """
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
         
@@ -91,7 +157,7 @@ class ModelManager:
         self.loaded_models: Dict[ModelTier, Any] = {}
         
         # Performance tracking
-        self.performance_stats = {}
+        self.performance_stats: Dict[str, Any] = {}
         
         # Memory thresholds
         self.memory_thresholds = {
@@ -104,8 +170,15 @@ class ModelManager:
         # Initialize with tiny model
         asyncio.create_task(self._ensure_tiny_loaded())
         
-    async def _ensure_tiny_loaded(self):
-        """Ensure tiny model is always loaded"""
+    async def _ensure_tiny_loaded(self) -> None:
+        """Ensure tiny model is always loaded for instant responses.
+        
+        This method is called during initialization to preload the lightweight
+        model that provides immediate responses while larger models load.
+        
+        Raises:
+            Exception: If tiny model fails to load (logged but not re-raised)
+        """
         try:
             await self.load_model(ModelTier.TINY)
             logger.info("Tiny model loaded for instant responses")
@@ -114,7 +187,27 @@ class ModelManager:
             
     async def get_model_for_task(self, task_type: str, complexity: float, 
                                  context_length: int) -> Tuple[Any, ModelTier]:
-        """Get the best model for a given task"""
+        """Get the best model for a given task.
+        
+        Analyzes task requirements and system resources to select the optimal
+        model tier, then loads the model if necessary.
+        
+        Args:
+            task_type: Type of task (e.g., "chat", "code", "analysis", "creative")
+            complexity: Task complexity score from 0.0 to 1.0
+            context_length: Required context length in tokens
+            
+        Returns:
+            Tuple containing the loaded model instance and selected tier
+            
+        Raises:
+            FileNotFoundError: If required model file doesn't exist
+            Exception: If model loading fails
+            
+        Example:
+            >>> model, tier = await manager.get_model_for_task("code", 0.8, 1500)
+            >>> response = model.invoke("Write a Python function")
+        """
         # Check memory pressure
         memory_state = self._get_memory_state()
         
@@ -131,7 +224,19 @@ class ModelManager:
         
     def _determine_required_tier(self, task_type: str, complexity: float, 
                                 context_length: int) -> ModelTier:
-        """Determine the required model tier based on task characteristics"""
+        """Determine the required model tier based on task characteristics.
+        
+        Analyzes task requirements to select the minimum tier that can handle
+        the task effectively, considering context length and complexity.
+        
+        Args:
+            task_type: Type of task being performed
+            complexity: Task complexity score (0.0 to 1.0)
+            context_length: Required context length in tokens
+            
+        Returns:
+            The minimum model tier required for the task
+        """
         # Context length check
         if context_length > 3000:
             return ModelTier.ADVANCED  # Only Mistral has 4k context
@@ -145,7 +250,14 @@ class ModelManager:
             return ModelTier.TINY
             
     def _get_memory_state(self) -> str:
-        """Get current memory state"""
+        """Get current system memory state.
+        
+        Analyzes current memory usage and returns a state classification
+        used for model loading decisions.
+        
+        Returns:
+            Memory state: "critical", "high", "moderate", or "low"
+        """
         mem = psutil.virtual_memory()
         percent = mem.percent
         
@@ -160,7 +272,18 @@ class ModelManager:
             
     def _adjust_tier_for_memory(self, requested_tier: ModelTier, 
                                 memory_state: str) -> ModelTier:
-        """Adjust tier based on memory pressure"""
+        """Adjust tier selection based on memory pressure.
+        
+        Downgrades model tier selection when memory usage is high to prevent
+        system instability and out-of-memory errors.
+        
+        Args:
+            requested_tier: Originally requested model tier
+            memory_state: Current memory state classification
+            
+        Returns:
+            Adjusted model tier that respects memory constraints
+        """
         if memory_state == "critical":
             # Only use tiny model
             return ModelTier.TINY
@@ -172,7 +295,21 @@ class ModelManager:
         return requested_tier
         
     async def _get_or_load_model(self, tier: ModelTier) -> Any:
-        """Get model, loading if necessary"""
+        """Get model from cache or load if necessary.
+        
+        Retrieves a model from the loaded models cache, or loads it if not
+        currently in memory. Updates usage statistics.
+        
+        Args:
+            tier: Model tier to retrieve
+            
+        Returns:
+            The loaded model instance
+            
+        Raises:
+            FileNotFoundError: If model file doesn't exist
+            Exception: If model loading fails
+        """
         if tier in self.loaded_models:
             model = self.loaded_models[tier]
             self.models[tier].last_used = datetime.now()
@@ -182,7 +319,25 @@ class ModelManager:
         return await self.load_model(tier)
         
     async def load_model(self, tier: ModelTier) -> Any:
-        """Load a model into memory"""
+        """Load a model into memory.
+        
+        Loads the specified model tier into memory, managing system resources
+        and unloading other models if necessary to free space.
+        
+        Args:
+            tier: Model tier to load
+            
+        Returns:
+            The loaded model instance
+            
+        Raises:
+            FileNotFoundError: If model file doesn't exist
+            Exception: If model loading fails due to insufficient memory or other issues
+            
+        Example:
+            >>> model = await manager.load_model(ModelTier.STANDARD)
+            >>> response = model.invoke("Hello, world!")
+        """
         model_info = self.models[tier]
         model_path = self.models_dir / model_info.path
         
@@ -217,7 +372,9 @@ class ModelManager:
                 logger.warning("LlamaCpp not available, using mock model for testing")
                 # Create a mock model for testing
                 class MockLLM:
-                    def __init__(self, **kwargs):
+                    """Mock LLM for testing when LlamaCpp is not available."""
+                    
+                    def __init__(self, **kwargs) -> None:
                         self.model_path = kwargs.get('model_path', '')
                         self.n_ctx = kwargs.get('n_ctx', 2048)
                     
@@ -244,8 +401,15 @@ class ModelManager:
             logger.error(f"Failed to load {model_info.name}: {e}")
             raise
             
-    async def _manage_memory_for_load(self, required_gb: float):
-        """Manage memory before loading a new model"""
+    async def _manage_memory_for_load(self, required_gb: float) -> None:
+        """Manage memory before loading a new model.
+        
+        Checks available memory and unloads models if necessary to ensure
+        sufficient space for loading the requested model.
+        
+        Args:
+            required_gb: Memory required for the new model in gigabytes
+        """
         mem = psutil.virtual_memory()
         available_gb = mem.available / (1024**3)
         
@@ -253,8 +417,15 @@ class ModelManager:
             # Need to unload models
             await self._unload_least_used_models(required_gb + 1 - available_gb)
             
-    async def _unload_least_used_models(self, needed_gb: float):
-        """Unload least recently used models to free memory"""
+    async def _unload_least_used_models(self, needed_gb: float) -> None:
+        """Unload least recently used models to free memory.
+        
+        Unloads models in order of least recent usage until sufficient
+        memory is freed. Never unloads the tiny model.
+        
+        Args:
+            needed_gb: Amount of memory to free in gigabytes
+        """
         freed_gb = 0
         
         # Sort loaded models by last used time (exclude tiny)
@@ -272,8 +443,15 @@ class ModelManager:
             await self.unload_model(tier)
             freed_gb += info.size_gb
             
-    async def unload_model(self, tier: ModelTier):
-        """Unload a model from memory"""
+    async def unload_model(self, tier: ModelTier) -> None:
+        """Unload a model from memory.
+        
+        Removes a model from the loaded models cache and forces garbage
+        collection to free memory immediately.
+        
+        Args:
+            tier: Model tier to unload
+        """
         if tier in self.loaded_models:
             # Explicitly delete to free memory
             del self.loaded_models[tier]
@@ -285,7 +463,23 @@ class ModelManager:
             logger.info(f"Unloaded {self.models[tier].name}")
             
     def get_model_stats(self) -> Dict[str, Any]:
-        """Get statistics about model usage"""
+        """Get statistics about model usage and system state.
+        
+        Returns comprehensive statistics about loaded models, memory usage,
+        and performance metrics for monitoring and debugging.
+        
+        Returns:
+            Dictionary containing:
+                - loaded_models: List of currently loaded models with metadata
+                - memory_state: Current memory pressure state
+                - total_models: Total number of available models
+                - loaded_count: Number of currently loaded models
+                
+        Example:
+            >>> stats = manager.get_model_stats()
+            >>> print(f"Memory state: {stats['memory_state']}")
+            >>> print(f"Loaded models: {len(stats['loaded_models'])}")
+        """
         stats = {
             "loaded_models": [
                 {
@@ -304,10 +498,26 @@ class ModelManager:
         }
         return stats
         
-    async def optimize_for_workload(self, recent_tasks: list):
-        """Optimize model loading based on recent workload"""
+    async def optimize_for_workload(self, recent_tasks: List[Dict[str, Any]]) -> None:
+        """Optimize model loading based on recent workload patterns.
+        
+        Analyzes recent task history to predict future needs and preload
+        appropriate models to reduce response latency.
+        
+        Args:
+            recent_tasks: List of recent task dictionaries containing task metadata
+                Each task should have at least a "type" field indicating task type
+                
+        Example:
+            >>> recent_tasks = [
+            ...     {"type": "code", "complexity": 0.8},
+            ...     {"type": "code", "complexity": 0.7},
+            ...     {"type": "analysis", "complexity": 0.9}
+            ... ]
+            >>> await manager.optimize_for_workload(recent_tasks)
+        """
         # Analyze recent tasks to predict future needs
-        task_types = {}
+        task_types: Dict[str, int] = {}
         for task in recent_tasks:
             task_type = task.get("type", "chat")
             task_types[task_type] = task_types.get(task_type, 0) + 1

@@ -5,6 +5,11 @@ Error Handling and Recovery System v2.0 - PROACTIVE & INTELLIGENT
 
 Manages errors with proactive detection and ML-powered recovery.
 
+This module provides a comprehensive error handling and recovery system that can
+detect errors proactively, learn from patterns, and apply intelligent recovery
+strategies. It integrates with monitoring systems to prevent errors before they
+become critical.
+
 **UPGRADED v2.0 Features**:
 ✅ Proactive error detection (via HybridProactiveMonitoringManager)
 ✅ Error pattern recognition (learns from monitoring alerts)
@@ -28,8 +33,8 @@ Manages errors with proactive detection and ML-powered recovery.
 - Prevents cascading failures
 
 Example:
-"Sir, I detected an error pattern: builds in Space 5 lead to errors
- in Space 3. I've proactively increased monitoring for Space 3."
+    "Sir, I detected an error pattern: builds in Space 5 lead to errors
+     in Space 3. I've proactively increased monitoring for Space 3."
 """
 
 import asyncio
@@ -46,14 +51,33 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 class ErrorSeverity(Enum):
-    """Severity levels for errors"""
+    """Severity levels for errors.
+    
+    Attributes:
+        LOW: Minor issues that can be ignored
+        MEDIUM: Should be addressed but not critical
+        HIGH: Important errors that affect functionality
+        CRITICAL: System-breaking errors requiring immediate action
+    """
     LOW = auto()      # Minor issues, can be ignored
     MEDIUM = auto()   # Should be addressed but not critical
     HIGH = auto()     # Important errors that affect functionality
     CRITICAL = auto() # System-breaking errors requiring immediate action
 
 class ErrorCategory(Enum):
-    """Categories of errors"""
+    """Categories of errors for classification and recovery strategy selection.
+    
+    Attributes:
+        VISION: Screen capture and visual processing errors
+        OCR: Text recognition and extraction errors
+        DECISION: Decision-making and logic errors
+        EXECUTION: Action execution and automation errors
+        NETWORK: Network connectivity and communication errors
+        PERMISSION: Access control and authorization errors
+        TIMEOUT: Operation timeout errors
+        RESOURCE: Memory, CPU, and resource allocation errors
+        UNKNOWN: Unclassified errors
+    """
     VISION = "vision"
     OCR = "ocr"
     DECISION = "decision"
@@ -65,7 +89,21 @@ class ErrorCategory(Enum):
     UNKNOWN = "unknown"
 
 class RecoveryStrategy(Enum):
-    """Recovery strategies for different error types"""
+    """Recovery strategies for different error types.
+    
+    Attributes:
+        RETRY: Simple retry with fixed delay
+        EXPONENTIAL_BACKOFF: Retry with exponential backoff
+        RESET_COMPONENT: Reset the failed component
+        FALLBACK: Use fallback method
+        SKIP: Skip the operation
+        ALERT_USER: Alert user for manual intervention
+        SHUTDOWN: Shutdown the system
+        PROACTIVE_MONITOR: Increase monitoring (v2.0)
+        PREDICTIVE_FIX: Apply predictive fix (v2.0)
+        ISOLATE_COMPONENT: Isolate failing component (v2.0)
+        AUTO_HEAL: Self-healing recovery (v2.0)
+    """
     RETRY = "retry"                   # Simple retry
     EXPONENTIAL_BACKOFF = "backoff"   # Retry with exponential backoff
     RESET_COMPONENT = "reset"         # Reset the failed component
@@ -80,7 +118,31 @@ class RecoveryStrategy(Enum):
 
 @dataclass
 class ErrorRecord:
-    """Record of an error occurrence (v2.0 Enhanced)"""
+    """Record of an error occurrence (v2.0 Enhanced).
+    
+    Tracks comprehensive information about errors including proactive detection
+    capabilities, frequency tracking, and multi-space correlation.
+    
+    Attributes:
+        error_id: Unique identifier for the error
+        category: Error category for classification
+        severity: Severity level of the error
+        message: Human-readable error message
+        component: Component where error occurred
+        timestamp: When the error occurred
+        stack_trace: Stack trace if available
+        context: Additional context information
+        recovery_attempts: Number of recovery attempts made
+        resolved: Whether the error has been resolved
+        resolution: Description of how error was resolved
+        space_id: Space where error occurred (v2.0)
+        detection_method: How error was detected (v2.0)
+        predicted: Whether error was predicted (v2.0)
+        frequency_count: How many times this error pattern appeared (v2.0)
+        related_errors: Related error IDs for correlation (v2.0)
+        pattern_id: Pattern that predicted this error (v2.0)
+        proactive_action_taken: Whether proactive recovery was applied (v2.0)
+    """
     error_id: str
     category: ErrorCategory
     severity: ErrorSeverity
@@ -103,7 +165,11 @@ class ErrorRecord:
     proactive_action_taken: bool = False  # True if proactive recovery applied
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
+        """Convert error record to dictionary for serialization.
+        
+        Returns:
+            Dictionary representation of the error record
+        """
         return {
             'error_id': self.error_id,
             'category': self.category.value,
@@ -123,7 +189,19 @@ class ErrorRecord:
 
 @dataclass 
 class RecoveryAction:
-    """Action to take for recovery"""
+    """Action to take for error recovery.
+    
+    Defines the recovery strategy and parameters for handling specific errors.
+    
+    Attributes:
+        strategy: Recovery strategy to use
+        max_attempts: Maximum number of recovery attempts
+        delay: Initial delay between attempts in seconds
+        backoff_factor: Multiplier for exponential backoff
+        timeout: Timeout for recovery operations in seconds
+        fallback_action: Optional fallback function to call
+        metadata: Additional metadata for the recovery action
+    """
     strategy: RecoveryStrategy
     max_attempts: int = 3
     delay: float = 1.0  # seconds
@@ -136,6 +214,10 @@ class ErrorRecoveryManager:
     """
     Intelligent Error Recovery Manager v2.0 with Proactive Detection.
 
+    Manages error detection, classification, and recovery with advanced proactive
+    capabilities including pattern recognition, frequency tracking, and multi-space
+    correlation analysis.
+
     **NEW v2.0 Features**:
     - Proactive error detection via HybridProactiveMonitoringManager
     - Context-aware recovery via ImplicitReferenceResolver
@@ -143,6 +225,24 @@ class ErrorRecoveryManager:
     - Frequency tracking with severity escalation
     - Multi-space error correlation
     - Automatic recovery triggers
+
+    Attributes:
+        error_history: Complete history of all errors
+        active_errors: Currently unresolved errors
+        recovery_actions: Recovery actions for each error
+        hybrid_monitoring: HybridProactiveMonitoringManager instance
+        implicit_resolver: ImplicitReferenceResolver instance
+        change_detection: ChangeDetectionManager instance
+        error_fingerprints: Error patterns grouped by fingerprint
+        space_errors: Errors grouped by space ID
+        error_frequency: Frequency count for each error pattern
+        predicted_errors: Queue of predicted errors
+        is_proactive_enabled: Whether proactive features are enabled
+        recovery_strategies: Mapping of error types to recovery strategies
+        error_callbacks: Callbacks for error notifications
+        recovery_callbacks: Callbacks for recovery notifications
+        component_resets: Reset functions for components
+        error_stats: Error statistics and metrics
     """
 
     def __init__(
@@ -242,7 +342,12 @@ class ErrorRecoveryManager:
         }
         
     def register_component_reset(self, component: str, reset_function: Callable):
-        """Register a reset function for a component"""
+        """Register a reset function for a component.
+        
+        Args:
+            component: Name of the component
+            reset_function: Async function to reset the component
+        """
         self.component_resets[component] = reset_function
         logger.info(f"Registered reset function for component: {component}")
         
@@ -252,7 +357,28 @@ class ErrorRecoveryManager:
                           category: Optional[ErrorCategory] = None,
                           severity: Optional[ErrorSeverity] = None,
                           context: Optional[Dict[str, Any]] = None) -> ErrorRecord:
-        """Handle an error and initiate recovery"""
+        """Handle an error and initiate recovery.
+        
+        Main entry point for reactive error handling. Categorizes the error,
+        assesses severity, creates an error record, and initiates recovery.
+        
+        Args:
+            error: The exception that occurred
+            component: Component where the error occurred
+            category: Optional error category (auto-detected if not provided)
+            severity: Optional severity level (auto-assessed if not provided)
+            context: Additional context information
+            
+        Returns:
+            ErrorRecord for the handled error
+            
+        Example:
+            >>> await manager.handle_error(
+            ...     ConnectionError("Network timeout"),
+            ...     component="websocket",
+            ...     context={"url": "ws://example.com"}
+            ... )
+        """
         
         # Determine category and severity if not provided
         if not category:
@@ -302,15 +428,27 @@ class ErrorRecoveryManager:
         Register a monitoring alert from HybridProactiveMonitoringManager (NEW v2.0).
 
         Converts monitoring alerts into error records for proactive handling.
+        This enables the system to respond to potential issues before they
+        become critical failures.
 
         Args:
             alert: Alert dictionary from HybridMonitoring with keys:
-                - space_id: int
-                - event_type: str (ERROR_DETECTED, ANOMALY_DETECTED, etc.)
-                - message: str
-                - priority: str
-                - timestamp: datetime
-                - metadata: dict (detection_method, predicted, etc.)
+                - space_id: int - Space where alert originated
+                - event_type: str - Type of event (ERROR_DETECTED, ANOMALY_DETECTED, etc.)
+                - message: str - Alert message
+                - priority: str - Alert priority level
+                - timestamp: datetime - When alert was generated
+                - metadata: dict - Additional metadata (detection_method, predicted, etc.)
+                
+        Example:
+            >>> alert = {
+            ...     'space_id': 5,
+            ...     'event_type': 'ERROR_DETECTED',
+            ...     'message': 'High CPU usage detected',
+            ...     'priority': 'HIGH',
+            ...     'metadata': {'detection_method': 'ml', 'predicted': True}
+            ... }
+            >>> await manager.register_monitoring_alert(alert)
         """
         if not self.is_proactive_enabled:
             return
@@ -355,18 +493,28 @@ class ErrorRecoveryManager:
         Handle a proactively detected error (NEW v2.0).
 
         Unlike handle_error(), this is called when errors are detected
-        by monitoring BEFORE they become critical.
+        by monitoring BEFORE they become critical. Includes frequency
+        tracking and severity escalation based on error patterns.
 
         Args:
-            error_message: Error message
+            error_message: Error message describing the issue
             component: Component where error occurred
             space_id: Space ID where error was detected
-            detection_method: "fast", "deep", "ml", or "predictive"
-            predicted: True if error was predicted
-            context: Additional context
+            detection_method: Detection method ("fast", "deep", "ml", or "predictive")
+            predicted: True if error was predicted by ML
+            context: Additional context information
 
         Returns:
             ErrorRecord for the proactive error
+            
+        Example:
+            >>> error_record = await manager.handle_proactive_error(
+            ...     error_message="Memory usage approaching limit",
+            ...     component="Space_3",
+            ...     space_id=3,
+            ...     detection_method="ml",
+            ...     predicted=True
+            ... )
         """
         # Calculate error fingerprint (for frequency tracking)
         fingerprint = self._calculate_error_fingerprint(error_message, component)
@@ -426,11 +574,19 @@ class ErrorRecoveryManager:
         """
         Track error frequency and return current count (NEW v2.0).
 
+        Maintains frequency counters for error patterns to enable
+        severity escalation for recurring issues.
+
         Args:
             fingerprint: Error fingerprint hash
 
         Returns:
             Current frequency count for this error pattern
+            
+        Example:
+            >>> fingerprint = manager._calculate_error_fingerprint("timeout", "network")
+            >>> frequency = await manager.track_error_frequency(fingerprint)
+            >>> print(f"This error has occurred {frequency} times")
         """
         self.error_frequency[fingerprint] += 1
         frequency = self.error_frequency[fingerprint]
@@ -448,9 +604,15 @@ class ErrorRecoveryManager:
         Detect multi-space error correlation (NEW v2.0).
 
         Checks if errors in different spaces are related (cascading failures).
+        This helps identify system-wide issues that might require coordinated
+        recovery efforts.
 
         Args:
             error_record: Error to check for correlations
+            
+        Example:
+            >>> # Error in Space 3 might be correlated with errors in Space 5
+            >>> await manager.detect_error_correlation(error_record)
         """
         if not error_record.space_id:
             return
@@ -486,10 +648,15 @@ class ErrorRecoveryManager:
         """
         Apply predictive fix for anticipated errors (NEW v2.0).
 
-        Called when an error was predicted by ML patterns.
+        Called when an error was predicted by ML patterns. Applies
+        learned recovery strategies before the error becomes critical.
 
         Args:
             error_record: Predicted error record
+            
+        Example:
+            >>> # Apply fix for predicted memory leak
+            >>> await manager.apply_predictive_fix(predicted_error)
         """
         if not error_record.predicted:
             return
@@ -516,12 +683,22 @@ class ErrorRecoveryManager:
         """
         Calculate unique fingerprint for error pattern (NEW v2.0).
 
+        Creates a normalized hash of the error for frequency tracking
+        and pattern recognition. Removes variable elements like line
+        numbers and timestamps.
+
         Args:
             error_message: Error message
             component: Component name
 
         Returns:
-            MD5 hash fingerprint
+            MD5 hash fingerprint (8 characters)
+            
+        Example:
+            >>> fingerprint = manager._calculate_error_fingerprint(
+            ...     "Connection timeout on line 42", "network"
+            ... )
+            >>> print(fingerprint)  # "a1b2c3d4"
         """
         # Normalize message (remove line numbers, timestamps, etc.)
         normalized = error_message.lower()
@@ -532,7 +709,17 @@ class ErrorRecoveryManager:
         return hashlib.md5(fingerprint_str.encode()).hexdigest()[:8]
 
     def _categorize_proactive_error(self, error_message: str) -> ErrorCategory:
-        """Categorize a proactively detected error (NEW v2.0)"""
+        """Categorize a proactively detected error (NEW v2.0).
+        
+        Analyzes error message content to determine the most appropriate
+        error category for proactive errors.
+        
+        Args:
+            error_message: Error message to categorize
+            
+        Returns:
+            ErrorCategory enum value
+        """
         msg_lower = error_message.lower()
 
         if 'vision' in msg_lower or 'screen' in msg_lower:
@@ -553,7 +740,19 @@ class ErrorRecoveryManager:
             return ErrorCategory.UNKNOWN
 
     def _assess_proactive_severity(self, error_message: str, predicted: bool) -> ErrorSeverity:
-        """Assess severity of proactively detected error (NEW v2.0)"""
+        """Assess severity of proactively detected error (NEW v2.0).
+        
+        Determines severity level for proactive errors, with special
+        handling for predicted errors (which start at lower severity
+        since we have time to address them).
+        
+        Args:
+            error_message: Error message to assess
+            predicted: Whether error was predicted by ML
+            
+        Returns:
+            ErrorSeverity enum value
+        """
         msg_lower = error_message.lower()
 
         # Predicted errors start at lower severity (we have time to fix)
@@ -577,12 +776,22 @@ class ErrorRecoveryManager:
         """
         Escalate severity based on error frequency (NEW v2.0).
 
+        Increases severity for frequently occurring errors to ensure
+        they receive appropriate attention and recovery resources.
+
         Args:
             base_severity: Base severity level
             frequency: Number of times error occurred
 
         Returns:
             Escalated severity level
+            
+        Example:
+            >>> # Error that occurred 4 times gets escalated
+            >>> escalated = manager._escalate_severity_by_frequency(
+            ...     ErrorSeverity.MEDIUM, 4
+            ... )
+            >>> print(escalated)  # ErrorSeverity.CRITICAL
         """
         if frequency >= 5:
             return ErrorSeverity.CRITICAL
@@ -602,519 +811,20 @@ class ErrorRecoveryManager:
     # ========================================
 
     def _categorize_error(self, error: Exception) -> ErrorCategory:
-        """Categorize an error based on its type and message"""
+        """Categorize an error based on its type and message.
+        
+        Analyzes exception type and message content to determine
+        the most appropriate error category.
+        
+        Args:
+            error: Exception to categorize
+            
+        Returns:
+            ErrorCategory enum value
+        """
         error_msg = str(error).lower()
         error_type = type(error).__name__
         
         if 'vision' in error_msg or 'screen' in error_msg or 'capture' in error_msg:
             return ErrorCategory.VISION
-        elif 'ocr' in error_msg or 'text' in error_msg or 'tesseract' in error_msg:
-            return ErrorCategory.OCR
-        elif 'decision' in error_msg or 'action' in error_msg:
-            return ErrorCategory.DECISION
-        elif 'network' in error_msg or 'connection' in error_msg or 'timeout' in error_type:
-            return ErrorCategory.NETWORK
-        elif 'permission' in error_msg or 'denied' in error_msg or 'unauthorized' in error_msg:
-            return ErrorCategory.PERMISSION
-        elif 'timeout' in error_msg:
-            return ErrorCategory.TIMEOUT
-        elif 'memory' in error_msg or 'resource' in error_msg:
-            return ErrorCategory.RESOURCE
-        else:
-            return ErrorCategory.UNKNOWN
-            
-    def _assess_severity(self, error: Exception, category: ErrorCategory) -> ErrorSeverity:
-        """Assess the severity of an error"""
-        # Critical errors
-        if isinstance(error, (SystemError, MemoryError)):
-            return ErrorSeverity.CRITICAL
-            
-        # Category-based assessment
-        if category == ErrorCategory.PERMISSION:
-            return ErrorSeverity.HIGH
-        elif category == ErrorCategory.NETWORK:
-            return ErrorSeverity.MEDIUM
-        elif category == ErrorCategory.OCR:
-            return ErrorSeverity.LOW
-        elif category == ErrorCategory.UNKNOWN:
-            return ErrorSeverity.HIGH
-            
-        # Default to medium
-        return ErrorSeverity.MEDIUM
-        
-    async def _initiate_recovery(self, error_record: ErrorRecord):
-        """Initiate recovery for an error (v2.0 Enhanced)"""
-        # Get recovery action
-        recovery_key = (error_record.category, error_record.severity)
-        recovery_action = self.recovery_strategies.get(
-            recovery_key,
-            RecoveryAction(strategy=RecoveryStrategy.SKIP)  # Default
-        )
-
-        # Store recovery action
-        self.recovery_actions[error_record.error_id] = recovery_action
-
-        # Execute recovery based on strategy
-        if recovery_action.strategy == RecoveryStrategy.RETRY:
-            await self._retry_recovery(error_record, recovery_action)
-        elif recovery_action.strategy == RecoveryStrategy.EXPONENTIAL_BACKOFF:
-            await self._backoff_recovery(error_record, recovery_action)
-        elif recovery_action.strategy == RecoveryStrategy.RESET_COMPONENT:
-            await self._reset_component(error_record, recovery_action)
-        elif recovery_action.strategy == RecoveryStrategy.ALERT_USER:
-            await self._alert_user(error_record)
-        elif recovery_action.strategy == RecoveryStrategy.SKIP:
-            await self._skip_operation(error_record)
-        elif recovery_action.strategy == RecoveryStrategy.SHUTDOWN:
-            await self._emergency_shutdown(error_record)
-
-        # NEW v2.0: Proactive recovery strategies
-        elif recovery_action.strategy == RecoveryStrategy.PROACTIVE_MONITOR:
-            await self._increase_monitoring(error_record)
-        elif recovery_action.strategy == RecoveryStrategy.PREDICTIVE_FIX:
-            await self.apply_predictive_fix(error_record)
-        elif recovery_action.strategy == RecoveryStrategy.ISOLATE_COMPONENT:
-            await self._isolate_component(error_record)
-        elif recovery_action.strategy == RecoveryStrategy.AUTO_HEAL:
-            await self._auto_heal(error_record)
-            
-    async def _retry_recovery(self, error_record: ErrorRecord, action: RecoveryAction):
-        """Simple retry recovery"""
-        for attempt in range(action.max_attempts):
-            error_record.recovery_attempts += 1
-            
-            logger.info(
-                f"Retry attempt {attempt + 1}/{action.max_attempts} "
-                f"for error {error_record.error_id}"
-            )
-            
-            # Wait before retry
-            await asyncio.sleep(action.delay)
-            
-            # Check if error is still active
-            if error_record.error_id not in self.active_errors:
-                break
-                
-            # TODO: Implement actual retry logic based on component
-            # For now, mark as resolved after attempts
-            if attempt == action.max_attempts - 1:
-                await self._mark_resolved(
-                    error_record, 
-                    f"Exhausted retry attempts ({action.max_attempts})"
-                )
-                
-    async def _backoff_recovery(self, error_record: ErrorRecord, action: RecoveryAction):
-        """Exponential backoff recovery"""
-        delay = action.delay
-        
-        for attempt in range(action.max_attempts):
-            error_record.recovery_attempts += 1
-            
-            logger.info(
-                f"Backoff attempt {attempt + 1}/{action.max_attempts} "
-                f"(delay: {delay}s) for error {error_record.error_id}"
-            )
-            
-            # Wait with exponential backoff
-            await asyncio.sleep(delay)
-            delay *= action.backoff_factor
-            
-            # Check if error is still active
-            if error_record.error_id not in self.active_errors:
-                break
-                
-    async def _reset_component(self, error_record: ErrorRecord, action: RecoveryAction):
-        """Reset a component"""
-        component = error_record.component
-        
-        if component in self.component_resets:
-            logger.info(f"Resetting component: {component}")
-            
-            try:
-                reset_func = self.component_resets[component]
-                await reset_func()
-                
-                await self._mark_resolved(
-                    error_record,
-                    f"Component {component} reset successfully"
-                )
-            except Exception as e:
-                logger.error(f"Failed to reset component {component}: {e}")
-                error_record.recovery_attempts += 1
-        else:
-            logger.warning(f"No reset function registered for component: {component}")
-            
-    async def _alert_user(self, error_record: ErrorRecord):
-        """Alert user for manual intervention"""
-        logger.warning(
-            f"User intervention required for error: {error_record.message}"
-        )
-        
-        # Notify all error callbacks with alert flag
-        for callback in self.error_callbacks:
-            try:
-                await callback(error_record, alert=True)
-            except Exception as e:
-                logger.error(f"Error callback failed: {e}")
-                
-    async def _skip_operation(self, error_record: ErrorRecord):
-        """Skip the failed operation"""
-        logger.info(f"Skipping operation due to error: {error_record.error_id}")
-        
-        await self._mark_resolved(
-            error_record,
-            "Operation skipped"
-        )
-        
-    async def _emergency_shutdown(self, error_record: ErrorRecord):
-        """Emergency shutdown due to critical error"""
-        logger.critical(
-            f"EMERGENCY SHUTDOWN initiated due to critical error: {error_record.message}"
-        )
-
-        # Notify all callbacks
-        for callback in self.error_callbacks:
-            try:
-                await callback(error_record, shutdown=True)
-            except:
-                pass  # Ignore errors during shutdown
-
-    # ========================================
-    # NEW v2.0: PROACTIVE RECOVERY STRATEGIES
-    # ========================================
-
-    async def _increase_monitoring(self, error_record: ErrorRecord):
-        """
-        Increase monitoring for a component with errors (NEW v2.0).
-
-        Called when PROACTIVE_MONITOR strategy is used.
-
-        Args:
-            error_record: Error record
-        """
-        if not self.hybrid_monitoring or not error_record.space_id:
-            logger.warning("[ERROR-RECOVERY] Cannot increase monitoring: HybridMonitoring not available")
-            return
-
-        space_id = error_record.space_id
-
-        logger.info(
-            f"[ERROR-RECOVERY] Increasing monitoring for Space {space_id} "
-            f"due to error: {error_record.message}"
-        )
-
-        # Increase monitoring frequency
-        # (This would call HybridMonitoring to increase check frequency)
-        # For now, just log the action
-        error_record.proactive_action_taken = True
-
-        await self._mark_resolved(
-            error_record,
-            f"Increased monitoring for Space {space_id}"
-        )
-
-    async def _isolate_component(self, error_record: ErrorRecord):
-        """
-        Isolate a failing component to prevent cascading failures (NEW v2.0).
-
-        Called when ISOLATE_COMPONENT strategy is used.
-
-        Args:
-            error_record: Error record
-        """
-        component = error_record.component
-
-        logger.warning(
-            f"[ERROR-RECOVERY] Isolating component {component} "
-            f"to prevent cascading failures"
-        )
-
-        # Isolation logic would:
-        # 1. Stop processing requests to this component
-        # 2. Redirect traffic to healthy components
-        # 3. Mark component as degraded
-
-        error_record.proactive_action_taken = True
-
-        await self._mark_resolved(
-            error_record,
-            f"Component {component} isolated"
-        )
-
-    async def _auto_heal(self, error_record: ErrorRecord):
-        """
-        Self-healing recovery for common errors (NEW v2.0).
-
-        Called when AUTO_HEAL strategy is used.
-
-        Args:
-            error_record: Error record
-        """
-        logger.info(
-            f"[ERROR-RECOVERY] Attempting self-healing for: {error_record.message}"
-        )
-
-        # Auto-healing strategies based on error category
-        if error_record.category == ErrorCategory.NETWORK:
-            # Reconnect network resources
-            logger.info("[ERROR-RECOVERY] Auto-heal: Reconnecting network resources")
-
-        elif error_record.category == ErrorCategory.RESOURCE:
-            # Free up resources
-            logger.info("[ERROR-RECOVERY] Auto-heal: Freeing up resources")
-
-        elif error_record.category == ErrorCategory.VISION:
-            # Recapture screen
-            logger.info("[ERROR-RECOVERY] Auto-heal: Recapturing screen")
-
-        elif error_record.category == ErrorCategory.OCR:
-            # Retry OCR with different settings
-            logger.info("[ERROR-RECOVERY] Auto-heal: Retrying OCR")
-
-        # Mark as healed
-        error_record.proactive_action_taken = True
-
-        await self._mark_resolved(
-            error_record,
-            f"Self-healing applied for {error_record.category.value}"
-        )
-
-    # ========================================
-    # END NEW v2.0 RECOVERY STRATEGIES
-    # ========================================
-
-    async def _mark_resolved(self, error_record: ErrorRecord, resolution: str):
-        """Mark an error as resolved"""
-        error_record.resolved = True
-        error_record.resolution = resolution
-        
-        # Remove from active errors
-        if error_record.error_id in self.active_errors:
-            del self.active_errors[error_record.error_id]
-            
-        logger.info(f"Error {error_record.error_id} resolved: {resolution}")
-        
-        # Notify recovery callbacks
-        await self._notify_recovery_callbacks(error_record)
-        
-    async def _notify_error_callbacks(self, error_record: ErrorRecord):
-        """Notify error callbacks"""
-        for callback in self.error_callbacks:
-            try:
-                await callback(error_record)
-            except Exception as e:
-                logger.error(f"Error callback failed: {e}")
-                
-    async def _notify_recovery_callbacks(self, error_record: ErrorRecord):
-        """Notify recovery callbacks"""
-        for callback in self.recovery_callbacks:
-            try:
-                await callback(error_record)
-            except Exception as e:
-                logger.error(f"Recovery callback failed: {e}")
-                
-    def add_error_callback(self, callback: Callable):
-        """Add callback for error notifications"""
-        self.error_callbacks.append(callback)
-        
-    def add_recovery_callback(self, callback: Callable):
-        """Add callback for recovery notifications"""
-        self.recovery_callbacks.append(callback)
-        
-    def get_error_statistics(self) -> Dict[str, Any]:
-        """Get error statistics (v2.0 Enhanced)"""
-        # Calculate recovery success rate
-        resolved_count = sum(1 for e in self.error_history if e.resolved)
-        total_count = len(self.error_history)
-
-        if total_count > 0:
-            self.error_stats['recovery_success_rate'] = resolved_count / total_count
-
-        # NEW v2.0: Proactive error statistics
-        proactive_count = sum(1 for e in self.error_history if e.detection_method == 'proactive')
-        predicted_count = sum(1 for e in self.error_history if e.predicted)
-        proactive_resolved_count = sum(
-            1 for e in self.error_history
-            if e.detection_method == 'proactive' and e.resolved
-        )
-
-        # Calculate proactive success rate
-        proactive_success_rate = 0.0
-        if proactive_count > 0:
-            proactive_success_rate = proactive_resolved_count / proactive_count
-
-        # Multi-space correlation count
-        correlation_count = sum(1 for e in self.error_history if e.related_errors)
-
-        return {
-            **self.error_stats,
-            'active_errors': len(self.active_errors),
-            'recent_errors': [
-                e.to_dict() for e in self.error_history[-10:]
-            ],
-            # NEW v2.0: Proactive stats
-            'proactive_errors_detected': proactive_count,
-            'predicted_errors': predicted_count,
-            'proactive_success_rate': proactive_success_rate,
-            'cascading_failures_detected': correlation_count,
-            'high_frequency_patterns': len([f for f, count in self.error_frequency.items() if count >= 3]),
-            'is_proactive_enabled': self.is_proactive_enabled
-        }
-        
-    def get_active_errors(self) -> List[ErrorRecord]:
-        """Get list of active errors"""
-        return list(self.active_errors.values())
-        
-    def clear_resolved_errors(self, older_than_hours: int = 24):
-        """Clear old resolved errors from history"""
-        cutoff = datetime.now() - timedelta(hours=older_than_hours)
-
-        self.error_history = [
-            e for e in self.error_history
-            if not e.resolved or e.timestamp > cutoff
-        ]
-
-        logger.info(f"Cleared resolved errors older than {older_than_hours} hours")
-
-    # ========================================
-    # NEW v2.0: PROACTIVE ERROR INSIGHTS
-    # ========================================
-
-    def get_space_error_summary(self, space_id: int) -> Dict[str, Any]:
-        """
-        Get error summary for a specific space (NEW v2.0).
-
-        Args:
-            space_id: Space ID to get summary for
-
-        Returns:
-            Dictionary with error summary for the space
-        """
-        space_errors = self.space_errors.get(space_id, [])
-
-        if not space_errors:
-            return {
-                'space_id': space_id,
-                'total_errors': 0,
-                'active_errors': 0,
-                'resolved_errors': 0
-            }
-
-        active_count = sum(1 for e in space_errors if not e.resolved)
-        resolved_count = sum(1 for e in space_errors if e.resolved)
-        proactive_count = sum(1 for e in space_errors if e.detection_method == 'proactive')
-
-        return {
-            'space_id': space_id,
-            'total_errors': len(space_errors),
-            'active_errors': active_count,
-            'resolved_errors': resolved_count,
-            'proactive_detections': proactive_count,
-            'recent_errors': [e.to_dict() for e in space_errors[-5:]]
-        }
-
-    def get_high_frequency_errors(self, min_frequency: int = 3) -> List[Dict[str, Any]]:
-        """
-        Get high-frequency error patterns (NEW v2.0).
-
-        Args:
-            min_frequency: Minimum frequency to include
-
-        Returns:
-            List of high-frequency error patterns
-        """
-        high_freq_patterns = []
-
-        for fingerprint, frequency in self.error_frequency.items():
-            if frequency >= min_frequency:
-                # Get the most recent error with this fingerprint
-                recent_errors = self.error_fingerprints.get(fingerprint, [])
-                if recent_errors:
-                    latest = recent_errors[-1]
-                    high_freq_patterns.append({
-                        'fingerprint': fingerprint,
-                        'frequency': frequency,
-                        'component': latest.component,
-                        'message': latest.message,
-                        'severity': latest.severity.name,
-                        'space_id': latest.space_id
-                    })
-
-        # Sort by frequency (descending)
-        high_freq_patterns.sort(key=lambda x: x['frequency'], reverse=True)
-
-        return high_freq_patterns
-
-    # ========================================
-    # END NEW v2.0 INSIGHTS
-    # ========================================
-
-
-# Global error recovery manager (v2.0 - proactive disabled by default)
-# To enable proactive features, pass managers to __init__
-error_manager = ErrorRecoveryManager()
-
-async def test_error_recovery():
-    """Test error recovery system"""
-    print("🛡️ Testing Error Recovery System")
-    print("=" * 50)
-    
-    manager = ErrorRecoveryManager()
-    
-    # Add callbacks
-    async def error_callback(error_record, **kwargs):
-        print(f"   Error: {error_record.message} ({error_record.severity.name})")
-        if kwargs.get('alert'):
-            print("   ⚠️ USER ALERT REQUIRED!")
-            
-    async def recovery_callback(error_record):
-        print(f"   Recovered: {error_record.error_id} - {error_record.resolution}")
-        
-    manager.add_error_callback(error_callback)
-    manager.add_recovery_callback(recovery_callback)
-    
-    # Test different error types
-    print("\n🔴 Testing various error scenarios...")
-    
-    # Vision error
-    await manager.handle_error(
-        Exception("Failed to capture screen"),
-        component="screen_capture",
-        category=ErrorCategory.VISION,
-        severity=ErrorSeverity.MEDIUM
-    )
-    
-    # Network error
-    await manager.handle_error(
-        Exception("Connection timeout"),
-        component="websocket",
-        category=ErrorCategory.NETWORK,
-        severity=ErrorSeverity.HIGH
-    )
-    
-    # Permission error
-    await manager.handle_error(
-        Exception("Permission denied for action execution"),
-        component="action_executor",
-        category=ErrorCategory.PERMISSION,
-        severity=ErrorSeverity.HIGH
-    )
-    
-    # Wait for recovery attempts
-    await asyncio.sleep(3)
-    
-    # Get statistics
-    stats = manager.get_error_statistics()
-    print(f"\n📊 Error Statistics:")
-    print(f"   Total Errors: {stats['total_errors']}")
-    print(f"   Active Errors: {stats['active_errors']}")
-    print(f"   Recovery Success Rate: {stats['recovery_success_rate']:.1%}")
-    print(f"\n   Errors by Category:")
-    for cat, count in stats['errors_by_category'].items():
-        if count > 0:
-            print(f"     {cat}: {count}")
-            
-    print("\n✅ Error recovery test complete!")
-
-if __name__ == "__main__":
-    asyncio.run(test_error_recovery())
+        elif 'ocr' in error_

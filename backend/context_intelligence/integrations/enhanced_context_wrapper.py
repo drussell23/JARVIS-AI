@@ -2,8 +2,20 @@
 Enhanced Context Wrapper - Drop-in Replacement
 =============================================
 
-Provides a drop-in replacement for EnhancedSimpleContextHandler
-that uses the new Context Intelligence System.
+This module provides a drop-in replacement for EnhancedSimpleContextHandler
+that uses the new Context Intelligence System. It maintains backward compatibility
+while leveraging advanced context awareness, feedback management, and command
+processing capabilities.
+
+The module integrates with the core context intelligence components to provide
+enhanced command processing with voice feedback, screen lock detection, and
+intelligent command queuing.
+
+Example:
+    >>> processor = SomeCommandProcessor()
+    >>> handler = wrap_with_enhanced_context(processor)
+    >>> result = await handler.process_with_context("open chrome")
+    {'success': True, 'response': 'opened chrome', ...}
 """
 
 import asyncio
@@ -23,11 +35,27 @@ logger = logging.getLogger(__name__)
 class EnhancedContextIntelligenceHandler:
     """
     Drop-in replacement for EnhancedSimpleContextHandler that uses
-    the new Context Intelligence System
+    the new Context Intelligence System.
+    
+    This handler provides enhanced command processing with context awareness,
+    intelligent feedback, screen lock detection, and command queuing capabilities.
+    It maintains the same interface as the original handler for backward compatibility.
+    
+    Attributes:
+        command_processor: The underlying command processor to execute commands
+        context_manager: Manager for context intelligence operations
+        feedback_manager: Manager for voice and visual feedback
+        jarvis_integration: Integration layer for JARVIS system
+        execution_steps: List of execution steps for compatibility tracking
     """
     
-    def __init__(self, command_processor):
-        """Initialize with compatibility for existing code"""
+    def __init__(self, command_processor) -> None:
+        """Initialize the enhanced context intelligence handler.
+        
+        Args:
+            command_processor: The command processor instance to wrap with
+                context intelligence capabilities
+        """
         self.command_processor = command_processor
         self.context_manager: ContextManager = get_context_manager()
         self.feedback_manager: FeedbackManager = get_feedback_manager()
@@ -42,18 +70,31 @@ class EnhancedContextIntelligenceHandler:
         # Register feedback handlers
         self._register_feedback_handlers()
         
-    async def _ensure_initialized(self):
-        """Ensure the context intelligence system is initialized"""
+    async def _ensure_initialized(self) -> None:
+        """Ensure the context intelligence system is initialized.
+        
+        This method initializes the JARVIS integration if not already done.
+        It's called automatically before processing commands.
+        """
         if not self._initialized:
             await self.jarvis_integration.initialize()
             self._initialized = True
             
-    def _register_feedback_handlers(self):
-        """Register handlers for voice and visual feedback"""
+    def _register_feedback_handlers(self) -> None:
+        """Register handlers for voice and visual feedback.
+        
+        Sets up voice feedback handlers that send responses back through
+        WebSocket connections with appropriate emotions and timestamps.
+        """
         from ..core.feedback_manager import FeedbackChannel
         
         # Voice handler - will be sent back via WebSocket
         async def voice_handler(feedback):
+            """Handle voice feedback by sending through WebSocket.
+            
+            Args:
+                feedback: The feedback object containing content and type
+            """
             if hasattr(self, '_current_websocket') and self._current_websocket:
                 await self._current_websocket.send_json({
                     "type": "voice_feedback",
@@ -68,7 +109,18 @@ class EnhancedContextIntelligenceHandler:
         )
         
     def _get_emotion(self, feedback_type: FeedbackType) -> str:
-        """Map feedback type to JARVIS emotion"""
+        """Map feedback type to JARVIS emotion.
+        
+        Args:
+            feedback_type: The type of feedback being processed
+            
+        Returns:
+            String representing the appropriate emotion for JARVIS
+            
+        Example:
+            >>> handler._get_emotion(FeedbackType.SUCCESS)
+            'satisfied'
+        """
         emotion_map = {
             FeedbackType.INFO: "informative",
             FeedbackType.PROGRESS: "focused",
@@ -79,8 +131,13 @@ class EnhancedContextIntelligenceHandler:
         }
         return emotion_map.get(feedback_type, "neutral")
         
-    def _add_step(self, step: str, details: Dict[str, Any] = None):
-        """Add execution step for compatibility"""
+    def _add_step(self, step: str, details: Dict[str, Any] = None) -> None:
+        """Add execution step for compatibility tracking.
+        
+        Args:
+            step: Description of the execution step
+            details: Optional dictionary containing additional step details
+        """
         self.execution_steps.append({
             "step": step,
             "timestamp": datetime.now().isoformat(),
@@ -91,10 +148,32 @@ class EnhancedContextIntelligenceHandler:
     async def process_with_context(self, command: str, 
                                  websocket=None) -> Dict[str, Any]:
         """
-        Process command with full context intelligence
+        Process command with full context intelligence.
         
         This method maintains the same interface as EnhancedSimpleContextHandler
-        but uses the new Context Intelligence System
+        but uses the new Context Intelligence System. It handles screen lock
+        detection, command queuing, voice feedback, and intelligent processing.
+        
+        Args:
+            command: The voice command to process
+            websocket: Optional WebSocket connection for real-time feedback
+            
+        Returns:
+            Dictionary containing processing results with keys:
+                - success: Boolean indicating if processing succeeded
+                - response: Human-readable response message
+                - result: Detailed processing results
+                - execution_steps: List of processing steps taken
+                - status: Optional status (e.g., 'queued')
+                - command_id: Optional ID for queued commands
+                
+        Raises:
+            Exception: If command processing fails and cannot be recovered
+            
+        Example:
+            >>> result = await handler.process_with_context("open chrome")
+            >>> print(result['response'])
+            'opened chrome'
         """
         try:
             # Store websocket for feedback
@@ -236,7 +315,21 @@ class EnhancedContextIntelligenceHandler:
             self._current_websocket = None
             
     def _extract_action(self, command: str) -> str:
-        """Extract main action from command"""
+        """Extract main action from command text.
+        
+        Parses the command to identify the primary action being requested,
+        handling common patterns like "search for", "open", and "go to".
+        
+        Args:
+            command: The raw command text to parse
+            
+        Returns:
+            Extracted action string or the original command if no pattern matches
+            
+        Example:
+            >>> handler._extract_action("search for python tutorials")
+            'python tutorials'
+        """
         command_lower = command.lower()
         
         if "search for" in command_lower:
@@ -255,7 +348,19 @@ class EnhancedContextIntelligenceHandler:
             return command
             
     def _get_command_type(self, intent: Dict[str, Any]) -> str:
-        """Determine command type from intent"""
+        """Determine command type from intent analysis.
+        
+        Args:
+            intent: Dictionary containing intent analysis results with 'action' key
+            
+        Returns:
+            String representing the command type category
+            
+        Example:
+            >>> intent = {"action": "open", "target": "chrome"}
+            >>> handler._get_command_type(intent)
+            'open_app'
+        """
         action = intent.get("action", "").lower()
         
         if action in ["open", "launch"]:
@@ -268,7 +373,23 @@ class EnhancedContextIntelligenceHandler:
             return "system_command"
             
     def _build_success_message(self, command: str, intent: Dict[str, Any]) -> str:
-        """Build success message from command and intent"""
+        """Build success message from command and intent.
+        
+        Creates a human-readable success message based on the processed
+        command and its analyzed intent.
+        
+        Args:
+            command: The original command that was processed
+            intent: Dictionary containing intent analysis with 'action' and 'target'
+            
+        Returns:
+            Human-readable success message
+            
+        Example:
+            >>> intent = {"action": "open", "target": "chrome"}
+            >>> handler._build_success_message("open chrome", intent)
+            'opened chrome'
+        """
         action = intent.get("action", "completed")
         target = intent.get("target", "your request")
         
@@ -280,7 +401,23 @@ class EnhancedContextIntelligenceHandler:
             return "completed your request"
             
     def _requires_screen(self, command: str) -> bool:
-        """Check if command requires screen access"""
+        """Check if command requires screen access.
+        
+        Analyzes the command to determine if it needs screen interaction,
+        which affects screen lock handling and command queuing decisions.
+        
+        Args:
+            command: The command text to analyze
+            
+        Returns:
+            True if the command requires screen access, False otherwise
+            
+        Example:
+            >>> handler._requires_screen("open chrome")
+            True
+            >>> handler._requires_screen("what time is it")
+            False
+        """
         command_lower = command.lower()
         
         # Same patterns as original for compatibility
@@ -294,10 +431,21 @@ class EnhancedContextIntelligenceHandler:
 
 def wrap_with_enhanced_context(processor):
     """
-    Drop-in replacement for the original wrap_with_enhanced_context
+    Drop-in replacement for the original wrap_with_enhanced_context.
     
     This function maintains the same interface but returns our new
-    context intelligence handler
+    context intelligence handler instead of the original simple handler.
+    
+    Args:
+        processor: The command processor to wrap with context intelligence
+        
+    Returns:
+        EnhancedContextIntelligenceHandler instance wrapping the processor
+        
+    Example:
+        >>> processor = MyCommandProcessor()
+        >>> enhanced = wrap_with_enhanced_context(processor)
+        >>> result = await enhanced.process_with_context("open chrome")
     """
     return EnhancedContextIntelligenceHandler(processor)
 

@@ -3,17 +3,20 @@
 AirPlay Connection Manager
 ===========================
 
-High-level manager for AirPlay connections.
-Integrates discovery service and protocol handler.
+High-level manager for AirPlay connections that integrates discovery service and protocol handler.
+
+This module provides a comprehensive AirPlay management system with automatic device discovery,
+connection management, error handling and retry logic, connection pooling, event notifications,
+telemetry and statistics, all implemented with async/await throughout.
 
 Features:
-- Automatic device discovery
-- Connection management
-- Error handling and retry logic
-- Connection pooling
-- Event notifications
-- Telemetry and statistics
-- Async/await throughout
+- Automatic device discovery with mDNS/Bonjour
+- Connection management with retry logic
+- Error handling and recovery
+- Connection pooling and session management
+- Event notifications and callbacks
+- Telemetry and statistics collection
+- Full async/await support
 
 Author: Derek Russell
 Date: 2025-10-16
@@ -35,7 +38,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ConnectionAttempt:
-    """Record of a connection attempt"""
+    """Record of a connection attempt for analysis and debugging.
+    
+    Attributes:
+        device_name: Name of the AirPlay device
+        ip_address: IP address of the device
+        port: Port number used for connection
+        mode: Connection mode (mirror or extend)
+        timestamp: When the attempt was made
+        success: Whether the connection succeeded
+        duration: How long the attempt took in seconds
+        method: Connection method used
+        error: Error message if connection failed
+    """
     device_name: str
     ip_address: str
     port: int
@@ -50,13 +65,31 @@ class ConnectionAttempt:
 class AirPlayManager:
     """
     AirPlay Connection Manager
-
-    High-level API for managing AirPlay connections.
-    Combines discovery, protocol handling, and connection lifecycle.
+    
+    High-level API for managing AirPlay connections that combines discovery, protocol handling,
+    and connection lifecycle management. Provides a unified interface for AirPlay operations
+    with comprehensive error handling, retry logic, and event notifications.
+    
+    Attributes:
+        config: Configuration dictionary loaded from JSON file
+        discovery: AirPlay discovery service instance
+        protocol: AirPlay protocol handler instance
+        is_initialized: Whether the manager has been initialized
+        connection_history: List of recent connection attempts
+        callbacks: Dictionary of registered event callbacks
+        stats: Connection and performance statistics
     """
 
     def __init__(self, config_path: Optional[str] = None):
-        """Initialize AirPlay manager"""
+        """Initialize AirPlay manager with configuration.
+        
+        Args:
+            config_path: Path to configuration file. If None, uses default location.
+            
+        Raises:
+            FileNotFoundError: If configuration file cannot be found
+            json.JSONDecodeError: If configuration file is invalid JSON
+        """
         self.config = self._load_config(config_path)
 
         # Import components
@@ -92,7 +125,18 @@ class AirPlayManager:
         logger.info("[AIRPLAY MANAGER] Initialized")
 
     def _load_config(self, config_path: Optional[str]) -> Dict:
-        """Load configuration"""
+        """Load configuration from JSON file.
+        
+        Args:
+            config_path: Path to configuration file
+            
+        Returns:
+            Configuration dictionary
+            
+        Raises:
+            FileNotFoundError: If configuration file doesn't exist
+            json.JSONDecodeError: If configuration file is invalid JSON
+        """
         if config_path is None:
             config_path = Path(__file__).parent.parent / 'config' / 'airplay_config.json'
 
@@ -104,13 +148,30 @@ class AirPlayManager:
             raise
 
     def register_callback(self, event: str, callback: Callable):
-        """Register event callback"""
+        """Register event callback for notifications.
+        
+        Args:
+            event: Event name (connection_success, connection_failed, device_discovered, 
+                  device_lost, error)
+            callback: Callback function to register. Can be sync or async.
+            
+        Example:
+            >>> manager = AirPlayManager()
+            >>> def on_device_found(device):
+            ...     print(f"Found device: {device.name}")
+            >>> manager.register_callback('device_discovered', on_device_found)
+        """
         if event in self.callbacks:
             self.callbacks[event].append(callback)
             logger.debug(f"[AIRPLAY MANAGER] Registered callback for {event}")
 
     async def _emit_event(self, event: str, **kwargs):
-        """Emit event to callbacks"""
+        """Emit event to all registered callbacks.
+        
+        Args:
+            event: Event name to emit
+            **kwargs: Event data to pass to callbacks
+        """
         if event in self.callbacks:
             for callback in self.callbacks[event]:
                 try:
@@ -122,7 +183,14 @@ class AirPlayManager:
                     logger.error(f"[AIRPLAY MANAGER] Callback error for {event}: {e}")
 
     async def initialize(self):
-        """Initialize manager and start discovery"""
+        """Initialize manager and start device discovery.
+        
+        Sets up discovery callbacks and starts the discovery service.
+        Should be called before using other manager functions.
+        
+        Raises:
+            RuntimeError: If initialization fails
+        """
         if self.is_initialized:
             logger.warning("[AIRPLAY MANAGER] Already initialized")
             return
@@ -140,7 +208,11 @@ class AirPlayManager:
         logger.info("[AIRPLAY MANAGER] ✅ Initialized and ready")
 
     async def shutdown(self):
-        """Shutdown manager"""
+        """Shutdown manager and cleanup resources.
+        
+        Stops discovery service and disconnects all active connections.
+        Should be called when done using the manager.
+        """
         logger.info("[AIRPLAY MANAGER] Shutting down...")
 
         # Stop discovery
@@ -157,13 +229,21 @@ class AirPlayManager:
         logger.info("[AIRPLAY MANAGER] Shutdown complete")
 
     async def _on_device_discovered(self, device):
-        """Handle device discovered event"""
+        """Handle device discovered event from discovery service.
+        
+        Args:
+            device: Discovered AirPlay device object
+        """
         self.stats['devices_discovered'] += 1
         logger.info(f"[AIRPLAY MANAGER] Device discovered: {device.name}")
         await self._emit_event('device_discovered', device=device)
 
     async def _on_device_lost(self, device):
-        """Handle device lost event"""
+        """Handle device lost event from discovery service.
+        
+        Args:
+            device: Lost AirPlay device object
+        """
         logger.info(f"[AIRPLAY MANAGER] Device lost: {device.name}")
         await self._emit_event('device_lost', device=device)
 
@@ -172,14 +252,19 @@ class AirPlayManager:
             await self.protocol.disconnect(device.name, device.ip_address)
 
     async def discover_devices(self, timeout: Optional[float] = None) -> List:
-        """
-        Discover AirPlay devices
+        """Discover AirPlay devices on the network.
 
         Args:
-            timeout: Discovery timeout (uses config default if None)
+            timeout: Discovery timeout in seconds. Uses config default if None.
 
         Returns:
-            List of discovered devices
+            List of discovered AirPlay device objects
+
+        Example:
+            >>> manager = AirPlayManager()
+            >>> await manager.initialize()
+            >>> devices = await manager.discover_devices(timeout=10.0)
+            >>> print(f"Found {len(devices)} devices")
         """
         logger.info("[AIRPLAY MANAGER] Starting device discovery...")
 
@@ -194,16 +279,30 @@ class AirPlayManager:
         mode: str = "extend",
         auto_discover: bool = True
     ) -> Dict[str, Any]:
-        """
-        Connect to AirPlay device
+        """Connect to an AirPlay device with retry logic.
 
         Args:
             device_name: Name of device to connect to
-            mode: Mirroring mode (mirror or extend)
-            auto_discover: Auto-discover device if not found
+            mode: Mirroring mode - "mirror" or "extend"
+            auto_discover: Whether to auto-discover device if not found
 
         Returns:
-            Connection result dictionary
+            Dictionary with connection result:
+            - success: Whether connection succeeded
+            - message: Human-readable result message
+            - device_name: Name of connected device (if successful)
+            - ip_address: IP address of device (if successful)
+            - mode: Connection mode used (if successful)
+            - method: Connection method used (if successful)
+            - duration: Connection time in seconds (if successful)
+            - error: Error message (if failed)
+
+        Example:
+            >>> result = await manager.connect_to_device("Apple TV", mode="extend")
+            >>> if result['success']:
+            ...     print(f"Connected to {result['device_name']}")
+            ... else:
+            ...     print(f"Connection failed: {result['message']}")
         """
         start_time = time.time()
 
@@ -329,14 +428,21 @@ class AirPlayManager:
             }
 
     async def disconnect_from_device(self, device_name: str) -> Dict[str, Any]:
-        """
-        Disconnect from AirPlay device
+        """Disconnect from an AirPlay device.
 
         Args:
             device_name: Name of device to disconnect from
 
         Returns:
-            Disconnect result dictionary
+            Dictionary with disconnect result:
+            - success: Whether disconnect succeeded
+            - message: Human-readable result message
+            - error: Error message (if failed)
+
+        Example:
+            >>> result = await manager.disconnect_from_device("Apple TV")
+            >>> if result['success']:
+            ...     print("Disconnected successfully")
         """
         logger.info(f"[AIRPLAY MANAGER] Disconnecting from '{device_name}'")
 
@@ -393,7 +499,18 @@ class AirPlayManager:
         method: str,
         error: Optional[str]
     ):
-        """Record connection attempt for analysis"""
+        """Record connection attempt for analysis and debugging.
+        
+        Args:
+            device_name: Name of the device
+            ip_address: IP address of the device
+            port: Port number used
+            mode: Connection mode
+            success: Whether attempt succeeded
+            duration: Time taken in seconds
+            method: Connection method used
+            error: Error message if failed
+        """
         attempt = ConnectionAttempt(
             device_name=device_name,
             ip_address=ip_address,
@@ -413,7 +530,17 @@ class AirPlayManager:
             self.connection_history = self.connection_history[-100:]
 
     def get_available_devices(self) -> List[Dict[str, Any]]:
-        """Get list of available devices"""
+        """Get list of available AirPlay devices.
+        
+        Returns:
+            List of device dictionaries with name, IP, port, model, features,
+            and connection status
+            
+        Example:
+            >>> devices = manager.get_available_devices()
+            >>> for device in devices:
+            ...     print(f"{device['name']} - Connected: {device['is_connected']}")
+        """
         devices = self.discovery.get_all_devices(available_only=True)
         return [
             {
@@ -428,7 +555,17 @@ class AirPlayManager:
         ]
 
     def get_active_connections(self) -> List[Dict[str, Any]]:
-        """Get list of active connections"""
+        """Get list of active AirPlay connections.
+        
+        Returns:
+            List of connection dictionaries with device info, mode, method,
+            connection time, and duration
+            
+        Example:
+            >>> connections = manager.get_active_connections()
+            >>> for conn in connections:
+            ...     print(f"Connected to {conn['device_name']} via {conn['method']}")
+        """
         return [
             {
                 'device_name': session['device_name'],
@@ -443,7 +580,20 @@ class AirPlayManager:
         ]
 
     def get_connection_history(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent connection history"""
+        """Get recent connection history for analysis.
+        
+        Args:
+            limit: Maximum number of recent attempts to return
+            
+        Returns:
+            List of connection attempt dictionaries
+            
+        Example:
+            >>> history = manager.get_connection_history(limit=5)
+            >>> for attempt in history:
+            ...     status = "✅" if attempt['success'] else "❌"
+            ...     print(f"{status} {attempt['device_name']} - {attempt['duration']:.2f}s")
+        """
         history = self.connection_history[-limit:]
         return [
             {
@@ -460,7 +610,15 @@ class AirPlayManager:
         ]
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get comprehensive statistics"""
+        """Get comprehensive statistics and performance metrics.
+        
+        Returns:
+            Dictionary with manager, discovery, and protocol statistics
+            
+        Example:
+            >>> stats = manager.get_stats()
+            >>> print(f"Success rate: {stats['manager']['successful_connections'] / stats['manager']['total_connections'] * 100:.1f}%")
+        """
         uptime = (datetime.now() - self.stats['uptime_start']).total_seconds()
 
         discovery_stats = self.discovery.get_stats()
@@ -478,7 +636,18 @@ class AirPlayManager:
         }
 
     def is_connected_to(self, device_name: str) -> bool:
-        """Check if connected to specific device"""
+        """Check if currently connected to a specific device.
+        
+        Args:
+            device_name: Name of device to check
+            
+        Returns:
+            True if connected to the device, False otherwise
+            
+        Example:
+            >>> if manager.is_connected_to("Apple TV"):
+            ...     print("Currently connected to Apple TV")
+        """
         device = self.discovery.get_device_by_name(device_name)
         if not device:
             # Check active sessions
@@ -495,7 +664,18 @@ _airplay_manager: Optional[AirPlayManager] = None
 
 
 def get_airplay_manager(config_path: Optional[str] = None) -> AirPlayManager:
-    """Get singleton AirPlay manager"""
+    """Get singleton AirPlay manager instance.
+    
+    Args:
+        config_path: Path to configuration file. Only used on first call.
+        
+    Returns:
+        Singleton AirPlayManager instance
+        
+    Example:
+        >>> manager = get_airplay_manager()
+        >>> await manager.initialize()
+    """
     global _airplay_manager
     if _airplay_manager is None:
         _airplay_manager = AirPlayManager(config_path)
@@ -505,6 +685,7 @@ def get_airplay_manager(config_path: Optional[str] = None) -> AirPlayManager:
 if __name__ == "__main__":
     # Test AirPlay manager
     async def test():
+        """Test function demonstrating AirPlay manager usage."""
         logging.basicConfig(level=logging.INFO)
 
         manager = get_airplay_manager()

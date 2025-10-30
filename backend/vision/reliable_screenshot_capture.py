@@ -1,7 +1,21 @@
 #!/usr/bin/env python3
 """
 Reliable Screenshot Capture System
-Implements multiple capture methods with intelligent fallback
+
+This module implements a multi-method screenshot capture system with intelligent
+fallback mechanisms for macOS. It provides robust screenshot capture across
+different desktop spaces using various capture methods including Quartz, AppKit,
+and command-line tools.
+
+The system automatically falls back through different capture methods if one fails,
+ensuring reliable screenshot capture even in challenging scenarios like permission
+issues, off-screen windows, or system resource constraints.
+
+Example:
+    >>> capture = ReliableScreenshotCapture()
+    >>> result = capture.capture_space(1)
+    >>> if result.success:
+    ...     result.image.save('screenshot.png')
 """
 
 import os
@@ -62,7 +76,17 @@ except ImportError as e:
 
 @dataclass
 class ScreenshotResult:
-    """Result of a screenshot capture attempt"""
+    """Result of a screenshot capture attempt.
+    
+    Attributes:
+        success: Whether the capture was successful
+        image: The captured PIL Image, None if failed
+        method: Name of the capture method used
+        space_id: ID of the desktop space captured
+        error: Error message if capture failed
+        timestamp: When the capture was performed
+        metadata: Additional information about the capture
+    """
     success: bool
     image: Optional[Image.Image]
     method: str
@@ -72,11 +96,34 @@ class ScreenshotResult:
     metadata: Dict[str, Any]
 
 class ReliableScreenshotCapture:
-    """
-    Multi-method screenshot capture with intelligent fallback
+    """Multi-method screenshot capture with intelligent fallback.
+    
+    This class provides robust screenshot capture functionality by implementing
+    multiple capture methods and automatically falling back to alternative methods
+    if the primary method fails. It supports capturing from different desktop spaces
+    and handles various edge cases like permission issues and system constraints.
+    
+    Attributes:
+        methods: List of available capture methods in priority order
+        error_matrix: Error handling matrix for graceful degradation (optional)
+        cache: Cache for recent captures to avoid redundant operations
+        cache_ttl: Time-to-live for cached results in seconds
+    
+    Example:
+        >>> capture = ReliableScreenshotCapture()
+        >>> results = capture.capture_all_spaces()
+        >>> for space_id, result in results.items():
+        ...     if result.success:
+        ...         print(f"Captured space {space_id} using {result.method}")
     """
 
     def __init__(self):
+        """Initialize the screenshot capture system.
+        
+        Sets up available capture methods in priority order and initializes
+        the error handling matrix if available. The window capture manager
+        is prioritized if available for better edge case handling.
+        """
         # Build methods list with window_capture_manager as first choice (if available)
         self.methods = []
 
@@ -111,14 +158,30 @@ class ReliableScreenshotCapture:
         self._init_capture_cache()
         logger.info(f"Reliable Screenshot Capture initialized with {len(self.methods)} methods")
 
-    def _init_capture_cache(self):
-        """Initialize cache for recent captures"""
+    def _init_capture_cache(self) -> None:
+        """Initialize cache for recent captures.
+        
+        Sets up an in-memory cache to store recent screenshot results
+        to avoid redundant capture operations within a short time window.
+        """
         self.cache = {}
         self.cache_ttl = 2  # seconds
 
     def capture_all_spaces(self) -> Dict[int, ScreenshotResult]:
-        """
-        Capture screenshots from all spaces with best available method
+        """Capture screenshots from all available desktop spaces.
+        
+        Attempts to detect all available desktop spaces and capture
+        screenshots from each one using the best available method.
+        
+        Returns:
+            Dict mapping space IDs to their corresponding ScreenshotResult.
+            Each result contains the capture status, image data, and metadata.
+        
+        Example:
+            >>> capture = ReliableScreenshotCapture()
+            >>> results = capture.capture_all_spaces()
+            >>> successful_captures = {k: v for k, v in results.items() if v.success}
+            >>> print(f"Captured {len(successful_captures)} spaces successfully")
         """
         results = {}
 
@@ -132,8 +195,26 @@ class ReliableScreenshotCapture:
         return results
 
     def capture_space(self, space_id: int) -> ScreenshotResult:
-        """
-        Capture a specific space using best available method
+        """Capture a screenshot from a specific desktop space.
+        
+        Attempts to capture a screenshot from the specified desktop space
+        using the best available method. Falls back through multiple methods
+        if the primary method fails.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult containing the capture status, image data,
+            method used, and any error information.
+            
+        Example:
+            >>> capture = ReliableScreenshotCapture()
+            >>> result = capture.capture_space(1)
+            >>> if result.success:
+            ...     result.image.save(f'space_{result.space_id}.png')
+            ... else:
+            ...     print(f"Capture failed: {result.error}")
         """
         # Check cache first
         cached = self._get_cached(space_id)
@@ -164,13 +245,27 @@ class ReliableScreenshotCapture:
         )
 
     async def capture_space_with_matrix(self, space_id: int) -> ScreenshotResult:
-        """
-        Capture a specific space using Error Handling Matrix for graceful degradation
+        """Capture a screenshot using Error Handling Matrix for graceful degradation.
 
         This async version uses the Error Handling Matrix for:
         - Priority-based fallback execution
         - Partial result aggregation
         - User-friendly error messages
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with enhanced error handling and reporting.
+            If the Error Handling Matrix is not available, falls back to
+            the standard synchronous capture method.
+            
+        Example:
+            >>> import asyncio
+            >>> capture = ReliableScreenshotCapture()
+            >>> result = await capture.capture_space_with_matrix(1)
+            >>> if result.success:
+            ...     print(f"Captured using method: {result.method}")
         """
         # Check cache first
         cached = self._get_cached(space_id)
@@ -239,12 +334,20 @@ class ReliableScreenshotCapture:
         return self.capture_space(space_id) # Fallback to regular capture
 
     def _capture_with_window_manager(self, space_id: int) -> ScreenshotResult:
-        """
-        Use WindowCaptureManager for robust window capture with edge case handling.
+        """Use WindowCaptureManager for robust window capture with edge case handling.
 
         This method attempts to capture windows from the specified space using
         the WindowCaptureManager which handles permissions, off-screen windows,
         4K/5K resizing, transparency, and fallback windows automatically.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the captured image and metadata
+            
+        Raises:
+            Exception: If window manager capture fails or no windows found
         """
         try:
             import asyncio
@@ -323,8 +426,19 @@ class ReliableScreenshotCapture:
             raise Exception(f"Window manager capture failed: {e}")
 
     def _capture_quartz_composite(self, space_id: int) -> ScreenshotResult:
-        """
-        Use Quartz to capture composite window image
+        """Use Quartz to capture composite window image.
+        
+        Creates a composite image of all windows in the specified space
+        using Quartz's CGWindowListCreateImage function.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the composite image
+            
+        Raises:
+            Exception: If no windows found or Quartz capture fails
         """
         try:
             # Get windows for the space
@@ -372,8 +486,19 @@ class ReliableScreenshotCapture:
             raise Exception(f"Quartz composite capture failed: {e}")
 
     def _capture_quartz_windows(self, space_id: int) -> ScreenshotResult:
-        """
-        Capture individual windows and composite them
+        """Capture individual windows and composite them.
+        
+        Captures each window individually using Quartz and then composites
+        them into a single image based on their screen positions.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the composited image
+            
+        Raises:
+            Exception: If no windows found or individual captures fail
         """
         try:
             windows = self._get_windows_for_space(space_id)
@@ -415,8 +540,19 @@ class ReliableScreenshotCapture:
             raise Exception(f"Quartz windows capture failed: {e}")
 
     def _capture_appkit_screen(self, space_id: int) -> ScreenshotResult:
-        """
-        Use AppKit to capture screen
+        """Use AppKit to capture the main screen.
+        
+        Captures the entire main screen using AppKit's NSScreen functionality
+        and Quartz's window list creation.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the screen capture
+            
+        Raises:
+            Exception: If no main screen found or AppKit capture fails
         """
         try:
             # Get main screen
@@ -455,8 +591,19 @@ class ReliableScreenshotCapture:
             raise Exception(f"AppKit screen capture failed: {e}")
 
     def _capture_screencapture_cli(self, space_id: int) -> ScreenshotResult:
-        """
-        Use screencapture command line tool
+        """Use screencapture command line tool.
+        
+        Uses macOS's built-in screencapture command-line utility to
+        capture a screenshot. This method works even when GUI APIs fail.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the captured image
+            
+        Raises:
+            Exception: If screencapture command fails or times out
         """
         try:
             # Create temporary file
@@ -490,8 +637,20 @@ class ReliableScreenshotCapture:
             raise Exception(f"Screencapture CLI failed: {e}")
 
     def _capture_window_server(self, space_id: int) -> ScreenshotResult:
-        """
-        Direct window server capture (requires permissions)
+        """Direct window server capture using AppleScript.
+        
+        Uses AppleScript to switch to the target space and capture
+        a screenshot. This method requires accessibility permissions
+        and may be slower due to space switching.
+        
+        Args:
+            space_id: The ID of the desktop space to capture
+            
+        Returns:
+            ScreenshotResult with the captured image
+            
+        Raises:
+            Exception: If AppleScript execution fails or permissions denied
         """
         try:
             # Use AppleScript to switch space and capture
@@ -524,7 +683,19 @@ class ReliableScreenshotCapture:
             raise Exception(f"Window server capture failed: {e}")
 
     def _detect_available_spaces(self) -> List[int]:
-        """Detect available spaces"""
+        """Detect available desktop spaces.
+        
+        Attempts to detect the number of available desktop spaces.
+        Currently uses a simple heuristic but can be enhanced to
+        integrate with MacOSSpaceDetector for more accurate detection.
+        
+        Returns:
+            List of space IDs that are potentially available.
+            
+        Note:
+            This is a simplified implementation. In production,
+            integrate with MacOSSpaceDetector for accurate space detection.
+        """
         # Try to get space count from window positions
         windows = CGWindowListCopyWindowInfo(
             kCGWindowListOptionOnScreenOnly,
@@ -536,7 +707,21 @@ class ReliableScreenshotCapture:
         return [1, 2, 3, 4]
 
     def _get_windows_for_space(self, space_id: int) -> List[Dict]:
-        """Get windows for a specific space"""
+        """Get windows for a specific desktop space.
+        
+        Retrieves all windows that belong to the specified desktop space.
+        This is a simplified implementation that filters normal windows.
+        
+        Args:
+            space_id: The ID of the desktop space
+            
+        Returns:
+            List of window dictionaries containing window information.
+            
+        Note:
+            This is a simplified implementation. For accurate space-to-window
+            mapping, integrate with MacOSSpaceDetector.
+        """
         all_windows = CGWindowListCopyWindowInfo(
             kCGWindowListOptionOnScreenOnly,
             kCGNullWindowID
@@ -551,7 +736,23 @@ class ReliableScreenshotCapture:
         return space_windows
 
     def _calculate_composite_bounds(self, windows: List[Dict]) -> Dict[str, float]:
-        """Calculate bounding box for all windows"""
+        """Calculate bounding box for all windows.
+        
+        Computes the minimum bounding rectangle that contains all
+        the specified windows based on their screen positions.
+        
+        Args:
+            windows: List of window dictionaries with bounds information
+            
+        Returns:
+            Dictionary with 'x', 'y', 'width', 'height' keys defining
+            the composite bounding rectangle.
+            
+        Example:
+            >>> windows = [{'kCGWindowBounds': {'X': 0, 'Y': 0, 'Width': 800, 'Height': 600}}]
+            >>> bounds = capture._calculate_composite_bounds(windows)
+            >>> print(f"Composite size: {bounds['width']}x{bounds['height']}")
+        """
         if not windows:
             return {'x': 0, 'y': 0, 'width': 1920, 'height': 1080}
 
@@ -580,7 +781,21 @@ class ReliableScreenshotCapture:
         }
 
     def _cgimage_to_pil(self, cg_image) -> Image.Image:
-        """Convert CGImage to PIL Image"""
+        """Convert CGImage to PIL Image.
+        
+        Converts a Quartz CGImage object to a PIL Image object,
+        handling the necessary color space and format conversions.
+        
+        Args:
+            cg_image: A Quartz CGImage object
+            
+        Returns:
+            PIL Image object in RGBA format
+            
+        Note:
+            This method handles the conversion from BGRA (Core Graphics)
+            to RGBA (PIL) color format.
+        """
         width = Quartz.CGImageGetWidth(cg_image)
         height = Quartz.CGImageGetHeight(cg_image)
 
@@ -602,7 +817,23 @@ class ReliableScreenshotCapture:
         return Image.fromarray(np_array, 'RGBA')
 
     def _composite_window_images(self, window_images: List[Tuple[Image.Image, Dict]]) -> Image.Image:
-        """Composite multiple window images into one"""
+        """Composite multiple window images into one.
+        
+        Combines multiple window images into a single composite image
+        based on their screen positions, preserving transparency and layering.
+        
+        Args:
+            window_images: List of tuples containing (PIL Image, window bounds dict)
+            
+        Returns:
+            Composite PIL Image containing all windows positioned correctly,
+            or None if no images provided.
+            
+        Example:
+            >>> window_images = [(img1, {'X': 0, 'Y': 0}), (img2, {'X': 100, 'Y': 100})]
+            >>> composite = capture._composite_window_images(window_images)
+            >>> composite.save('composite.png')
+        """
         if not window_images:
             return None
 
@@ -623,29 +854,12 @@ class ReliableScreenshotCapture:
         return canvas
 
     def _get_cached(self, space_id: int) -> Optional[ScreenshotResult]:
-        """Get cached screenshot if available"""
-        if space_id in self.cache:
-            result, timestamp = self.cache[space_id]
-            if time.time() - timestamp < self.cache_ttl:
-                return result
-        return None
-
-    def _cache_result(self, space_id: int, result: ScreenshotResult):
-        """Cache a screenshot result"""
-        self.cache[space_id] = (result, time.time())
-
-    def validate_capture(self, image: Image.Image) -> bool:
-        """Validate that a capture is usable"""
-        if not image:
-            return False
-
-        # Check dimensions
-        if image.width < 100 or image.height < 100:
-            return False
-
-        # Check if not all black/white
-        np_array = np.array(image)
-        if np_array.std() < 10:  # Very low variance
-            return False
-
-        return True
+        """Get cached screenshot if available and not expired.
+        
+        Retrieves a previously captured screenshot from the cache
+        if it exists and hasn't exceeded the time-to-live threshold.
+        
+        Args:
+            space_id: The ID of the desktop space
+            
+        Returns:

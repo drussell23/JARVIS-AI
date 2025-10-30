@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
 Autonomous Action Queue System for JARVIS
-Manages priority-based execution of autonomous actions with safety controls
+
+This module provides a priority-based queue system for managing autonomous actions
+with safety controls, retry logic, and comprehensive monitoring. The queue processes
+actions based on dynamic priority scoring that considers factors like urgency,
+confidence, age, and category importance.
+
+The system supports:
+- Priority-based action execution
+- Concurrent action processing with limits
+- Automatic retry with exponential backoff
+- Permission management integration
+- Real-time queue monitoring and statistics
+- Configurable safety controls
+
+Example:
+    >>> from autonomy.action_queue import action_queue
+    >>> action = AutonomousAction(...)
+    >>> await action_queue.add_action(action)
+    >>> state = action_queue.get_queue_state()
 """
 
 import asyncio
@@ -21,7 +39,14 @@ from .permission_manager import PermissionManager
 logger = logging.getLogger(__name__)
 
 class QueueStatus(Enum):
-    """Status of the action queue"""
+    """Status enumeration for the action queue.
+    
+    Attributes:
+        IDLE: Queue is empty and not processing
+        PROCESSING: Queue is actively processing actions
+        PAUSED: Queue processing is temporarily stopped
+        OVERLOADED: Queue has reached capacity limits
+    """
     IDLE = "idle"
     PROCESSING = "processing"
     PAUSED = "paused"
@@ -29,7 +54,18 @@ class QueueStatus(Enum):
 
 @dataclass(order=True)
 class QueuedAction:
-    """Action with queue metadata"""
+    """Represents an action in the queue with associated metadata.
+    
+    This class wraps an AutonomousAction with queue-specific information
+    including priority scoring, timing data, and retry tracking.
+    
+    Attributes:
+        priority_score: Dynamic priority score (lower = higher priority)
+        action: The autonomous action to execute
+        queued_at: Timestamp when action was added to queue
+        attempts: Number of execution attempts made
+        last_attempt: Timestamp of most recent execution attempt
+    """
     priority_score: float = field(compare=True)
     action: AutonomousAction = field(compare=False)
     queued_at: datetime = field(default_factory=datetime.now, compare=False)
@@ -38,11 +74,25 @@ class QueuedAction:
     
     @property
     def age_seconds(self) -> float:
-        """How long the action has been queued"""
+        """Calculate how long the action has been queued.
+        
+        Returns:
+            float: Age of the queued action in seconds
+        """
         return (datetime.now() - self.queued_at).total_seconds()
         
     def calculate_priority_score(self) -> float:
-        """Calculate dynamic priority score based on multiple factors"""
+        """Calculate dynamic priority score based on multiple factors.
+        
+        The priority score considers:
+        - Base priority level (1-5, lower is higher priority)
+        - Action confidence (higher confidence = higher priority)
+        - Queue age (older actions get priority boost)
+        - Category importance (security > communication > maintenance)
+        
+        Returns:
+            float: Calculated priority score (lower = higher priority)
+        """
         # Base priority (1-5, lower is higher priority)
         base_score = self.action.priority.value
         
@@ -70,9 +120,35 @@ class QueuedAction:
         return final_score
 
 class ActionQueueManager:
-    """Manages the priority queue of autonomous actions"""
+    """Manages the priority queue of autonomous actions with safety controls.
+    
+    This class provides a comprehensive queue management system that handles
+    action prioritization, concurrent execution, retry logic, and monitoring.
+    It integrates with the permission system for safety and provides detailed
+    statistics and callbacks for monitoring.
+    
+    Attributes:
+        executor: ActionExecutor instance for running actions
+        permission_manager: PermissionManager for safety controls
+        action_queue: Priority queue of actions (min heap)
+        max_queue_size: Maximum number of queued actions
+        max_concurrent_actions: Maximum concurrent executions
+        max_retries: Maximum retry attempts per action
+        retry_delay: Delay between retry attempts in seconds
+        status: Current queue status
+        active_executions: Number of currently executing actions
+        processing_task: Background processing task
+        stats: Execution statistics dictionary
+        status_callbacks: List of status change callbacks
+        execution_callbacks: List of execution result callbacks
+    """
     
     def __init__(self, executor: Optional[ActionExecutor] = None):
+        """Initialize the action queue manager.
+        
+        Args:
+            executor: Optional ActionExecutor instance. Creates default if None.
+        """
         self.executor = executor or ActionExecutor()
         self.permission_manager = PermissionManager()
         
@@ -105,7 +181,20 @@ class ActionQueueManager:
         self.execution_callbacks: List[Callable] = []
         
     async def add_action(self, action: AutonomousAction) -> bool:
-        """Add an action to the queue"""
+        """Add an action to the priority queue.
+        
+        Creates a QueuedAction wrapper, calculates priority score, and adds
+        to the queue. Automatically starts processing if queue was idle.
+        
+        Args:
+            action: The autonomous action to queue
+            
+        Returns:
+            bool: True if action was successfully queued, False if queue full
+            
+        Raises:
+            Exception: If priority calculation or queue operation fails
+        """
         if len(self.action_queue) >= self.max_queue_size:
             logger.warning(f"Queue full, rejecting action: {action.action_type}")
             self.status = QueueStatus.OVERLOADED
@@ -136,7 +225,17 @@ class ActionQueueManager:
         return True
         
     async def add_actions(self, actions: List[AutonomousAction]) -> int:
-        """Add multiple actions to the queue"""
+        """Add multiple actions to the queue in priority order.
+        
+        Sorts actions by priority and confidence before adding to ensure
+        optimal queue ordering.
+        
+        Args:
+            actions: List of autonomous actions to queue
+            
+        Returns:
+            int: Number of actions successfully added
+        """
         added = 0
         
         # Sort by priority before adding
@@ -152,7 +251,11 @@ class ActionQueueManager:
         return added
         
     async def start_processing(self):
-        """Start processing the queue"""
+        """Start the queue processing loop.
+        
+        Creates a background task to continuously process queued actions.
+        Does nothing if processing is already active.
+        """
         if self.processing_task and not self.processing_task.done():
             return
             
@@ -161,14 +264,25 @@ class ActionQueueManager:
         logger.info("Started queue processing")
         
     async def stop_processing(self):
-        """Stop processing the queue"""
+        """Stop the queue processing loop.
+        
+        Sets status to paused and cancels the processing task.
+        Active executions will complete normally.
+        """
         self.status = QueueStatus.PAUSED
         if self.processing_task:
             self.processing_task.cancel()
         logger.info("Stopped queue processing")
         
     async def _process_queue(self):
-        """Main queue processing loop"""
+        """Main queue processing loop.
+        
+        Continuously processes actions from the queue while respecting
+        concurrency limits and handling errors gracefully.
+        
+        Raises:
+            Exception: Logs and continues processing on individual errors
+        """
         while self.status == QueueStatus.PROCESSING:
             try:
                 # Check if we can process more actions
@@ -200,7 +314,17 @@ class ActionQueueManager:
                 await asyncio.sleep(1)
                 
     async def _execute_action(self, queued_action: QueuedAction):
-        """Execute a single action with retry logic"""
+        """Execute a single action with retry logic and permission checking.
+        
+        Handles the complete execution lifecycle including permission requests,
+        execution, result processing, and retry logic for failed actions.
+        
+        Args:
+            queued_action: The queued action to execute
+            
+        Raises:
+            Exception: Logs execution errors and updates failure statistics
+        """
         self.active_executions += 1
         action = queued_action.action
         
@@ -250,7 +374,17 @@ class ActionQueueManager:
             self.active_executions -= 1
             
     async def _request_permission(self, action: AutonomousAction) -> bool:
-        """Request permission for an action"""
+        """Request permission for an action from the permission manager.
+        
+        Creates a permission request with current queue context and waits
+        for approval within the timeout period.
+        
+        Args:
+            action: The action requiring permission
+            
+        Returns:
+            bool: True if permission granted, False otherwise
+        """
         request = PermissionRequest(
             action=action,
             context={
@@ -263,7 +397,14 @@ class ActionQueueManager:
         return await self.permission_manager.request_permission(request)
         
     async def _notify_execution(self, result: ExecutionResult):
-        """Notify callbacks about execution"""
+        """Notify registered callbacks about action execution results.
+        
+        Calls all registered execution callbacks with the result, logging
+        any callback errors without interrupting other callbacks.
+        
+        Args:
+            result: The execution result to broadcast
+        """
         for callback in self.execution_callbacks:
             try:
                 await callback(result)
@@ -271,7 +412,19 @@ class ActionQueueManager:
                 logger.error(f"Callback error: {e}")
                 
     def get_queue_state(self) -> Dict[str, Any]:
-        """Get current queue state"""
+        """Get comprehensive current queue state and statistics.
+        
+        Provides detailed information about queue status, pending actions,
+        execution statistics, and performance metrics.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing:
+                - status: Current queue status
+                - queue_length: Number of pending actions
+                - active_executions: Number of currently executing actions
+                - queue_preview: List of top 10 pending actions with details
+                - stats: Comprehensive execution statistics
+        """
         # Get queue preview
         queue_preview = []
         temp_queue = list(self.action_queue)
@@ -308,37 +461,69 @@ class ActionQueueManager:
         }
         
     def clear_queue(self):
-        """Clear all pending actions"""
+        """Clear all pending actions from the queue.
+        
+        Removes all queued actions and updates cancellation statistics.
+        Does not affect currently executing actions.
+        """
         cleared = len(self.action_queue)
         self.action_queue.clear()
         self.stats['total_cancelled'] += cleared
         logger.info(f"Cleared {cleared} actions from queue")
         
     def pause(self):
-        """Pause queue processing"""
+        """Pause queue processing.
+        
+        Sets status to paused, stopping new action processing.
+        Currently executing actions will complete normally.
+        """
         self.status = QueueStatus.PAUSED
         logger.info("Queue paused")
         
     def resume(self):
-        """Resume queue processing"""
+        """Resume queue processing if currently paused.
+        
+        Restarts the processing loop if the queue was paused.
+        Does nothing if already processing or idle.
+        """
         if self.status == QueueStatus.PAUSED:
             self.status = QueueStatus.PROCESSING
             asyncio.create_task(self._process_queue())
             logger.info("Queue resumed")
             
     def add_status_callback(self, callback: Callable):
-        """Add callback for status changes"""
+        """Add a callback for queue status changes.
+        
+        Args:
+            callback: Callable to invoke on status changes
+        """
         self.status_callbacks.append(callback)
         
     def add_execution_callback(self, callback: Callable):
-        """Add callback for action executions"""
+        """Add a callback for action execution results.
+        
+        Args:
+            callback: Callable to invoke with ExecutionResult objects
+        """
         self.execution_callbacks.append(callback)
 
 # Global queue instance
 action_queue = ActionQueueManager()
 
 async def test_action_queue():
-    """Test the action queue system"""
+    """Test the action queue system with sample actions.
+    
+    Creates test actions of different priorities and categories,
+    adds them to the queue, and monitors execution progress.
+    Demonstrates queue functionality and statistics collection.
+    
+    Example:
+        >>> await test_action_queue()
+        🤖 Action Queue Test
+        ==================================================
+        ✅ Added 3 actions to queue
+        ...
+    """
     from .autonomous_decision_engine import AutonomousAction, ActionPriority, ActionCategory
     
     # Create test actions

@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
 Advanced Async Architecture - Dynamic Event-Driven Command Pipeline
-Ultra-robust, adaptive, zero-hardcoding async processing system
+
+Ultra-robust, adaptive, zero-hardcoding async processing system for JARVIS.
+Provides a comprehensive pipeline for processing voice commands with dynamic
+stage registration, circuit breaker patterns, event-driven architecture,
+and intelligent error handling.
+
+This module implements:
+- Dynamic pipeline stages with configurable timeouts and retries
+- Adaptive circuit breaker with ML-based prediction
+- Event-driven message bus with priority handling
+- Context-aware command processing
+- Follow-up intent detection and routing
+- Comprehensive error handling and recovery
+
+Example:
+    >>> pipeline = get_async_pipeline(jarvis_instance)
+    >>> result = await pipeline.process_async("open safari and search for dogs")
+    >>> print(result['response'])
+    "I've opened Safari and searched for dogs, Sir."
 """
 
 import asyncio
@@ -19,7 +37,11 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineStage(Enum):
-    """Dynamic pipeline processing stages"""
+    """Dynamic pipeline processing stages.
+    
+    Represents the various stages a command goes through during processing,
+    from initial receipt to final completion or failure.
+    """
 
     RECEIVED = "received"
     VALIDATED = "validated"
@@ -36,7 +58,29 @@ class PipelineStage(Enum):
 
 @dataclass
 class PipelineContext:
-    """Context passed through the pipeline"""
+    """Context passed through the pipeline stages.
+    
+    Contains all information needed to process a command, including metadata,
+    metrics, and state information that accumulates as the command moves
+    through different pipeline stages.
+    
+    Attributes:
+        command_id: Unique identifier for this command
+        text: The original command text
+        user_name: Name of the user issuing the command
+        timestamp: Unix timestamp when command was received
+        stage: Current pipeline stage
+        intent: Detected intent of the command
+        components_loaded: List of components loaded for this command
+        response: Generated response text
+        error: Error message if command failed
+        metadata: Additional metadata dictionary
+        metrics: Performance metrics dictionary
+        retries: Number of retry attempts made
+        priority: Command priority (0=normal, 1=high, 2=critical)
+        audio_data: Voice audio data for authentication
+        speaker_name: Identified speaker name from voice recognition
+    """
 
     command_id: str
     text: str
@@ -55,7 +99,11 @@ class PipelineContext:
     speaker_name: Optional[str] = None  # Identified speaker name
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert context to dictionary"""
+        """Convert context to dictionary for serialization.
+        
+        Returns:
+            Dictionary representation of the context, excluding binary audio data.
+        """
         return {
             "command_id": self.command_id,
             "text": self.text,
@@ -74,7 +122,23 @@ class PipelineContext:
 
 
 class AdaptiveCircuitBreaker:
-    """Advanced circuit breaker with adaptive thresholds and ML-based prediction"""
+    """Advanced circuit breaker with adaptive thresholds and ML-based prediction.
+    
+    Implements the circuit breaker pattern with adaptive learning capabilities.
+    Automatically adjusts failure thresholds and timeouts based on historical
+    performance patterns to optimize system resilience.
+    
+    Attributes:
+        failure_count: Current number of consecutive failures
+        success_count: Current number of consecutive successes
+        threshold: Current failure threshold before opening circuit
+        timeout: Current timeout before attempting to close circuit
+        state: Current circuit state (CLOSED, OPEN, HALF_OPEN)
+        last_failure_time: Timestamp of last failure
+        adaptive: Whether adaptive learning is enabled
+        failure_history: List of failure timestamps
+        success_rate_history: List of historical success rates
+    """
 
     def __init__(
         self,
@@ -82,6 +146,13 @@ class AdaptiveCircuitBreaker:
         initial_timeout: int = 60,
         adaptive: bool = True,
     ):
+        """Initialize the adaptive circuit breaker.
+        
+        Args:
+            initial_threshold: Initial failure count threshold
+            initial_timeout: Initial timeout in seconds
+            adaptive: Enable adaptive threshold adjustment
+        """
         self.failure_count = 0
         self.success_count = 0
         self.threshold = initial_threshold
@@ -96,13 +167,29 @@ class AdaptiveCircuitBreaker:
 
     @property
     def success_rate(self) -> float:
-        """Calculate current success rate"""
+        """Calculate current success rate.
+        
+        Returns:
+            Success rate as a float between 0.0 and 1.0
+        """
         if self._total_calls == 0:
             return 1.0  # Default to 100% success if no calls yet
         return self._successful_calls / self._total_calls
 
     async def call(self, func: Callable, *args, **kwargs):
-        """Execute function with adaptive circuit breaker protection"""
+        """Execute function with adaptive circuit breaker protection.
+        
+        Args:
+            func: Function to execute
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            Result of the function call
+            
+        Raises:
+            Exception: If circuit is open or function fails
+        """
         if self.state == "OPEN":
             if time.time() - self.last_failure_time > self.timeout:
                 logger.info(
@@ -127,7 +214,11 @@ class AdaptiveCircuitBreaker:
             raise e
 
     def on_success(self, duration: float):
-        """Handle successful execution with adaptive learning"""
+        """Handle successful execution with adaptive learning.
+        
+        Args:
+            duration: Execution duration in seconds
+        """
         self.success_count += 1
         self._total_calls += 1
         self._successful_calls += 1
@@ -148,7 +239,7 @@ class AdaptiveCircuitBreaker:
                 logger.debug(f"Increased circuit breaker threshold to {self.threshold}")
 
     def on_failure(self):
-        """Handle failed execution with adaptive learning"""
+        """Handle failed execution with adaptive learning."""
         self.failure_count += 1
         self._total_calls += 1
         self.last_failure_time = time.time()
@@ -176,7 +267,11 @@ class AdaptiveCircuitBreaker:
                     logger.info(f"Adaptive timeout set to {self.timeout}s")
 
     def _calculate_failure_interval(self) -> float:
-        """Calculate average interval between failures"""
+        """Calculate average interval between failures.
+        
+        Returns:
+            Average interval in seconds, or 0 if insufficient data
+        """
         if len(self.failure_history) < 2:
             return 0
 
@@ -189,9 +284,22 @@ class AdaptiveCircuitBreaker:
 
 
 class AsyncEventBus:
-    """Advanced event-driven message bus with filtering and priority"""
+    """Advanced event-driven message bus with filtering and priority.
+    
+    Provides a publish-subscribe event system with priority handling,
+    filtering capabilities, and comprehensive event history tracking.
+    
+    Attributes:
+        subscribers: Dictionary mapping event types to subscriber lists
+        event_queue: Priority queue for event processing
+        event_history: List of recent events for debugging
+        max_history: Maximum number of events to keep in history
+        listeners: Compatibility alias for subscribers
+        queue: Compatibility alias for event_queue
+    """
 
     def __init__(self):
+        """Initialize the async event bus."""
         self.subscribers: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.event_queue = asyncio.PriorityQueue()
         self.event_history: List[Dict[str, Any]] = []
@@ -206,14 +314,27 @@ class AsyncEventBus:
         priority: int = 0,
         filter_func: Optional[Callable] = None,
     ):
-        """Subscribe to an event type with priority and filtering"""
+        """Subscribe to an event type with priority and filtering.
+        
+        Args:
+            event_type: Type of event to subscribe to
+            handler: Function to call when event is emitted
+            priority: Handler priority (higher values execute first)
+            filter_func: Optional filter function to determine if handler should run
+        """
         self.subscribers[event_type].append(
             {"handler": handler, "priority": priority, "filter": filter_func}
         )
         logger.info(f"Subscribed handler to event: {event_type} (priority={priority})")
 
     async def emit(self, event_type: str, data: Any, priority: int = 0):
-        """Emit an event to all subscribers with priority"""
+        """Emit an event to all subscribers with priority.
+        
+        Args:
+            event_type: Type of event being emitted
+            data: Event data to pass to handlers
+            priority: Event priority for processing order
+        """
         event = {
             "type": event_type,
             "data": data,
@@ -245,7 +366,12 @@ class AsyncEventBus:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _safe_handle(self, handler: Callable, data: Any):
-        """Safely execute handler with error handling"""
+        """Safely execute handler with error handling.
+        
+        Args:
+            handler: Event handler function
+            data: Event data to pass to handler
+        """
         try:
             if asyncio.iscoroutinefunction(handler):
                 await handler(data)
@@ -255,7 +381,11 @@ class AsyncEventBus:
             logger.error(f"Error in event handler: {e}", exc_info=True)
 
     def get_event_stats(self) -> Dict[str, Any]:
-        """Get event bus statistics"""
+        """Get event bus statistics.
+        
+        Returns:
+            Dictionary containing event statistics and metrics
+        """
         event_counts = defaultdict(int)
         for event in self.event_history:
             event_counts[event["type"]] += 1
@@ -269,16 +399,39 @@ class AsyncEventBus:
 
 
 class PipelineMiddleware:
-    """Middleware system for pipeline processing"""
+    """Middleware system for pipeline processing.
+    
+    Provides a way to inject processing logic at various points in the
+    pipeline execution without modifying the core pipeline stages.
+    
+    Attributes:
+        name: Middleware identifier
+        handler: Function to execute for middleware processing
+        enabled: Whether this middleware is currently active
+        metrics: Performance metrics for this middleware
+    """
 
     def __init__(self, name: str, handler: Callable):
+        """Initialize pipeline middleware.
+        
+        Args:
+            name: Unique name for this middleware
+            handler: Function to execute for processing
+        """
         self.name = name
         self.handler = handler
         self.enabled = True
         self.metrics: Dict[str, float] = {}
 
     async def process(self, context: PipelineContext) -> PipelineContext:
-        """Process context through middleware"""
+        """Process context through middleware.
+        
+        Args:
+            context: Pipeline context to process
+            
+        Returns:
+            Modified pipeline context
+        """
         if not self.enabled:
             return context
 
@@ -300,7 +453,20 @@ class PipelineMiddleware:
 
 
 class DynamicPipelineStage:
-    """Dynamic pipeline stage with configurable behavior"""
+    """Dynamic pipeline stage with configurable behavior.
+    
+    Represents a single stage in the processing pipeline with configurable
+    timeout, retry logic, and requirement settings. Tracks performance
+    metrics for monitoring and optimization.
+    
+    Attributes:
+        name: Stage identifier
+        handler: Function to execute for this stage
+        timeout: Maximum execution time in seconds
+        retry_count: Number of retry attempts on failure
+        required: Whether stage failure should fail the entire pipeline
+        metrics: Performance and execution metrics
+    """
 
     def __init__(
         self,
@@ -310,6 +476,15 @@ class DynamicPipelineStage:
         retry_count: int = 0,
         required: bool = True,
     ):
+        """Initialize dynamic pipeline stage.
+        
+        Args:
+            name: Unique name for this stage
+            handler: Function to execute for stage processing
+            timeout: Maximum execution time in seconds
+            retry_count: Number of retry attempts on failure
+            required: Whether stage failure should fail entire pipeline
+        """
         self.name = name
         self.handler = handler
         self.timeout = timeout or 30.0
@@ -323,7 +498,14 @@ class DynamicPipelineStage:
         }
 
     async def execute(self, context: PipelineContext) -> None:
-        """Execute stage with retry logic"""
+        """Execute stage with retry logic.
+        
+        Args:
+            context: Pipeline context to process
+            
+        Raises:
+            Exception: If stage is required and all retries fail
+        """
         attempts = 0
         last_error = None
 
@@ -362,14 +544,23 @@ class DynamicPipelineStage:
             context.metadata[f"stage_{self.name}_skipped"] = True
 
     async def _run_handler(self, context: PipelineContext):
-        """Run the stage handler"""
+        """Run the stage handler.
+        
+        Args:
+            context: Pipeline context to process
+        """
         if asyncio.iscoroutinefunction(self.handler):
             await self.handler(context)
         else:
             self.handler(context)
 
     def _update_metrics(self, duration: float, success: bool):
-        """Update stage metrics"""
+        """Update stage performance metrics.
+        
+        Args:
+            duration: Execution duration in seconds
+            success: Whether execution was successful
+        """
         self.metrics["executions"] += 1
         if not success:
             self.metrics["failures"] += 1
@@ -379,9 +570,35 @@ class DynamicPipelineStage:
 
 
 class AdvancedAsyncPipeline:
-    """Ultra-advanced async pipeline with dynamic configuration"""
+    """Ultra-advanced async pipeline with dynamic configuration.
+    
+    Main pipeline class that orchestrates command processing through multiple
+    stages with event-driven architecture, circuit breaker protection, and
+    comprehensive error handling. Supports dynamic stage registration,
+    middleware injection, and context-aware processing.
+    
+    Attributes:
+        jarvis: Reference to main JARVIS instance
+        config: Pipeline configuration dictionary
+        event_bus: Event bus for publish-subscribe messaging
+        circuit_breaker: Circuit breaker for fault tolerance
+        stages: Dictionary of registered pipeline stages
+        middleware: List of registered middleware components
+        active_commands: Currently processing commands
+        performance_metrics: Historical performance data
+        intent_engine: Intent classification engine
+        context_store: Context storage for follow-up handling
+        router: Command routing system
+        context_bridge: Bridge to context intelligence system
+    """
 
     def __init__(self, jarvis_instance=None, config: Optional[Dict[str, Any]] = None):
+        """Initialize the advanced async pipeline.
+        
+        Args:
+            jarvis_instance: Reference to main JARVIS instance
+            config: Configuration dictionary for pipeline settings
+        """
         self.jarvis = jarvis_instance
         self.config = config or {}
         self.event_bus = AsyncEventBus()
@@ -424,7 +641,7 @@ class AdvancedAsyncPipeline:
         self._register_default_stages()
 
     def _register_default_stages(self):
-        """Register default pipeline stages"""
+        """Register default pipeline stages with appropriate timeouts and requirements."""
         self.register_stage("validation", self._validate_command, timeout=5.0, required=True)
 
         self.register_stage(
@@ -459,7 +676,15 @@ class AdvancedAsyncPipeline:
         )
 
     def _init_followup_system(self):
-        """Initialize follow-up handling system components."""
+        """Initialize follow-up handling system components.
+        
+        Sets up intent classification, context storage, and routing systems
+        for handling follow-up questions and contextual conversations.
+        
+        Raises:
+            ImportError: If required follow-up system modules are not available
+            Exception: If initialization fails
+        """
         from pathlib import Path
 
         from backend.core.context.memory_store import InMemoryContextStore
@@ -540,7 +765,15 @@ class AdvancedAsyncPipeline:
         retry_count: int = 0,
         required: bool = True,
     ):
-        """Dynamically register a new pipeline stage"""
+        """Dynamically register a new pipeline stage.
+        
+        Args:
+            name: Unique name for the stage
+            handler: Function to execute for this stage
+            timeout: Maximum execution time in seconds
+            retry_count: Number of retry attempts on failure
+            required: Whether stage failure should fail entire pipeline
+        """
         stage = DynamicPipelineStage(
             name=name,
             handler=handler,
@@ -554,13 +787,22 @@ class AdvancedAsyncPipeline:
         )
 
     def register_middleware(self, name: str, handler: Callable):
-        """Register middleware for pipeline processing"""
+        """Register middleware for pipeline processing.
+        
+        Args:
+            name: Unique name for the middleware
+            handler: Function to execute for middleware processing
+        """
         middleware = PipelineMiddleware(name, handler)
         self.middleware.append(middleware)
         logger.info(f"✅ Registered middleware: {name}")
 
     def unregister_stage(self, name: str):
-        """Remove a pipeline stage"""
+        """Remove a pipeline stage.
+        
+        Args:
+            name: Name of the stage to remove
+        """
         if name in self.stages:
             del self.stages[name]
             logger.info(f"Unregistered pipeline stage: {name}")
@@ -574,7 +816,28 @@ class AdvancedAsyncPipeline:
         audio_data: Optional[bytes] = None,
         speaker_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Process command through advanced async pipeline"""
+        """Process command through advanced async pipeline.
+        
+        Main entry point for command processing. Handles the complete pipeline
+        from command receipt through response generation, with comprehensive
+        error handling and performance monitoring.
+        
+        Args:
+            text: Command text to process
+            user_name: Name of the user issuing the command
+            priority: Command priority (0=normal, 1=high, 2=critical)
+            metadata: Additional metadata dictionary
+            audio_data: Voice audio data for authentication
+            speaker_name: Identified speaker name from voice recognition
+            
+        Returns:
+            Dictionary containing response, metadata, success status, and metrics
+            
+        Example:
+            >>> result = await pipeline.process_async("open safari")
+            >>> print(result['response'])
+            "I've opened Safari for you, Sir."
+        """
 
         # FAST PATH for lock/unlock commands - bypass heavy processing
         text_lower = text.lower()
@@ -643,1848 +906,4 @@ class AdvancedAsyncPipeline:
         self,
         text: str,
         user_name: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        audio_data: Optional[bytes] = None,
-        speaker_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Fast path for lock/unlock commands - with voice authentication when audio available"""
-
-        logger.info(f"[FAST PATH] Processing lock/unlock: {text}")
-        start_time = time.time()
-
-        # Determine action
-        text_lower = text.lower()
-        is_lock = "lock" in text_lower and "unlock" not in text_lower
-        is_unlock = not is_lock
-
-        # Log if audio data is available for voice authentication
-        if audio_data:
-            logger.info(
-                f"[FAST PATH] Audio data available ({len(audio_data)} bytes), "
-                f"will use voice authentication"
-            )
-
-        # Execute command with voice authentication if available
-        async def execute_command():
-            try:
-                # If unlocking with audio, use context-aware handler for voice verification
-                if is_unlock and audio_data and self.jarvis:
-                    logger.info("[FAST PATH] Using context-aware handler with voice authentication")
-                    try:
-                        # Get context-aware handler from jarvis instance
-                        from context_intelligence.handlers.context_aware_handler import (
-                            ContextAwareHandler,
-                        )
-
-                        context_handler = ContextAwareHandler(self.jarvis)
-                        await context_handler.initialize()
-
-                        # Use voice unlock integration
-                        unlock_result = await context_handler.handle_screen_lock_context(
-                            command=text, audio_data=audio_data, speaker_name=user_name
-                        )
-
-                        # Extract response and success from tuple
-                        if isinstance(unlock_result, tuple):
-                            success, message = unlock_result
-                            return {"success": success, "response": message}
-                        else:
-                            return unlock_result
-
-                    except Exception as voice_error:
-                        logger.warning(
-                            f"[FAST PATH] Voice authentication failed: {voice_error}, falling back to simple unlock"
-                        )
-
-                # Fallback to simple unlock - create jarvis_instance with audio data
-                from api.simple_unlock_handler import handle_unlock_command
-
-                # Create jarvis_instance with audio data for voice verification
-                jarvis_instance = type(
-                    "obj",
-                    (object,),
-                    {
-                        "last_audio_data": audio_data,
-                        "last_speaker_name": speaker_name,
-                    },
-                )()
-
-                logger.info(
-                    f"[FAST PATH] Calling handle_unlock_command with audio: {len(audio_data) if audio_data else 0} bytes"
-                )
-
-                result = await handle_unlock_command(text, jarvis_instance)
-                return result
-
-            except Exception as e:
-                logger.error(f"[FAST PATH] Command execution error: {e}")
-                return {"success": False, "error": str(e)}
-
-        # Get command result (includes personalized response from voice unlock integration)
-        result = await execute_command()
-
-        elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[FAST PATH] Command completed in {elapsed:.1f}ms")
-
-        # Use personalized response from handler, or fallback to generic
-        response_message = result.get("response") or result.get("message")
-        if not response_message:
-            # Fallback if handler doesn't provide response
-            if is_lock:
-                response_message = "Of course, Sir. Locking for you."
-            else:
-                response_message = "Of course, Sir. Unlocking for you."
-
-        # Return with personalized response
-        return {
-            "success": result.get("success", False),
-            "response": response_message,
-            "action": result.get("action", "lock" if is_lock else "unlock"),
-            "metadata": {
-                "handled_by": "fast_lock_unlock",
-                "execution_time_ms": elapsed,
-                "lock_unlock_result": result,
-            },
-        }
-
-    async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
-        """Execute pipeline stages (only specific stage if specified in metadata)"""
-        pipeline_start = time.time()
-
-        # Execute middleware (preprocessing)
-        for mw in self.middleware:
-            context = await mw.process(context)
-
-        # Check if a specific stage is requested
-        specific_stage = context.metadata.get("stage")
-
-        if specific_stage:
-            # Execute only the specific stage requested
-            if specific_stage in self.stages:
-                stage = self.stages[specific_stage]
-                context.stage = (
-                    PipelineStage[specific_stage.upper()]
-                    if specific_stage.upper() in PipelineStage.__members__
-                    else PipelineStage.PROCESSING
-                )
-
-                await self.event_bus.emit(f"stage_{specific_stage}", context)
-
-                try:
-                    await stage.execute(context)
-                except Exception as e:
-                    if stage.required:
-                        raise
-                    else:
-                        logger.warning(f"Stage {specific_stage} failed: {e}")
-            else:
-                logger.warning(f"Requested stage '{specific_stage}' not found")
-        else:
-            # Execute default pipeline stages (not custom registered ones like applescript_execution)
-            default_stages = [
-                "validation",
-                "preprocessing",
-                "intent_analysis",
-                "component_loading",
-                "processing",
-                "postprocessing",
-                "response_generation",
-            ]
-
-            for stage_name in default_stages:
-                if stage_name in self.stages:
-                    stage = self.stages[stage_name]
-                    context.stage = (
-                        PipelineStage[stage_name.upper()]
-                        if stage_name.upper() in PipelineStage.__members__
-                        else PipelineStage.PROCESSING
-                    )
-
-                    await self.event_bus.emit(f"stage_{stage_name}", context)
-
-                    try:
-                        await stage.execute(context)
-                    except Exception as e:
-                        if stage.required:
-                            raise
-                        else:
-                            logger.warning(f"Non-critical stage {stage_name} failed: {e}")
-
-        context.metrics["total_pipeline_duration"] = time.time() - pipeline_start
-
-        # Build response dictionary
-        response_dict = {
-            "response": context.response or "Task completed successfully.",
-            "metadata": context.metadata,
-            "success": True,
-            "command_id": context.command_id,
-            "metrics": context.metrics,
-        }
-
-        # Add unlock message if screen was locked (for frontend TTS)
-        # The backend already spoke the message via `say` command, but we also
-        # send it to the frontend so browser-based clients can speak it too
-        if context.metadata.get("unlock_message"):
-            response_dict["speak_immediately"] = context.metadata["unlock_message"]
-            response_dict["requires_unlock"] = True
-            logger.info(
-                f"[PIPELINE] Added unlock message to response for frontend TTS: "
-                f"'{context.metadata['unlock_message'][:50]}...'"
-            )
-
-        return response_dict
-
-    async def _validate_command(self, context: PipelineContext):
-        """Validate command input"""
-        if not context.text or len(context.text.strip()) == 0:
-            raise ValueError("Empty command received")
-
-        if len(context.text) > 10000:
-            raise ValueError("Command too long (max 10000 chars)")
-
-        context.metadata["validated"] = True
-
-    async def _check_screen_lock_universal(self, context: PipelineContext):
-        """
-        UNIVERSAL screen lock detection for ALL commands.
-        Dynamic, robust, and advanced with no hardcoding.
-        """
-        try:
-            # Import screen lock detector
-            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
-
-            detector = get_screen_lock_detector()
-
-            # Check if screen is locked
-            is_locked = await detector.is_screen_locked()
-            context.metadata["screen_locked"] = is_locked
-
-            logger.info(
-                f"[UNIVERSAL SCREEN CHECK] Screen is {'LOCKED' if is_locked else 'UNLOCKED'}"
-            )
-
-            if is_locked:
-                # Check if this command requires screen access
-                screen_context = await detector.check_screen_context(context.text)
-
-                if screen_context["requires_unlock"]:
-                    # Generate dynamic unlock message
-                    unlock_message = screen_context["unlock_message"]
-
-                    # Log prominently
-                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.warning(f"[UNIVERSAL SCREEN CHECK] 🔓 SCREEN LOCKED - UNLOCK REQUIRED")
-                    logger.warning(f"[UNIVERSAL SCREEN CHECK] 📝 Command: {context.text}")
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] 📢 Unlock Message: '{unlock_message}'"
-                    )
-                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-                    # Store unlock information in context
-                    context.metadata["requires_unlock"] = True
-                    context.metadata["unlock_message"] = unlock_message
-                    context.metadata["screen_context"] = screen_context
-
-                    # Speak the unlock message immediately
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] 🎤 Speaking unlock notification NOW..."
-                    )
-                    await self._speak_unlock_message(unlock_message)
-                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ✅ Unlock notification spoken")
-
-                    # Wait for user to hear the message
-                    logger.info(
-                        f"[UNIVERSAL SCREEN CHECK] ⏱️  Waiting 3 seconds for user to hear notification..."
-                    )
-                    await asyncio.sleep(3.0)
-                    logger.info(
-                        f"[UNIVERSAL SCREEN CHECK] ⏱️  Wait complete, proceeding with unlock..."
-                    )
-
-                    # Perform the actual unlock
-                    logger.info(f"[UNIVERSAL SCREEN CHECK] 🔓 Now unlocking screen...")
-                    unlock_success, unlock_result = await detector.handle_screen_lock_context(
-                        context.text
-                    )
-
-                    if unlock_success:
-                        context.metadata["unlock_successful"] = True
-                        logger.info(f"[UNIVERSAL SCREEN CHECK] ✅ Screen unlocked successfully")
-                    else:
-                        context.metadata["unlock_successful"] = False
-                        context.metadata["unlock_error"] = unlock_result
-                        logger.error(
-                            f"[UNIVERSAL SCREEN CHECK] ❌ Screen unlock failed: {unlock_result}"
-                        )
-                else:
-                    logger.info(
-                        f"[UNIVERSAL SCREEN CHECK] ❌ Command doesn't require screen access"
-                    )
-                    context.metadata["requires_unlock"] = False
-            else:
-                logger.info(f"[UNIVERSAL SCREEN CHECK] ✅ Screen is unlocked, proceeding normally")
-                context.metadata["requires_unlock"] = False
-
-        except Exception as e:
-            logger.error(f"[UNIVERSAL SCREEN CHECK] ❌ Error in screen lock detection: {e}")
-            # Don't fail the pipeline, just log the error
-            context.metadata["screen_check_error"] = str(e)
-            context.metadata["requires_unlock"] = False
-
-    async def _speak_unlock_message(self, message: str):
-        """Speak unlock message with slower rate for clarity"""
-        try:
-            from api.jarvis_voice_api import async_subprocess_run
-
-            # Use slower speech rate for unlock messages
-            await async_subprocess_run(["say", "-v", "Daniel", "-r", "160", message], timeout=30.0)
-            logger.info(f"[UNIVERSAL SCREEN CHECK] 📢 Spoke unlock message: {message[:50]}...")
-        except Exception as e:
-            logger.error(f"[UNIVERSAL SCREEN CHECK] ❌ Failed to speak unlock message: {e}")
-
-    async def _preprocess_command(self, context: PipelineContext):
-        """Preprocess command text"""
-        # Normalize text
-        context.text = context.text.strip()
-
-        # Detect language (if needed)
-        context.metadata["language"] = "en"  # Default
-
-        # Extract entities (if needed)
-        context.metadata["preprocessed"] = True
-
-    async def _analyze_intent(self, context: PipelineContext):
-        """Analyze command intent dynamically with compound action awareness"""
-        text_lower = context.text.lower()
-
-        # Dynamic intent detection rules - NO HARDCODING
-        # Extensible through configuration
-        intent_rules = {
-            "monitoring": ["monitor", "watch", "track", "observe", "surveillance"],
-            "vision": [
-                "can you see",
-                "what do you see",
-                "what's on my screen",
-                "what is on my screen",
-                "show me my screen",
-                "are you able to see",
-                "do you see",
-                "describe my screen",
-                "analyze my screen",
-                "what can you see",
-                "look at my screen",
-                "tell me what you see",
-                "screen analysis",
-                "vision analysis",
-                "visual analysis",
-                # Multi-space and workspace queries - PRIORITIZE THESE
-                "across my desktop spaces",
-                "happening across my desktop",
-                "desktop spaces",
-                "desktop space",
-                "across my desktop",
-                "happening across",
-                "what's happening across",
-                "what is happening across",
-                "my workspace",
-                "what am i working on",
-                # Follow-up queries that should use vision/context
-                "explain what is happening",
-                "explain what's happening",
-                "what is happening",
-                "what's happening",
-                "explain in detail",
-                "tell me more",
-                "give me details",
-                "what about the terminal",
-                "what about the",
-                "in the terminal",
-            ],
-            "system_control": [
-                "open",
-                "launch",
-                "start",
-                "close",
-                "quit",
-                "kill",
-                "terminate",
-                "run",
-                "execute",
-            ],
-            "document_creation": [
-                "write",
-                "writing",
-                "create document",
-                "creating document",
-                "write essay",
-                "writing essay",
-                "write paper",
-                "writing paper",
-                "draft",
-                "drafting",
-                "compose",
-                "composing",
-                "author",
-                "authoring",
-            ],
-            "web_search": [
-                "search",
-                "google",
-                "look up",
-                "find online",
-                "browse",
-                "surf",
-            ],
-            "navigation": ["navigate", "go to", "visit", "head to"],
-            "weather": [
-                "weather",
-                "temperature",
-                "forecast",
-                "rain",
-                "snow",
-                "climate",
-            ],
-            "time": ["time", "date", "clock", "when", "calendar"],
-            "media_control": ["play", "pause", "stop", "skip", "volume"],
-            "conversation": [],  # Default fallback
-        }
-
-        # Check for compound commands (multiple intents)
-        detected_intents = []
-
-        # Log when checking vision patterns specifically for debugging
-        if "desktop space" in text_lower or "across my desktop" in text_lower:
-            logger.info(f"[INTENT DEBUG] Checking vision patterns for: {text_lower[:100]}")
-
-        for intent, keywords in intent_rules.items():
-            if any(kw in text_lower for kw in keywords):
-                detected_intents.append(intent)
-                logger.info(
-                    f"[INTENT DEBUG] Detected intent '{intent}' for text: {text_lower[:50]}"
-                )
-
-        # Intelligently handle multiple intents
-        if len(detected_intents) > 1:
-            # Compound command detected - prioritize system_control for compound actions
-            if "system_control" in detected_intents:
-                context.intent = "system_control"
-                context.metadata["compound_command"] = True
-                context.metadata["all_intents"] = detected_intents
-                logger.info(f"Compound command detected with intents: {detected_intents}")
-            else:
-                # Use the most specific intent
-                context.intent = detected_intents[0]
-                context.metadata["secondary_intents"] = detected_intents[1:]
-        elif detected_intents:
-            context.intent = detected_intents[0]
-            logger.info(
-                f"[INTENT FINAL] Intent detected: {context.intent} for command: {context.text}"
-            )
-
-            # Extra logging for vision commands
-            if context.intent == "vision":
-                logger.info(
-                    f"[VISION DETECTED] Command will be routed to vision handler: {context.text[:50]}"
-                )
-        else:
-            # Use ML-based intent detection as fallback
-            context.intent = await self._ml_intent_detection(text_lower)
-
-    async def _ml_intent_detection(self, text: str) -> str:
-        """Advanced ML-based intent detection with dynamic fallbacks"""
-        try:
-            # Try multiple analyzers for robust intent detection
-            intents_detected = []
-            confidence_scores = {}
-
-            # Analyzer 1: Context Intelligence Intent Analyzer
-            try:
-                from context_intelligence.analyzers.intent_analyzer import get_intent_analyzer
-
-                analyzer = get_intent_analyzer()
-                intent = await analyzer.analyze(text)
-                if intent:
-                    intents_detected.append(intent)
-                    confidence_scores[intent] = (
-                        analyzer.get_confidence() if hasattr(analyzer, "get_confidence") else 0.8
-                    )
-            except:
-                pass
-
-            # Analyzer 2: Pattern-based semantic matching
-            semantic_patterns = {
-                "system_control": [
-                    "open",
-                    "launch",
-                    "start",
-                    "close",
-                    "quit",
-                    "switch",
-                ],
-                "search": ["search", "find", "look for", "google", "query"],
-                "navigation": ["go to", "navigate", "visit", "browse"],
-                "file_ops": ["create", "write", "save", "edit", "delete"],
-                "communication": ["email", "message", "send", "call", "contact"],
-                "automation": ["automate", "schedule", "repeat", "trigger"],
-            }
-
-            text_lower = text.lower()
-            for intent_type, patterns in semantic_patterns.items():
-                match_score = sum(1 for p in patterns if p in text_lower) / len(patterns)
-                if match_score > 0:
-                    confidence_scores[intent_type] = match_score
-                    if match_score > 0.3:  # Threshold for inclusion
-                        intents_detected.append(intent_type)
-
-            # Analyzer 3: Context-aware command type detection
-            if "and" in text_lower or "then" in text_lower:
-                # Compound command indicator
-                if "system_control" not in intents_detected:
-                    intents_detected.append("system_control")
-                    confidence_scores["system_control"] = 0.9
-
-            # Select best intent based on confidence
-            if confidence_scores:
-                best_intent = max(confidence_scores, key=confidence_scores.get)
-                logger.info(
-                    f"ML Intent Detection: {best_intent} (confidence: {confidence_scores[best_intent]:.2f})"
-                )
-                return best_intent
-
-            return "conversation"
-
-        except Exception as e:
-            logger.debug(f"ML intent detection error: {e}")
-            return "conversation"
-
-    async def _load_components(self, context: PipelineContext):
-        """Load required components dynamically"""
-        if context.intent == "monitoring":
-            context.components_loaded.append("vision")
-        elif context.intent == "document_creation":
-            context.components_loaded.append("document_writer")
-        elif context.intent == "weather":
-            context.components_loaded.append("weather_system")
-
-        logger.info(f"Components loaded: {context.components_loaded}")
-
-    async def _process_command(self, context: PipelineContext):
-        """Process command based on intent"""
-
-        # ═══════════════════════════════════════════════════════════════
-        # FOLLOW-UP INTENT DETECTION (Highest Priority)
-        # Check if this is a follow-up response to a pending question
-        # ═══════════════════════════════════════════════════════════════
-        try:
-            if hasattr(self, "intent_engine") and hasattr(self, "router"):
-                # Track telemetry start time
-                import time as time_module
-
-                followup_start = time_module.time()
-
-                # Classify intent using adaptive engine
-                intent_result = await self.intent_engine.classify(context.text, {})
-
-                if intent_result.primary_intent == "follow_up" and intent_result.confidence >= 0.75:
-                    logger.info(
-                        f"[FOLLOW-UP] Detected follow-up intent (confidence={intent_result.confidence:.2f})"
-                    )
-
-                    # Telemetry: Track follow-up detection
-                    try:
-                        from backend.core.telemetry.events import get_telemetry
-
-                        telemetry = get_telemetry()
-                        await telemetry.track_event(
-                            "follow_up.intent_detected",
-                            {
-                                "confidence": intent_result.confidence,
-                                "user_input": context.text[:50],
-                            },
-                        )
-                    except:
-                        pass  # Telemetry is optional
-
-                    # Retrieve active pending context
-                    if hasattr(self, "context_store"):
-                        pass
-
-                        # Get most recent valid context
-                        pending_contexts = await self.context_store.get_most_relevant(limit=1)
-
-                        if pending_contexts:
-                            pending_context = pending_contexts[0]
-                            context_age = int(
-                                (
-                                    datetime.utcnow() - pending_context.metadata.created_at
-                                ).total_seconds()
-                            )
-                            logger.info(
-                                f"[FOLLOW-UP] Found pending context: {pending_context.metadata.id} "
-                                f"(category={pending_context.metadata.category.name}, "
-                                f"age={context_age}s)"
-                            )
-
-                            # Route to follow-up handler
-                            routing_result = await self.router.route(
-                                user_input=context.text,
-                                intent=intent_result,
-                                context=pending_context,
-                            )
-
-                            # Calculate latency
-                            latency_ms = int((time_module.time() - followup_start) * 1000)
-
-                            if routing_result.success:
-                                # Mark context as consumed
-                                await self.context_store.mark_consumed(pending_context.metadata.id)
-
-                                # Set response and metadata
-                                context.response = routing_result.response
-                                context.metadata["handled_by"] = "follow_up_handler"
-                                context.metadata["follow_up_context_id"] = (
-                                    pending_context.metadata.id
-                                )
-                                context.metadata["routing_metadata"] = routing_result.metadata
-                                context.metadata["latency_ms"] = latency_ms
-
-                                # Telemetry: Track successful follow-up resolution
-                                try:
-                                    telemetry = get_telemetry()
-                                    await telemetry.track_event(
-                                        "follow_up.resolved",
-                                        {
-                                            "context_id": pending_context.metadata.id,
-                                            "context_category": pending_context.metadata.category.name,
-                                            "context_age_seconds": context_age,
-                                            "window_type": getattr(
-                                                pending_context.payload, "window_type", "unknown"
-                                            ),
-                                            "latency_ms": latency_ms,
-                                            "response_length": len(routing_result.response),
-                                        },
-                                    )
-                                except:
-                                    pass  # Telemetry is optional
-
-                                logger.info(
-                                    f"[FOLLOW-UP] Successfully handled: {routing_result.response[:100]}... (latency={latency_ms}ms)"
-                                )
-                                return
-                            else:
-                                # Telemetry: Track failed routing
-                                try:
-                                    telemetry = get_telemetry()
-                                    await telemetry.track_event(
-                                        "follow_up.route_failed",
-                                        {
-                                            "context_id": pending_context.metadata.id,
-                                            "error": routing_result.error,
-                                            "latency_ms": latency_ms,
-                                        },
-                                    )
-                                except:
-                                    pass
-
-                                logger.warning(
-                                    f"[FOLLOW-UP] Handler failed: {routing_result.error}"
-                                )
-                        else:
-                            logger.info("[FOLLOW-UP] No active pending context found")
-
-                            # Telemetry: Track context miss
-                            try:
-                                telemetry = get_telemetry()
-                                await telemetry.track_event(
-                                    "follow_up.no_pending_context",
-                                    {"user_input": context.text[:50]},
-                                )
-                            except:
-                                pass
-
-                            context.response = "I don't have any pending context to follow up on. What would you like me to look at?"
-                            context.metadata["handled_by"] = "follow_up_no_context"
-                            return
-        except Exception as e:
-            logger.error(f"[FOLLOW-UP] Error in follow-up detection: {e}", exc_info=True)
-            # Fall through to normal processing
-
-        # ═══════════════════════════════════════════════════════════════
-        # CONTEXT INTELLIGENCE QUERIES (Priority 1-3)
-        # Handle natural language queries: "what does it say?", "what am I working on?"
-        # ═══════════════════════════════════════════════════════════════
-        text_lower = context.text.lower()
-
-        # IMPORTANT: Check if this is a desktop space query FIRST
-        is_desktop_space_query = any(
-            phrase in text_lower
-            for phrase in [
-                "desktop space",
-                "desktop spaces",
-                "across my desktop",
-                "across desktop",
-                "happening across",
-                "across my",  # Add more specific patterns
-                "what's happening across",
-                "what is happening across",
-            ]
-        )
-
-        if is_desktop_space_query:
-            logger.info(
-                f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}"
-            )
-            # Don't process as context query - let it go to vision handler
-        else:
-            # Only check context patterns if NOT a desktop space query
-            context_query_patterns = [
-                "what does it say",
-                "what's the error",
-                "what is the error",
-                "explain that",
-                "explain this",
-                "what's that",
-                "what is that",
-                "what am i working on",
-                "what's happening",
-                "what is happening",
-                "what's related",
-                "what is related",
-                "what's connected",
-                "can you see",
-                "do you see",
-                "are you seeing",
-                "what do you see",
-            ]
-
-            if any(pattern in text_lower for pattern in context_query_patterns):
-                try:
-                    # Get context bridge - it's set directly on self by main.py
-                    context_bridge = self.context_bridge
-
-                    # Fallback: try to get from jarvis instance
-                    if not context_bridge and hasattr(self, "jarvis") and self.jarvis:
-                        if hasattr(self.jarvis, "context_bridge"):
-                            context_bridge = self.jarvis.context_bridge
-                        elif hasattr(self.jarvis, "state") and hasattr(
-                            self.jarvis.state, "context_bridge"
-                        ):
-                            context_bridge = self.jarvis.state.context_bridge
-
-                    if context_bridge:
-                        logger.info(f"[CONTEXT-INTEL] Processing workspace query: {context.text}")
-
-                        # Query the context intelligence system
-                        response = await context_bridge.handle_user_query(
-                            context.text, current_space_id=context.metadata.get("current_space_id")
-                        )
-
-                        if response:
-                            context.response = response
-                            context.metadata["handled_by"] = "context_intelligence"
-                            logger.info(f"[CONTEXT-INTEL] Query resolved: {response[:100]}...")
-                            return
-                    else:
-                        logger.debug("[CONTEXT-INTEL] Context bridge not available")
-
-                except Exception as e:
-                    logger.error(
-                        f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True
-                    )
-                    # Fall through to normal processing
-
-        # ═══════════════════════════════════════════════════════════════
-        # UNIFIED COMMAND PROCESSOR (Priority 4)
-        # Delegate to unified processor for advanced command routing
-        # Handles: display commands, system commands, vision, etc.
-        # ═══════════════════════════════════════════════════════════════
-        try:
-            from api.unified_command_processor import get_unified_processor
-
-            # Try to get app from JARVIS instance
-            app = getattr(self.jarvis, "app", None) if hasattr(self, "jarvis") else None
-            processor = get_unified_processor(app=app)
-
-            # Check if unified processor can handle this command
-            logger.info(f"[PIPELINE] Attempting unified processor for: {context.text}")
-            result = await processor.process_command(
-                context.text,
-                websocket=None,
-                audio_data=context.audio_data,
-                speaker_name=context.speaker_name,
-            )
-
-            # If unified processor successfully handled it, use that result
-            if result.get("success") or result.get("command_type") != "unknown":
-                response_text = result.get("response", "Command processed, Sir.")
-                command_type = result.get("command_type", "unknown")
-
-                logger.info(
-                    f"[PIPELINE] ✅ Unified processor handled command (type={command_type}): {response_text[:100]}"
-                )
-
-                context.response = response_text
-                context.metadata["handled_by"] = "unified_command_processor"
-                context.metadata["command_type"] = command_type
-                context.metadata["processor_result"] = result
-                return
-            else:
-                logger.debug(
-                    f"[PIPELINE] Unified processor didn't handle command, continuing pipeline"
-                )
-
-        except ImportError:
-            logger.debug("[PIPELINE] Unified processor not available, continuing pipeline")
-        except Exception as e:
-            logger.error(f"[PIPELINE] Error in unified processor: {e}", exc_info=True)
-            # Fall through to normal processing
-
-        # Check for lock/unlock commands first - these can work without JARVIS
-        if any(
-            phrase in text_lower
-            for phrase in [
-                "lock my screen",
-                "lock screen",
-                "unlock my screen",
-                "unlock screen",
-                "lock the screen",
-                "unlock the screen",
-            ]
-        ):
-            # Handle lock/unlock directly through simple handler
-            logger.info(f"[PIPELINE] Processing lock/unlock command: {context.text}")
-            try:
-                from api.simple_unlock_handler import handle_unlock_command
-
-                result = await handle_unlock_command(context.text, self.jarvis)
-
-                logger.info(
-                    f"[PIPELINE] Lock/unlock result: success={result.get('success')}, action={result.get('action', 'unknown')}"
-                )
-
-                if result.get("success"):
-                    context.response = result.get("response", "Command executed successfully.")
-                    context.metadata["lock_unlock_result"] = result
-                else:
-                    context.response = result.get("response", "Command failed.")
-                    context.metadata["lock_unlock_error"] = result.get("error", "Unknown error")
-
-                context.metadata["handled_by"] = "simple_unlock_handler"
-                logger.info(f"[PIPELINE] Lock/unlock response: {context.response}")
-                return
-            except Exception as e:
-                logger.error(f"Error handling lock/unlock: {e}")
-                context.metadata["lock_unlock_error"] = str(e)
-                context.response = f"I couldn't execute that screen command: {str(e)}"
-                return
-
-        # Handle compound system commands (e.g., "open safari and search for dogs")
-        if context.intent == "system_control":
-            logger.info(f"[PIPELINE] Processing compound system command: {context.text}")
-            try:
-                # Use ContextAwareCommandHandler for intelligent screen lock handling
-                from context_intelligence.analyzers.compound_action_parser import (
-                    get_compound_parser,
-                )
-                from context_intelligence.handlers.context_aware_handler import (
-                    ContextAwareCommandHandler,
-                )
-
-                handler = ContextAwareCommandHandler()
-                parser = get_compound_parser()
-
-                # Define execution callback for compound actions
-                async def execute_compound_command(command: str, context: Dict[str, Any] = None):
-                    """Execute compound command after context handling"""
-                    # Parse command into atomic actions
-                    actions = await parser.parse(command)
-
-                    if not actions:
-                        return {
-                            "success": False,
-                            "message": "I didn't understand that command, Sir.",
-                        }
-
-                    # Log execution plan
-                    plan = parser.get_execution_plan(actions)
-                    logger.info(f"[COMPOUND] Execution plan: {plan}")
-
-                    # Execute actions in sequence
-                    results = []
-                    for action in actions:
-                        result = await self._execute_atomic_action(action)
-                        results.append(result)
-                        if not result.get("success"):
-                            logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
-
-                    # Generate result with detailed feedback
-                    [i for i, r in enumerate(results) if r.get("success")]
-                    failed_actions = [i for i, r in enumerate(results) if not r.get("success")]
-
-                    if all(r.get("success") for r in results):
-                        return {
-                            "success": True,
-                            "message": f"Done, Sir.",
-                            "plan": plan,
-                            "results": results,
-                        }
-                    elif any(r.get("success") for r in results):
-                        # Build detailed message about what failed
-                        failed_parts = []
-                        for idx in failed_actions:
-                            if idx < len(actions):
-                                action_desc = actions[idx].type.value.replace("_", " ")
-                                failed_parts.append(action_desc)
-
-                        if failed_parts:
-                            failed_msg = " and ".join(failed_parts)
-                            return {
-                                "success": True,
-                                "message": f"I completed part of your request, Sir, but couldn't {failed_msg}.",
-                                "plan": plan,
-                                "results": results,
-                            }
-                        else:
-                            return {
-                                "success": True,
-                                "message": f"Partially completed, Sir.",
-                                "plan": plan,
-                                "results": results,
-                            }
-                    else:
-                        return {
-                            "success": False,
-                            "message": "I couldn't complete that command, Sir.",
-                            "plan": plan,
-                            "results": results,
-                        }
-
-                # Handle command with full context awareness (includes screen lock detection & unlock message)
-                result = await handler.handle_command_with_context(
-                    context.text, execute_callback=execute_compound_command
-                )
-
-                # Set response from context-aware handler
-                if result.get("messages"):
-                    # Combine all messages (unlock message + execution result)
-                    context.response = " ".join(result["messages"])
-                else:
-                    context.response = result.get("result", {}).get(
-                        "message", "Command completed, Sir."
-                    )
-
-                context.metadata["context_aware"] = True
-                context.metadata["steps_taken"] = result.get("steps_taken", [])
-                context.metadata["system_context"] = result.get("context", {})
-
-                if result.get("result"):
-                    context.metadata["execution_plan"] = result["result"].get("plan")
-                    context.metadata["execution_results"] = result["result"].get("results")
-
-                return
-
-            except Exception as e:
-                logger.error(f"Error handling compound command: {e}")
-                import traceback
-
-                traceback.print_exc()
-                context.metadata["compound_error"] = str(e)
-                context.response = f"I encountered an error processing that command, Sir."
-                return
-
-        # ENHANCED: Context-aware handling for ALL commands, not just document creation
-        context_handler = None
-        try:
-            from context_intelligence.handlers.context_aware_handler import (
-                get_context_aware_handler,
-            )
-
-            context_handler = get_context_aware_handler()
-            logger.warning(f"[PIPELINE] ✅ Context-aware handler LOADED successfully")
-        except ImportError as e:
-            logger.error(f"[PIPELINE] ❌ Context-aware handler NOT available: {e}, using fallback")
-            context_handler = None
-        except Exception as e:
-            logger.error(f"[PIPELINE] ❌ Error loading context-aware handler: {e}")
-            context_handler = None
-
-        # Get comprehensive system context
-        system_context = await self._get_enhanced_system_context()
-        context.metadata["system_context"] = system_context
-        logger.info(
-            f"[PIPELINE] System state: screen_locked={system_context.get('screen_locked')}, active_apps={system_context.get('active_apps', [])[:3]}"
-        )
-
-        # Handle document creation commands with FULL context awareness
-        if context.intent == "document_creation":
-            logger.info(f"[PIPELINE] Document creation with enhanced context awareness")
-
-            # Store pipeline context for use in callback
-            pipeline_ctx = context
-
-            # Define intelligent document creation callback
-            async def create_document(command: str, context: Dict[str, Any] = None):
-                """Create document with full context awareness"""
-                logger.info(
-                    f"[PIPELINE] Creating document with context: screen_locked={context.get('screen_locked') if context else 'unknown'}"
-                )
-
-                # Intelligent document type detection
-                doc_type = self._detect_document_type(command)
-                logger.info(f"[PIPELINE] Detected document type: {doc_type}")
-
-                # Check if screen is locked and document needs visual confirmation
-                if (
-                    context
-                    and context.get("screen_locked")
-                    and doc_type in ["presentation", "visual_document"]
-                ):
-                    logger.info(
-                        f"[PIPELINE] Visual document requested but screen is locked - will notify user"
-                    )
-
-                # Smart API selection based on context
-                if "google doc" in command.lower() or "google docs" in command.lower():
-                    result = await self._create_google_doc(command)
-                elif context and "Google Chrome" in context.get("active_apps", []):
-                    # If Chrome is open, prefer Google Docs
-                    logger.info(f"[PIPELINE] Chrome is active, suggesting Google Docs")
-                    result = await self._create_google_doc(command)
-                else:
-                    result = await self._create_local_document(command, pipeline_ctx)
-
-                return result
-
-            # Process through context-aware handler
-            try:
-                if context_handler:
-                    logger.warning(f"[PIPELINE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.warning(f"[PIPELINE] 🎯 Using CONTEXT-AWARE handler")
-                    logger.warning(f"[PIPELINE] 📝 Command: {context.text}")
-                    logger.warning(
-                        f"[PIPELINE] 🔒 Screen locked: {system_context.get('screen_locked')}"
-                    )
-                    logger.warning(f"[PIPELINE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-                    result = await context_handler.handle_command_with_context(
-                        context.text, execute_callback=create_document
-                    )
-                    logger.warning(f"[PIPELINE] ✅ Context-aware processing completed successfully")
-                else:
-                    # Fallback: call create_document directly (BYPASSES screen lock check!)
-                    logger.error(
-                        f"[PIPELINE] ⚠️  Using fallback document creation (no context handler)"
-                    )
-                    logger.error(f"[PIPELINE] ⚠️  SCREEN LOCK CHECK BYPASSED!")
-                    result = await create_document(context.text, system_context)
-                    logger.warning(f"[PIPELINE] Fallback document creation completed")
-
-                # Store detailed context information
-                context.metadata["context_steps"] = result.get("steps_taken", [])
-                context.metadata["screen_was_locked"] = result.get("context", {}).get(
-                    "screen_locked", False
-                )
-
-            except Exception as handler_error:
-                logger.error(f"[PIPELINE] Context-aware processing error: {handler_error}")
-                result = {
-                    "success": False,
-                    "messages": [f"Context processing error: {str(handler_error)}"],
-                }
-                context.metadata["document_creation"] = True
-                context.metadata["steps_taken"] = []
-                context.response = (
-                    f"I encountered an error with document creation: {str(handler_error)}"
-                )
-                return
-
-            except Exception as e:
-                logger.error(f"Error in document creation: {e}")
-                context.response = f"I couldn't create the document: {str(e)}"
-                return
-
-            # Set response based on result (this runs AFTER successful execution)
-            if result.get("messages"):
-                # Use the messages from the context-aware handler (including unlock notifications)
-                context.response = " ".join(result["messages"])
-            elif result.get("success"):
-                # If successful but no specific message, provide a default
-                topic = self._extract_document_topic(context.text)
-                context.response = f"I'm creating an essay about {topic} for you, Sir."
-            else:
-                context.response = "I encountered an issue with that request, Sir."
-
-            context.metadata["document_creation"] = True
-            context.metadata["steps_taken"] = result.get("steps_taken", [])
-            return
-
-        # Route to appropriate handler based on intent
-        if context.intent == "vision":
-            try:
-                logger.info(f"[PIPELINE] Processing vision command: {context.text}")
-
-                # Import and use the VisionCommandHandler
-                from api.vision_command_handler import vision_command_handler
-
-                # Initialize if needed
-                if not vision_command_handler.intelligence:
-                    api_key = os.getenv("ANTHROPIC_API_KEY")
-                    await vision_command_handler.initialize_intelligence(api_key)
-
-                # Handle the vision command
-                result = await vision_command_handler.handle_command(context.text)
-
-                if result.get("handled"):
-                    context.response = result.get("response", "I can see your screen, Sir.")
-                    context.metadata["vision_response"] = result.get("response")
-                    context.metadata["vision_handled"] = True
-                    logger.info(f"[PIPELINE] Vision response: {context.response[:100]}...")
-                else:
-                    # Vision handler didn't handle it - log details for debugging
-                    logger.warning(f"[PIPELINE] Vision command not handled. Result: {result}")
-                    context.response = f"Let me analyze your desktop spaces, {context.user_name}."
-                    logger.warning(
-                        f"[PIPELINE] Vision handler returned: handled={result.get('handled')}, reason={result.get('reason', 'unknown')}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Error in vision command: {e}")
-                import traceback
-
-                traceback.print_exc()
-                context.metadata["vision_error"] = str(e)
-
-                # Provide more helpful error messages based on error type
-                error_msg = str(e)
-                if "ValueError" in str(type(e).__name__):
-                    if "screenshot" in error_msg.lower() or "capture" in error_msg.lower():
-                        context.response = (
-                            "I'm unable to capture screenshots of your desktop spaces at the moment. "
-                            "Please ensure screen recording permissions are enabled for JARVIS in "
-                            "System Preferences > Security & Privacy > Privacy > Screen Recording."
-                        )
-                    else:
-                        context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
-                else:
-                    context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
-            return
-
-        # For other commands, check if JARVIS is available
-        if not self.jarvis:
-            context.metadata["warning"] = "No JARVIS instance available"
-            return
-
-        # Handle conversation and system commands (require JARVIS)
-        if context.intent == "conversation" and hasattr(self.jarvis, "claude_chatbot"):
-            try:
-                response = await self.jarvis.claude_chatbot.generate_response(context.text)
-                context.metadata["claude_response"] = response
-            except Exception as e:
-                logger.error(f"Error in Claude chatbot: {e}")
-                context.metadata["claude_error"] = str(e)
-
-        elif context.intent == "system_control" and hasattr(self.jarvis, "_handle_system_command"):
-            try:
-                response = await self.jarvis._handle_system_command(context.text)
-                context.metadata["system_response"] = response
-            except Exception as e:
-                logger.error(f"Error in system control: {e}")
-                context.metadata["system_error"] = str(e)
-
-    async def _execute_atomic_action(self, action) -> Dict[str, Any]:
-        """
-        Execute a single atomic action from the CompoundActionParser
-
-        Args:
-            action: AtomicAction object from CompoundActionParser
-
-        Returns:
-            Result dictionary with success status
-        """
-        from context_intelligence.analyzers.compound_action_parser import ActionType
-
-        try:
-            if action.type == ActionType.OPEN_APP:
-                # Open application using MacOS controller
-                from system_control.macos_controller import MacOSController
-
-                controller = MacOSController()
-
-                app_name = action.params.get("app_name", "")
-                success, message = await asyncio.to_thread(controller.open_application, app_name)
-
-                return {
-                    "success": success,
-                    "action": "open_app",
-                    "app_name": app_name,
-                    "message": message,
-                }
-
-            elif action.type == ActionType.CLOSE_APP:
-                # Close application using MacOS controller
-                from system_control.macos_controller import MacOSController
-
-                controller = MacOSController()
-
-                app_name = action.params.get("app_name", "")
-                success, message = await asyncio.to_thread(controller.close_application, app_name)
-
-                return {
-                    "success": success,
-                    "action": "close_app",
-                    "app_name": app_name,
-                    "message": message,
-                }
-
-            elif action.type == ActionType.SEARCH_WEB:
-                # Perform web search using BrowserController
-                from context_intelligence.automation.browser_controller import (
-                    get_browser_controller,
-                )
-
-                browser = get_browser_controller(preferred_browser="Safari")
-
-                query = action.params.get("query", "")
-                success = await browser.search_google(query)
-
-                return {
-                    "success": success,
-                    "action": "search_web",
-                    "query": query,
-                    "message": (
-                        f"Searched for: {query}" if success else f"Failed to search for: {query}"
-                    ),
-                }
-
-            elif action.type == ActionType.NAVIGATE_URL:
-                # Navigate to URL using BrowserController
-                from context_intelligence.automation.browser_controller import (
-                    get_browser_controller,
-                )
-
-                browser = get_browser_controller(preferred_browser="Safari")
-
-                url = action.params.get("url", "")
-                success = await browser.navigate(url)
-
-                return {
-                    "success": success,
-                    "action": "navigate_url",
-                    "url": url,
-                    "message": (
-                        f"Navigated to: {url}" if success else f"Failed to navigate to: {url}"
-                    ),
-                }
-
-            else:
-                logger.warning(f"Unknown action type: {action.type}")
-                return {
-                    "success": False,
-                    "action": str(action.type),
-                    "message": "Unknown action type",
-                }
-
-        except Exception as e:
-            logger.error(f"Error executing atomic action {action.type}: {e}")
-            return {
-                "success": False,
-                "action": str(action.type),
-                "error": str(e),
-                "message": f"Error: {str(e)}",
-            }
-
-    async def _postprocess_response(self, context: PipelineContext):
-        """Postprocess response before delivery"""
-        # Add personalization
-        if context.response:
-            context.response = context.response.strip()
-
-        context.metadata["postprocessed"] = True
-
-    async def _generate_response(self, context: PipelineContext):
-        """Generate final response from context"""
-        # If response was already set (e.g., by lock/unlock handler), use it
-        if context.response:
-            logger.info(
-                f"Using pre-set response: {context.response[:100] if context.response else 'None'}..."
-            )
-            # Mark that TTS should be triggered
-            context.metadata["speak_response"] = True
-            # Trigger voice synthesis for the response
-            await self._synthesize_voice(context)
-            return
-
-        # Check if lock/unlock was handled successfully
-        if "lock_unlock_result" in context.metadata:
-            # Lock/unlock was handled - response should already be set in _process_command
-            # If not set for some reason, generate a default success message
-            if not context.response:
-                result = context.metadata["lock_unlock_result"]
-                if result.get("success"):
-                    action = result.get("action", "command")
-                    context.response = result.get(
-                        "response",
-                        f"I've successfully executed the {action.replace('_', ' ')}, Sir.",
-                    )
-                else:
-                    context.response = result.get("response", "The command was processed.")
-            logger.info(
-                f"Lock/unlock response finalized: {context.response[:100] if context.response else 'None'}..."
-            )
-            # Mark that TTS should be triggered for lock/unlock confirmations
-            context.metadata["speak_response"] = True
-            # Trigger voice synthesis for the response
-            await self._synthesize_voice(context)
-            return
-
-        # Check if document creation task was started (from _create_local_document)
-        if context.metadata.get("document_task_result"):
-            doc_result = context.metadata["document_task_result"]
-            if doc_result.get("success") and doc_result.get("task_started"):
-                # Document creation task started successfully
-                context.response = doc_result.get(
-                    "message", f"I'm creating the document for you, Sir."
-                )
-                logger.info(f"Document creation task started: {context.response}")
-                # Mark that TTS should be triggered
-                context.metadata["speak_response"] = True
-                await self._synthesize_voice(context)
-                return
-
-        # Prioritize responses from metadata
-        if "claude_response" in context.metadata:
-            context.response = context.metadata["claude_response"]
-        elif "system_response" in context.metadata:
-            context.response = context.metadata["system_response"]
-        elif context.metadata.get("warning"):
-            # Only show warning if it's not a handled command
-            if context.metadata.get("handled_by") != "simple_unlock_handler":
-                context.response = f"Warning: {context.metadata['warning']}"
-            else:
-                # Command was handled, don't override with warning
-                logger.debug(
-                    f"Suppressing warning for handled command: {context.metadata.get('warning')}"
-                )
-                if not context.response:
-                    context.response = "Command executed successfully."
-        else:
-            context.response = f"I processed your command: '{context.text}', {context.user_name}."
-
-        # Mark that TTS should be triggered for all responses
-        context.metadata["speak_response"] = True
-        logger.info(
-            f"Response generated: {context.response[:100] if context.response else 'None'}..."
-        )
-
-        # Trigger voice synthesis for the response
-        await self._synthesize_voice(context)
-
-    async def _synthesize_voice(self, context: PipelineContext):
-        """Synthesize voice response using TTS if enabled"""
-        if not context.metadata.get("speak_response", False):
-            return
-
-        if not context.response:
-            return
-
-        try:
-            # Check if we should skip voice for certain responses
-            skip_voice_phrases = ["Warning: No JARVIS instance", "Processing..."]
-            if any(phrase in context.response for phrase in skip_voice_phrases):
-                logger.debug(f"Skipping voice synthesis for: {context.response[:50]}...")
-                return
-
-            # Check if TTS is available through the WebSocket or API
-            if context.metadata.get("websocket"):
-                # If WebSocket is available, the speak flag is already set in metadata
-                logger.info(f"[VOICE] WebSocket will handle TTS for: {context.response[:50]}...")
-            else:
-                # Try to use the TTS API directly for non-WebSocket contexts
-                logger.info(f"[VOICE] Triggering TTS for: {context.response[:50]}...")
-
-                # Import TTS handler
-                try:
-                    pass
-
-                    # Generate speech asynchronously (fire and forget)
-                    asyncio.create_task(self._speak_response(context.response))
-                    logger.info("[VOICE] TTS task created for response")
-                except ImportError:
-                    logger.debug("TTS handler not available, voice synthesis skipped")
-
-        except Exception as e:
-            logger.error(f"Error in voice synthesis: {e}")
-            # Don't fail the pipeline for voice synthesis errors
-
-    async def _speak_response(self, text: str):
-        """Helper method to speak text using TTS"""
-        try:
-            from api.jarvis_voice_api import async_subprocess_run
-
-            # Use macOS say command for TTS with slower rate for unlock messages
-            speech_rate = "160" if "unlock" in text.lower() or "locked" in text.lower() else "180"
-            await async_subprocess_run(
-                ["say", "-v", "Daniel", "-r", speech_rate, text], timeout=30.0
-            )
-            logger.info(f"[VOICE] Spoken: {text[:50]}...")
-        except Exception as e:
-            logger.error(f"Error speaking response: {e}")
-
-    async def _create_google_doc(self, command: str) -> Dict[str, Any]:
-        """Create a document using Google Docs API with intelligent retry"""
-        try:
-            # Extract topic from command
-            topic = self._extract_document_topic(command)
-
-            # Try to use Google Docs integration
-            try:
-                from context_intelligence.integrations.google_docs_api import GoogleDocsWriter
-
-                writer = GoogleDocsWriter()
-                doc_url = await writer.create_document(topic, command)
-
-                return {
-                    "success": True,
-                    "message": f"I've created a Google Doc about {topic} and opened it for you.",
-                    "doc_url": doc_url,
-                }
-            except ImportError:
-                # Fallback to browser automation
-                from context_intelligence.automation.browser_controller import (
-                    get_browser_controller,
-                )
-
-                browser = get_browser_controller()
-                success = await browser.open_google_docs(topic)
-
-                if success:
-                    return {
-                        "success": True,
-                        "message": f"I've opened Google Docs for you to create a document about {topic}.",
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "I couldn't open Google Docs. Please check your internet connection.",
-                    }
-
-        except Exception as e:
-            logger.error(f"Error creating Google Doc: {e}")
-            return {"success": False, "message": f"I encountered an error: {str(e)}"}
-
-    async def _create_local_document(
-        self, command: str, context: PipelineContext = None
-    ) -> Dict[str, Any]:
-        """Create a local document with content generation"""
-        try:
-            topic = self._extract_document_topic(command)
-
-            # Use document writer for content generation
-            from context_intelligence.executors.document_writer import (
-                DocumentRequest,
-                DocumentType,
-                DocumentWriterExecutor,
-            )
-
-            # Create document request
-            request = DocumentRequest(
-                topic=topic, document_type=DocumentType.ESSAY, original_command=command
-            )
-
-            # Create writer and initiate document creation
-            writer = DocumentWriterExecutor()
-            # This will trigger async document creation in background
-            # NOTE: We start the task but don't await it - it runs asynchronously
-            # IMPORTANT: This task will only start AFTER the context-aware handler
-            # has finished checking screen lock and unlocking if necessary
-            websocket = context.metadata.get("websocket") if context else None
-            asyncio.create_task(writer.create_document(request, websocket=websocket))
-
-            result = {
-                "success": True,
-                # Return a message that will be used by context-aware handler
-                "message": f"I'm creating an essay about {topic} for you, Sir.",
-                "topic": topic,
-                "task_started": True,
-            }
-
-            # Store result in context metadata for proper response generation
-            if context:
-                context.metadata["document_task_result"] = result
-                logger.info(f"Stored document task result in metadata: {result}")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error creating local document: {e}")
-            return {
-                "success": False,
-                "message": f"I couldn't create the document: {str(e)}",
-            }
-
-    async def _get_enhanced_system_context(self) -> Dict[str, Any]:
-        """Get comprehensive system context for intelligent processing"""
-        try:
-            try:
-                from context_intelligence.detectors.screen_lock_detector import (
-                    get_screen_lock_detector,
-                )
-
-                screen_detector = get_screen_lock_detector()
-                is_locked = await screen_detector.is_screen_locked()
-                logger.warning(f"[PIPELINE] 🔍 Screen lock check: is_locked={is_locked}")
-            except ImportError as e:
-                logger.error(
-                    f"[PIPELINE] ❌ Screen lock detector NOT available: {e}, assuming unlocked"
-                )
-                is_locked = False
-            except Exception as e:
-                logger.error(f"[PIPELINE] ❌ Error checking screen lock: {e}, assuming unlocked")
-                is_locked = False
-
-            # Get active applications
-            active_apps = []
-            try:
-                import subprocess
-
-                result = subprocess.run(
-                    [
-                        "osascript",
-                        "-e",
-                        'tell application "System Events" to get name of (processes where background only is false)',
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
-                )
-                if result.returncode == 0:
-                    active_apps = result.stdout.strip().split(", ")
-            except:
-                pass
-
-            # Get network status
-            network_connected = True  # You can expand this
-
-            return {
-                "screen_locked": is_locked,
-                "active_apps": active_apps,
-                "network_connected": network_connected,
-                "timestamp": datetime.now().isoformat(),
-                "system_load": self._get_system_load(),
-            }
-        except Exception as e:
-            logger.warning(f"Could not get full system context: {e}")
-            return {
-                "screen_locked": False,
-                "active_apps": [],
-                "network_connected": True,
-                "timestamp": datetime.now().isoformat(),
-            }
-
-    def _get_system_load(self) -> Dict[str, float]:
-        """Get system resource usage"""
-        try:
-            import psutil
-
-            return {
-                "cpu_percent": psutil.cpu_percent(interval=0.1),
-                "memory_percent": psutil.virtual_memory().percent,
-            }
-        except:
-            return {"cpu_percent": 0.0, "memory_percent": 0.0}
-
-    def _detect_document_type(self, command: str) -> str:
-        """Intelligently detect the type of document requested"""
-        command_lower = command.lower()
-
-        # Check for specific document types
-        if any(word in command_lower for word in ["presentation", "slides", "powerpoint"]):
-            return "presentation"
-        elif any(word in command_lower for word in ["spreadsheet", "excel", "data", "table"]):
-            return "spreadsheet"
-        elif any(word in command_lower for word in ["diagram", "chart", "graph", "visual"]):
-            return "visual_document"
-        elif any(word in command_lower for word in ["essay", "paper", "report"]):
-            return "text_document"
-        elif any(word in command_lower for word in ["email", "letter", "memo"]):
-            return "correspondence"
-        else:
-            return "general_document"
-
-    def _extract_document_topic(self, command: str) -> str:
-        """Extract the topic from a document creation command"""
-        import re
-
-        command_lower = command.lower()
-
-        # Try various patterns to extract topic
-        patterns = [
-            r"(?:write|create).*?(?:about|on|regarding)\s+(.+)",
-            r"(?:essay|document|paper).*?(?:about|on)\s+(.+)",
-            r"(?:write|create)\s+(?:an?|the)?\s*(?:essay|document|paper)?\s*(?:about|on)?\s*(.+)",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, command_lower)
-            if match:
-                topic = match.group(1).strip()
-                # Clean up the topic
-                topic = topic.replace("essay", "").replace("document", "").replace("paper", "")
-                topic = topic.replace("about", "").replace("on", "").strip()
-                if topic:
-                    return topic
-
-        # Fallback: extract key words after common triggers
-        for trigger in ["write", "create", "compose", "draft"]:
-            if trigger in command_lower:
-                parts = command_lower.split(trigger, 1)
-                if len(parts) > 1:
-                    topic = parts[1].strip()
-                    # Remove common words
-                    for word in [
-                        "a",
-                        "an",
-                        "the",
-                        "me",
-                        "essay",
-                        "document",
-                        "paper",
-                        "about",
-                        "on",
-                    ]:
-                        topic = topic.replace(word, " ")
-                    topic = " ".join(topic.split())  # Clean up extra spaces
-                    if topic:
-                        return topic
-
-        return "general topic"
-
-    def _generate_error_response(
-        self, context: PipelineContext, error: Exception
-    ) -> Dict[str, Any]:
-        """Generate intelligent error response with recovery suggestions"""
-        error_responses = {
-            "TimeoutError": f"I apologize, {context.user_name}, but that's taking longer than expected. Please try again.",
-            "ValueError": f"I'm sorry, {context.user_name}, but I couldn't understand that command.",
-            "ConnectionError": f"I'm having trouble connecting to my services, {context.user_name}. Please check your connection.",
-            "ImportError": f"Some components are not available, {context.user_name}. I'll try an alternative approach.",
-            "PermissionError": f"I don't have permission to perform that action, {context.user_name}. You may need to unlock your screen.",
-            "default": f"I apologize, {context.user_name}, but I encountered an error: {str(error)}",
-        }
-
-        error_type = type(error).__name__
-        error_message = error_responses.get(error_type, error_responses["default"])
-
-        # Add recovery suggestions based on error type
-        recovery_suggestions = self._get_recovery_suggestions(error_type, context)
-
-        return {
-            "response": error_message,
-            "metadata": context.metadata,
-            "success": False,
-            "command_id": context.command_id,
-            "error": str(error),
-            "error_type": error_type,
-            "recovery_suggestions": recovery_suggestions,
-            "metrics": context.metrics,
-        }
-
-    def _get_recovery_suggestions(self, error_type: str, context: PipelineContext) -> List[str]:
-        """Generate intelligent recovery suggestions based on error type"""
-        suggestions = []
-
-        if error_type == "TimeoutError":
-            suggestions.append("Try simplifying your command")
-            suggestions.append("Check if the system is busy")
-        elif error_type == "ConnectionError":
-            suggestions.append("Check your internet connection")
-            suggestions.append("Verify the service is running")
-        elif error_type == "PermissionError":
-            if context.metadata.get("screen_locked"):
-                suggestions.append("Your screen appears to be locked")
-                suggestions.append("Try saying 'unlock my screen' first")
-            else:
-                suggestions.append("Check file or system permissions")
-        elif error_type == "ImportError":
-            suggestions.append("Some modules may need to be installed")
-            suggestions.append("The system will use fallback methods")
-
-        return suggestions
-
-    async def _retry_with_fallback(self, func, *args, max_retries: int = 3, **kwargs):
-        """Intelligent retry mechanism with exponential backoff"""
-        last_error = None
-        backoff = 1.0
-
-        for attempt in range(max_retries):
-            try:
-                return await func(*args, **kwargs)
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Attempt {attempt + 1} failed: {e}")
-
-                # Exponential backoff
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
-
-                # Try fallback strategies
-                if attempt == 1:
-                    # Second attempt: try with simplified parameters
-                    if "command" in kwargs:
-                        kwargs["command"] = self._simplify_command(kwargs["command"])
-                elif attempt == 2:
-                    # Third attempt: use alternative method
-                    if hasattr(self, f"{func.__name__}_fallback"):
-                        fallback_func = getattr(self, f"{func.__name__}_fallback")
-                        return await fallback_func(*args, **kwargs)
-
-        raise last_error
-
-    def _simplify_command(self, command: str) -> str:
-        """Simplify a command for retry attempts"""
-        # Remove complex connectors
-        simplified = command.replace(" and then ", " ")
-        simplified = simplified.replace(", then ", " ")
-        simplified = simplified.replace(" followed by ", " ")
-
-        # Remove extra words
-        words_to_remove = ["please", "could you", "can you", "would you"]
-        for word in words_to_remove:
-            simplified = simplified.replace(word, "")
-
-        return simplified.strip()
-
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get current pipeline metrics and statistics"""
-        metrics = {
-            "circuit_breaker": {
-                "state": self.circuit_breaker.state,
-                "failure_count": self.circuit_breaker.failure_count,
-                "threshold": self.circuit_breaker.threshold,
-                "success_rate": self.circuit_breaker.success_rate,
-            },
-            "event_bus": {
-                "listeners": len(self.event_bus.listeners),
-                "queue_size": (
-                    self.event_bus.queue.qsize() if hasattr(self.event_bus, "queue") else 0
-                ),
-            },
-            "stages": {
-                name: {
-                    "timeout": stage.timeout,
-                    "retry_count": stage.retry_count,
-                    "required": stage.required,
-                }
-                for name, stage in self.stages.items()
-            },
-            "performance": {
-                "average_processing_time": self._calculate_average_processing_time(),
-                "total_commands_processed": self._total_commands_processed,
-            },
-        }
-        return metrics
-
-    def _calculate_average_processing_time(self) -> float:
-        """Calculate average processing time from recent commands"""
-        if not hasattr(self, "_processing_times"):
-            return 0.0
-        if len(self._processing_times) == 0:
-            return 0.0
-        return sum(self._processing_times) / len(self._processing_times)
-
-    def _record_performance(self, context: PipelineContext):
-        """Record performance metrics"""
-        if not hasattr(self, "_processing_times"):
-            self._processing_times = []
-        if not hasattr(self, "_total_commands_processed"):
-            self._total_commands_processed = 0
-
-        # Record processing time
-        if "total_time" in context.metrics:
-            self._processing_times.append(context.metrics["total_time"])
-            # Keep only last 100 processing times
-            if len(self._processing_times) > 100:
-                self._processing_times.pop(0)
-
-        self._total_commands_processed += 1
-        total_duration = context.metrics.get("total_pipeline_duration", 0)
-        self.performance_metrics["total_duration"].append(total_duration)
-        self.performance_metrics["intents"].append(context.intent or "unknown")
-
-        # Keep only last 1000 metrics
-        for key in self.performance_metrics:
-            if len(self.performance_metrics[key]) > 1000:
-                self.performance_metrics[key] = self.performance_metrics[key][-1000:]
-
-    def get_pipeline_stats(self) -> Dict[str, Any]:
-        """Get comprehensive pipeline statistics"""
-        total_durations = self.performance_metrics.get("total_duration", [])
-
-        return {
-            "total_commands": len(total_durations),
-            "avg_duration": (sum(total_durations) / len(total_durations) if total_durations else 0),
-            "min_duration": min(total_durations) if total_durations else 0,
-            "max_duration": max(total_durations) if total_durations else 0,
-            "stages": {name: stage.metrics for name, stage in self.stages.items()},
-            "middleware": {mw.name: mw.metrics for mw in self.middleware},
-            "circuit_breaker": {
-                "state": self.circuit_breaker.state,
-                "threshold": self.circuit_breaker.threshold,
-                "failures": self.circuit_breaker.failure_count,
-                "successes": self.circuit_breaker.success_count,
-            },
-            "event_bus": self.event_bus.get_event_stats(),
-            "active_commands": len(self.active_commands),
-        }
-
-
-# Global pipeline instance
-_pipeline_instance = None
-
-
-def get_async_pipeline(
-    jarvis_instance=None, config: Optional[Dict[str, Any]] = None
-) -> AdvancedAsyncPipeline:
-    """Get or create the global async pipeline"""
-    global _pipeline_instance
-
-    if _pipeline_instance is None:
-        _pipeline_instance = AdvancedAsyncPipeline(jarvis_instance, config)
-        logger.info("✅ Advanced Async Command Pipeline initialized")
-
-    return _pipeline_instance
-
-
-def async_stage(name: str, timeout: float = 30.0, retry_count: int = 0, required: bool = True):
-    """Decorator to register a function as a pipeline stage"""
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
-
-        # Register with global pipeline
-        if _pipeline_instance:
-            _pipeline_instance.register_stage(name, wrapper, timeout, retry_count, required)
-
-        return wrapper
-
-    return decorator
-
-
-def async_middleware(name: str):
-    """Decorator to register a function as middleware"""
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
-
-        # Register with global pipeline
-        if _pipeline_instance:
-            _pipeline_instance.register_middleware(name, wrapper)
-
-        return wrapper
-
-    return decorator
+        metadata: Optional[Dict

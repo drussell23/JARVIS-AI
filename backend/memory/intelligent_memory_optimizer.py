@@ -1,6 +1,23 @@
 """
 Intelligent Memory Optimizer for JARVIS
-Automatically frees memory to enable advanced features
+
+This module provides advanced memory optimization capabilities for JARVIS, automatically
+freeing memory to enable resource-intensive features like LangChain mode. It includes
+intelligent process management, system cache clearing, and application optimization.
+
+The optimizer uses a multi-strategy approach:
+- Python garbage collection and cache clearing
+- Helper process termination
+- System cache purging
+- High-memory application management
+- Browser optimization
+- Background app suspension
+- Inactive memory purging
+
+Example:
+    >>> optimizer = IntelligentMemoryOptimizer()
+    >>> success, report = await optimizer.optimize_for_langchain()
+    >>> print(f"Optimization {'succeeded' if success else 'failed'}")
 """
 
 import os
@@ -25,9 +42,29 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class ProcessInfo:
-    """Information about a process that can be managed"""
+    """Information about a process that can be managed for memory optimization.
+    
+    This class encapsulates process details and determines whether a process
+    can be safely killed or suspended based on predefined patterns and rules.
+    
+    Attributes:
+        pid: Process ID
+        name: Process name
+        memory_percent: Percentage of system memory used by process
+        memory_mb: Memory usage in megabytes
+        can_kill: Whether the process can be safely terminated
+        can_suspend: Whether the process can be suspended
+    """
 
     def __init__(self, pid: int, name: str, memory_percent: float, memory_mb: float):
+        """Initialize ProcessInfo with process details.
+        
+        Args:
+            pid: Process ID
+            name: Process name
+            memory_percent: Percentage of system memory used
+            memory_mb: Memory usage in megabytes
+        """
         self.pid = pid
         self.name = name
         self.memory_percent = memory_percent
@@ -36,7 +73,14 @@ class ProcessInfo:
         self.can_suspend = self._determine_suspendable()
 
     def _determine_killable(self) -> bool:
-        """Determine if process can be safely killed"""
+        """Determine if process can be safely killed.
+        
+        Analyzes the process name against patterns of killable and protected
+        processes to determine if it's safe to terminate.
+        
+        Returns:
+            True if process can be safely killed, False otherwise
+        """
         # Killable process patterns
         killable_patterns = [
             "Helper",
@@ -88,7 +132,14 @@ class ProcessInfo:
         return False
 
     def _determine_suspendable(self) -> bool:
-        """Determine if process can be suspended"""
+        """Determine if process can be suspended.
+        
+        Checks if the process matches patterns of applications that can be
+        safely suspended without losing important work or system functionality.
+        
+        Returns:
+            True if process can be suspended, False otherwise
+        """
         suspendable_patterns = [
             "Slack",
             "Discord",
@@ -115,7 +166,14 @@ class ProcessInfo:
         return False
 
     def _is_high_priority_target(self) -> bool:
-        """Check if this is a high-priority target for LangChain mode"""
+        """Check if this is a high-priority target for LangChain mode optimization.
+        
+        Identifies applications that commonly use significant memory and can be
+        closed or suspended to free resources for LangChain operations.
+        
+        Returns:
+            True if this is a high-priority optimization target, False otherwise
+        """
         # These apps commonly use lots of memory and can be closed/suspended
         high_priority_patterns = [
             "Cursor",
@@ -148,9 +206,21 @@ class ProcessInfo:
         return False
 
 class IntelligentMemoryOptimizer:
-    """Advanced memory optimization for JARVIS"""
+    """Advanced memory optimization system for JARVIS.
+    
+    This class provides intelligent memory management capabilities, automatically
+    freeing memory through various strategies to enable resource-intensive features
+    like LangChain mode. It uses a multi-layered approach combining garbage collection,
+    process management, cache clearing, and application optimization.
+    
+    Attributes:
+        is_macos: Whether running on macOS
+        target_memory_percent: Target memory usage percentage for optimization
+        optimization_history: History of optimization attempts
+    """
 
     def __init__(self):
+        """Initialize the memory optimizer with platform detection and default settings."""
         self.is_macos = sys.platform == "darwin"
         self.target_memory_percent = 45  # Target for LangChain mode
         self.optimization_history = []
@@ -158,13 +228,24 @@ class IntelligentMemoryOptimizer:
     async def optimize_for_langchain(
         self, aggressive: bool = False
     ) -> Tuple[bool, Dict[str, Any]]:
-        """
-        Attempt to free memory to enable LangChain mode
+        """Attempt to free memory to enable LangChain mode.
+
+        Executes a series of optimization strategies to reduce memory usage below
+        the target threshold. Strategies are applied in order of effectiveness
+        and safety, from garbage collection to application termination.
 
         Args:
             aggressive: If True, will close high-memory apps like IDEs without prompting
 
-        Returns: (success, report)
+        Returns:
+            Tuple containing:
+                - success: Whether target memory usage was achieved
+                - report: Detailed optimization report with metrics and actions taken
+
+        Example:
+            >>> optimizer = IntelligentMemoryOptimizer()
+            >>> success, report = await optimizer.optimize_for_langchain(aggressive=True)
+            >>> print(f"Freed {report['memory_freed_mb']} MB")
         """
         logger.info(
             f"Starting {'aggressive' if aggressive else 'intelligent'} memory optimization for LangChain"
@@ -236,14 +317,27 @@ class IntelligentMemoryOptimizer:
         return report["success"], report
 
     def _calculate_memory_to_free(self) -> float:
-        """Calculate how much memory needs to be freed"""
+        """Calculate how much memory needs to be freed to reach target.
+        
+        Returns:
+            Amount of memory in MB that needs to be freed
+        """
         mem = psutil.virtual_memory()
         current_used_mb = mem.used / (1024 * 1024)
         target_used_mb = (mem.total * self.target_memory_percent / 100) / (1024 * 1024)
         return max(0, current_used_mb - target_used_mb)
 
     async def _optimize_python_memory(self) -> float:
-        """Optimize Python's memory usage"""
+        """Optimize Python's memory usage through garbage collection and cache clearing.
+        
+        Performs comprehensive Python memory optimization including:
+        - Full garbage collection cycles
+        - Function cache clearing
+        - Regular expression cache purging
+        
+        Returns:
+            Amount of memory freed in MB
+        """
         before_mb = psutil.Process().memory_info().rss / (1024 * 1024)
 
         # Force garbage collection
@@ -272,7 +366,14 @@ class IntelligentMemoryOptimizer:
         return max(0, before_mb - after_mb)
 
     async def _clear_system_caches(self) -> float:
-        """Clear system caches (macOS specific)"""
+        """Clear system caches (macOS specific).
+        
+        Clears various system caches including DNS cache, memory pressure,
+        and compiler caches to free up memory.
+        
+        Returns:
+            Amount of memory freed in MB
+        """
         if not self.is_macos:
             return 0
 
@@ -324,7 +425,15 @@ class IntelligentMemoryOptimizer:
         return max(0, after - before)
 
     async def _kill_helper_processes(self) -> float:
-        """Kill helper processes that use significant memory"""
+        """Kill helper processes that use significant memory.
+        
+        Identifies and terminates helper processes that can be safely killed
+        to free memory. Focuses on browser helpers, system utilities, and
+        other non-critical background processes.
+        
+        Returns:
+            Amount of memory freed in MB
+        """
         processes_to_kill = []
         freed_mb = 0
 
@@ -366,7 +475,15 @@ class IntelligentMemoryOptimizer:
         return freed_mb
 
     async def _close_high_memory_applications(self) -> float:
-        """Close or suspend high-memory applications for LangChain mode"""
+        """Close or suspend high-memory applications for LangChain mode.
+        
+        Targets memory-intensive applications like IDEs, browsers, and messaging
+        apps for closure or suspension. Uses graceful shutdown methods when
+        possible to preserve user work.
+        
+        Returns:
+            Amount of memory freed in MB
+        """
         logger.info("Targeting high-memory applications for LangChain optimization")
         freed_mb = 0
         closed_apps = []
@@ -487,7 +604,14 @@ class IntelligentMemoryOptimizer:
         return freed_mb
 
     async def _suspend_background_apps(self) -> float:
-        """Suspend background applications"""
+        """Suspend background applications to free memory.
+        
+        Sends SIGSTOP signals to suspendable background applications,
+        effectively pausing them and reducing their memory footprint.
+        
+        Returns:
+            Estimated amount of memory freed in MB
+        """
         if not self.is_macos:
             return 0
 
@@ -516,7 +640,14 @@ class IntelligentMemoryOptimizer:
         return freed_mb
 
     async def _optimize_browser_memory(self) -> float:
-        """Optimize browser memory usage"""
+        """Optimize browser memory usage by closing unnecessary tabs.
+        
+        Uses platform-specific methods to close excess browser tabs,
+        particularly targeting Chrome which tends to use significant memory.
+        
+        Returns:
+            Estimated amount of memory freed in MB
+        """
         freed_mb = 0
         browser_names = ["Chrome", "Safari", "Firefox", "Edge", "Brave"]
 
@@ -545,7 +676,14 @@ class IntelligentMemoryOptimizer:
         return freed_mb
 
     async def _purge_inactive_memory(self) -> float:
-        """Purge inactive memory pages"""
+        """Purge inactive memory pages from system memory.
+        
+        Uses various system-level techniques to force the OS to free
+        inactive memory pages and compress memory where possible.
+        
+        Returns:
+            Amount of memory freed in MB
+        """
         if not self.is_macos:
             return 0
 
@@ -579,7 +717,11 @@ class IntelligentMemoryOptimizer:
         return max(0, after - before)
 
     def _save_optimization_report(self, report: Dict):
-        """Save optimization report for analysis"""
+        """Save optimization report for analysis and debugging.
+        
+        Args:
+            report: Optimization report dictionary to save
+        """
         reports_dir = Path.home() / ".jarvis" / "memory_reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -590,7 +732,20 @@ class IntelligentMemoryOptimizer:
             json.dump(report, f, indent=2)
 
     async def get_optimization_suggestions(self) -> List[str]:
-        """Get suggestions for manual memory optimization"""
+        """Get suggestions for manual memory optimization.
+        
+        Analyzes current system state to provide actionable suggestions
+        for manual memory optimization, prioritizing high-impact actions.
+        
+        Returns:
+            List of optimization suggestions as human-readable strings
+            
+        Example:
+            >>> optimizer = IntelligentMemoryOptimizer()
+            >>> suggestions = await optimizer.get_optimization_suggestions()
+            >>> for suggestion in suggestions:
+            ...     print(f"- {suggestion}")
+        """
         suggestions = []
 
         # Analyze current memory usage
@@ -648,13 +803,39 @@ class IntelligentMemoryOptimizer:
 
 # Integration with JARVIS
 class MemoryOptimizationAPI:
-    """API endpoints for memory optimization"""
+    """API endpoints for memory optimization integration with JARVIS.
+    
+    Provides a high-level interface for memory optimization operations,
+    designed to be used by JARVIS's main system for enabling resource-intensive
+    features like LangChain mode.
+    
+    Attributes:
+        optimizer: IntelligentMemoryOptimizer instance for performing optimizations
+    """
 
     def __init__(self):
+        """Initialize the API with a memory optimizer instance."""
         self.optimizer = IntelligentMemoryOptimizer()
 
     async def optimize_for_mode(self, target_mode: str = "langchain") -> Dict:
-        """Optimize memory for a specific mode"""
+        """Optimize memory for a specific operational mode.
+        
+        Args:
+            target_mode: The mode to optimize for (currently supports "langchain")
+            
+        Returns:
+            Dictionary containing optimization results:
+                - success: Whether optimization succeeded
+                - report: Detailed optimization report
+                - message: Human-readable status message
+                - error: Error message if mode is unsupported
+                
+        Example:
+            >>> api = MemoryOptimizationAPI()
+            >>> result = await api.optimize_for_mode("langchain")
+            >>> if result["success"]:
+            ...     print("LangChain mode enabled!")
+        """
         if target_mode == "langchain":
             success, report = await self.optimizer.optimize_for_langchain()
             return {
@@ -670,7 +851,20 @@ class MemoryOptimizationAPI:
             return {"error": "Unsupported mode"}
 
     async def get_suggestions(self) -> Dict:
-        """Get memory optimization suggestions"""
+        """Get memory optimization suggestions for manual intervention.
+        
+        Returns:
+            Dictionary containing:
+                - suggestions: List of optimization suggestions
+                - current_memory_percent: Current system memory usage percentage
+                
+        Example:
+            >>> api = MemoryOptimizationAPI()
+            >>> result = await api.get_suggestions()
+            >>> print(f"Memory usage: {result['current_memory_percent']}%")
+            >>> for suggestion in result['suggestions']:
+            ...     print(f"- {suggestion}")
+        """
         suggestions = await self.optimizer.get_optimization_suggestions()
         return {
             "suggestions": suggestions,
@@ -680,6 +874,7 @@ class MemoryOptimizationAPI:
 if __name__ == "__main__":
     # Test the optimizer
     async def test():
+        """Test function to demonstrate optimizer capabilities."""
         optimizer = IntelligentMemoryOptimizer()
         print("Testing Memory Optimizer...")
 

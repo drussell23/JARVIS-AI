@@ -7,6 +7,17 @@ This module provides a production-ready async subprocess management system with:
 - Comprehensive error handling
 - Semaphore leak prevention
 - Process tracking and monitoring
+
+The module is designed to handle subprocess execution safely across different
+platforms, with special considerations for macOS to prevent segmentation faults
+and resource leaks.
+
+Example:
+    >>> manager = get_subprocess_manager()
+    >>> async with manager.subprocess(['echo', 'hello']) as proc:
+    ...     pass
+    >>> print(proc.stdout)
+    b'hello\\n'
 """
 
 import asyncio
@@ -40,7 +51,16 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessState(Enum):
-    """Process lifecycle states"""
+    """Process lifecycle states for tracking subprocess execution.
+    
+    Attributes:
+        PENDING: Process is queued but not yet started
+        RUNNING: Process is currently executing
+        COMPLETED: Process finished successfully
+        FAILED: Process failed with an error
+        TERMINATED: Process was terminated by signal
+        TIMEOUT: Process was killed due to timeout
+    """
 
     PENDING = "pending"
     RUNNING = "running"
@@ -52,7 +72,24 @@ class ProcessState(Enum):
 
 @dataclass
 class ProcessInfo:
-    """Information about a managed subprocess"""
+    """Information about a managed subprocess.
+    
+    This class tracks the complete lifecycle of a subprocess including
+    timing, output, and error information.
+    
+    Attributes:
+        process_id: Unique identifier for the process
+        command: Command line arguments that were executed
+        state: Current state of the process
+        process: The asyncio subprocess object (if running)
+        start_time: Unix timestamp when process started
+        end_time: Unix timestamp when process ended (if completed)
+        stdout: Captured standard output (if capture_output=True)
+        stderr: Captured standard error (if capture_output=True)
+        return_code: Process exit code (if completed)
+        error: Error message (if failed)
+        pid: System process ID (if running)
+    """
 
     process_id: str
     command: List[str]
@@ -71,6 +108,10 @@ class AsyncSubprocessManager:
     """
     Advanced async subprocess manager with resource management and cleanup.
 
+    This class provides a robust, production-ready system for managing
+    asynchronous subprocesses with automatic resource cleanup, process
+    tracking, and comprehensive error handling.
+
     Features:
     - Subprocess pooling with configurable limits
     - Automatic cleanup on shutdown
@@ -78,13 +119,32 @@ class AsyncSubprocessManager:
     - Memory and resource monitoring
     - Comprehensive error handling
     - Semaphore leak prevention
+    - Platform-specific optimizations (especially macOS)
+
+    Attributes:
+        max_concurrent: Maximum number of concurrent subprocesses
+        max_queue_size: Maximum number of queued subprocess requests
+        process_timeout: Default timeout for subprocess execution
+        cleanup_interval: Interval between cleanup cycles
+        enable_monitoring: Whether resource monitoring is enabled
+
+    Example:
+        >>> manager = AsyncSubprocessManager(max_concurrent=3)
+        >>> async with manager.subprocess(['echo', 'test']) as proc:
+        ...     pass
+        >>> print(proc.return_code)
+        0
     """
 
     _instance = None
     _initialized = False
 
     def __new__(cls):
-        """Singleton pattern to ensure single manager instance"""
+        """Singleton pattern to ensure single manager instance.
+        
+        Returns:
+            The singleton AsyncSubprocessManager instance
+        """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -101,11 +161,15 @@ class AsyncSubprocessManager:
         Initialize the subprocess manager.
 
         Args:
-            max_concurrent: Maximum concurrent subprocesses
+            max_concurrent: Maximum concurrent subprocesses (reduced on macOS)
             max_queue_size: Maximum queued subprocess requests
-            process_timeout: Default timeout for processes (seconds)
-            cleanup_interval: Interval for cleanup tasks (seconds)
-            enable_monitoring: Enable resource monitoring
+            process_timeout: Default timeout for processes in seconds
+            cleanup_interval: Interval for cleanup tasks in seconds
+            enable_monitoring: Enable resource monitoring and logging
+
+        Note:
+            On macOS, max_concurrent is automatically limited to 3 to prevent
+            system instability and segmentation faults.
         """
         if self._initialized:
             return
@@ -152,9 +216,14 @@ class AsyncSubprocessManager:
         logger.info(f"AsyncSubprocessManager initialized: max_concurrent={max_concurrent}")
 
     def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
+        """Setup signal handlers for graceful shutdown.
+        
+        Registers handlers for SIGTERM and SIGINT to ensure proper cleanup
+        when the application is terminated.
+        """
 
         def signal_handler(signum, frame):
+            """Handle shutdown signals by initiating async shutdown."""
             logger.info(f"Received signal {signum}, initiating shutdown...")
             asyncio.create_task(self.shutdown())
 
@@ -162,12 +231,24 @@ class AsyncSubprocessManager:
             signal.signal(sig, signal_handler)
 
     def _start_background_tasks(self):
-        """Start background cleanup and monitoring tasks"""
+        """Start background cleanup and monitoring tasks.
+        
+        Creates the cleanup loop task if it doesn't exist or has completed.
+        """
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
     async def _cleanup_loop(self):
-        """Background task for periodic cleanup"""
+        """Background task for periodic cleanup and monitoring.
+        
+        Runs continuously until shutdown, performing:
+        - Dead process cleanup
+        - Resource usage monitoring
+        - Statistics logging
+        
+        Raises:
+            asyncio.CancelledError: When the task is cancelled during shutdown
+        """
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(self.cleanup_interval)
@@ -182,7 +263,11 @@ class AsyncSubprocessManager:
                 logger.error(f"Error in cleanup loop: {e}")
 
     async def _cleanup_dead_processes(self):
-        """Clean up terminated processes and free resources"""
+        """Clean up terminated processes and free resources.
+        
+        Removes processes that have been completed for more than 60 seconds
+        to prevent memory leaks while maintaining recent process history.
+        """
         to_remove = []
 
         for process_id, info in self._processes.items():
@@ -208,7 +293,11 @@ class AsyncSubprocessManager:
             logger.debug(f"Cleaned up old process: {process_id}")
 
     def _log_resource_usage(self):
-        """Log current resource usage"""
+        """Log current resource usage for monitoring.
+        
+        Logs memory usage, file descriptor count, and process statistics
+        for debugging and monitoring purposes.
+        """
         try:
             process = psutil.Process()
             memory_mb = process.memory_info().rss / 1024 / 1024
@@ -237,16 +326,29 @@ class AsyncSubprocessManager:
         """
         Context manager for running a subprocess with automatic cleanup.
 
+        This is the primary interface for executing subprocesses. It handles
+        resource allocation, process lifecycle management, and automatic cleanup.
+
         Args:
-            command: Command to execute
-            timeout: Process timeout (uses default if None)
-            cwd: Working directory
-            env: Environment variables
+            command: Command and arguments to execute
+            timeout: Process timeout in seconds (uses default if None)
+            cwd: Working directory for the process
+            env: Environment variables (inherits current env if None)
             capture_output: Whether to capture stdout/stderr
-            **kwargs: Additional arguments for create_subprocess_exec
+            **kwargs: Additional arguments passed to create_subprocess_exec
 
         Yields:
-            ProcessInfo object with process details
+            ProcessInfo: Object containing process details and results
+
+        Raises:
+            Exception: Any error that occurs during process execution
+
+        Example:
+            >>> async with manager.subprocess(['ls', '-la']) as proc:
+            ...     pass
+            >>> print(proc.stdout.decode())
+            total 0
+            drwxr-xr-x  2 user user  60 Jan  1 12:00 .
         """
         process_id = f"proc_{time.time()}_{id(command)}"
         timeout = timeout or self.process_timeout
@@ -348,7 +450,14 @@ class AsyncSubprocessManager:
                         logger.debug(f"Error closing pipes for {process_id}: {e}")
 
     async def _terminate_process(self, info: ProcessInfo):
-        """Terminate a process gracefully, then forcefully if needed"""
+        """Terminate a process gracefully, then forcefully if needed.
+        
+        Attempts graceful termination first (SIGTERM), then force kills
+        (SIGKILL) if the process doesn't respond within 5 seconds.
+        
+        Args:
+            info: ProcessInfo object containing the process to terminate
+        """
         if not info.process:
             return
 
@@ -392,17 +501,25 @@ class AsyncSubprocessManager:
         """
         Run a command and return results.
 
+        Convenience method for executing a subprocess and getting its results
+        without needing to use the context manager directly.
+
         Args:
-            command: Command to execute
-            timeout: Process timeout
-            check: Raise exception if return code is non-zero
-            **kwargs: Additional arguments for subprocess
+            command: Command and arguments to execute
+            timeout: Process timeout in seconds
+            check: If True, raise CalledProcessError for non-zero exit codes
+            **kwargs: Additional arguments passed to subprocess()
 
         Returns:
-            Tuple of (return_code, stdout, stderr)
+            Tuple containing (return_code, stdout, stderr)
 
         Raises:
             subprocess.CalledProcessError: If check=True and process fails
+
+        Example:
+            >>> code, stdout, stderr = await manager.run_command(['echo', 'hello'])
+            >>> print(code, stdout)
+            0 b'hello\\n'
         """
         async with self.subprocess(command, timeout=timeout, **kwargs) as info:
             pass  # Process runs in context manager
@@ -420,8 +537,20 @@ class AsyncSubprocessManager:
         """
         Shutdown the subprocess manager and clean up all resources.
 
+        Performs graceful shutdown by:
+        1. Signaling shutdown to background tasks
+        2. Cancelling cleanup tasks
+        3. Terminating all active processes
+        4. Logging final statistics
+        5. Clearing all tracking data
+
         Args:
             timeout: Maximum time to wait for processes to terminate
+
+        Example:
+            >>> await manager.shutdown()
+            INFO:Shutting down AsyncSubprocessManager...
+            INFO:AsyncSubprocessManager shutdown complete
         """
         logger.info("Shutting down AsyncSubprocessManager...")
 
@@ -464,7 +593,11 @@ class AsyncSubprocessManager:
         logger.info("AsyncSubprocessManager shutdown complete")
 
     def _sync_cleanup(self):
-        """Synchronous cleanup for atexit handler"""
+        """Synchronous cleanup for atexit handler.
+        
+        This method is called automatically when the Python interpreter
+        exits to ensure all subprocesses are properly terminated.
+        """
         try:
             # Try to get the event loop
             try:
@@ -492,7 +625,24 @@ class AsyncSubprocessManager:
                         pass
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get current statistics"""
+        """Get current statistics about subprocess execution.
+        
+        Returns:
+            Dictionary containing execution statistics including:
+            - total_started: Total processes started
+            - total_completed: Total processes completed successfully
+            - total_failed: Total processes that failed
+            - total_timeout: Total processes that timed out
+            - total_terminated: Total processes terminated by signal
+            - peak_concurrent: Maximum concurrent processes reached
+            - active_processes: Currently active processes
+            - tracked_processes: Total tracked processes
+            - queue_size: Current queue size
+
+        Example:
+            >>> stats = manager.get_statistics()
+            >>> print(f"Success rate: {stats['total_completed'] / stats['total_started']:.2%}")
+        """
         return {
             **self._stats,
             "active_processes": len(self._active_processes),
@@ -501,7 +651,16 @@ class AsyncSubprocessManager:
         }
 
     def get_active_processes(self) -> List[ProcessInfo]:
-        """Get list of currently active processes"""
+        """Get list of currently active processes.
+        
+        Returns:
+            List of ProcessInfo objects for all currently running processes
+
+        Example:
+            >>> active = manager.get_active_processes()
+            >>> for proc in active:
+            ...     print(f"PID {proc.pid}: {' '.join(proc.command)}")
+        """
         return [
             info
             for process_id, info in self._processes.items()
@@ -514,7 +673,20 @@ _subprocess_manager: Optional[AsyncSubprocessManager] = None
 
 
 def get_subprocess_manager() -> AsyncSubprocessManager:
-    """Get or create the global subprocess manager instance"""
+    """Get or create the global subprocess manager instance.
+    
+    Returns the singleton AsyncSubprocessManager instance, creating it
+    if it doesn't exist. This ensures a single manager is used throughout
+    the application.
+    
+    Returns:
+        The global AsyncSubprocessManager instance
+
+    Example:
+        >>> manager = get_subprocess_manager()
+        >>> async with manager.subprocess(['echo', 'test']) as proc:
+        ...     pass
+    """
     global _subprocess_manager
     if _subprocess_manager is None:
         _subprocess_manager = AsyncSubprocessManager()
@@ -528,8 +700,21 @@ async def run_command(
     """
     Convenience function to run a command using the global manager.
 
+    This is a simple wrapper around the global subprocess manager's
+    run_command method for easy subprocess execution.
+
+    Args:
+        command: Command and arguments to execute
+        timeout: Process timeout in seconds
+        **kwargs: Additional arguments passed to the subprocess manager
+
     Returns:
-        Tuple of (return_code, stdout, stderr)
+        Tuple containing (return_code, stdout, stderr)
+
+    Example:
+        >>> code, stdout, stderr = await run_command(['echo', 'hello world'])
+        >>> print(stdout.decode().strip())
+        hello world
     """
     manager = get_subprocess_manager()
     return await manager.run_command(command, timeout=timeout, **kwargs)

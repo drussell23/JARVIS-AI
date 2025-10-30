@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
-"""
-Weather App Vision Workflow
-Opens Weather app and uses Claude Vision to read weather information
+"""Weather App Vision Workflow module.
+
+This module provides functionality to open the macOS Weather app and use Claude Vision
+to read weather information from the screen. It includes both regular vision analysis
+and continuous screen monitoring capabilities for more reliable weather data extraction.
+
+The workflow handles app launching, screen analysis, and weather data parsing to provide
+structured weather information to users.
+
+Example:
+    >>> from workflows.weather_app_vision import WeatherAppVisionWorkflow
+    >>> workflow = WeatherAppVisionWorkflow(controller, vision_handler)
+    >>> result = await workflow.check_weather_with_vision()
+    >>> print(result['message'])
 """
 
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import time
 import sys
 import os
@@ -18,24 +29,51 @@ from utils.weather_response_parser import WeatherResponseParser
 logger = logging.getLogger(__name__)
 
 class WeatherAppVisionWorkflow:
-    """Workflow to check weather using macOS Weather app and vision"""
+    """Workflow to check weather using macOS Weather app and vision analysis.
     
-    def __init__(self, controller, vision_handler):
+    This class provides methods to open the Weather app, capture screen content,
+    and use vision AI to extract weather information. It supports both regular
+    vision analysis and continuous screen monitoring for improved reliability.
+    
+    Attributes:
+        controller: Application controller for managing macOS apps
+        vision_handler: Vision AI handler for screen analysis
+        continuous_analyzer: Optional continuous screen analyzer for real-time monitoring
+    """
+    
+    def __init__(self, controller, vision_handler) -> None:
+        """Initialize the WeatherAppVisionWorkflow.
+        
+        Args:
+            controller: Application controller instance for managing macOS applications
+            vision_handler: Vision handler instance for screen analysis and AI processing
+        """
         self.controller = controller
         self.vision_handler = vision_handler
-        self.continuous_analyzer = None
+        self.continuous_analyzer: Optional[Any] = None
         
         # Try to use continuous screen analyzer if available
         try:
             from vision.continuous_screen_analyzer import ContinuousScreenAnalyzer
             self.continuous_analyzer = ContinuousScreenAnalyzer(vision_handler)
-        except:
+        except ImportError:
             logger.info("Continuous screen analyzer not available")
     
     async def check_weather_with_continuous_vision(self) -> Dict[str, Any]:
-        """
-        Check weather using continuous screen monitoring
-        This is more reliable when user switches windows
+        """Check weather using continuous screen monitoring.
+        
+        This method provides more reliable weather checking when users switch windows
+        or when the Weather app might not be in focus. Falls back to regular vision
+        analysis if continuous monitoring is unavailable.
+        
+        Returns:
+            Dict containing:
+                - success (bool): Whether weather data was successfully retrieved
+                - message (str): Weather information or error message
+                - source (str): Data source identifier ('continuous_vision' or fallback)
+        
+        Raises:
+            Exception: Any error during continuous vision analysis (handled internally)
         """
         if not self.continuous_analyzer:
             # Fall back to regular method
@@ -61,11 +99,27 @@ class WeatherAppVisionWorkflow:
             return await self.check_weather_with_vision()
         
     async def check_weather_with_vision(self) -> Dict[str, Any]:
-        """
-        Open Weather app and read weather information using vision
+        """Open Weather app and read weather information using vision analysis.
+        
+        This method handles the complete workflow of opening the macOS Weather app,
+        ensuring it's visible and in focus, capturing the screen content, and using
+        AI vision to extract weather information including temperature, conditions,
+        and forecast data.
         
         Returns:
-            Dict with weather information from vision analysis
+            Dict containing:
+                - success (bool): Whether weather data was successfully retrieved
+                - message (str): Formatted weather information or error message
+                - source (str): Data source identifier ('weather_app_vision')
+        
+        Raises:
+            Exception: Any error during the weather checking process (handled internally)
+            
+        Example:
+            >>> workflow = WeatherAppVisionWorkflow(controller, vision_handler)
+            >>> result = await workflow.check_weather_with_vision()
+            >>> if result['success']:
+            ...     print(f"Weather: {result['message']}")
         """
         try:
             # Step 1: Open Weather app
@@ -111,7 +165,7 @@ class WeatherAppVisionWorkflow:
                             'tell application "Weather" to activate'
                         ], capture_output=True)
                         await asyncio.sleep(1.0)
-                    except:
+                    except Exception:
                         pass
             
             # Prepare vision query specifically for weather
@@ -180,7 +234,24 @@ class WeatherAppVisionWorkflow:
 
 # Integration function
 async def execute_weather_app_workflow(controller, vision_handler) -> str:
-    """Execute the weather app vision workflow and return formatted response"""
+    """Execute the weather app vision workflow and return formatted response.
+    
+    This is a convenience function that creates a WeatherAppVisionWorkflow instance
+    and executes the complete weather checking process, returning a formatted string
+    response suitable for user display.
+    
+    Args:
+        controller: Application controller instance for managing macOS applications
+        vision_handler: Vision handler instance for screen analysis and AI processing
+    
+    Returns:
+        str: Formatted weather information message or error description
+        
+    Example:
+        >>> weather_info = await execute_weather_app_workflow(controller, vision_handler)
+        >>> print(weather_info)
+        "Current temperature: 72°F, Partly cloudy conditions in San Francisco..."
+    """
     workflow = WeatherAppVisionWorkflow(controller, vision_handler)
     
     # Try continuous vision first if available

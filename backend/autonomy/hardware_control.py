@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-"""
-Hardware Control Module for JARVIS
-Controls camera, displays, audio, and other hardware components
-Powered by Anthropic's Claude API for intelligent control decisions
+"""Hardware Control Module for JARVIS.
+
+This module provides comprehensive hardware control capabilities with AI-powered
+decision making. It manages camera, displays, audio, and other hardware components
+using intelligent validation and optimization powered by Anthropic's Claude API.
+
+The module supports multiple control modes including automatic, manual, scheduled,
+and context-aware control with built-in safety validations and privacy protections.
+
+Example:
+    >>> from backend.autonomy.hardware_control import HardwareControlSystem
+    >>> controller = HardwareControlSystem(api_key="your-key")
+    >>> await controller.control_camera("disable", "Privacy mode")
+    {'success': True, 'message': 'Camera access restricted'}
 """
 
 import asyncio
@@ -20,7 +30,19 @@ import re
 logger = logging.getLogger(__name__)
 
 class HardwareComponent(Enum):
-    """Hardware components that can be controlled"""
+    """Hardware components that can be controlled.
+    
+    Attributes:
+        CAMERA: System camera/webcam
+        MICROPHONE: Audio input device
+        DISPLAY: Primary display settings
+        AUDIO_OUTPUT: Audio output device and settings
+        BLUETOOTH: Bluetooth connectivity
+        WIFI: WiFi connectivity
+        KEYBOARD_BACKLIGHT: Keyboard illumination
+        TRACKPAD: Trackpad/touchpad settings
+        EXTERNAL_DISPLAY: External monitor settings
+    """
     CAMERA = "camera"
     MICROPHONE = "microphone"
     DISPLAY = "display"
@@ -32,7 +54,14 @@ class HardwareComponent(Enum):
     EXTERNAL_DISPLAY = "external_display"
 
 class ControlMode(Enum):
-    """Control modes for hardware"""
+    """Control modes for hardware management.
+    
+    Attributes:
+        AUTOMATIC: Fully automated control based on AI decisions
+        MANUAL: User-initiated control only
+        SCHEDULED: Time-based control schedules
+        CONTEXT_AWARE: Context-sensitive automatic adjustments
+    """
     AUTOMATIC = "automatic"
     MANUAL = "manual"
     SCHEDULED = "scheduled"
@@ -40,7 +69,15 @@ class ControlMode(Enum):
 
 @dataclass
 class HardwareState:
-    """Current state of hardware component"""
+    """Current state of a hardware component.
+    
+    Attributes:
+        component: The hardware component type
+        enabled: Whether the component is currently enabled
+        settings: Dictionary of component-specific settings
+        last_changed: Timestamp of last state change
+        controlled_by_jarvis: Whether JARVIS is controlling this component
+    """
     component: HardwareComponent
     enabled: bool
     settings: Dict[str, Any]
@@ -49,9 +86,19 @@ class HardwareState:
 
 @dataclass
 class HardwareControlDecision:
-    """AI-powered hardware control decision"""
+    """AI-powered hardware control decision.
+    
+    Attributes:
+        component: The hardware component to control
+        action: Action to take (enable, disable, adjust)
+        parameters: Action-specific parameters
+        reasoning: AI reasoning for the decision
+        context: Context that influenced the decision
+        confidence: Confidence level (0.0-1.0)
+        user_benefit: Description of benefit to user
+    """
     component: HardwareComponent
-    action: str  # enable, disable, adjust
+    action: str
     parameters: Dict[str, Any]
     reasoning: str
     context: str
@@ -59,11 +106,32 @@ class HardwareControlDecision:
     user_benefit: str
 
 class HardwareControlSystem:
-    """
-    Advanced hardware control with AI decision making
+    """Advanced hardware control system with AI decision making.
+    
+    This class provides intelligent hardware control capabilities using Claude AI
+    for validation, optimization, and decision making. It supports various control
+    modes and maintains hardware state tracking.
+    
+    Attributes:
+        claude: Anthropic Claude API client
+        use_intelligent_selection: Whether to use hybrid model selection
+        hardware_states: Current state of all hardware components
+        control_mode: Current control mode
+        policies: Active control policies
+    
+    Example:
+        >>> controller = HardwareControlSystem("api-key")
+        >>> await controller.control_camera("disable", "Privacy needed")
+        >>> await controller.enable_privacy_mode()
     """
     
     def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
+        """Initialize the hardware control system.
+        
+        Args:
+            anthropic_api_key: API key for Anthropic Claude
+            use_intelligent_selection: Whether to use hybrid model selection
+        """
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
         self.use_intelligent_selection = use_intelligent_selection
 
@@ -82,8 +150,12 @@ class HardwareControlSystem:
         # Initialize hardware states
         self._initialize_hardware_states()
         
-    def _initialize_hardware_states(self):
-        """Initialize hardware component states"""
+    def _initialize_hardware_states(self) -> None:
+        """Initialize hardware component states to default values.
+        
+        Sets all hardware components to enabled state with empty settings
+        and current timestamp.
+        """
         for component in HardwareComponent:
             self.hardware_states[component] = HardwareState(
                 component=component,
@@ -93,7 +165,30 @@ class HardwareControlSystem:
             )
     
     async def control_camera(self, action: str, reason: Optional[str] = None) -> Dict[str, Any]:
-        """Control camera with AI validation"""
+        """Control camera with AI validation.
+        
+        Validates the camera control action using AI before execution to ensure
+        safety and appropriateness. Supports enable/disable actions.
+        
+        Args:
+            action: Action to perform ("enable" or "disable")
+            reason: Optional reason for the action
+            
+        Returns:
+            Dictionary containing:
+                - success: Whether the action succeeded
+                - message: Status message
+                - reason: Reason if action was rejected
+                - suggestion: Alternative suggestion if rejected
+                
+        Raises:
+            Exception: If camera control fails unexpectedly
+            
+        Example:
+            >>> result = await controller.control_camera("disable", "Privacy mode")
+            >>> print(result['success'])
+            True
+        """
         try:
             # Validate action with AI
             validation = await self._validate_hardware_action(
@@ -134,7 +229,17 @@ class HardwareControlSystem:
             return {'success': False, 'error': str(e)}
     
     async def _disable_camera(self) -> Dict[str, Any]:
-        """Disable camera on macOS"""
+        """Disable camera on macOS.
+        
+        Uses AppleScript to open System Preferences camera privacy settings.
+        Note: Actual camera disabling requires admin privileges.
+        
+        Returns:
+            Dictionary with success status and method used
+            
+        Raises:
+            Exception: If system command fails
+        """
         try:
             # Use system commands to disable camera
             # Note: This requires admin privileges in practice
@@ -157,7 +262,16 @@ class HardwareControlSystem:
             return {'success': False, 'error': str(e)}
     
     async def _enable_camera(self) -> Dict[str, Any]:
-        """Enable camera on macOS"""
+        """Enable camera on macOS.
+        
+        Restores camera access through system preferences.
+        
+        Returns:
+            Dictionary with success status and method used
+            
+        Raises:
+            Exception: If system command fails
+        """
         try:
             # Camera enabling logic
             return {
@@ -171,7 +285,29 @@ class HardwareControlSystem:
             return {'success': False, 'error': str(e)}
     
     async def control_display(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Control display settings intelligently"""
+        """Control display settings intelligently.
+        
+        Uses AI to optimize display settings based on context, time of day,
+        and user preferences. Supports brightness, Night Shift, and True Tone.
+        
+        Args:
+            settings: Dictionary of display settings to apply:
+                - brightness: Brightness level (0-100)
+                - night_shift: Night Shift configuration
+                - true_tone: True Tone enable/disable
+                
+        Returns:
+            Dictionary containing:
+                - success: Whether settings were applied
+                - applied_settings: Results for each setting
+                - optimization_reasoning: AI reasoning for optimizations
+                
+        Example:
+            >>> result = await controller.control_display({
+            ...     'brightness': 80,
+            ...     'night_shift': {'enabled': True}
+            ... })
+        """
         try:
             # Use AI to optimize display settings
             optimization = await self._optimize_display_settings(settings)
@@ -212,7 +348,21 @@ class HardwareControlSystem:
             return {'success': False, 'error': str(e)}
     
     async def _optimize_display_settings_with_intelligent_selection(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Optimize display settings using intelligent model selection"""
+        """Optimize display settings using intelligent model selection.
+        
+        Uses the hybrid orchestrator to select the best AI model for display
+        optimization based on context and requirements.
+        
+        Args:
+            requested_settings: User-requested display settings
+            
+        Returns:
+            Optimized display settings with reasoning
+            
+        Raises:
+            ImportError: If hybrid orchestrator is not available
+            Exception: If optimization fails
+        """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
 
@@ -298,7 +448,20 @@ Return settings with reasoning."""
             raise
 
     async def _optimize_display_settings(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Use AI to optimize display settings"""
+        """Use AI to optimize display settings.
+        
+        Analyzes requested settings and current context to provide optimal
+        display configuration for user comfort and health.
+        
+        Args:
+            requested_settings: User-requested display settings
+            
+        Returns:
+            Optimized settings dictionary with reasoning
+            
+        Raises:
+            Exception: If AI optimization fails
+        """
         try:
             # Try intelligent selection first
             if self.use_intelligent_selection:
@@ -364,7 +527,20 @@ Return settings with reasoning."""
             return requested_settings
     
     async def _set_display_brightness(self, level: int) -> Dict[str, Any]:
-        """Set display brightness"""
+        """Set display brightness level.
+        
+        Sets the display brightness using system commands. Clamps the level
+        to valid range (0-100).
+        
+        Args:
+            level: Brightness level (0-100)
+            
+        Returns:
+            Dictionary with success status and applied level
+            
+        Raises:
+            Exception: If brightness setting fails
+        """
         try:
             # Clamp brightness level
             level = max(0, min(100, level))
@@ -398,7 +574,21 @@ Return settings with reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def _set_night_shift(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Control Night Shift settings"""
+        """Control Night Shift settings.
+        
+        Enables or disables Night Shift with specified temperature settings.
+        
+        Args:
+            settings: Night Shift configuration:
+                - enabled: Whether to enable Night Shift
+                - temperature: Color temperature setting
+                
+        Returns:
+            Dictionary with success status and applied settings
+            
+        Raises:
+            Exception: If Night Shift control fails
+        """
         try:
             enabled = settings.get('enabled', False)
             
@@ -432,7 +622,29 @@ Return settings with reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def control_audio(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Control audio settings intelligently"""
+        """Control audio settings intelligently.
+        
+        Uses AI to make intelligent audio control decisions based on context
+        and user preferences. Supports volume, mute, and device selection.
+        
+        Args:
+            settings: Audio settings to apply:
+                - volume: Volume level (0-100)
+                - mute: Mute state (True/False)
+                - output_device: Output device name
+                
+        Returns:
+            Dictionary containing:
+                - success: Whether settings were applied
+                - applied_settings: Results for each setting
+                - reasoning: AI reasoning for decisions
+                
+        Example:
+            >>> result = await controller.control_audio({
+            ...     'volume': 50,
+            ...     'mute': False
+            ... })
+        """
         try:
             # Validate with AI
             decision = await self._make_audio_decision(settings)
@@ -470,7 +682,20 @@ Return settings with reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def _make_audio_decision(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Make intelligent audio control decisions"""
+        """Make intelligent audio control decisions.
+        
+        Uses AI to analyze requested audio settings and provide safe,
+        context-appropriate recommendations.
+        
+        Args:
+            requested_settings: User-requested audio settings
+            
+        Returns:
+            Optimized audio settings with reasoning and safety limits applied
+            
+        Raises:
+            Exception: If AI decision making fails
+        """
         try:
             response = await asyncio.to_thread(
                 self.claude.messages.create,
@@ -514,7 +739,19 @@ Include reasoning."""
             return requested_settings
     
     async def _set_volume(self, level: int) -> Dict[str, Any]:
-        """Set system volume"""
+        """Set system volume level.
+        
+        Sets the system audio output volume using AppleScript.
+        
+        Args:
+            level: Volume level (0-100)
+            
+        Returns:
+            Dictionary with success status and applied level
+            
+        Raises:
+            Exception: If volume setting fails
+        """
         try:
             # Use osascript to set volume
             script = f'set volume output volume {level}'
@@ -533,7 +770,19 @@ Include reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def _set_mute(self, mute: bool) -> Dict[str, Any]:
-        """Set system mute state"""
+        """Set system mute state.
+        
+        Mutes or unmutes the system audio output using AppleScript.
+        
+        Args:
+            mute: Whether to mute audio output
+            
+        Returns:
+            Dictionary with success status and mute state
+            
+        Raises:
+            Exception: If mute setting fails
+        """
         try:
             script = f'set volume output muted {str(mute).lower()}'
             result = subprocess.run(
@@ -551,7 +800,20 @@ Include reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def _set_audio_device(self, device_name: str, device_type: str) -> Dict[str, Any]:
-        """Set audio input/output device"""
+        """Set audio input/output device.
+        
+        Changes the active audio device for input or output.
+        
+        Args:
+            device_name: Name of the audio device
+            device_type: Type of device ("input" or "output")
+            
+        Returns:
+            Dictionary with success status and device information
+            
+        Raises:
+            Exception: If device setting fails
+        """
         try:
             # This would use SwitchAudioSource or similar tool
             # Simplified implementation
@@ -568,7 +830,23 @@ Include reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def enable_privacy_mode(self) -> Dict[str, Any]:
-        """Enable comprehensive privacy mode"""
+        """Enable comprehensive privacy mode.
+        
+        Activates privacy protections by disabling camera, muting microphone,
+        disabling unnecessary Bluetooth connections, and enabling firewall.
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether privacy mode was enabled
+                - privacy_mode: Status ("enabled")
+                - actions_taken: List of privacy actions performed
+                - timestamp: When privacy mode was activated
+                
+        Example:
+            >>> result = await controller.enable_privacy_mode()
+            >>> print(result['actions_taken'])
+            ['Camera disabled', 'Microphone muted', 'Firewall enabled']
+        """
         try:
             logger.info("Enabling privacy mode")
             
@@ -610,7 +888,23 @@ Include reasoning."""
             return {'success': False, 'error': str(e)}
     
     async def disable_privacy_mode(self) -> Dict[str, Any]:
-        """Disable privacy mode and restore normal settings"""
+        """Disable privacy mode and restore normal settings.
+        
+        Deactivates privacy protections by restoring camera access and
+        unmuting microphone.
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether privacy mode was disabled
+                - privacy_mode: Status ("disabled")
+                - actions_taken: List of restoration actions performed
+                - timestamp: When privacy mode was deactivated
+                
+        Example:
+            >>> result = await controller.disable_privacy_mode()
+            >>> print(result['actions_taken'])
+            ['Camera enabled', 'Microphone unmuted']
+        """
         try:
             logger.info("Disabling privacy mode")
             
@@ -641,7 +935,18 @@ Include reasoning."""
             return {'success': False, 'error': str(e)}
     
     def _is_bluetooth_needed(self) -> bool:
-        """Check if Bluetooth is needed for current devices"""
+        """Check if Bluetooth is needed for current devices.
+        
+        Analyzes connected Bluetooth devices to determine if Bluetooth
+        should remain enabled.
+        
+        Returns:
+            True if Bluetooth devices are connected and needed
+            
+        Example:
+            >>> controller._is_bluetooth_needed()
+            True
+        """
         # Check for connected Bluetooth devices
         try:
             result = subprocess.run(
@@ -657,247 +962,15 @@ Include reasoning."""
             return True  # Assume needed if can't check
     
     async def _control_bluetooth(self, enable: bool) -> Dict[str, Any]:
-        """Control Bluetooth state"""
-        try:
-            # Use blueutil or similar tool
-            action = 'on' if enable else 'off'
-            result = subprocess.run(
-                ['blueutil', '--power', action],
-                capture_output=True
-            )
-            
-            return {
-                'success': result.returncode == 0,
-                'bluetooth': 'enabled' if enable else 'disabled'
-            }
-            
-        except Exception as e:
-            logger.error(f"Error controlling Bluetooth: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    async def _enable_firewall(self) -> Dict[str, Any]:
-        """Enable macOS firewall"""
-        try:
-            # Enable firewall (requires admin privileges)
-            result = subprocess.run(
-                ['sudo', '/usr/libexec/ApplicationFirewall/socketfilterfw', '--setglobalstate', 'on'],
-                capture_output=True
-            )
-            
-            return {
-                'success': result.returncode == 0,
-                'firewall': 'enabled'
-            }
-            
-        except Exception as e:
-            logger.error(f"Error enabling firewall: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    async def optimize_for_presentation(self) -> Dict[str, Any]:
-        """Optimize hardware for presentation mode"""
-        try:
-            logger.info("Optimizing for presentation mode")
-            
-            optimizations = []
-            
-            # 1. Maximize display brightness
-            display_result = await self.control_display({'brightness': 100})
-            if display_result['success']:
-                optimizations.append("Display brightness maximized")
-            
-            # 2. Disable Night Shift
-            night_shift_result = await self._set_night_shift({'enabled': False})
-            if night_shift_result['success']:
-                optimizations.append("Night Shift disabled")
-            
-            # 3. Ensure audio is at reasonable level
-            audio_result = await self.control_audio({'volume': 70, 'mute': False})
-            if audio_result['success']:
-                optimizations.append("Audio optimized")
-            
-            # 4. Disable sleep and screen saver
-            caffeinate_process = subprocess.Popen(['caffeinate', '-d', '-i', '-m'])
-            optimizations.append("Sleep and screen saver disabled")
-            
-            # Update policy
-            self.policies['presentation_mode'] = True
-            
-            return {
-                'success': True,
-                'mode': 'presentation',
-                'optimizations': optimizations,
-                'caffeinate_pid': caffeinate_process.pid
-            }
-            
-        except Exception as e:
-            logger.error(f"Error optimizing for presentation: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    async def _validate_hardware_action_with_intelligent_selection(self, component: HardwareComponent,
-                                                                   action: str, reason: Optional[str]) -> Dict[str, Any]:
-        """Validate hardware action using intelligent model selection"""
-        try:
-            from backend.core.hybrid_orchestrator import HybridOrchestrator
-
-            orchestrator = HybridOrchestrator()
-            if not orchestrator.is_running:
-                await orchestrator.start()
-
-            # Build rich context
-            context = {
-                "task_type": "hardware_validation",
-                "component": component.value,
-                "action": action,
-                "reason": reason,
-                "policies": self.policies,
-                "hardware_state": {
-                    "enabled": self.hardware_states[component].enabled,
-                    "controlled_by_jarvis": self.hardware_states[component].controlled_by_jarvis,
-                },
-                "safety_constraints": True,
-            }
-
-            prompt = f"""Validate hardware control action:
-
-Component: {component.value}
-Action: {action}
-Reason: {reason or "Not specified"}
-Current Policies: {json.dumps(self.policies, indent=2)}
-
-Should this action be allowed? Consider:
-- User privacy
-- Security implications
-- Current context
-- Reversibility
-
-Respond with:
-- Approved: yes/no
-- Reason for decision
-- Alternative suggestion if not approved"""
-
-            # Execute with intelligent selection
-            result = await orchestrator.execute_with_intelligent_model_selection(
-                query=prompt,
-                intent="system_control",
-                required_capabilities={"nlp_analysis", "hardware_understanding", "control_logic"},
-                context=context,
-                max_tokens=300,
-                temperature=0.1,
-            )
-
-            if not result.get("success"):
-                raise Exception(result.get("error", "Unknown error"))
-
-            response_text = result.get("text", "").strip()
-            model_used = result.get("model_used", "intelligent_selection")
-
-            logger.info(f"✨ Hardware validation using {model_used}")
-
-            # Parse response
-            response_lower = response_text.lower()
-
-            return {
-                'approved': 'yes' in response_lower or 'approved' in response_lower,
-                'reason': response_text,
-                'alternative': None  # Would parse from response
-            }
-
-        except ImportError:
-            logger.warning("Hybrid orchestrator not available, falling back to direct API")
-            raise
-        except Exception as e:
-            logger.error(f"Error in intelligent selection: {e}")
-            raise
-
-    async def _validate_hardware_action(self, component: HardwareComponent,
-                                      action: str, reason: Optional[str]) -> Dict[str, Any]:
-        """Validate hardware action with AI"""
-        try:
-            # Try intelligent selection first
-            if self.use_intelligent_selection:
-                try:
-                    return await self._validate_hardware_action_with_intelligent_selection(component, action, reason)
-                except Exception as e:
-                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
-
-            # Fallback to direct API
-            response = await asyncio.to_thread(
-                self.claude.messages.create,
-                model="claude-3-haiku-20240307",
-                max_tokens=300,
-                messages=[{
-                    "role": "user",
-                    "content": f"""Validate hardware control action:
-
-Component: {component.value}
-Action: {action}
-Reason: {reason or "Not specified"}
-Current Policies: {json.dumps(self.policies, indent=2)}
-
-Should this action be allowed? Consider:
-- User privacy
-- Security implications
-- Current context
-- Reversibility
-
-Respond with:
-- Approved: yes/no
-- Reason for decision
-- Alternative suggestion if not approved"""
-                }]
-            )
-
-            # Parse response
-            response_text = response.content[0].text.lower()
-
-            return {
-                'approved': 'yes' in response_text or 'approved' in response_text,
-                'reason': response.content[0].text,
-                'alternative': None  # Would parse from response
-            }
-
-        except Exception as e:
-            logger.error(f"Error validating hardware action: {e}")
-            # Default to safe action
-            return {
-                'approved': False,
-                'reason': 'Could not validate action',
-                'alternative': 'Manual control recommended'
-            }
-    
-    async def _log_hardware_decision(self, component: HardwareComponent,
-                                   action: str, reason: Optional[str],
-                                   result: Dict[str, Any]):
-        """Log hardware control decisions for learning"""
-        log_entry = {
-            'timestamp': datetime.now().isoformat(),
-            'component': component.value,
-            'action': action,
-            'reason': reason,
-            'result': result,
-            'policies': self.policies.copy()
-        }
+        """Control Bluetooth state.
         
-        # Would write to persistent storage
-        logger.info(f"Hardware decision logged: {log_entry}")
-    
-    def get_hardware_status(self) -> Dict[str, Any]:
-        """Get current hardware status"""
-        status = {
-            'components': {},
-            'policies': self.policies,
-            'control_mode': self.control_mode.value
-        }
+        Enables or disables Bluetooth connectivity using system commands.
         
-        for component, state in self.hardware_states.items():
-            status['components'][component.value] = {
-                'enabled': state.enabled,
-                'settings': state.settings,
-                'last_changed': state.last_changed.isoformat(),
-                'controlled_by_jarvis': state.controlled_by_jarvis
-            }
-        
-        return status
-
-# Export main class
-__all__ = ['HardwareControlSystem', 'HardwareComponent', 'ControlMode']
+        Args:
+            enable: Whether to enable Bluetooth
+            
+        Returns:
+            Dictionary with success status and Bluetooth state
+            
+        Raises:
+            Exception

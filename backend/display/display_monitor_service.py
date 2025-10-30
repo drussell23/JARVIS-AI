@@ -29,7 +29,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DisplayMonitorConfig:
-    """Configuration for a monitored display"""
+    """Configuration for a monitored display.
+    
+    Attributes:
+        display_name: Human-readable display name (e.g., "Living Room TV")
+        auto_prompt: Whether to automatically prompt when display becomes available
+        default_mode: Default connection mode ("extend" or "mirror")
+        enabled: Whether monitoring is enabled for this display
+    """
     display_name: str  # e.g., "Living Room TV"
     auto_prompt: bool = True  # Automatically prompt when available
     default_mode: str = "extend"  # "extend" or "mirror"
@@ -37,14 +44,37 @@ class DisplayMonitorConfig:
 
 
 class DisplayMonitorService:
-    """
-    Simple display availability monitor
+    """Simple display availability monitor.
     
     Polls Screen Mirroring menu and prompts when registered displays
     become available. No proximity detection needed.
+    
+    This service monitors both connected displays (HDMI, USB-C) and
+    available AirPlay devices, generating user prompts when configured
+    displays become available.
+    
+    Attributes:
+        poll_interval_seconds: How often to poll for displays
+        monitored_displays: Dictionary of configured displays to monitor
+        available_displays: Set of currently available display names
+        previously_available: Set of previously available displays for change detection
+        user_overrides: Dictionary tracking user "don't ask again" preferences
+        override_duration_minutes: How long user overrides last
+        pending_prompt: Currently pending display prompt
+        prompt_timestamp: When the current prompt was generated
+        total_polls: Statistics counter for polling operations
+        total_prompts: Statistics counter for generated prompts
+        total_connections: Statistics counter for successful connections
+        monitoring_task: Asyncio task for the monitoring loop
+        is_monitoring: Whether monitoring is currently active
     """
     
     def __init__(self, poll_interval_seconds: float = 10.0):
+        """Initialize the Display Monitor Service.
+        
+        Args:
+            poll_interval_seconds: How often to poll for available displays
+        """
         self.logger = logging.getLogger(__name__)
         
         # Configuration
@@ -79,14 +109,16 @@ class DisplayMonitorService:
         display_name: str,
         auto_prompt: bool = True,
         default_mode: str = "extend"
-    ):
-        """
-        Register a display to monitor
+    ) -> None:
+        """Register a display to monitor for availability.
         
         Args:
-            display_name: Display name (e.g., "Living Room TV")
-            auto_prompt: Automatically prompt when available
-            default_mode: "extend" or "mirror"
+            display_name: Human-readable display name (e.g., "Living Room TV")
+            auto_prompt: Whether to automatically prompt when available
+            default_mode: Default connection mode ("extend" or "mirror")
+            
+        Example:
+            >>> monitor.register_display("Living Room TV", auto_prompt=True, default_mode="extend")
         """
         config = DisplayMonitorConfig(
             display_name=display_name,
@@ -98,14 +130,25 @@ class DisplayMonitorService:
         self.monitored_displays[display_name] = config
         self.logger.info(f"[DISPLAY MONITOR] Registered: {display_name}")
     
-    def unregister_display(self, display_name: str):
-        """Unregister a monitored display"""
+    def unregister_display(self, display_name: str) -> None:
+        """Unregister a monitored display.
+        
+        Args:
+            display_name: Display name to stop monitoring
+        """
         if display_name in self.monitored_displays:
             del self.monitored_displays[display_name]
             self.logger.info(f"[DISPLAY MONITOR] Unregistered: {display_name}")
     
-    async def start_monitoring(self):
-        """Start monitoring for available displays"""
+    async def start_monitoring(self) -> None:
+        """Start monitoring for available displays.
+        
+        Creates an asyncio task that continuously polls for display availability
+        at the configured interval.
+        
+        Raises:
+            RuntimeError: If monitoring is already active
+        """
         if self.is_monitoring:
             self.logger.warning("[DISPLAY MONITOR] Already monitoring")
             return
@@ -114,8 +157,11 @@ class DisplayMonitorService:
         self.monitoring_task = asyncio.create_task(self._monitoring_loop())
         self.logger.info("[DISPLAY MONITOR] Started monitoring")
     
-    async def stop_monitoring(self):
-        """Stop monitoring"""
+    async def stop_monitoring(self) -> None:
+        """Stop monitoring for displays.
+        
+        Cancels the monitoring task and waits for it to complete.
+        """
         self.is_monitoring = False
         if self.monitoring_task:
             self.monitoring_task.cancel()
@@ -125,8 +171,13 @@ class DisplayMonitorService:
                 pass
         self.logger.info("[DISPLAY MONITOR] Stopped monitoring")
     
-    async def _monitoring_loop(self):
-        """Main monitoring loop"""
+    async def _monitoring_loop(self) -> None:
+        """Main monitoring loop that polls for displays at regular intervals.
+        
+        Raises:
+            asyncio.CancelledError: When monitoring is cancelled
+            Exception: For any other errors during monitoring
+        """
         try:
             while self.is_monitoring:
                 await self._poll_available_displays()
@@ -136,11 +187,13 @@ class DisplayMonitorService:
         except Exception as e:
             self.logger.error(f"[DISPLAY MONITOR] Error in monitoring loop: {e}")
     
-    async def _poll_available_displays(self):
-        """
-        Poll for connected displays (HDMI, USB-C, AirPlay)
+    async def _poll_available_displays(self) -> None:
+        """Poll for connected displays (HDMI, USB-C, AirPlay).
         
         Detects when new displays become available and generates prompts
+        for registered displays. Uses two methods:
+        1. Core Graphics for connected displays
+        2. AirPlay discovery for available wireless displays
         """
         try:
             self.total_polls += 1
@@ -202,18 +255,20 @@ class DisplayMonitorService:
         except Exception as e:
             self.logger.error(f"[DISPLAY MONITOR] Error polling displays: {e}")
     
-    async def _generate_prompt(self, display_name: str, config: DisplayMonitorConfig):
-        """
-        Generate prompt for display connection
+    async def _generate_prompt(self, display_name: str, config: DisplayMonitorConfig) -> Optional[str]:
+        """Generate prompt for display connection.
         
         Args:
-            display_name: Display name
-            config: Display configuration
+            display_name: Name of the display that became available
+            config: Configuration for the display
+            
+        Returns:
+            Generated prompt string, or None if prompt couldn't be generated
         """
         try:
             # Skip if already have pending prompt
             if self.pending_prompt:
-                return
+                return None
             
             self.total_prompts += 1
             self.pending_prompt = display_name
@@ -230,13 +285,28 @@ class DisplayMonitorService:
             
         except Exception as e:
             self.logger.error(f"[DISPLAY MONITOR] Error generating prompt: {e}")
+            return None
     
     def has_pending_prompt(self) -> bool:
-        """Check if there's a pending display prompt"""
+        """Check if there's a pending display prompt.
+        
+        Returns:
+            True if there's a prompt waiting for user response
+        """
         return self.pending_prompt is not None
     
     def get_pending_prompt(self) -> Optional[Dict]:
-        """Get current pending prompt"""
+        """Get current pending prompt details.
+        
+        Returns:
+            Dictionary with prompt details, or None if no pending prompt
+            
+        Example:
+            >>> prompt = monitor.get_pending_prompt()
+            >>> if prompt:
+            ...     print(f"Display: {prompt['display_name']}")
+            ...     print(f"Prompt: {prompt['prompt']}")
+        """
         if not self.pending_prompt:
             return None
         
@@ -252,14 +322,24 @@ class DisplayMonitorService:
         }
     
     async def handle_user_response(self, response: str) -> Dict:
-        """
-        Handle user response to display prompt
+        """Handle user response to display prompt.
         
         Args:
-            response: User's voice command (e.g., "yes", "no")
+            response: User's voice command (e.g., "yes", "no", "mirror")
             
         Returns:
-            Response result
+            Dictionary with response handling results containing:
+            - handled: Whether the response was processed
+            - action: Action taken ("connect", "skip", "clarify")
+            - display_name: Name of the display (if applicable)
+            - mode: Connection mode used (if connecting)
+            - response: Generated response text
+            - result: Connection result (if connecting)
+            
+        Example:
+            >>> result = await monitor.handle_user_response("yes")
+            >>> if result["handled"] and result["action"] == "connect":
+            ...     print(f"Connected to {result['display_name']}")
         """
         try:
             if not self.pending_prompt:
@@ -355,15 +435,18 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
             }
     
     async def _connect_to_display(self, display_name: str, mode: str) -> Dict:
-        """
-        Connect to display via adaptive Control Center clicker
+        """Connect to display via adaptive Control Center clicker.
 
         Args:
-            display_name: Display name
-            mode: "extend" or "mirror"
+            display_name: Name of the display to connect to
+            mode: Connection mode ("extend" or "mirror")
 
         Returns:
-            Connection result
+            Dictionary with connection results containing:
+            - success: Whether connection was successful
+            - response: User-friendly response message
+            - method: Method used for connection
+            - error: Error message if connection failed
         """
         try:
             self.logger.info(f"[DISPLAY MONITOR] Connecting to {display_name} (mode: {mode})")
@@ -436,15 +519,18 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
             }
 
     async def _connect_to_generic_device(self, clicker, device_name: str) -> Dict:
-        """
-        Connect to a generic device (not Living Room TV)
+        """Connect to a generic device (not Living Room TV).
 
         Args:
             clicker: ControlCenterClicker instance
-            device_name: Device name
+            device_name: Name of the device to connect to
 
         Returns:
-            Connection result
+            Dictionary with connection results containing:
+            - success: Whether connection was successful
+            - message: Success message
+            - method: Method used for connection
+            - error: Error message if connection failed
         """
         try:
             # Step 1: Open Control Center
@@ -484,13 +570,24 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                 "error": str(e)
             }
     
-    def _set_user_override(self, display_name: str):
-        """Set user override (don't ask again for a while)"""
+    def _set_user_override(self, display_name: str) -> None:
+        """Set user override (don't ask again for a while).
+        
+        Args:
+            display_name: Display name to set override for
+        """
         self.user_overrides[display_name] = datetime.now()
         self.logger.info(f"[DISPLAY MONITOR] User override set for {display_name}")
     
     def _is_override_active(self, display_name: str) -> bool:
-        """Check if user override is still active"""
+        """Check if user override is still active.
+        
+        Args:
+            display_name: Display name to check
+            
+        Returns:
+            True if override is still active (user said "don't ask again" recently)
+        """
         if display_name not in self.user_overrides:
             return False
         
@@ -504,13 +601,31 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
         
         return True
     
-    def _clear_pending_prompt(self):
-        """Clear pending prompt"""
+    def _clear_pending_prompt(self) -> None:
+        """Clear the current pending prompt."""
         self.pending_prompt = None
         self.prompt_timestamp = None
     
     def get_stats(self) -> Dict:
-        """Get service statistics"""
+        """Get service statistics and current state.
+        
+        Returns:
+            Dictionary containing service statistics including:
+            - total_polls: Number of display polling operations
+            - total_prompts: Number of prompts generated
+            - total_connections: Number of successful connections
+            - monitored_displays: Number of registered displays
+            - available_displays: Number of currently available displays
+            - available_display_names: List of available display names
+            - active_overrides: Number of active user overrides
+            - is_monitoring: Whether monitoring is currently active
+            - has_pending_prompt: Whether there's a pending prompt
+            
+        Example:
+            >>> stats = monitor.get_stats()
+            >>> print(f"Monitoring {stats['monitored_displays']} displays")
+            >>> print(f"Found {stats['available_displays']} available displays")
+        """
         return {
             "total_polls": self.total_polls,
             "total_prompts": self.total_prompts,
@@ -528,7 +643,19 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
 _display_monitor: Optional[DisplayMonitorService] = None
 
 def get_display_monitor(poll_interval_seconds: float = 10.0) -> DisplayMonitorService:
-    """Get singleton DisplayMonitorService instance"""
+    """Get singleton DisplayMonitorService instance.
+    
+    Args:
+        poll_interval_seconds: How often to poll for displays (only used on first call)
+        
+    Returns:
+        Singleton DisplayMonitorService instance
+        
+    Example:
+        >>> monitor = get_display_monitor(poll_interval_seconds=5.0)
+        >>> monitor.register_display("Living Room TV")
+        >>> await monitor.start_monitoring()
+    """
     global _display_monitor
     if _display_monitor is None:
         _display_monitor = DisplayMonitorService(poll_interval_seconds)

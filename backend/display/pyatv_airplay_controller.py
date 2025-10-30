@@ -12,6 +12,11 @@ Features:
 - Persistent credential storage
 - Fast connection (~0.5-1s)
 
+This module provides a high-level interface for controlling AirPlay devices using the pyatv
+library. It handles device discovery, connection management, credential storage, and screen
+mirroring operations through a combination of protocol-level communication and system
+integration.
+
 Author: Derek Russell
 Date: 2025-10-16
 Version: 1.0
@@ -32,14 +37,29 @@ logger = logging.getLogger(__name__)
 
 
 class PyATVAirPlayController:
-    """Direct protocol-level AirPlay control using pyatv"""
+    """Direct protocol-level AirPlay control using pyatv.
+    
+    This class provides a comprehensive interface for discovering, connecting to, and
+    controlling AirPlay devices. It uses the pyatv library for protocol-level communication
+    and integrates with macOS system settings for screen mirroring functionality.
+    
+    Attributes:
+        credentials_path (Path): Path to the credentials storage file
+        credentials (Dict[str, Dict[str, str]]): Cached pairing credentials by device ID
+        active_connections (Dict[str, AppleTV]): Active device connections by device name
+    
+    Example:
+        >>> controller = PyATVAirPlayController()
+        >>> devices = await controller.discover_devices()
+        >>> result = await controller.start_screen_mirroring("Apple TV")
+    """
 
-    def __init__(self, credentials_path: Optional[Path] = None):
-        """
-        Initialize PyATV AirPlay controller
+    def __init__(self, credentials_path: Optional[Path] = None) -> None:
+        """Initialize PyATV AirPlay controller.
 
         Args:
-            credentials_path: Path to store pairing credentials
+            credentials_path: Path to store pairing credentials. If None, defaults to
+                config/airplay_credentials.json relative to this module.
         """
         if credentials_path is None:
             credentials_path = Path(__file__).parent.parent / "config" / "airplay_credentials.json"
@@ -52,8 +72,15 @@ class PyATVAirPlayController:
 
         logger.info("[PYATV] PyATV AirPlay Controller initialized")
 
-    def _load_credentials(self):
-        """Load stored pairing credentials"""
+    def _load_credentials(self) -> None:
+        """Load stored pairing credentials from disk.
+        
+        Loads previously saved device pairing credentials from the JSON file.
+        If the file doesn't exist or can't be read, initializes with empty credentials.
+        
+        Raises:
+            No exceptions are raised - errors are logged and handled gracefully.
+        """
         try:
             if self.credentials_path.exists():
                 with open(self.credentials_path, 'r') as f:
@@ -63,8 +90,15 @@ class PyATVAirPlayController:
             logger.warning(f"[PYATV] Could not load credentials: {e}")
             self.credentials = {}
 
-    def _save_credentials(self):
-        """Save pairing credentials to disk"""
+    def _save_credentials(self) -> None:
+        """Save pairing credentials to disk.
+        
+        Persists the current credentials dictionary to the JSON file, creating
+        parent directories if necessary.
+        
+        Raises:
+            No exceptions are raised - errors are logged.
+        """
         try:
             self.credentials_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.credentials_path, 'w') as f:
@@ -74,14 +108,27 @@ class PyATVAirPlayController:
             logger.error(f"[PYATV] Failed to save credentials: {e}")
 
     async def discover_devices(self, timeout: float = 5.0) -> List[Dict[str, Any]]:
-        """
-        Discover AirPlay devices on the network
+        """Discover AirPlay devices on the network.
+
+        Scans the local network for devices supporting the AirPlay protocol and
+        returns detailed information about each discovered device.
 
         Args:
-            timeout: Discovery timeout in seconds
+            timeout: Discovery timeout in seconds. Longer timeouts may find more
+                devices but take more time.
 
         Returns:
-            List of discovered devices with metadata
+            List of discovered devices, each containing:
+                - name (str): Device display name
+                - address (str): IP address
+                - identifier (str): Unique device identifier
+                - device_info (dict): Model and OS version information
+                - services (list): Supported protocol services
+
+        Example:
+            >>> devices = await controller.discover_devices(timeout=10.0)
+            >>> for device in devices:
+            ...     print(f"Found: {device['name']} at {device['address']}")
         """
         logger.info(f"[PYATV] Scanning for AirPlay devices (timeout: {timeout}s)...")
 
@@ -118,19 +165,31 @@ class PyATVAirPlayController:
         device_name: str,
         timeout: float = 10.0
     ) -> Dict[str, Any]:
-        """
-        Connect to AirPlay device for screen mirroring
+        """Connect to AirPlay device for screen mirroring.
+
+        Establishes a protocol-level connection to the specified AirPlay device.
+        Uses stored credentials if available, otherwise may require pairing.
 
         Args:
-            device_name: Name of the device to connect to
+            device_name: Name of the device to connect to (case-insensitive)
             timeout: Connection timeout in seconds
 
         Returns:
-            Connection result dictionary with keys:
-            - success: bool
-            - message: str
-            - device_name: str (optional)
-            - duration: float (optional)
+            Connection result dictionary containing:
+                - success (bool): Whether connection succeeded
+                - message (str): Human-readable result message
+                - device_name (str, optional): Connected device name
+                - duration (float, optional): Connection time in seconds
+                - method (str, optional): Connection method used
+                - suggestions (list, optional): Troubleshooting suggestions on failure
+
+        Raises:
+            No exceptions are raised - all errors are captured in the return dict.
+
+        Example:
+            >>> result = await controller.connect_to_device("Living Room TV")
+            >>> if result['success']:
+            ...     print(f"Connected in {result['duration']:.1f}s")
         """
         import time
         start_time = time.time()
@@ -207,19 +266,37 @@ class PyATVAirPlayController:
             }
 
     async def start_screen_mirroring(self, device_name: str) -> Dict[str, Any]:
-        """
-        Start screen mirroring to device
+        """Start screen mirroring to device.
+
+        Initiates screen mirroring by first verifying the device is online via pyatv,
+        then using macOS System Settings to configure the AirPlay display connection.
+        This hybrid approach ensures device availability while leveraging system
+        integration for the actual mirroring setup.
 
         Strategy:
         1. Verify device is online via pyatv
-        2. Use ScreenMirroringHelper (Swift + CGEvent) to click Control Center
-        3. Helper finds and clicks the device in Screen Mirroring menu
+        2. Open macOS System Settings to Displays pane
+        3. Use AppleScript to select the device from AirPlay Display dropdown
 
         Args:
-            device_name: Name of the device
+            device_name: Name of the target device (case-insensitive)
 
         Returns:
-            Result dictionary
+            Result dictionary containing:
+                - success (bool): Whether mirroring was initiated
+                - message (str): Human-readable result message
+                - device_name (str, optional): Target device name
+                - duration (float): Operation time in seconds
+                - method (str): Method used for mirroring setup
+                - suggestions (list, optional): Troubleshooting suggestions on failure
+                - fallback_instruction (str, optional): Manual steps if automation fails
+
+        Example:
+            >>> result = await controller.start_screen_mirroring("Apple TV")
+            >>> if result['success']:
+            ...     print("Screen mirroring started successfully")
+            >>> else:
+            ...     print(f"Manual step required: {result.get('fallback_instruction')}")
         """
         import subprocess
         import time
@@ -368,14 +445,22 @@ class PyATVAirPlayController:
             }
 
     async def disconnect(self, device_name: str) -> Dict[str, Any]:
-        """
-        Disconnect from AirPlay device
+        """Disconnect from AirPlay device.
+
+        Closes the protocol-level connection to the specified device and removes
+        it from the active connections registry.
 
         Args:
-            device_name: Name of the device
+            device_name: Name of the device to disconnect from
 
         Returns:
-            Disconnect result dictionary
+            Disconnect result dictionary containing:
+                - success (bool): Whether disconnection succeeded
+                - message (str): Human-readable result message
+
+        Example:
+            >>> result = await controller.disconnect("Apple TV")
+            >>> print(result['message'])
         """
         logger.info(f"[PYATV] Disconnecting from '{device_name}'...")
 
@@ -403,8 +488,15 @@ class PyATVAirPlayController:
                 "message": f"Disconnect error: {str(e)}"
             }
 
-    async def cleanup(self):
-        """Clean up all active connections"""
+    async def cleanup(self) -> None:
+        """Clean up all active connections.
+        
+        Disconnects from all currently active devices and clears the connections
+        registry. Should be called when shutting down the controller.
+        
+        Example:
+            >>> await controller.cleanup()
+        """
         for device_name in list(self.active_connections.keys()):
             await self.disconnect(device_name)
 
@@ -414,7 +506,18 @@ _pyatv_controller: Optional[PyATVAirPlayController] = None
 
 
 def get_pyatv_controller() -> PyATVAirPlayController:
-    """Get singleton PyATV controller"""
+    """Get singleton PyATV controller instance.
+    
+    Returns the global PyATVAirPlayController instance, creating it if necessary.
+    This ensures only one controller instance exists throughout the application.
+    
+    Returns:
+        The singleton PyATVAirPlayController instance
+        
+    Example:
+        >>> controller = get_pyatv_controller()
+        >>> devices = await controller.discover_devices()
+    """
     global _pyatv_controller
     if _pyatv_controller is None:
         _pyatv_controller = PyATVAirPlayController()
@@ -423,7 +526,12 @@ def get_pyatv_controller() -> PyATVAirPlayController:
 
 if __name__ == "__main__":
     # Test the controller
-    async def test():
+    async def test() -> None:
+        """Test function demonstrating controller usage.
+        
+        Discovers devices, connects to the first available device, starts screen
+        mirroring, waits briefly, then disconnects and cleans up.
+        """
         logging.basicConfig(level=logging.INFO)
 
         controller = get_pyatv_controller()

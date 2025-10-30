@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
-"""
-Vision Decision Pipeline for JARVIS
-Integrates vision system with decision engine for autonomous processing
+"""Vision Decision Pipeline for JARVIS.
+
+This module integrates the vision system with the decision engine to create
+a comprehensive autonomous processing pipeline. It captures screen data,
+processes it through OCR and analysis, makes intelligent decisions, and
+queues actions for execution.
+
+The pipeline operates in stages:
+1. Screen capture
+2. OCR processing
+3. Window/workspace analysis
+4. Decision making
+5. Action queuing
+6. Execution coordination
+
+Example:
+    >>> pipeline = VisionDecisionPipeline()
+    >>> await pipeline.start_pipeline()
+    >>> # Pipeline runs continuously
+    >>> await pipeline.stop_pipeline()
 """
 
 import asyncio
@@ -35,7 +52,16 @@ from .monitoring_metrics import SystemMonitor
 logger = logging.getLogger(__name__)
 
 class ProcessingStage(Enum):
-    """Stages of vision processing pipeline"""
+    """Enumeration of vision processing pipeline stages.
+    
+    Attributes:
+        CAPTURE: Screen capture stage
+        OCR: Optical Character Recognition processing
+        ANALYSIS: Window and workspace analysis
+        DECISION: Decision making based on analysis
+        QUEUING: Action queuing for execution
+        EXECUTION: Action execution coordination
+    """
     CAPTURE = "capture"
     OCR = "ocr"
     ANALYSIS = "analysis"
@@ -45,7 +71,22 @@ class ProcessingStage(Enum):
 
 @dataclass
 class PipelineContext:
-    """Context passed through processing pipeline"""
+    """Context object passed through the processing pipeline stages.
+    
+    This dataclass maintains state and results as data flows through
+    each stage of the vision decision pipeline.
+    
+    Attributes:
+        stage: Current processing stage
+        timestamp: When processing started
+        screen_capture: Captured screen data
+        ocr_results: OCR results by window ID
+        window_analyses: Analysis results for windows
+        workspace_state: Complete workspace state data
+        decisions: Generated autonomous actions
+        errors: Accumulated error messages
+        metrics: Performance timing metrics
+    """
     stage: ProcessingStage
     timestamp: datetime = field(default_factory=datetime.now)
     screen_capture: Optional[ScreenCapture] = None
@@ -56,19 +97,65 @@ class PipelineContext:
     errors: List[str] = field(default_factory=list)
     metrics: Dict[str, float] = field(default_factory=dict)
     
-    def add_metric(self, name: str, value: float):
-        """Add performance metric"""
+    def add_metric(self, name: str, value: float) -> None:
+        """Add a performance metric to the context.
+        
+        Args:
+            name: Metric name identifier
+            value: Metric value (typically timing in seconds)
+        """
         self.metrics[name] = value
         
-    def add_error(self, error: str):
-        """Add error to context"""
+    def add_error(self, error: str) -> None:
+        """Add an error message to the context.
+        
+        Args:
+            error: Error description to add
+        """
         self.errors.append(f"[{self.stage.value}] {error}")
         logger.error(f"Pipeline error in {self.stage.value}: {error}")
 
 class VisionDecisionPipeline:
-    """Main pipeline for processing vision data into autonomous actions"""
+    """Main pipeline for processing vision data into autonomous actions.
     
-    def __init__(self):
+    This class orchestrates the complete flow from screen capture through
+    decision making and action queuing. It integrates multiple vision
+    and autonomy components into a cohesive processing pipeline.
+    
+    The pipeline operates continuously, processing screen captures and
+    generating autonomous actions based on what it observes.
+    
+    Attributes:
+        screen_capture: Screen capture module
+        ocr_processor: OCR processing component
+        window_analyzer: Window analysis component
+        enhanced_monitor: Enhanced workspace monitoring
+        decision_engine: Autonomous decision engine
+        behavior_manager: Behavior management system
+        action_queue: Action queue manager
+        state_manager: System state manager
+        error_manager: Error recovery manager
+        monitor: System performance monitor
+        config: Pipeline configuration settings
+        is_running: Whether pipeline is active
+        processing_task: Async task for pipeline loop
+        cycle_count: Number of processing cycles completed
+        last_context: Most recent pipeline context
+        performance_history: Historical performance data
+    
+    Example:
+        >>> pipeline = VisionDecisionPipeline()
+        >>> await pipeline.start_pipeline()
+        >>> status = pipeline.get_pipeline_status()
+        >>> await pipeline.stop_pipeline()
+    """
+    
+    def __init__(self) -> None:
+        """Initialize the vision decision pipeline.
+        
+        Sets up all component instances, configuration, and state tracking.
+        Registers components with the state manager and sets up error recovery.
+        """
         # Vision components
         self.screen_capture = ScreenCaptureModule(capture_interval=2.0)
         self.ocr_processor = OCRProcessor()
@@ -113,8 +200,16 @@ class VisionDecisionPipeline:
         # Register error recovery callbacks
         self._setup_error_recovery()
         
-    async def start_pipeline(self):
-        """Start the vision decision pipeline"""
+    async def start_pipeline(self) -> None:
+        """Start the vision decision pipeline.
+        
+        Initializes all components, starts screen capture, begins the
+        processing loop, and transitions the system to monitoring state.
+        
+        Raises:
+            RuntimeError: If pipeline is already running
+            Exception: If component initialization fails
+        """
         if self.is_running:
             logger.warning("Pipeline already running")
             return
@@ -139,8 +234,12 @@ class VisionDecisionPipeline:
         
         logger.info("Vision Decision Pipeline started")
         
-    async def stop_pipeline(self):
-        """Stop the vision decision pipeline"""
+    async def stop_pipeline(self) -> None:
+        """Stop the vision decision pipeline.
+        
+        Gracefully shuts down all components, cancels processing tasks,
+        and transitions the system to a stopped state.
+        """
         self.is_running = False
         
         # Stop screen capture
@@ -158,8 +257,12 @@ class VisionDecisionPipeline:
         
         logger.info("Vision Decision Pipeline stopped")
         
-    async def _pipeline_loop(self):
-        """Main pipeline processing loop"""
+    async def _pipeline_loop(self) -> None:
+        """Main pipeline processing loop.
+        
+        Runs continuously while the pipeline is active, handling
+        asynchronous processing coordination.
+        """
         while self.is_running:
             try:
                 # Wait for next capture (handled by callback)
@@ -169,8 +272,15 @@ class VisionDecisionPipeline:
                 logger.error(f"Pipeline loop error: {e}")
                 await asyncio.sleep(1)
                 
-    async def _process_capture(self, capture: ScreenCapture):
-        """Process a new screen capture through the pipeline"""
+    async def _process_capture(self, capture: ScreenCapture) -> None:
+        """Process a new screen capture through the pipeline.
+        
+        Orchestrates the complete processing flow from capture through
+        decision making and action queuing.
+        
+        Args:
+            capture: Screen capture data to process
+        """
         self.cycle_count += 1
         capture_start = datetime.now()
         context = PipelineContext(stage=ProcessingStage.CAPTURE)
@@ -230,8 +340,15 @@ class VisionDecisionPipeline:
                 metadata={'error': str(e)}
             )
             
-    async def _stage_ocr(self, context: PipelineContext):
-        """OCR processing stage"""
+    async def _stage_ocr(self, context: PipelineContext) -> None:
+        """OCR processing stage of the pipeline.
+        
+        Performs optical character recognition on visible windows,
+        extracting text content for analysis.
+        
+        Args:
+            context: Pipeline context to update with OCR results
+        """
         context.stage = ProcessingStage.OCR
         start_time = datetime.now()
         
@@ -287,8 +404,15 @@ class VisionDecisionPipeline:
             )
             self.monitor.record_error('ocr_processor', 'medium')
             
-    async def _stage_analysis(self, context: PipelineContext):
-        """Window and workspace analysis stage"""
+    async def _stage_analysis(self, context: PipelineContext) -> None:
+        """Window and workspace analysis stage of the pipeline.
+        
+        Analyzes window content and workspace state to identify
+        actionable items and system conditions.
+        
+        Args:
+            context: Pipeline context to update with analysis results
+        """
         context.stage = ProcessingStage.ANALYSIS
         start_time = datetime.now()
         
@@ -349,8 +473,15 @@ class VisionDecisionPipeline:
             )
             self.monitor.record_error('window_analyzer', 'medium')
             
-    async def _stage_decision(self, context: PipelineContext):
-        """Decision making stage"""
+    async def _stage_decision(self, context: PipelineContext) -> None:
+        """Decision making stage of the pipeline.
+        
+        Generates autonomous actions based on analysis results,
+        applying confidence thresholds and priority filtering.
+        
+        Args:
+            context: Pipeline context to update with decisions
+        """
         context.stage = ProcessingStage.DECISION
         start_time = datetime.now()
         
@@ -424,7 +555,18 @@ class VisionDecisionPipeline:
             
     async def _generate_window_decisions(self, window_content: WindowContent,
                                        context: PipelineContext) -> List[AutonomousAction]:
-        """Generate decisions for a specific window"""
+        """Generate autonomous decisions for a specific window.
+        
+        Analyzes window content to identify actionable items and
+        generates appropriate autonomous actions.
+        
+        Args:
+            window_content: Window analysis results
+            context: Current pipeline context
+            
+        Returns:
+            List of autonomous actions for the window
+        """
         decisions = []
         
         # Handle urgent notifications
@@ -487,8 +629,14 @@ class VisionDecisionPipeline:
                     
         return decisions
         
-    async def _stage_queuing(self, context: PipelineContext):
-        """Action queuing stage"""
+    async def _stage_queuing(self, context: PipelineContext) -> None:
+        """Action queuing stage of the pipeline.
+        
+        Adds generated decisions to the action queue for execution.
+        
+        Args:
+            context: Pipeline context containing decisions to queue
+        """
         context.stage = ProcessingStage.QUEUING
         start_time = datetime.now()
         
@@ -512,8 +660,14 @@ class VisionDecisionPipeline:
         except Exception as e:
             context.add_error(f"Queuing failed: {e}")
             
-    def _track_performance(self, context: PipelineContext):
-        """Track pipeline performance metrics"""
+    def _track_performance(self, context: PipelineContext) -> None:
+        """Track pipeline performance metrics.
+        
+        Records performance data for monitoring and optimization.
+        
+        Args:
+            context: Pipeline context with timing metrics
+        """
         performance = {
             'cycle': self.cycle_count,
             'timestamp': context.timestamp,
@@ -530,7 +684,23 @@ class VisionDecisionPipeline:
             self.performance_history.pop(0)
             
     def get_pipeline_status(self) -> Dict[str, Any]:
-        """Get current pipeline status"""
+        """Get current pipeline status and performance metrics.
+        
+        Returns comprehensive status information including performance
+        metrics, error statistics, and system state.
+        
+        Returns:
+            Dictionary containing pipeline status information including:
+            - is_running: Whether pipeline is active
+            - cycle_count: Number of processing cycles completed
+            - queue_length: Current action queue length
+            - last_run: Timestamp of last processing cycle
+            - performance: Average performance metrics
+            - recent_errors: Recent error messages
+            - system_state: Current system state
+            - error_statistics: Error recovery statistics
+            - monitoring_report: System monitoring report
+        """
         avg_metrics = {}
         if self.performance_history:
             # Calculate average metrics
@@ -554,16 +724,24 @@ class VisionDecisionPipeline:
             'monitoring_report': self.monitor.get_monitoring_report()
         }
         
-    def _register_components(self):
-        """Register pipeline components with state manager"""
+    def _register_components(self) -> None:
+        """Register pipeline components with the state manager.
+        
+        Initializes component tracking for health monitoring and
+        error recovery coordination.
+        """
         self.state_manager.register_component('vision_pipeline', ComponentState.READY)
         self.state_manager.register_component('ocr_processor', ComponentState.READY)
         self.state_manager.register_component('window_analyzer', ComponentState.READY)
         self.state_manager.register_component('decision_engine', ComponentState.READY)
         self.state_manager.register_component('action_queue', ComponentState.READY)
         
-    def _setup_error_recovery(self):
-        """Setup error recovery mechanisms"""
+    def _setup_error_recovery(self) -> None:
+        """Setup error recovery mechanisms for pipeline components.
+        
+        Registers component reset functions and error handling callbacks
+        to enable automatic recovery from component failures.
+        """
         # Register component reset functions
         self.error_manager.register_component_reset(
             'ocr_processor',
@@ -582,8 +760,11 @@ class VisionDecisionPipeline:
                 
         self.error_manager.add_error_callback(on_error)
         
-    async def _reset_ocr_processor(self):
-        """Reset OCR processor"""
+    async def _reset_ocr_processor(self) -> None:
+        """Reset the OCR processor component.
+        
+        Reinitializes the OCR processor to recover from errors.
+        """
         logger.info("Resetting OCR processor...")
         self.ocr_processor = OCRProcessor()
         self.state_manager.update_component_state(
@@ -592,8 +773,11 @@ class VisionDecisionPipeline:
             health_score=1.0
         )
         
-    async def _reset_vision_pipeline(self):
-        """Reset vision pipeline"""
+    async def _reset_vision_pipeline(self) -> None:
+        """Reset the vision pipeline component.
+        
+        Restarts screen capture to recover from vision system errors.
+        """
         logger.info("Resetting vision pipeline...")
         # Restart screen capture
         await self.screen_capture.stop_continuous_capture()
@@ -606,7 +790,22 @@ class VisionDecisionPipeline:
         )
         
     async def process_single_capture(self) -> PipelineContext:
-        """Process a single screen capture (for testing)"""
+        """Process a single screen capture for testing purposes.
+        
+        Captures the current screen and processes it through the complete
+        pipeline without starting continuous operation.
+        
+        Returns:
+            Pipeline context with processing results
+            
+        Raises:
+            Exception: If screen capture fails or processing errors occur
+            
+        Example:
+            >>> pipeline = VisionDecisionPipeline()
+            >>> context = await pipeline.process_single_capture()
+            >>> print(f"Found {len(context.decisions)} decisions")
+        """
         # Capture screen
         capture = self.screen_capture.capture_screen()
         if not capture:
@@ -622,8 +821,12 @@ class VisionDecisionPipeline:
         
         return context
 
-async def test_vision_pipeline():
-    """Test the vision decision pipeline"""
+async def test_vision_pipeline() -> None:
+    """Test the vision decision pipeline functionality.
+    
+    Runs a comprehensive test of the pipeline by processing a single
+    screen capture and displaying the results.
+    """
     print("🤖 Testing Vision Decision Pipeline")
     print("=" * 50)
     

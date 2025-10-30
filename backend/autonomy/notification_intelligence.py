@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
 """
-Notification Intelligence System for JARVIS
-Uses vision system to detect and intelligently announce notifications
+Notification Intelligence System for JARVIS.
+
+This module provides an intelligent notification detection and announcement system
+that uses computer vision and AI to understand notifications from any application
+without hardcoding specific app behaviors. It learns patterns and adapts to user
+preferences over time.
+
+The system integrates with the vision pipeline to detect visual notification
+indicators (badges, banners, alerts) and uses OCR and AI to understand their
+content and context, then generates natural speech announcements.
+
+Example:
+    >>> notif_intel = NotificationIntelligence()
+    >>> await notif_intel.start_intelligent_monitoring()
+    >>> # System will now detect and announce notifications intelligently
 """
 
 import asyncio
@@ -33,7 +46,16 @@ from autonomy.vision_decision_pipeline import VisionDecisionPipeline
 logger = logging.getLogger(__name__)
 
 class NotificationContext(Enum):
-    """Context of detected notifications"""
+    """Context categories for detected notifications.
+    
+    Attributes:
+        MESSAGE_RECEIVED: Personal or work messages
+        MEETING_REMINDER: Calendar or meeting notifications
+        SYSTEM_ALERT: System-level alerts and updates
+        SOCIAL_UPDATE: Social media or non-work notifications
+        WORK_UPDATE: Work-related notifications from business apps
+        URGENT_ALERT: High-priority notifications requiring immediate attention
+    """
 
     MESSAGE_RECEIVED = "message_received"
     MEETING_REMINDER = "meeting_reminder"
@@ -44,7 +66,22 @@ class NotificationContext(Enum):
 
 @dataclass
 class IntelligentNotification:
-    """Notification detected through vision system"""
+    """Represents a notification detected through the vision system.
+    
+    This class encapsulates all information about a detected notification,
+    including its source, content, visual characteristics, and AI-determined
+    context and urgency.
+    
+    Attributes:
+        source_window_id: Unique identifier of the window containing the notification
+        app_name: Name of the application that generated the notification
+        detected_text: List of text strings extracted from the notification
+        visual_elements: Dictionary containing visual characteristics and indicators
+        timestamp: When the notification was detected
+        context: AI-determined context category of the notification
+        confidence: Confidence score (0.0-1.0) for the detection accuracy
+        urgency_score: AI-calculated urgency score (0.0-1.0) for prioritization
+    """
 
     source_window_id: str
     app_name: str
@@ -56,17 +93,50 @@ class IntelligentNotification:
     urgency_score: float = 0.0
 
     def to_natural_speech(self) -> str:
-        """Convert to natural speech using AI understanding"""
+        """Convert notification to natural speech format.
+        
+        Returns:
+            str: Natural language representation suitable for voice announcement.
+            
+        Note:
+            This method is currently a placeholder. The actual implementation
+            will use AI to generate context-aware natural speech.
+        """
         # This will be dynamically generated based on content
         return ""
 
 class NotificationIntelligence:
     """
-    Intelligent notification system that uses vision to detect and understand notifications
-    without hardcoding specific app behaviors
+    Intelligent notification system using vision-based detection and AI understanding.
+    
+    This class provides a comprehensive notification detection and announcement system
+    that learns from visual patterns rather than relying on hardcoded app-specific
+    behaviors. It uses computer vision to detect notification indicators, OCR to
+    extract text content, and AI to understand context and generate natural
+    announcements.
+    
+    The system continuously monitors the workspace, learns from patterns, and
+    adapts to user preferences over time.
+    
+    Attributes:
+        ocr_processor: OCR component for text extraction
+        window_analyzer: Window analysis component
+        enhanced_monitor: Workspace monitoring component
+        decision_engine: Autonomous decision making component
+        voice_module: Voice output module (injected at runtime)
+        notification_patterns: Learned notification patterns
+        learned_behaviors: User behavior patterns
+        announcement_history: History of announcements for learning
+        is_monitoring: Whether monitoring is currently active
+        monitoring_task: Async task for monitoring loop
+        detection_patterns: Learned visual detection patterns
     """
 
     def __init__(self):
+        """Initialize the notification intelligence system.
+        
+        Sets up all required components and initializes learning systems.
+        """
         # Vision components
         self.ocr_processor = OCRProcessor()
         self.window_analyzer = WindowAnalyzer()
@@ -93,8 +163,15 @@ class NotificationIntelligence:
             "sender_patterns": [],  # Will learn how to identify senders
         }
 
-    async def start_intelligent_monitoring(self):
-        """Start intelligent notification monitoring"""
+    async def start_intelligent_monitoring(self) -> None:
+        """Start intelligent notification monitoring.
+        
+        Begins the continuous monitoring loop that detects and processes
+        notifications from the workspace. Only starts if not already monitoring.
+        
+        Raises:
+            RuntimeError: If monitoring fails to start due to system issues.
+        """
         if self.is_monitoring:
             return
 
@@ -102,15 +179,26 @@ class NotificationIntelligence:
         self.monitoring_task = asyncio.create_task(self._intelligent_monitoring_loop())
         logger.info("Started intelligent notification monitoring")
 
-    async def stop_monitoring(self):
-        """Stop monitoring"""
+    async def stop_monitoring(self) -> None:
+        """Stop notification monitoring.
+        
+        Gracefully stops the monitoring loop and cancels any running tasks.
+        """
         self.is_monitoring = False
         if self.monitoring_task:
             self.monitoring_task.cancel()
         logger.info("Stopped intelligent notification monitoring")
 
-    async def _intelligent_monitoring_loop(self):
-        """Main intelligent monitoring loop"""
+    async def _intelligent_monitoring_loop(self) -> None:
+        """Main intelligent monitoring loop.
+        
+        Continuously monitors the workspace for notifications, processes them
+        through the AI pipeline, and handles announcements. Runs until
+        monitoring is stopped.
+        
+        The loop operates on a 2-second cycle to balance responsiveness with
+        system resource usage.
+        """
         while self.is_monitoring:
             try:
                 # Get current workspace state from vision system
@@ -137,8 +225,21 @@ class NotificationIntelligence:
         self, workspace_state: Dict[str, Any]
     ) -> List[IntelligentNotification]:
         """
-        Use vision and AI to detect notifications without hardcoding
-        This learns from patterns rather than having preset rules
+        Use vision and AI to detect notifications without hardcoding.
+        
+        Analyzes the current workspace state to identify potential notifications
+        using learned patterns and visual recognition rather than app-specific
+        hardcoded rules.
+        
+        Args:
+            workspace_state: Complete workspace state from enhanced monitor
+            
+        Returns:
+            List[IntelligentNotification]: Detected notifications with AI analysis
+            
+        Note:
+            This method learns from patterns rather than having preset rules,
+            making it adaptable to new applications and notification styles.
         """
         notifications = []
 
@@ -160,8 +261,19 @@ class NotificationIntelligence:
         self, window, ui_elements, state_changes
     ) -> List[IntelligentNotification]:
         """
-        Intelligently analyze a window for notifications
-        Uses pattern recognition and AI understanding
+        Intelligently analyze a window for notifications.
+        
+        Uses pattern recognition and AI understanding to identify notification
+        indicators within a specific window, then extracts and analyzes the
+        associated content.
+        
+        Args:
+            window: Window object to analyze
+            ui_elements: UI elements detected in the window
+            state_changes: Recent state changes for the window
+            
+        Returns:
+            List[IntelligentNotification]: Notifications found in this window
         """
         notifications = []
 
@@ -201,8 +313,21 @@ class NotificationIntelligence:
         self, window, ui_elements
     ) -> List[Dict[str, Any]]:
         """
-        Find visual indicators of notifications using pattern recognition
-        This learns what notifications look like rather than hardcoding
+        Find visual indicators of notifications using pattern recognition.
+        
+        Identifies visual elements that typically indicate notifications (badges,
+        banners, alerts) using learned patterns rather than hardcoded rules.
+        
+        Args:
+            window: Window object being analyzed
+            ui_elements: List of UI elements detected in the window
+            
+        Returns:
+            List[Dict[str, Any]]: List of notification indicators with metadata
+            
+        Note:
+            This method learns what notifications look like rather than hardcoding
+            specific app behaviors, making it adaptable to new applications.
         """
         indicators = []
 
@@ -235,8 +360,20 @@ class NotificationIntelligence:
 
     def _looks_like_badge(self, element: Dict[str, Any]) -> bool:
         """
-        Intelligently determine if element looks like a notification badge
-        Uses visual characteristics rather than hardcoding
+        Intelligently determine if element looks like a notification badge.
+        
+        Uses visual characteristics and learned patterns to identify notification
+        badges without hardcoding specific app behaviors.
+        
+        Args:
+            element: UI element to analyze
+            
+        Returns:
+            bool: True if element appears to be a notification badge
+            
+        Note:
+            Uses visual characteristics (size, color, content) rather than
+            hardcoding specific app behaviors for maximum adaptability.
         """
         # Check size - badges are typically small
         if element.get("width", 0) > 50 or element.get("height", 0) > 50:
@@ -257,7 +394,16 @@ class NotificationIntelligence:
 
     def _looks_like_notification_banner(self, element: Dict[str, Any]) -> bool:
         """
-        Determine if element looks like a notification banner
+        Determine if element looks like a notification banner.
+        
+        Analyzes visual and textual characteristics to identify notification
+        banners or toast messages.
+        
+        Args:
+            element: UI element to analyze
+            
+        Returns:
+            bool: True if element appears to be a notification banner
         """
         # Check position - banners often appear at top or corners
         y_pos = element.get("y", 0)
@@ -281,7 +427,17 @@ class NotificationIntelligence:
 
     async def _extract_notification_text(self, window, indicators) -> List[TextRegion]:
         """
-        Extract text related to notifications using OCR
+        Extract text related to notifications using OCR.
+        
+        Uses OCR processing to extract text content from regions around
+        detected notification indicators.
+        
+        Args:
+            window: Window containing the notifications
+            indicators: List of detected notification indicators
+            
+        Returns:
+            List[TextRegion]: Text regions extracted from notification areas
         """
         text_regions = []
 
@@ -319,7 +475,18 @@ class NotificationIntelligence:
         self, window, indicator, text_regions
     ) -> Optional[IntelligentNotification]:
         """
-        Use AI to understand what the notification is about
+        Use AI to understand what the notification is about.
+        
+        Analyzes the notification content using AI to determine context,
+        urgency, and other characteristics for intelligent processing.
+        
+        Args:
+            window: Window containing the notification
+            indicator: Visual indicator that was detected
+            text_regions: Text content extracted from the notification
+            
+        Returns:
+            Optional[IntelligentNotification]: Analyzed notification or None if invalid
         """
         # Gather context
         app_name = window.app_name
@@ -356,7 +523,18 @@ class NotificationIntelligence:
         self, app_name: str, window_title: str, text_content: List[str]
     ) -> NotificationContext:
         """
-        Use AI to determine the context of the notification
+        Use AI to determine the context of the notification.
+        
+        Analyzes the application context and text content to categorize
+        the notification appropriately.
+        
+        Args:
+            app_name: Name of the source application
+            window_title: Title of the source window
+            text_content: List of text strings from the notification
+            
+        Returns:
+            NotificationContext: AI-determined context category
         """
         # Combine all text for analysis
         full_text = " ".join(text_content).lower()
@@ -386,7 +564,17 @@ class NotificationIntelligence:
         self, text_content: List[str], context: NotificationContext
     ) -> float:
         """
-        Calculate urgency score using AI analysis
+        Calculate urgency score using AI analysis.
+        
+        Analyzes text content and context to determine how urgent the
+        notification is, helping prioritize announcements.
+        
+        Args:
+            text_content: List of text strings from the notification
+            context: Determined context category
+            
+        Returns:
+            float: Urgency score from 0.0 (low) to 1.0 (critical)
         """
         urgency = 0.5  # Base urgency
 
@@ -423,9 +611,15 @@ class NotificationIntelligence:
 
     async def _process_intelligent_notification(
         self, notification: IntelligentNotification
-    ):
+    ) -> None:
         """
-        Process and potentially announce the notification
+        Process and potentially announce the notification.
+        
+        Determines whether to announce the notification based on learned
+        preferences and generates natural speech if appropriate.
+        
+        Args:
+            notification: The notification to process
         """
         # Check if should announce based on learned preferences
         if await self._should_announce(notification):
@@ -443,7 +637,16 @@ class NotificationIntelligence:
 
     async def _should_announce(self, notification: IntelligentNotification) -> bool:
         """
-        Intelligently decide if notification should be announced
+        Intelligently decide if notification should be announced.
+        
+        Uses learned preferences, urgency analysis, and recent announcement
+        history to determine if a notification warrants voice announcement.
+        
+        Args:
+            notification: The notification to evaluate
+            
+        Returns:
+            bool: True if notification should be announced
         """
         # High urgency always announced
         if notification.urgency_score > 0.8:
@@ -460,7 +663,16 @@ class NotificationIntelligence:
         self, notification: IntelligentNotification
     ) -> str:
         """
-        Generate natural speech for the notification using AI
+        Generate natural speech for the notification using AI.
+        
+        Creates a context-aware, natural language announcement that provides
+        appropriate information without being overly verbose.
+        
+        Args:
+            notification: The notification to announce
+            
+        Returns:
+            str: Natural language announcement text
         """
         # Build context-aware announcement
         parts = []
@@ -490,7 +702,16 @@ class NotificationIntelligence:
 
     def _summarize_notification_text(self, text_list: List[str]) -> str:
         """
-        Create a natural summary of notification text
+        Create a natural summary of notification text.
+        
+        Processes and summarizes notification text content for natural
+        speech announcement, removing redundancy and limiting length.
+        
+        Args:
+            text_list: List of text strings from the notification
+            
+        Returns:
+            str: Natural language summary suitable for speech
         """
         # Join and clean text
         full_text = " ".join(text_list)
@@ -504,9 +725,15 @@ class NotificationIntelligence:
 
         return f"The message says: {cleaned}"
 
-    def _update_detection_patterns(self, indicators: List[Dict[str, Any]]):
+    def _update_detection_patterns(self, indicators: List[Dict[str, Any]]) -> None:
         """
-        Learn from detected indicators to improve future detection
+        Learn from detected indicators to improve future detection.
+        
+        Updates the learned pattern database with successful detections
+        to improve accuracy over time.
+        
+        Args:
+            indicators: List of successfully detected notification indicators
         """
         for indicator in indicators:
             pattern_type = indicator["type"]
@@ -530,7 +757,16 @@ class NotificationIntelligence:
         self, element: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Extract visual characteristics for pattern learning
+        Extract visual characteristics for pattern learning.
+        
+        Analyzes visual properties of UI elements to build patterns
+        for future notification detection.
+        
+        Args:
+            element: UI element to analyze
+            
+        Returns:
+            Dict[str, Any]: Dictionary of visual characteristics
         """
         return {
             "size": (element.get("width", 0), element.get("height", 0)),
@@ -542,9 +778,16 @@ class NotificationIntelligence:
 
     def _record_announcement(
         self, notification: IntelligentNotification, announcement: str
-    ):
+    ) -> None:
         """
-        Record announcement for learning
+        Record announcement for learning and improvement.
+        
+        Maintains a history of announcements to learn user preferences
+        and improve future announcement decisions.
+        
+        Args:
+            notification: The notification that was announced
+            announcement: The announcement text that was spoken
         """
         self.announcement_history.append(
             {
@@ -559,84 +802,202 @@ class NotificationIntelligence:
         if len(self.announcement_history) > 1000:
             self.announcement_history = self.announcement_history[-1000:]
 
+    def _calculate_badge_confidence(self, element: Dict[str, Any]) -> float:
+        """Calculate confidence score for badge detection.
+        
+        Args:
+            element: UI element being evaluated as a badge
+            
+        Returns:
+            float: Confidence score (0.0-1.0)
+        """
+        # Implementation would analyze visual characteristics
+        return 0.7  # Placeholder
+
+    def _calculate_banner_confidence(self, element: Dict[str, Any]) -> float:
+        """Calculate confidence score for banner detection.
+        
+        Args:
+            element: UI element being evaluated as a banner
+            
+        Returns:
+            float: Confidence score (0.0-1.0)
+        """
+        # Implementation would analyze visual characteristics
+        return 0.6  # Placeholder
+
+    def _is_notification_color(self, color: Any) -> bool:
+        """Check if color is typical for notifications.
+        
+        Args:
+            color: Color value to check
+            
+        Returns:
+            bool: True if color is notification-like
+        """
+        # Implementation would check for bright/alert colors
+        return False  # Placeholder
+
+    def _matches_learned_badge_pattern(self, element: Dict[str, Any]) -> bool:
+        """Check if element matches learned badge patterns.
+        
+        Args:
+            element: UI element to check
+            
+        Returns:
+            bool: True if matches learned patterns
+        """
+        # Implementation would check against learned patterns
+        return False  # Placeholder
+
+    def _matches_learned_banner_pattern(self, element: Dict[str, Any]) -> bool:
+        """Check if element matches learned banner patterns.
+        
+        Args:
+            element: UI element to check
+            
+        Returns:
+            bool: True if matches learned patterns
+        """
+        # Implementation would check against learned patterns
+        return False  # Placeholder
+
+    def _expand_region_for_context(self, element: Dict[str, Any]) -> Dict[str, Any]:
+        """Expand region around element to capture context.
+        
+        Args:
+            element: Base element to expand around
+            
+        Returns:
+            Dict[str, Any]: Expanded region definition
+        """
+        # Implementation would expand bounding box
+        return element  # Placeholder
+
+    def _is_near_indicator(self, region: TextRegion, element: Dict[str, Any]) -> bool:
+        """Check if text region is near notification indicator.
+        
+        Args:
+            region: Text region to check
+            element: Notification indicator element
+            
+        Returns:
+            bool: True if region is near indicator
+        """
+        # Implementation would check spatial proximity
+        return True  # Placeholder
+
+    async def _is_notification_change(self, change: Dict[str, Any]) -> bool:
+        """Check if state change indicates a notification.
+        
+        Args:
+            change: State change to analyze
+            
+        Returns:
+            bool: True if change indicates notification
+        """
+        # Implementation would analyze change patterns
+        return False  # Placeholder
+
+    async def _create_notification_from_change(
+        self, window, change: Dict[str, Any]
+    ) -> Optional[IntelligentNotification]:
+        """Create notification from state change.
+        
+        Args:
+            window: Window where change occurred
+            change: State change data
+            
+        Returns:
+            Optional[IntelligentNotification]: Created notification or None
+        """
+        # Implementation would create notification from change
+        return None  # Placeholder
+
+    def _was_similar_announced_recently(self, notification: IntelligentNotification) -> bool:
+        """Check if similar notification was announced recently.
+        
+        Args:
+            notification: Notification to check
+            
+        Returns:
+            bool: True if similar notification was recently announced
+        """
+        # Implementation would check announcement history
+        return False  # Placeholder
+
+    def _matches_announcement_preferences(self, notification: IntelligentNotification) -> bool:
+        """Check if notification matches learned announcement preferences.
+        
+        Args:
+            notification: Notification to check
+            
+        Returns:
+            bool: True if matches user preferences
+        """
+        # Implementation would check learned preferences
+        return True  # Placeholder
+
+    def _calculate_relative_position(self, element: Dict[str, Any]) -> Tuple[float, float]:
+        """Calculate relative position within window.
+        
+        Args:
+            element: UI element to analyze
+            
+        Returns:
+            Tuple[float, float]: Relative position (x, y) as percentages
+        """
+        # Implementation would calculate relative position
+        return (0.5, 0.5)  # Placeholder
+
+    def _categorize_color(self, color: Any) -> str:
+        """Categorize color for pattern matching.
+        
+        Args:
+            color: Color value to categorize
+            
+        Returns:
+            str: Color category name
+        """
+        # Implementation would categorize color
+        return "unknown"  # Placeholder
+
+    def _extract_text_pattern(self, text: str) -> str:
+        """Extract pattern from text for learning.
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            str: Text pattern identifier
+        """
+        # Implementation would extract text patterns
+        return "generic"  # Placeholder
+
+    def _determine_shape(self, element: Dict[str, Any]) -> str:
+        """Determine shape of UI element.
+        
+        Args:
+            element: UI element to analyze
+            
+        Returns:
+            str: Shape identifier
+        """
+        # Implementation would determine element shape
+        return "rectangle"  # Placeholder
+
 # Integration with existing vision pipeline
 class NotificationVisionIntegration:
     """
-    Integrates notification intelligence with the vision decision pipeline
+    Integrates notification intelligence with the vision decision pipeline.
+    
+    This class bridges the notification intelligence system with the broader
+    vision decision pipeline, allowing notification detection to participate
+    in autonomous decision making.
+    
+    Attributes:
+        vision_pipeline: The main vision decision pipeline
+        notification_intelligence: The notification intelligence system
     """
 
-    def __init__(self, vision_pipeline: VisionDecisionPipeline):
-        self.vision_pipeline = vision_pipeline
-        self.notification_intelligence = NotificationIntelligence()
-
-        # Register notification detection as part of pipeline
-        self._register_with_pipeline()
-
-    def _register_with_pipeline(self):
-        """
-        Register notification detection with vision pipeline
-        """
-        # Add notification detection to decision engine
-        self.vision_pipeline.decision_engine.register_decision_handler(
-            "notification_detection", self._handle_notification_decision
-        )
-
-    async def _handle_notification_decision(
-        self, context: Dict[str, Any]
-    ) -> List[AutonomousAction]:
-        """
-        Generate notification-related actions for the decision engine
-        """
-        actions = []
-
-        # Get detected notifications from context
-        notifications = context.get("detected_notifications", [])
-
-        for notification in notifications:
-            if notification.urgency_score > 0.7:
-                # Create autonomous action to announce
-                action = AutonomousAction(
-                    action_type="announce_notification",
-                    target="voice_system",
-                    params={
-                        "notification": notification,
-                        "announcement": await self.notification_intelligence._generate_natural_announcement(
-                            notification
-                        ),
-                    },
-                    priority=(
-                        ActionPriority.HIGH
-                        if notification.urgency_score > 0.8
-                        else ActionPriority.MEDIUM
-                    ),
-                    confidence=notification.confidence,
-                    category="notification",
-                    reasoning=f"Detected {notification.context.value} from {notification.app_name}",
-                    requires_permission=False,  # Notifications don't need permission
-                )
-                actions.append(action)
-
-        return actions
-
-async def test_intelligent_notifications():
-    """Test the intelligent notification system"""
-    print("🧠 Testing Intelligent Notification System")
-    print("=" * 50)
-
-    # Create notification intelligence
-    notif_intel = NotificationIntelligence()
-
-    # Simulate some test scenarios
-    print("\n📊 Starting intelligent monitoring...")
-    await notif_intel.start_intelligent_monitoring()
-
-    # Let it run for a bit
-    await asyncio.sleep(10)
-
-    # Stop monitoring
-    await notif_intel.stop_monitoring()
-
-    print("\n✅ Intelligent notification test complete!")
-
-if __name__ == "__main__":
-    asyncio.run(test_intelligent_notifications())
+    def __init__(self

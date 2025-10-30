@@ -9,6 +9,15 @@ Advanced, robust streaming content generation from Claude API with:
 - Token estimation and rate limiting
 - Caching for outline generation
 - Comprehensive error handling
+
+This module provides a comprehensive streaming interface to Anthropic's Claude API
+with advanced features for production use including rate limiting, intelligent
+model selection, caching, and robust error handling.
+
+Example:
+    >>> async with ClaudeContentStreamer() as streamer:
+    ...     async for chunk in streamer.stream_content("Write about dogs"):
+    ...         print(chunk, end='')
 """
 
 import asyncio
@@ -47,7 +56,20 @@ except ImportError:
 
 @dataclass
 class StreamingStats:
-    """Statistics for streaming session"""
+    """Statistics tracking for streaming sessions.
+    
+    Tracks performance metrics, token usage, and error counts during
+    content streaming operations.
+    
+    Attributes:
+        start_time: Timestamp when streaming session started
+        total_tokens: Total tokens processed in session
+        total_chunks: Number of content chunks received
+        total_chars: Total characters processed
+        errors_encountered: Number of errors during session
+        retries_attempted: Number of retry attempts made
+        model_used: Name of the Claude model used
+    """
 
     start_time: float = field(default_factory=time.time)
     total_tokens: int = 0
@@ -58,16 +80,28 @@ class StreamingStats:
     model_used: str = ""
 
     def get_duration(self) -> float:
-        """Get streaming duration in seconds"""
+        """Get streaming session duration in seconds.
+        
+        Returns:
+            Duration in seconds since session start
+        """
         return time.time() - self.start_time
 
     def get_tokens_per_second(self) -> float:
-        """Calculate tokens per second"""
+        """Calculate tokens processed per second.
+        
+        Returns:
+            Tokens per second rate, or 0 if no time elapsed
+        """
         duration = self.get_duration()
         return self.total_tokens / duration if duration > 0 else 0
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """Convert statistics to dictionary format.
+        
+        Returns:
+            Dictionary containing all statistics with computed metrics
+        """
         return {
             "duration_seconds": self.get_duration(),
             "total_tokens": self.total_tokens,
@@ -81,7 +115,21 @@ class StreamingStats:
 
 
 class ClaudeContentStreamer:
-    """Advanced streaming content generation from Claude API with full async support"""
+    """Advanced streaming content generation from Claude API with full async support.
+    
+    Provides robust, production-ready streaming interface to Claude API with:
+    - Intelligent model selection and automatic fallback
+    - Rate limiting and token estimation
+    - Comprehensive error handling with exponential backoff
+    - Real-time statistics tracking
+    - Outline generation with caching
+    - Mock streaming for testing without API keys
+    
+    Attributes:
+        MODELS: Dictionary of available Claude models with fallback chain
+        MAX_TOKENS_PER_MINUTE: Rate limit for tokens per minute
+        MAX_REQUESTS_PER_MINUTE: Rate limit for requests per minute
+    """
 
     # Model configurations with fallback chain
     MODELS = {
@@ -95,8 +143,7 @@ class ClaudeContentStreamer:
     MAX_REQUESTS_PER_MINUTE = 50
 
     def __init__(self, api_key: Optional[str] = None, use_intelligent_selection: bool = True):
-        """
-        Initialize advanced Claude streamer
+        """Initialize advanced Claude streamer.
 
         Args:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
@@ -137,13 +184,26 @@ class ClaudeContentStreamer:
                 self._client = None
 
     async def __aenter__(self):
-        """Async context manager entry"""
+        """Async context manager entry.
+        
+        Returns:
+            Self for use in async with statement
+        """
         self._ensure_client()
         logger.info("Claude streamer context entered")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
+        """Async context manager exit.
+        
+        Args:
+            exc_type: Exception type if any
+            exc_val: Exception value if any
+            exc_tb: Exception traceback if any
+            
+        Returns:
+            False to propagate any exceptions
+        """
         logger.info("Claude streamer context exiting")
         # Log session statistics
         if self._session_stats:
@@ -153,7 +213,11 @@ class ClaudeContentStreamer:
         return False
 
     def _ensure_client(self) -> bool:
-        """Ensure we have a Claude API client"""
+        """Ensure we have a Claude API client.
+        
+        Returns:
+            True if client is ready, False otherwise
+        """
         if not ANTHROPIC_AVAILABLE:
             logger.error("❌ Anthropic package not available")
             return False
@@ -179,8 +243,7 @@ class ClaudeContentStreamer:
         return is_ready
 
     def _check_rate_limits(self, estimated_tokens: int = 0) -> bool:
-        """
-        Check if we're within rate limits
+        """Check if we're within rate limits.
 
         Args:
             estimated_tokens: Estimated tokens for the request
@@ -209,44 +272,54 @@ class ClaudeContentStreamer:
         return True
 
     def _record_request(self, tokens: int = 0):
-        """Record a request for rate limiting"""
+        """Record a request for rate limiting.
+        
+        Args:
+            tokens: Number of tokens used in the request
+        """
         self._request_times.append(time.time())
         self._token_counts.append(tokens)
 
     def _estimate_tokens(self, text: str) -> int:
-        """
-        Estimate token count for text (rough approximation)
+        """Estimate token count for text (rough approximation).
 
         Args:
             text: Text to estimate
 
         Returns:
-            Estimated token count
+            Estimated token count (approximately 4 characters per token)
         """
         # Rough estimate: ~4 characters per token
         return len(text) // 4
 
     def _get_cache_key(self, prompt: str) -> str:
-        """Generate cache key for a prompt"""
+        """Generate cache key for a prompt.
+        
+        Args:
+            prompt: The prompt text
+            
+        Returns:
+            MD5 hash of the prompt as cache key
+        """
         return hashlib.md5(prompt.encode()).hexdigest()
 
     async def _retry_with_backoff(
         self, func: Callable, max_retries: int = 3, base_delay: float = 1.0, *args, **kwargs
     ) -> Any:
-        """
-        Execute function with exponential backoff retry
+        """Execute function with exponential backoff retry.
 
         Args:
             func: Function to execute
             max_retries: Maximum number of retries
             base_delay: Base delay in seconds
-            *args, **kwargs: Arguments to pass to function
+            *args: Positional arguments to pass to function
+            **kwargs: Keyword arguments to pass to function
 
         Returns:
             Function result
 
         Raises:
-            Last exception if all retries fail
+            Exception: Last exception if all retries fail
         """
         last_exception = None
 
@@ -288,8 +361,7 @@ class ClaudeContentStreamer:
         chunk_callback: Optional[Callable[[str], None]] = None,
         stats_callback: Optional[Callable[[StreamingStats], None]] = None,
     ) -> AsyncIterator[str]:
-        """
-        Advanced async streaming with intelligent model selection and automatic fallback
+        """Advanced async streaming with intelligent model selection and automatic fallback.
 
         Args:
             prompt: The content generation prompt
@@ -299,7 +371,12 @@ class ClaudeContentStreamer:
             stats_callback: Optional callback for streaming statistics
 
         Yields:
-            Content chunks as they're generated
+            str: Content chunks as they're generated
+
+        Example:
+            >>> async with ClaudeContentStreamer() as streamer:
+            ...     async for chunk in streamer.stream_content("Write about AI"):
+            ...         print(chunk, end='')
         """
         # Initialize statistics
         stats = StreamingStats()
@@ -431,14 +508,27 @@ class ClaudeContentStreamer:
         chunk_callback: Optional[Callable],
         stats_callback: Optional[Callable],
     ) -> AsyncIterator[str]:
-        """
-        Stream content using intelligent model selection
+        """Stream content using intelligent model selection.
 
         This method:
         1. Imports the hybrid orchestrator
         2. Analyzes the prompt to determine best model
         3. Streams response from selected model
         4. Updates statistics with model used
+        
+        Args:
+            prompt: Content generation prompt
+            max_tokens: Maximum tokens to generate
+            stats: Statistics object to update
+            chunk_callback: Optional callback for each chunk
+            stats_callback: Optional callback for statistics updates
+            
+        Yields:
+            str: Content chunks from the intelligently selected model
+            
+        Raises:
+            ImportError: If hybrid orchestrator is not available
+            Exception: If intelligent selection fails
         """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
@@ -525,8 +615,7 @@ class ClaudeContentStreamer:
         chunk_callback: Optional[Callable],
         stats_callback: Optional[Callable],
     ) -> AsyncIterator[str]:
-        """
-        Internal method to stream with a specific model using real Claude API
+        """Internal method to stream with a specific model using real Claude API.
 
         Args:
             model: Model to use
@@ -537,7 +626,11 @@ class ClaudeContentStreamer:
             stats_callback: Optional stats callback
 
         Yields:
-            Content chunks from Claude API
+            str: Content chunks from Claude API
+            
+        Raises:
+            RuntimeError: If Claude API client not initialized
+            anthropic.APIError: If API request fails
         """
         if self._client is None:
             logger.error("❌ Cannot stream: client is None")
@@ -592,8 +685,7 @@ class ClaudeContentStreamer:
     async def generate_outline(
         self, prompt: str, use_cache: bool = True, max_retries: int = 3
     ) -> Dict[str, Any]:
-        """
-        Generate a document outline with intelligent model selection and caching
+        """Generate a document outline with intelligent model selection and caching.
 
         Args:
             prompt: Outline generation prompt
@@ -601,7 +693,12 @@ class ClaudeContentStreamer:
             max_retries: Maximum retry attempts
 
         Returns:
-            Structured outline dictionary
+            Structured outline dictionary with title and sections
+            
+        Example:
+            >>> outline = await streamer.generate_outline("Create outline for essay about dogs")
+            >>> print(outline['title'])
+            'Dogs: Loyal Companions'
         """
         # Check cache first
         if use_cache:
@@ -697,13 +794,22 @@ class ClaudeContentStreamer:
         return self._mock_outline()
 
     async def _generate_outline_with_intelligent_selection(self, prompt: str) -> Dict[str, Any]:
-        """
-        Generate outline using intelligent model selection
+        """Generate outline using intelligent model selection.
 
         This method:
         1. Imports the hybrid orchestrator
         2. Uses intelligent selection to generate outline
         3. Parses the result into structured format
+        
+        Args:
+            prompt: Outline generation prompt
+            
+        Returns:
+            Structured outline dictionary
+            
+        Raises:
+            ImportError: If hybrid orchestrator is not available
+            Exception: If intelligent selection fails
         """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
@@ -759,7 +865,15 @@ class ClaudeContentStreamer:
             raise
 
     def _parse_outline(self, outline_text: str) -> Dict[str, Any]:
-        """Parse outline text into structured format"""
+        """Parse outline text into structured format.
+        
+        Args:
+            outline_text: Raw outline text from Claude
+            
+        Returns:
+            Dictionary with 'title' and 'sections' keys, where sections
+            is a list of dictionaries with 'name' and 'points' keys
+        """
         lines = outline_text.strip().split("\n")
 
         title = ""
@@ -781,195 +895,4 @@ class ClaudeContentStreamer:
                 if current_section:
                     sections.append(current_section)
 
-                section_name = line.lstrip("#").lstrip("0123456789. ").strip()
-                current_section = {"name": section_name, "points": []}
-                continue
-
-            # Section point (- or * or numbered sub-item)
-            if current_section and (
-                line.startswith("- ")
-                or line.startswith("* ")
-                or (line[0:2].strip() and line[0:2].strip()[0].isdigit())
-            ):
-                point = line.lstrip("-*0123456789. ").strip()
-                current_section["points"].append(point)
-
-        # Add final section
-        if current_section:
-            sections.append(current_section)
-
-        return {"title": title or "Untitled Document", "sections": sections}
-
-    def _mock_outline(self) -> Dict[str, Any]:
-        """Generate a mock outline for testing"""
-        return {
-            "title": "Sample Document",
-            "sections": [
-                {"name": "Introduction", "points": ["Context and background", "Thesis statement"]},
-                {"name": "Main Content", "points": ["Key point 1", "Key point 2", "Key point 3"]},
-                {"name": "Conclusion", "points": ["Summary", "Final thoughts"]},
-            ],
-        }
-
-    def get_session_statistics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive session statistics
-
-        Returns:
-            Dictionary of session stats
-        """
-        if not self._session_stats:
-            return {"sessions": 0, "total_tokens": 0}
-
-        return {
-            "sessions": len(self._session_stats),
-            "total_tokens": sum(s.total_tokens for s in self._session_stats),
-            "total_duration": sum(s.get_duration() for s in self._session_stats),
-            "average_tokens_per_second": sum(s.get_tokens_per_second() for s in self._session_stats)
-            / len(self._session_stats),
-            "total_errors": sum(s.errors_encountered for s in self._session_stats),
-            "total_retries": sum(s.retries_attempted for s in self._session_stats),
-            "models_used": list(set(s.model_used for s in self._session_stats)),
-        }
-
-    def clear_cache(self):
-        """Clear the outline cache"""
-        cleared = len(self._outline_cache)
-        self._outline_cache.clear()
-        logger.info(f"Cleared {cleared} cached outlines")
-
-    def get_cache_size(self) -> int:
-        """Get number of cached outlines"""
-        return len(self._outline_cache)
-
-    async def _mock_stream(self, prompt: str) -> AsyncIterator[str]:
-        """Enhanced mock content streaming for testing"""
-        # Detect document type from prompt
-        prompt_lower = prompt.lower()
-
-        if "mla" in prompt_lower:
-            mock_content = """Student Name
-Instructor Name
-Course Name
-1 October 2025
-
-Dogs: Loyal Companions
-
-## Introduction
-
-Dogs have been humanity's faithful companions for thousands of years. From ancient hunting partners to modern family pets, dogs have played crucial roles in human society (Smith 45).
-
-## The History of Dog Domestication
-
-Archaeological evidence suggests that dogs were first domesticated from wolves approximately 15,000 years ago (Johnson and Brown 112). This partnership between humans and canines represents one of the most successful interspecies relationships in history.
-
-## Characteristics and Breeds
-
-Modern dogs exhibit remarkable diversity, with over 300 recognized breeds worldwide. Each breed possesses unique characteristics suited to specific roles, from herding sheep to providing emotional support.
-
-## The Human-Canine Bond
-
-Research demonstrates that dogs provide numerous physical and psychological benefits to their owners. Studies show that dog ownership can reduce stress, lower blood pressure, and increase physical activity levels (Williams 78).
-
-## Conclusion
-
-Dogs remain invaluable companions in contemporary society. Their loyalty, intelligence, and adaptability ensure their continued importance in human lives for generations to come.
-
-Works Cited
-
-Johnson, Mary, and Robert Brown. "Canine Domestication History." Journal of Archaeological Science, vol. 45, 2020, pp. 110-125.
-
-Smith, John. The Evolution of Dogs. Academic Press, 2019.
-
-Williams, Sarah. "Health Benefits of Pet Ownership." Medical Journal, vol. 12, no. 3, 2021, pp. 75-82."""
-
-        elif "apa" in prompt_lower:
-            mock_content = """Running head: DOGS AS COMPANIONS
-
-Dogs as Loyal Companions
-
-Student Name
-Institution Name
-
-## Abstract
-
-This paper examines the historical and contemporary role of dogs in human society, their domestication, breed diversity, and the psychological benefits of dog ownership.
-
-## Dogs as Loyal Companions
-
-Dogs have been humanity's faithful companions for millennia (Smith, 2019). Their domestication represents a pivotal moment in human history.
-
-## History of Domestication
-
-Archaeological evidence indicates that dogs were first domesticated approximately 15,000 years ago (Johnson & Brown, 2020). This partnership has proven remarkably successful.
-
-## Modern Dog Breeds
-
-Contemporary dogs exhibit tremendous diversity, with over 300 recognized breeds globally. Each breed possesses characteristics suited to specific functions.
-
-## Psychological Benefits
-
-Research demonstrates that dogs provide significant health benefits to owners, including stress reduction and increased physical activity (Williams, 2021).
-
-## Conclusion
-
-Dogs continue to serve as invaluable companions in modern society, providing both practical assistance and emotional support.
-
-References
-
-Johnson, M., & Brown, R. (2020). Canine domestication history. Journal of Archaeological Science, 45, 110-125.
-
-Smith, J. (2019). The evolution of dogs. Academic Press.
-
-Williams, S. (2021). Health benefits of pet ownership. Medical Journal, 12(3), 75-82."""
-
-        else:
-            mock_content = """# Dogs: Loyal Companions
-
-## Introduction
-
-Dogs have been humanity's faithful companions for thousands of years, serving roles from hunting partners to beloved family pets.
-
-## History
-
-Archaeological evidence suggests dogs were first domesticated from wolves approximately 15,000 years ago, making them one of the first domesticated animals.
-
-## Breeds and Characteristics
-
-Modern dogs display remarkable diversity, with over 300 recognized breeds worldwide. Each breed has unique characteristics suited to specific roles.
-
-## Human-Canine Bond
-
-Research shows that dogs provide numerous benefits to their owners, including reduced stress, increased physical activity, and emotional support.
-
-## Conclusion
-
-Dogs remain invaluable companions in contemporary society, their loyalty and intelligence ensuring their continued importance in human lives."""
-
-        # Stream the mock content with natural pacing
-        words = mock_content.split()
-        for i, word in enumerate(words):
-            # Add space except for first word and after newlines
-            chunk = word if i == 0 or words[i - 1].endswith("\n") else " " + word
-            yield chunk
-            # Variable delay for more natural feel
-            await asyncio.sleep(0.03 if len(word) < 5 else 0.05)
-
-
-# Global instance
-_claude_streamer: Optional[ClaudeContentStreamer] = None
-
-
-def get_claude_streamer(api_key: Optional[str] = None) -> ClaudeContentStreamer:
-    """Get or create global Claude streamer instance"""
-    global _claude_streamer
-    if _claude_streamer is None:
-        # Try to load from environment if no key provided
-        if not api_key:
-            import os
-
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if api_key:
-                logger.info(f"Loaded API key from environment: {api_key[:20]}...")
-        _claude_streamer = ClaudeContentStreamer(api_key)
-    return _claude_streamer
+                section_name = line.lstrip("#").lstrip("0123456789. ").strip

@@ -1,6 +1,19 @@
 """
 Python-TypeScript Bridge for IPC Communication
-Uses ZeroMQ for high-performance inter-process communication
+
+This module provides a high-performance bridge between Python and TypeScript processes
+using ZeroMQ for inter-process communication. It supports bidirectional function calls,
+event publishing/subscribing, and dynamic function registration.
+
+The bridge uses multiple ZeroMQ socket types:
+- PULL/PUSH for request-response communication
+- PUB/SUB for event broadcasting
+
+Example:
+    >>> bridge = PythonTypeScriptBridge()
+    >>> await bridge.start()
+    >>> bridge.register_function('math', 'add', lambda x, y: x + y)
+    >>> result = await bridge.call_typescript('calculate', [1, 2])
 """
 
 import asyncio
@@ -20,7 +33,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BridgeMessage:
-    """Message structure for bridge communication"""
+    """Message structure for bridge communication.
+    
+    Attributes:
+        id: Unique identifier for the message
+        type: Message type ('function_call', 'response', 'event')
+        module: Target module name
+        function: Target function name
+        args: Positional arguments for the function call
+        kwargs: Keyword arguments for the function call
+        timestamp: ISO format timestamp when message was created
+        correlation_id: Optional correlation ID for message tracking
+    """
     id: str
     type: str
     module: str
@@ -31,12 +55,36 @@ class BridgeMessage:
     correlation_id: Optional[str] = None
 
 class PythonTypeScriptBridge:
-    """High-performance bridge between Python and TypeScript processes"""
+    """High-performance bridge between Python and TypeScript processes.
+    
+    This class manages ZeroMQ sockets for bidirectional communication between
+    Python and TypeScript processes. It supports function registration,
+    dynamic imports, event publishing, and response handling.
+    
+    Attributes:
+        python_port: Port for Python to receive messages
+        typescript_port: Port for TypeScript to receive messages
+        use_pickle: Whether to use pickle serialization instead of JSON
+        context: ZeroMQ context for socket management
+        pull_socket: Socket for receiving messages from TypeScript
+        push_socket: Socket for sending messages to TypeScript
+        pub_socket: Socket for publishing events
+        functions: Registry of available Python functions
+        response_handlers: Futures waiting for responses
+        executor: Thread pool for CPU-bound operations
+    """
     
     def __init__(self, 
                  python_port: int = 5555,
                  typescript_port: int = 5556,
                  use_pickle: bool = False):
+        """Initialize the Python-TypeScript bridge.
+        
+        Args:
+            python_port: Port for Python to bind PULL socket (default: 5555)
+            typescript_port: Port for TypeScript to bind PULL socket (default: 5556)
+            use_pickle: Use pickle serialization instead of JSON (default: False)
+        """
         self.python_port = python_port
         self.typescript_port = typescript_port
         self.use_pickle = use_pickle
@@ -61,8 +109,17 @@ class PythonTypeScriptBridge:
         
         self._running = False
         
-    async def start(self):
-        """Start the bridge with dynamic port allocation"""
+    async def start(self) -> None:
+        """Start the bridge with dynamic port allocation.
+        
+        Attempts to bind to the specified ports, automatically trying higher
+        port numbers if conflicts occur. Sets up all ZeroMQ sockets and starts
+        the message processing loop.
+        
+        Raises:
+            zmq.error.ZMQError: If unable to bind to ports after max attempts
+            Exception: If bridge startup fails for other reasons
+        """
         max_attempts = 10
         
         while self._port_allocation_attempts < max_attempts:
@@ -113,8 +170,12 @@ class PythonTypeScriptBridge:
                 logger.error(f"Failed to start bridge: {e}")
                 raise
             
-    async def stop(self):
-        """Stop the bridge"""
+    async def stop(self) -> None:
+        """Stop the bridge and cleanup resources.
+        
+        Closes all ZeroMQ sockets, terminates the context, and shuts down
+        the thread pool executor.
+        """
         self._running = False
         
         # Close sockets
@@ -133,8 +194,13 @@ class PythonTypeScriptBridge:
         
         logger.info("Python-TypeScript bridge stopped")
         
-    async def _process_messages(self):
-        """Main message processing loop"""
+    async def _process_messages(self) -> None:
+        """Main message processing loop.
+        
+        Continuously receives messages from the PULL socket and processes
+        them asynchronously. Handles deserialization based on the configured
+        serialization method (JSON or pickle).
+        """
         while self._running:
             try:
                 # Receive message
@@ -152,8 +218,17 @@ class PythonTypeScriptBridge:
             except Exception as e:
                 logger.error(f"Message processing error: {e}")
                 
-    async def _handle_message(self, message: Dict[str, Any]):
-        """Handle incoming message"""
+    async def _handle_message(self, message: Dict[str, Any]) -> None:
+        """Handle incoming message based on its type.
+        
+        Routes messages to appropriate handlers based on the message type:
+        - 'function_call': Execute Python function
+        - 'response': Handle response from TypeScript
+        - 'event': Process event from TypeScript
+        
+        Args:
+            message: Deserialized message dictionary
+        """
         try:
             msg_type = message.get('type')
             
@@ -178,8 +253,16 @@ class PythonTypeScriptBridge:
                     'traceback': traceback.format_exc()
                 })
                 
-    async def _handle_function_call(self, message: Dict[str, Any]):
-        """Handle function call from TypeScript"""
+    async def _handle_function_call(self, message: Dict[str, Any]) -> None:
+        """Handle function call from TypeScript.
+        
+        Executes the requested Python function with provided arguments.
+        Supports both synchronous and asynchronous functions. CPU-bound
+        functions are executed in a thread pool.
+        
+        Args:
+            message: Message containing function call details
+        """
         module_name = message.get('module')
         function_name = message.get('function')
         args = message.get('args', [])
@@ -219,8 +302,16 @@ class PythonTypeScriptBridge:
                 'traceback': traceback.format_exc()
             })
             
-    async def _handle_response(self, message: Dict[str, Any]):
-        """Handle response from TypeScript"""
+    async def _handle_response(self, message: Dict[str, Any]) -> None:
+        """Handle response from TypeScript.
+        
+        Resolves pending futures waiting for responses from TypeScript
+        function calls. Sets exception for error responses or result
+        for successful responses.
+        
+        Args:
+            message: Response message from TypeScript
+        """
         msg_id = message.get('id')
         
         if msg_id in self.response_handlers:
@@ -231,8 +322,15 @@ class PythonTypeScriptBridge:
             else:
                 future.set_result(message.get('result'))
                 
-    async def _handle_event(self, message: Dict[str, Any]):
-        """Handle event from TypeScript"""
+    async def _handle_event(self, message: Dict[str, Any]) -> None:
+        """Handle event from TypeScript.
+        
+        Processes events received from TypeScript and republishes them
+        to local subscribers via the PUB socket.
+        
+        Args:
+            message: Event message from TypeScript
+        """
         event_type = message.get('event_type')
         event_data = message.get('data')
         
@@ -240,7 +338,21 @@ class PythonTypeScriptBridge:
         await self.publish_event(event_type, event_data)
         
     def _import_function(self, module_name: str, function_name: str) -> Callable:
-        """Dynamically import a function"""
+        """Dynamically import a function from a module.
+        
+        Imports the specified function and caches it in the function registry
+        for future use.
+        
+        Args:
+            module_name: Name of the module to import from
+            function_name: Name of the function to import
+            
+        Returns:
+            The imported function
+            
+        Raises:
+            ImportError: If the module or function cannot be imported
+        """
         import importlib
         
         try:
@@ -257,7 +369,17 @@ class PythonTypeScriptBridge:
             raise ImportError(f"Failed to import {module_name}.{function_name}: {e}")
             
     def _serialize_result(self, result: Any) -> Any:
-        """Serialize Python result for TypeScript"""
+        """Serialize Python result for TypeScript consumption.
+        
+        Converts Python objects to JSON-serializable format or base64-encoded
+        pickle data depending on the serialization method.
+        
+        Args:
+            result: Python object to serialize
+            
+        Returns:
+            Serialized representation of the result
+        """
         if self.use_pickle:
             return base64.b64encode(pickle.dumps(result)).decode('utf-8')
             
@@ -277,8 +399,15 @@ class PythonTypeScriptBridge:
             # Fallback to string representation
             return str(result)
             
-    async def _send_response(self, response: Dict[str, Any]):
-        """Send response to TypeScript"""
+    async def _send_response(self, response: Dict[str, Any]) -> None:
+        """Send response to TypeScript.
+        
+        Serializes and sends a response message to TypeScript via the
+        PUSH socket.
+        
+        Args:
+            response: Response dictionary to send
+        """
         try:
             if self.use_pickle:
                 data = pickle.dumps(response)
@@ -289,16 +418,39 @@ class PythonTypeScriptBridge:
         except Exception as e:
             logger.error(f"Failed to send response: {e}")
             
-    def register_function(self, module_name: str, function_name: str, func: Callable):
-        """Register a Python function for TypeScript to call"""
+    def register_function(self, module_name: str, function_name: str, func: Callable) -> None:
+        """Register a Python function for TypeScript to call.
+        
+        Adds a function to the registry so it can be called from TypeScript.
+        
+        Args:
+            module_name: Module namespace for the function
+            function_name: Name to register the function under
+            func: The callable function to register
+            
+        Example:
+            >>> bridge.register_function('math', 'add', lambda x, y: x + y)
+        """
         if module_name not in self.functions:
             self.functions[module_name] = {}
             
         self.functions[module_name][function_name] = func
         logger.info(f"Registered function: {module_name}.{function_name}")
         
-    def register_module(self, module_name: str, module: Any):
-        """Register all functions from a module"""
+    def register_module(self, module_name: str, module: Any) -> None:
+        """Register all functions from a module.
+        
+        Automatically registers all public functions (not starting with '_')
+        from the given module.
+        
+        Args:
+            module_name: Name to register the module under
+            module: The module object to register functions from
+            
+        Example:
+            >>> import math
+            >>> bridge.register_module('math', math)
+        """
         import inspect
         
         if module_name not in self.functions:
@@ -314,7 +466,26 @@ class PythonTypeScriptBridge:
                             args: List[Any] = None,
                             kwargs: Dict[str, Any] = None,
                             timeout: float = 30.0) -> Any:
-        """Call a TypeScript function from Python"""
+        """Call a TypeScript function from Python.
+        
+        Sends a function call message to TypeScript and waits for the response.
+        
+        Args:
+            function_name: Name of the TypeScript function to call
+            args: Positional arguments to pass to the function
+            kwargs: Keyword arguments to pass to the function
+            timeout: Maximum time to wait for response in seconds
+            
+        Returns:
+            The result returned by the TypeScript function
+            
+        Raises:
+            TimeoutError: If the function call times out
+            Exception: If the TypeScript function raises an error
+            
+        Example:
+            >>> result = await bridge.call_typescript('calculateSum', [1, 2, 3])
+        """
         import uuid
         
         msg_id = str(uuid.uuid4())
@@ -342,8 +513,19 @@ class PythonTypeScriptBridge:
             self.response_handlers.pop(msg_id, None)
             raise TimeoutError(f"TypeScript function call timed out: {function_name}")
             
-    async def publish_event(self, event_type: str, data: Any):
-        """Publish an event to TypeScript subscribers"""
+    async def publish_event(self, event_type: str, data: Any) -> None:
+        """Publish an event to TypeScript subscribers.
+        
+        Broadcasts an event message to all TypeScript subscribers listening
+        for the specified event type.
+        
+        Args:
+            event_type: Type/topic of the event
+            data: Event data to publish
+            
+        Example:
+            >>> await bridge.publish_event('user_login', {'user_id': 123})
+        """
         event = {
             'type': 'event',
             'event_type': event_type,
@@ -368,25 +550,54 @@ class PythonTypeScriptBridge:
 bridge = None
 
 def get_bridge() -> PythonTypeScriptBridge:
-    """Get or create bridge instance"""
+    """Get or create the global bridge instance.
+    
+    Returns:
+        The global PythonTypeScriptBridge instance
+        
+    Example:
+        >>> bridge = get_bridge()
+        >>> await bridge.start()
+    """
     global bridge
     if bridge is None:
         bridge = PythonTypeScriptBridge()
     return bridge
 
-async def start_bridge():
-    """Start the global bridge instance"""
+async def start_bridge() -> None:
+    """Start the global bridge instance.
+    
+    Convenience function to start the global bridge without needing
+    to call get_bridge() first.
+    
+    Example:
+        >>> await start_bridge()
+    """
     bridge = get_bridge()
     await bridge.start()
 
-async def stop_bridge():
-    """Stop the global bridge instance"""
+async def stop_bridge() -> None:
+    """Stop the global bridge instance.
+    
+    Convenience function to stop the global bridge if it exists.
+    
+    Example:
+        >>> await stop_bridge()
+    """
     if bridge:
         await bridge.stop()
 
-# Example usage for registering vision handlers
-def register_vision_handlers():
-    """Register vision-related handlers with the bridge"""
+def register_vision_handlers() -> None:
+    """Register vision-related handlers with the bridge.
+    
+    Example function showing how to register handlers from the vision API.
+    This registers the unified vision handler module and specific functions
+    for TypeScript to call.
+    
+    Example:
+        >>> register_vision_handlers()
+        >>> # TypeScript can now call vision functions
+    """
     from ..api import unified_vision_handler
     
     bridge = get_bridge()

@@ -41,7 +41,16 @@ logger = logging.getLogger(__name__)
 
 
 class ActionType(Enum):
-    """Display action types"""
+    """Display action types for voice commands.
+    
+    Attributes:
+        CONNECT: Connect to a display
+        DISCONNECT: Disconnect from a display
+        CHANGE_MODE: Change display mirroring mode
+        QUERY_STATUS: Query connection status
+        LIST_DISPLAYS: List available displays
+        UNKNOWN: Unrecognized action
+    """
 
     CONNECT = "connect"
     DISCONNECT = "disconnect"
@@ -52,7 +61,14 @@ class ActionType(Enum):
 
 
 class ModeType(Enum):
-    """Display mirroring modes"""
+    """Display mirroring modes for screen sharing.
+    
+    Attributes:
+        ENTIRE_SCREEN: Mirror entire screen
+        WINDOW: Share specific window/app
+        EXTENDED: Use as extended desktop
+        AUTO: Let system decide optimal mode
+    """
 
     ENTIRE_SCREEN = "entire"
     WINDOW = "window"
@@ -61,7 +77,18 @@ class ModeType(Enum):
 
 
 class ResolutionStrategy(Enum):
-    """How we resolved the display reference"""
+    """Strategies used to resolve display references from voice commands.
+    
+    Attributes:
+        DIRECT_MATCH: Exact name match found
+        FUZZY_MATCH: Similar name match found
+        IMPLICIT_CONTEXT: Resolved using context from implicit resolver
+        VISUAL_ATTENTION: Based on recent visual detection
+        CONVERSATION: From conversation history
+        ONLY_AVAILABLE: Only one display available
+        LEARNED_PATTERN: From learned usage patterns
+        FALLBACK: Last resort resolution
+    """
 
     DIRECT_MATCH = "direct_match"  # Exact name match
     FUZZY_MATCH = "fuzzy_match"  # Similar name
@@ -75,7 +102,18 @@ class ResolutionStrategy(Enum):
 
 @dataclass
 class DisplayReference:
-    """Resolved display reference from voice command"""
+    """Resolved display reference from voice command.
+    
+    Attributes:
+        display_name: Human-readable display name
+        display_id: Unique display identifier
+        action: Type of action to perform
+        mode: Display mirroring mode (if applicable)
+        confidence: Confidence score (0.0-1.0)
+        resolution_strategy: How the reference was resolved
+        metadata: Additional resolution metadata
+        timestamp: When the reference was created
+    """
 
     display_name: str
     display_id: Optional[str] = None
@@ -87,7 +125,11 @@ class DisplayReference:
     timestamp: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """Convert display reference to dictionary format.
+        
+        Returns:
+            Dictionary representation of the display reference
+        """
         return {
             "display_name": self.display_name,
             "display_id": self.display_id,
@@ -102,7 +144,16 @@ class DisplayReference:
 
 @dataclass
 class PatternLearning:
-    """Learned pattern from successful commands"""
+    """Learned pattern from successful voice commands.
+    
+    Attributes:
+        pattern: Regular expression pattern
+        action: Associated action type
+        mode: Associated mode type (if any)
+        success_count: Number of successful uses
+        failure_count: Number of failed uses
+        last_used: When pattern was last used
+    """
 
     pattern: str
     action: ActionType
@@ -113,14 +164,28 @@ class PatternLearning:
 
     @property
     def success_rate(self) -> float:
-        """Calculate success rate"""
+        """Calculate success rate of this pattern.
+        
+        Returns:
+            Success rate as float between 0.0 and 1.0
+        """
         total = self.success_count + self.failure_count
         return self.success_count / total if total > 0 else 0.0
 
 
 @dataclass
 class DisplayDetectionEvent:
-    """Record of display detection"""
+    """Record of display detection and usage statistics.
+    
+    Attributes:
+        display_name: Human-readable display name
+        display_id: Unique display identifier
+        detected_at: When first detected
+        last_seen: When last seen/detected
+        detection_count: Total number of detections
+        connection_attempts: Number of connection attempts
+        successful_connections: Number of successful connections
+    """
 
     display_name: str
     display_id: str
@@ -137,14 +202,25 @@ class DisplayDetectionEvent:
 
 
 class AdvancedDisplayReferenceHandler:
-    """
-    Advanced async display reference handler with dynamic learning.
+    """Advanced async display reference handler with dynamic learning.
 
     No hardcoding - learns everything from:
     1. System observation (available displays)
     2. User commands (patterns and preferences)
     3. Context (implicit resolver, conversation)
     4. Success/failure feedback
+    
+    Attributes:
+        implicit_resolver: ImplicitReferenceResolver instance for context
+        display_monitor: AdvancedDisplayMonitor for display detection
+        known_displays: Dictionary of detected displays
+        learned_patterns: Patterns learned from successful commands
+        display_aliases: Nickname mappings to display IDs
+        command_history: Recent command history
+        action_keywords: Keywords associated with each action type
+        mode_keywords: Keywords associated with each mode type
+        resolution_cache: Performance cache for resolutions
+        stats: Usage statistics
     """
 
     def __init__(
@@ -154,12 +230,11 @@ class AdvancedDisplayReferenceHandler:
         max_cache_size: int = 100,
         cache_ttl_seconds: int = 300,
     ):
-        """
-        Initialize advanced display reference handler
+        """Initialize advanced display reference handler.
 
         Args:
-            implicit_resolver: ImplicitReferenceResolver instance
-            display_monitor: AdvancedDisplayMonitor instance
+            implicit_resolver: ImplicitReferenceResolver instance for context awareness
+            display_monitor: AdvancedDisplayMonitor instance for display detection
             max_cache_size: Maximum number of cached resolutions
             cache_ttl_seconds: Cache time-to-live in seconds
         """
@@ -200,7 +275,11 @@ class AdvancedDisplayReferenceHandler:
         logger.info("[DISPLAY-REF-ADV] Advanced handler initialized")
 
     def _initialize_seed_patterns(self):
-        """Initialize minimal seed patterns that will be expanded through learning"""
+        """Initialize minimal seed patterns that will be expanded through learning.
+        
+        Sets up basic keyword patterns for actions and modes that will be
+        dynamically expanded as the system learns from user interactions.
+        """
         # Action seeds (minimal - will learn more from usage)
         self.action_keywords[ActionType.CONNECT] = {"connect", "show", "cast"}
         self.action_keywords[ActionType.DISCONNECT] = {"disconnect", "stop"}
@@ -218,14 +297,19 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     async def handle_voice_command(self, command: str) -> Optional[DisplayReference]:
-        """
-        Handle voice command with advanced async resolution
+        """Handle voice command with advanced async resolution.
+
+        Uses multiple concurrent resolution strategies to identify the target
+        display and action from natural language voice commands.
 
         Args:
-            command: Voice command text
+            command: Voice command text to process
 
         Returns:
-            DisplayReference if resolved, None if not a display command
+            DisplayReference if successfully resolved, None if not a display command
+            
+        Raises:
+            Exception: If critical error occurs during processing
         """
         self.stats["total_commands"] += 1
         command_lower = command.lower().strip()
@@ -301,14 +385,16 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     async def _is_display_command(self, command: str) -> bool:
-        """
-        Dynamically determine if command is about displays
+        """Dynamically determine if command is about displays.
 
-        Uses multiple signals:
-        1. Known display names in command
-        2. Action keywords
-        3. Display-related terms
-        4. Learned patterns
+        Uses multiple signals to classify whether a voice command is
+        display-related without hardcoded rules.
+
+        Args:
+            command: Lowercase command text to analyze
+
+        Returns:
+            True if command appears to be display-related, False otherwise
         """
         # Check 1: Known display names
         for display_name in self.known_displays.keys():
@@ -350,7 +436,14 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     async def _resolve_via_direct_match(self, command: str) -> Optional[DisplayReference]:
-        """Strategy 1: Direct exact match with known displays"""
+        """Strategy 1: Direct exact match with known displays.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            DisplayReference if exact match found, None otherwise
+        """
         for display_name, event in self.known_displays.items():
             if display_name.lower() in command:
                 return DisplayReference(
@@ -363,7 +456,14 @@ class AdvancedDisplayReferenceHandler:
         return None
 
     async def _resolve_via_fuzzy_match(self, command: str) -> Optional[DisplayReference]:
-        """Strategy 2: Fuzzy matching with known displays"""
+        """Strategy 2: Fuzzy matching with known displays.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            DisplayReference with best fuzzy match, None if no good matches
+        """
         best_match = None
         best_score = 0.0
 
@@ -384,7 +484,14 @@ class AdvancedDisplayReferenceHandler:
         return best_match
 
     async def _resolve_via_implicit_context(self, command: str) -> Optional[DisplayReference]:
-        """Strategy 3: Use implicit_reference_resolver for context"""
+        """Strategy 3: Use implicit_reference_resolver for context.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            DisplayReference from context analysis, None if not resolved
+        """
         if not self.implicit_resolver:
             return None
 
@@ -414,7 +521,14 @@ class AdvancedDisplayReferenceHandler:
         return None
 
     async def _resolve_via_learned_patterns(self, command: str) -> Optional[DisplayReference]:
-        """Strategy 4: Use learned patterns from previous successful commands"""
+        """Strategy 4: Use learned patterns from previous successful commands.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            DisplayReference from pattern matching, None if no patterns match
+        """
         for pattern_text, pattern_list in self.learned_patterns.items():
             for pattern_obj in pattern_list:
                 if re.search(pattern_obj.pattern, command, re.IGNORECASE):
@@ -439,7 +553,14 @@ class AdvancedDisplayReferenceHandler:
         return None
 
     async def _resolve_via_only_available(self, command: str) -> Optional[DisplayReference]:
-        """Strategy 5: If only one display available, use it"""
+        """Strategy 5: If only one display available, use it.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            DisplayReference for the only available display, None if multiple displays
+        """
         if len(self.known_displays) == 1:
             display_name, event = list(self.known_displays.items())[0]
             return DisplayReference(
@@ -457,7 +578,14 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     async def _determine_action(self, command: str) -> ActionType:
-        """Dynamically determine action from command"""
+        """Dynamically determine action from command.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            Most likely ActionType based on keywords and patterns
+        """
         # Score each action type
         scores: Dict[ActionType, float] = defaultdict(float)
 
@@ -479,7 +607,14 @@ class AdvancedDisplayReferenceHandler:
         return ActionType.CONNECT  # Default
 
     async def _determine_mode(self, command: str) -> Optional[ModeType]:
-        """Dynamically determine mode from command"""
+        """Dynamically determine mode from command.
+        
+        Args:
+            command: Lowercase command text
+            
+        Returns:
+            Most likely ModeType if specified, None if no mode detected
+        """
         scores: Dict[ModeType, float] = defaultdict(float)
 
         for mode_type, keywords in self.mode_keywords.items():
@@ -498,12 +633,13 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     def record_display_detection(self, display_name: str, display_id: Optional[str] = None):
-        """
-        Record display detection event (called by advanced_display_monitor)
+        """Record display detection event (called by advanced_display_monitor).
+
+        Updates internal knowledge of available displays and their usage statistics.
 
         Args:
             display_name: Human-readable display name
-            display_id: Unique display identifier
+            display_id: Unique display identifier (generated if not provided)
         """
         if not display_id:
             # Generate display_id from name if not provided (use underscores to match config format)
@@ -541,7 +677,11 @@ class AdvancedDisplayReferenceHandler:
                 logger.debug(f"[DISPLAY-REF-ADV] Could not record in implicit resolver: {e}")
 
     async def start_realtime_monitoring(self):
-        """Start real-time display monitoring (if display_monitor available)"""
+        """Start real-time display monitoring (if display_monitor available).
+        
+        Begins background task to continuously monitor for display changes
+        and update the known displays database.
+        """
         if not self.display_monitor or self.is_monitoring:
             return
 
@@ -550,7 +690,10 @@ class AdvancedDisplayReferenceHandler:
         logger.info("[DISPLAY-REF-ADV] Started real-time display monitoring")
 
     async def stop_realtime_monitoring(self):
-        """Stop real-time display monitoring"""
+        """Stop real-time display monitoring.
+        
+        Cancels the background monitoring task and cleans up resources.
+        """
         self.is_monitoring = False
         if self.monitoring_task:
             self.monitoring_task.cancel()
@@ -561,7 +704,11 @@ class AdvancedDisplayReferenceHandler:
         logger.info("[DISPLAY-REF-ADV] Stopped real-time display monitoring")
 
     async def _monitor_displays(self):
-        """Background task to monitor displays"""
+        """Background task to monitor displays.
+        
+        Continuously polls the display monitor for available displays
+        and updates the internal knowledge base.
+        """
         while self.is_monitoring:
             try:
                 if self.display_monitor:
@@ -584,13 +731,16 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     def learn_from_success(self, command: str, reference: DisplayReference):
-        """
-        Learn from successful command execution
+        """Learn from successful command execution.
 
         This improves future resolutions by:
         1. Strengthening used patterns
         2. Creating new patterns
         3. Building display aliases
+
+        Args:
+            command: Original voice command that succeeded
+            reference: DisplayReference that was successfully executed
         """
         command_lower = command.lower()
 
@@ -637,7 +787,15 @@ class AdvancedDisplayReferenceHandler:
     def learn_from_failure(
         self, command: str, attempted_reference: Optional[DisplayReference] = None
     ):
-        """Learn from failed command execution"""
+        """Learn from failed command execution.
+        
+        Updates failure statistics and pattern reliability scores
+        to improve future resolution accuracy.
+
+        Args:
+            command: Original voice command that failed
+            attempted_reference: DisplayReference that failed (if any)
+        """
         if attempted_reference:
             # Update failure stats
             if attempted_reference.display_name in self.known_displays:
@@ -655,7 +813,18 @@ class AdvancedDisplayReferenceHandler:
         logger.debug(f"[DISPLAY-REF-ADV] Learned from failure: '{command}'")
 
     def _extract_pattern(self, command: str, reference: DisplayReference) -> Optional[str]:
-        """Extract reusable pattern from command"""
+        """Extract reusable pattern from command.
+        
+        Creates a generic pattern by replacing the specific display name
+        with a placeholder for future pattern matching.
+
+        Args:
+            command: Lowercase command text
+            reference: DisplayReference with display name to replace
+            
+        Returns:
+            Generic pattern string if extractable, None otherwise
+        """
         # Remove display name to get generic pattern
         pattern = command.replace(reference.display_name.lower(), "{display}")
 
@@ -670,7 +839,14 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     def _get_cached_resolution(self, command: str) -> Optional[DisplayReference]:
-        """Get cached resolution if available and not expired"""
+        """Get cached resolution if available and not expired.
+        
+        Args:
+            command: Command text to check cache for
+            
+        Returns:
+            Cached DisplayReference if valid, None otherwise
+        """
         cache_key = hashlib.md5(command.encode()).hexdigest()
 
         if cache_key in self.resolution_cache:
@@ -686,7 +862,12 @@ class AdvancedDisplayReferenceHandler:
         return None
 
     def _cache_resolution(self, command: str, reference: DisplayReference):
-        """Cache resolution for performance"""
+        """Cache resolution for performance optimization.
+        
+        Args:
+            command: Command text to cache
+            reference: DisplayReference to cache
+        """
         cache_key = hashlib.md5(command.encode()).hexdigest()
 
         # Evict oldest if cache full
@@ -698,7 +879,7 @@ class AdvancedDisplayReferenceHandler:
         self.resolution_cache[cache_key] = (reference, datetime.now())
 
     def clear_cache(self):
-        """Clear resolution cache"""
+        """Clear resolution cache to free memory and force fresh resolutions."""
         self.resolution_cache.clear()
         logger.debug("[DISPLAY-REF-ADV] Cache cleared")
 
@@ -707,165 +888,13 @@ class AdvancedDisplayReferenceHandler:
     # ========================================================================
 
     def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """Calculate text similarity score (simple implementation)"""
+        """Calculate text similarity score using Jaccard similarity.
+        
+        Args:
+            text1: First text to compare
+            text2: Second text to compare
+            
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
         words1 = set(text1.split())
-        words2 = set(text2.split())
-
-        if not words1 or not words2:
-            return 0.0
-
-        intersection = words1 & words2
-        union = words1 | words2
-
-        return len(intersection) / len(union) if union else 0.0
-
-    def _record_command(self, command: str, reference: DisplayReference):
-        """Record command in history"""
-        self.command_history.append(
-            {"command": command, "reference": reference.to_dict(), "timestamp": datetime.now()}
-        )
-
-    # ========================================================================
-    # QUERY & STATUS
-    # ========================================================================
-
-    def get_known_displays(self) -> List[str]:
-        """Get list of known display names"""
-        return list(self.known_displays.keys())
-
-    def get_display_stats(self, display_name: str) -> Optional[Dict[str, Any]]:
-        """Get statistics for a specific display"""
-        if display_name in self.known_displays:
-            event = self.known_displays[display_name]
-            return {
-                "display_name": event.display_name,
-                "display_id": event.display_id,
-                "first_detected": event.detected_at.isoformat(),
-                "last_seen": event.last_seen.isoformat(),
-                "detection_count": event.detection_count,
-                "connection_attempts": event.connection_attempts,
-                "successful_connections": event.successful_connections,
-                "success_rate": (
-                    event.successful_connections / event.connection_attempts
-                    if event.connection_attempts > 0
-                    else 0.0
-                ),
-            }
-        return None
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """Get handler statistics"""
-        return {
-            **self.stats,
-            "known_displays": len(self.known_displays),
-            "learned_patterns": sum(len(v) for v in self.learned_patterns.values()),
-            "cache_size": len(self.resolution_cache),
-            "action_keywords_learned": {
-                action.value: len(keywords) for action, keywords in self.action_keywords.items()
-            },
-            "mode_keywords_learned": {
-                mode.value: len(keywords) for mode, keywords in self.mode_keywords.items()
-            },
-        }
-
-
-# ============================================================================
-# GLOBAL INSTANCE MANAGEMENT
-# ============================================================================
-
-_display_reference_handler = None
-
-
-def get_display_reference_handler() -> Optional[AdvancedDisplayReferenceHandler]:
-    """Get global display reference handler instance"""
-    return _display_reference_handler
-
-
-def initialize_display_reference_handler(
-    implicit_resolver=None, display_monitor=None, **kwargs
-) -> AdvancedDisplayReferenceHandler:
-    """
-    Initialize global display reference handler
-
-    Args:
-        implicit_resolver: ImplicitReferenceResolver instance
-        display_monitor: AdvancedDisplayMonitor instance
-        **kwargs: Additional configuration options
-
-    Returns:
-        AdvancedDisplayReferenceHandler instance
-    """
-    global _display_reference_handler
-    _display_reference_handler = AdvancedDisplayReferenceHandler(
-        implicit_resolver=implicit_resolver, display_monitor=display_monitor, **kwargs
-    )
-    logger.info("[DISPLAY-REF-ADV] Global instance initialized")
-    return _display_reference_handler
-
-
-# Backwards compatibility alias
-DisplayReferenceHandler = AdvancedDisplayReferenceHandler
-DisplayReference = DisplayReference
-
-
-# ============================================================================
-# EXAMPLE USAGE
-# ============================================================================
-
-if __name__ == "__main__":
-
-    async def test():
-        import logging
-
-        logging.basicConfig(level=logging.INFO)
-
-        print("\n" + "=" * 80)
-        print("Advanced Display Reference Handler - Test Suite")
-        print("=" * 80 + "\n")
-
-        # Initialize handler
-        handler = AdvancedDisplayReferenceHandler()
-
-        # Simulate display detections
-        print("📋 Simulating display detections...")
-        handler.record_display_detection("Living Room TV", "living-room-tv")
-        handler.record_display_detection("Bedroom TV", "bedroom-tv")
-        print(f"✅ Known displays: {handler.get_known_displays()}\n")
-
-        # Test commands
-        test_commands = [
-            "Living Room TV",
-            "Connect to Living Room TV",
-            "Bedroom TV",
-            "Disconnect from Bedroom TV",
-            "Extend to Living Room TV",
-            "Show available displays",
-        ]
-
-        for cmd in test_commands:
-            print(f"📢 Command: '{cmd}'")
-            result = await handler.handle_voice_command(cmd)
-
-            if result:
-                print(f"✅ Resolved:")
-                print(f"   Display: {result.display_name}")
-                print(f"   Action: {result.action.value}")
-                print(f"   Mode: {result.mode.value if result.mode else 'None'}")
-                print(f"   Confidence: {result.confidence:.2f}")
-                print(f"   Strategy: {result.resolution_strategy.value}")
-
-                # Learn from success
-                handler.learn_from_success(cmd, result)
-            else:
-                print(f"❌ Not resolved")
-            print()
-
-        # Display statistics
-        print("=" * 80)
-        print("Statistics")
-        print("=" * 80)
-        stats = handler.get_statistics()
-        for key, value in stats.items():
-            print(f"  {key}: {value}")
-
-    asyncio.run(test())

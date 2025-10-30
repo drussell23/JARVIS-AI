@@ -8,6 +8,13 @@ Integrated Intelligence Systems:
 - SAI (Self-Aware Intelligence): Self-healing and optimization
 - CAI (Context Awareness Intelligence): Intent prediction
 - learning_database: Persistent memory and pattern learning
+
+This module provides the main orchestration layer for JARVIS, handling:
+- Intelligent request routing between local and cloud backends
+- Integration with multiple AI systems (UAE, SAI, CAI)
+- Model lifecycle management and selection
+- Cost optimization and resource management
+- Health monitoring and automatic failover
 """
 
 import asyncio
@@ -35,7 +42,11 @@ _model_selector = None
 
 
 def _get_uae():
-    """Lazy load UAE"""
+    """Lazy load UAE (Unified Awareness Engine).
+    
+    Returns:
+        UnifiedAwarenessEngine or None: UAE instance if available, None otherwise
+    """
     global _uae_engine
     if _uae_engine is None:
         try:
@@ -49,7 +60,11 @@ def _get_uae():
 
 
 def _get_sai():
-    """Lazy load SAI"""
+    """Lazy load SAI (Self-Aware Intelligence).
+    
+    Returns:
+        SelfAwareIntelligence or None: SAI instance if available, None otherwise
+    """
     global _sai_system
     if _sai_system is None:
         try:
@@ -63,7 +78,11 @@ def _get_sai():
 
 
 def _get_cai():
-    """Lazy load CAI"""
+    """Lazy load CAI (Context Awareness Intelligence).
+    
+    Returns:
+        ContextAwarenessIntelligence or None: CAI instance if available, None otherwise
+    """
     global _cai_system
     if _cai_system is None:
         try:
@@ -78,7 +97,11 @@ def _get_cai():
 
 
 async def _get_learning_db():
-    """Lazy load learning database"""
+    """Lazy load learning database for persistent memory.
+    
+    Returns:
+        LearningDatabase or None: Learning database instance if available, None otherwise
+    """
     global _learning_db
     if _learning_db is None:
         try:
@@ -92,7 +115,11 @@ async def _get_learning_db():
 
 
 def _get_llm():
-    """Lazy load Local LLM (Phase 3.1)"""
+    """Lazy load Local LLM (Phase 3.1).
+    
+    Returns:
+        LocalLLMInference or None: LLM inference instance if available, None otherwise
+    """
     global _llm_inference
     if _llm_inference is None:
         try:
@@ -106,7 +133,11 @@ def _get_llm():
 
 
 def _get_model_registry():
-    """Lazy load Model Registry (Phase 3.1+)"""
+    """Lazy load Model Registry (Phase 3.1+).
+    
+    Returns:
+        ModelRegistry or None: Model registry instance if available, None otherwise
+    """
     global _model_registry
     if _model_registry is None:
         try:
@@ -120,7 +151,11 @@ def _get_model_registry():
 
 
 def _get_lifecycle_manager():
-    """Lazy load Model Lifecycle Manager (Phase 3.1+)"""
+    """Lazy load Model Lifecycle Manager (Phase 3.1+).
+    
+    Returns:
+        ModelLifecycleManager or None: Lifecycle manager instance if available, None otherwise
+    """
     global _lifecycle_manager
     if _lifecycle_manager is None:
         try:
@@ -134,7 +169,11 @@ def _get_lifecycle_manager():
 
 
 def _get_model_selector():
-    """Lazy load Intelligent Model Selector (Phase 3.1+)"""
+    """Lazy load Intelligent Model Selector (Phase 3.1+).
+    
+    Returns:
+        IntelligentModelSelector or None: Model selector instance if available, None otherwise
+    """
     global _model_selector
     if _model_selector is None:
         try:
@@ -148,17 +187,30 @@ def _get_model_selector():
 
 
 class HybridOrchestrator:
-    """
-    Main orchestrator for JARVIS hybrid architecture
-    Features:
-    - Intelligent request routing
-    - Automatic failover
-    - Load balancing
-    - Health monitoring
-    - Performance analytics
+    """Main orchestrator for JARVIS hybrid architecture.
+    
+    This class coordinates between local Mac and GCP backends, providing:
+    - Intelligent request routing based on context and capabilities
+    - Integration with UAE/SAI/CAI intelligence systems
+    - Automatic failover and load balancing
+    - Health monitoring and performance analytics
+    - Cost optimization through idle time tracking
+    - Model lifecycle management and selection
+    
+    Attributes:
+        config_path: Path to hybrid configuration file
+        client: HybridBackendClient for backend communication
+        router: HybridRouter for intelligent routing decisions
+        is_running: Whether the orchestrator is currently running
+        request_count: Total number of requests processed
     """
 
     def __init__(self, config_path: Optional[str] = None):
+        """Initialize the HybridOrchestrator.
+        
+        Args:
+            config_path: Path to configuration file. Defaults to backend/core/hybrid_config.yaml
+        """
         self.config_path = config_path or "backend/core/hybrid_config.yaml"
 
         # Initialize components
@@ -171,8 +223,12 @@ class HybridOrchestrator:
 
         logger.info("🎭 HybridOrchestrator initialized")
 
-    async def start(self):
-        """Start the orchestrator"""
+    async def start(self) -> None:
+        """Start the orchestrator and all its components.
+        
+        Raises:
+            RuntimeError: If orchestrator is already running
+        """
         if self.is_running:
             logger.warning("Orchestrator already running")
             return
@@ -192,8 +248,8 @@ class HybridOrchestrator:
         self.is_running = True
         logger.info("✅ HybridOrchestrator started")
 
-    async def stop(self):
-        """Stop the orchestrator"""
+    async def stop(self) -> None:
+        """Stop the orchestrator and clean up resources."""
         if not self.is_running:
             return
 
@@ -208,8 +264,7 @@ class HybridOrchestrator:
         command_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Execute command with intelligent routing + UAE/SAI/CAI integration
+        """Execute command with intelligent routing and UAE/SAI/CAI integration.
 
         Args:
             command: The command to execute
@@ -217,7 +272,15 @@ class HybridOrchestrator:
             metadata: Additional metadata for routing
 
         Returns:
-            Response from backend with intelligence context
+            Dict containing:
+                - success: Whether execution succeeded
+                - result: Command execution result
+                - routing: Routing decision metadata
+                - intelligence: Context from UAE/SAI/CAI systems
+                - error: Error message if execution failed
+
+        Raises:
+            Exception: If command execution fails and self-healing is unsuccessful
         """
         if not self.is_running:
             await self.start()
@@ -303,7 +366,14 @@ class HybridOrchestrator:
             }
 
     def _get_rule(self, rule_name: str) -> Optional[Dict]:
-        """Get routing rule by name"""
+        """Get routing rule by name.
+        
+        Args:
+            rule_name: Name of the routing rule to retrieve
+            
+        Returns:
+            Dict containing rule configuration or None if not found
+        """
         rules = self.client.config["hybrid"]["routing"].get("rules", [])
         for rule in rules:
             if rule.get("name") == rule_name:
@@ -313,10 +383,18 @@ class HybridOrchestrator:
     async def _gather_intelligence_context(
         self, command: str, rule: Optional[Dict]
     ) -> Dict[str, Any]:
-        """
-        Gather context from UAE/SAI/CAI/learning_database
+        """Gather context from UAE/SAI/CAI/learning_database systems.
 
-        Returns enriched context for command execution
+        Args:
+            command: The command being executed
+            rule: Routing rule configuration
+
+        Returns:
+            Dict containing enriched context from intelligence systems:
+                - uae: Unified Awareness Engine context
+                - cai: Context Awareness Intelligence predictions
+                - learning_db: Historical patterns and preferences
+                - llm: Local LLM availability status
         """
         context = {}
 
@@ -404,8 +482,13 @@ class HybridOrchestrator:
 
         return context
 
-    async def _sai_learn_from_execution(self, command: str, result: Dict):
-        """SAI learns from command execution"""
+    async def _sai_learn_from_execution(self, command: str, result: Dict) -> None:
+        """Allow SAI to learn from command execution results.
+        
+        Args:
+            command: The executed command
+            result: Execution result containing success status and metadata
+        """
         sai = _get_sai()
         if sai:
             try:
@@ -420,8 +503,13 @@ class HybridOrchestrator:
             except Exception as e:
                 logger.warning(f"SAI learning failed: {e}")
 
-    async def _store_in_learning_db(self, command: str, result: Dict):
-        """Store execution in learning database"""
+    async def _store_in_learning_db(self, command: str, result: Dict) -> None:
+        """Store execution results in learning database for future reference.
+        
+        Args:
+            command: The executed command
+            result: Execution result to store
+        """
         learning_db = await _get_learning_db()
         if learning_db:
             try:
@@ -433,12 +521,24 @@ class HybridOrchestrator:
                 logger.warning(f"learning_db storage failed: {e}")
 
     def _should_attempt_self_heal(self) -> bool:
-        """Check if SAI should attempt self-healing"""
+        """Check if SAI should attempt self-healing based on configuration.
+        
+        Returns:
+            bool: True if self-healing should be attempted
+        """
         config = self.client.config.get("hybrid", {}).get("intelligence", {}).get("sai", {})
         return config.get("enabled", False) and config.get("self_healing", False)
 
     async def _sai_self_heal(self, error: Exception, command: str) -> Dict[str, Any]:
-        """SAI attempts to self-heal from error"""
+        """Attempt SAI self-healing from execution error.
+        
+        Args:
+            error: The exception that occurred
+            command: The command that failed
+            
+        Returns:
+            Dict containing heal result and potentially retried command result
+        """
         sai = _get_sai()
         if sai:
             try:
@@ -466,8 +566,7 @@ class HybridOrchestrator:
         context: Optional[Dict] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """
-        Execute a query with intelligent model selection
+        """Execute a query with intelligent model selection.
 
         The model selector will:
         1. Analyze the query (CAI integration)
@@ -486,7 +585,12 @@ class HybridOrchestrator:
             **kwargs: Additional parameters for model
 
         Returns:
-            Dict with result and metadata
+            Dict with result and metadata:
+                - success: Whether execution succeeded
+                - text: Generated response text
+                - model_used: Name of the model that was used
+                - fallback_used: Whether a fallback model was used
+                - error: Error message if execution failed
         """
         model_selector = _get_model_selector()
         if not model_selector:
@@ -546,7 +650,17 @@ class HybridOrchestrator:
     async def _execute_with_model(
         self, model_def, query: str, lifecycle_manager, **kwargs
     ) -> Dict[str, Any]:
-        """Execute query with a specific model"""
+        """Execute query with a specific model.
+        
+        Args:
+            model_def: Model definition containing name, type, and capabilities
+            query: Query to execute
+            lifecycle_manager: Model lifecycle manager instance
+            **kwargs: Additional parameters for model execution
+            
+        Returns:
+            Dict containing execution result
+        """
         # Load model if needed
         model_instance = await lifecycle_manager.get_model(
             model_def.name, required_by="orchestrator"
@@ -662,17 +776,21 @@ class HybridOrchestrator:
         temperature: Optional[float] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """
-        Execute LLM inference with LLaMA 3.1 70B
+        """Execute LLM inference with LLaMA 3.1 70B.
 
         Args:
             prompt: Text prompt for generation
             max_tokens: Max tokens to generate
-            temperature: Sampling temperature
+            temperature: Sampling temperature (0.0-1.0)
             **kwargs: Additional generation parameters
 
         Returns:
-            Dict with generated text and metadata
+            Dict containing:
+                - success: Whether generation succeeded
+                - text: Generated text response
+                - model: Model name used
+                - backend: Backend that processed the request
+                - error: Error message if generation failed
         """
         llm = _get_llm()
         if not llm:
@@ -708,7 +826,20 @@ class HybridOrchestrator:
             }
 
     async def classify_intent_with_llm(self, command: str) -> Dict[str, Any]:
-        """Use LLM to classify user intent"""
+        """Use LLM to classify user intent.
+        
+        Args:
+            command: User command to classify
+            
+        Returns:
+            Dict containing:
+                - success: Whether classification succeeded
+                - intent: Classified intent
+                - confidence: Confidence score (0.0-1.0)
+                - entities: Extracted entities
+                - action: Suggested action
+                - error: Error message if classification failed
+        """
         prompt = f"""Classify the intent of this command. Respond with JSON format:
 {{"intent": "...", "confidence": 0.0-1.0, "entities": [...], "action": "..."}}
 
@@ -747,301 +878,7 @@ Classification:"""
     async def generate_response_with_llm(
         self, command: str, context: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Generate response using LLM with context"""
-        # Build prompt with context
-        prompt = f"User command: {command}\n\n"
-
-        if context:
-            if "uae" in context:
-                prompt += f"Context: {context['uae']}\n"
-            if "cai" in context:
-                prompt += f"Intent: {context['cai'].get('predicted_intent')}\n"
-
-        prompt += "\nRespond naturally and helpfully:\n"
-
-        result = await self.execute_llm_inference(prompt, max_tokens=256, temperature=0.7)
-
-        return result
-
-    # ===============================================================
-
-    async def execute_query(self, query: str, **kwargs) -> Dict[str, Any]:
-        """Execute a natural language query"""
-        return await self.execute_command(command=query, command_type="query", metadata=kwargs)
-
-    async def execute_action(self, action: str, **kwargs) -> Dict[str, Any]:
-        """Execute an action command"""
-        return await self.execute_command(command=action, command_type="action", metadata=kwargs)
-
-    async def capture_screen(self, **kwargs) -> Dict[str, Any]:
-        """Capture screen (always routed to local)"""
-        return await self.client.execute(
-            path="/api/vision/capture", method="POST", data=kwargs, capability="vision_capture"
-        )
-
-    async def unlock_screen(self, **kwargs) -> Dict[str, Any]:
-        """Unlock screen (always routed to local)"""
-        return await self.client.execute(
-            path="/api/unlock", method="POST", data=kwargs, capability="screen_unlock"
-        )
-
-    async def analyze_with_ml(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform ML analysis (routed to cloud for heavy processing)"""
-        return await self.client.execute(
-            path="/api/ml/analyze", method="POST", data=data, capability="ml_processing"
-        )
-
-    def _get_capability_from_decision(self, decision: RouteDecision, command: str) -> Optional[str]:
-        """Determine capability requirement from routing decision"""
-        if decision == RouteDecision.LOCAL:
-            # Check for specific local capabilities
-            command_lower = command.lower()
-            if any(kw in command_lower for kw in ["screenshot", "screen", "capture", "vision"]):
-                return "vision_capture"
-            elif any(kw in command_lower for kw in ["unlock", "password", "login"]):
-                return "screen_unlock"
-            elif any(kw in command_lower for kw in ["hey jarvis", "voice", "listen"]):
-                return "voice_activation"
-            else:
-                return "macos_automation"
-
-        elif decision == RouteDecision.CLOUD:
-            # Check for specific cloud capabilities
-            command_lower = command.lower()
-            if any(kw in command_lower for kw in ["analyze", "understand", "explain", "summarize"]):
-                return "nlp_analysis"
-            elif any(kw in command_lower for kw in ["chat", "talk", "conversation"]):
-                return "chatbot_inference"
-            else:
-                return "ml_processing"
-
-        return None
-
-    def get_status(self) -> Dict[str, Any]:
-        """Get orchestrator status with enhanced Phase 2.5 metrics"""
-        routing_analytics = self.router.get_analytics()
-
-        return {
-            "running": self.is_running,
-            "request_count": self.request_count,
-            "client_metrics": self.client.get_metrics(),
-            "routing_analytics": routing_analytics,
-            # Phase 2.5: Backend activity tracking
-            "backend_activity": routing_analytics.get("backend_activity", {}),
-            # Phase 2.5: Capabilities mapping
-            "registered_capabilities": {
-                name: len(caps) for name, caps in self.router._backend_capabilities.items()
-            },
-        }
-
-    def get_backend_health(self) -> Dict[str, Any]:
-        """Get health of all backends with Phase 2.5 enhancements"""
-        health_data = {}
-
-        for name, backend in self.client.backends.items():
-            idle_minutes = self.router._get_backend_idle_minutes(name)
-
-            health_data[name] = {
-                "healthy": backend.health.healthy,
-                "response_time": backend.health.response_time,
-                "success_rate": backend.health.success_rate,
-                "circuit_state": backend.circuit_breaker.state.value,
-                "last_check": backend.health.last_check.isoformat(),
-                # Phase 2.5: Activity tracking
-                "idle_minutes": round(idle_minutes, 2),
-                "is_idle": idle_minutes > 10,
-                # Phase 2.5: Capabilities
-                "capabilities_count": len(backend.capabilities),
-                "capabilities": backend.capabilities[:5],  # First 5 for overview
-            }
-
-        return health_data
-
-    def get_detailed_diagnostics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive diagnostics for debugging
-        Includes Phase 2.5 features: idle tracking, capabilities, cost optimization
-        """
-        # Get RAM monitor status
-        ram_monitor_factory = _get_ram_monitor()
-        ram_status = None
-        if ram_monitor_factory:
-            try:
-                ram_monitor = ram_monitor_factory(self.client.config)
-                ram_status = {
-                    "current_pressure_percent": ram_monitor.get_current_pressure_percent(),
-                    "should_prefer_gcp": ram_monitor.should_prefer_gcp(),
-                    "should_force_gcp": ram_monitor.should_force_gcp(),
-                    "can_reclaim_to_local": ram_monitor.can_reclaim_to_local(),
-                    "monitoring_active": ram_monitor.is_running,
-                }
-            except Exception as e:
-                ram_status = {"error": str(e)}
-
-        # Get cost optimization status
-        gcp_idle = self.router._get_backend_idle_minutes("gcp")
-        local_idle = self.router._get_backend_idle_minutes("local")
-
-        return {
-            "orchestrator": {
-                "running": self.is_running,
-                "request_count": self.request_count,
-            },
-            "ram_monitor": ram_status,
-            "backends": {
-                name: {
-                    "type": backend.type.value,
-                    "priority": backend.priority,
-                    "enabled": backend.enabled,
-                    "healthy": backend.health.healthy,
-                    "idle_minutes": round(self.router._get_backend_idle_minutes(name), 2),
-                    "capabilities": backend.capabilities,
-                    "circuit_state": backend.circuit_breaker.state.value,
-                }
-                for name, backend in self.client.backends.items()
-            },
-            "routing": {
-                "total_rules": len(self.router.rules),
-                "strategy": self.router.strategy,
-                "history_size": len(self.router.routing_history),
-            },
-            "cost_optimization": {
-                "gcp_idle_minutes": round(gcp_idle, 2),
-                "local_idle_minutes": round(local_idle, 2),
-                "can_shutdown_gcp": gcp_idle > 10
-                and ram_status
-                and ram_status.get("can_reclaim_to_local", False),
-            },
-            "capabilities_registry": {
-                backend_name: {
-                    "count": len(caps),
-                    "capabilities": caps,
-                    "cache_age_seconds": (
-                        round(
-                            __import__("time").time()
-                            - self.router._capabilities_last_updated.get(backend_name, 0),
-                            2,
-                        )
-                        if backend_name in self.router._capabilities_last_updated
-                        else None
-                    ),
-                }
-                for backend_name, caps in self.router._backend_capabilities.items()
-            },
-        }
-
-    async def __aenter__(self):
-        """Async context manager entry"""
-        await self.start()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        await self.stop()
-
-    # ============== PHASE 2.5: Backend Capabilities Registration ==============
-
-    def _register_backend_capabilities(self):
-        """Register capabilities from discovered backends"""
-        for backend_name, backend in self.client.backends.items():
-            self.router.register_backend_capabilities(backend_name, backend.capabilities)
-            logger.info(
-                f"✅ Registered {len(backend.capabilities)} capabilities for '{backend_name}': "
-                f"{', '.join(backend.capabilities[:3])}{'...' if len(backend.capabilities) > 3 else ''}"
-            )
-
-    def get_backend_capabilities(self, backend_name: str) -> List[str]:
-        """Get capabilities for a specific backend"""
-        if backend_name in self.client.backends:
-            return self.client.backends[backend_name].capabilities
-        return []
-
-    def get_backends_for_capability(self, capability: str) -> List[str]:
-        """Get list of backends that support a capability"""
-        return self.router.get_backends_for_capability(capability)
-
-    def get_idle_time(self, backend_name: str) -> float:
-        """Get idle time in minutes for a backend"""
-        return self.router._get_backend_idle_minutes(backend_name)
-
-    def get_activity_summary(self) -> Dict[str, Any]:
-        """Get activity summary for all backends"""
-        return self.router._get_activity_summary()
-
-    async def trigger_cost_optimization(self) -> Dict[str, Any]:
-        """
-        Check if cost optimization should be triggered (GCP shutdown)
-        Based on:
-        - GCP idle time >10 minutes
-        - Local RAM pressure <40%
-        - No pending high-priority tasks
-
-        Returns:
-            Dict with optimization actions taken
-        """
-        ram_monitor_factory = _get_ram_monitor()
-        if not ram_monitor_factory:
-            return {"error": "RAM monitor not available"}
-
-        ram_monitor = ram_monitor_factory(self.client.config)
-        current_pressure = ram_monitor.get_current_pressure_percent()
-
-        gcp_idle = self.router._get_backend_idle_minutes("gcp")
-        local_pressure_ok = current_pressure < 40  # Local has capacity
-        gcp_been_idle = gcp_idle > 10  # GCP idle for >10 minutes
-
-        if local_pressure_ok and gcp_been_idle:
-            logger.info(
-                f"💰 Cost optimization triggered: Local RAM {current_pressure:.1f}%, "
-                f"GCP idle {gcp_idle:.1f}min"
-            )
-
-            # TODO: Implement GCP shutdown logic
-            # For now, just return recommendation
-            return {
-                "action": "recommend_gcp_shutdown",
-                "reason": "Cost optimization - local has capacity, GCP idle",
-                "local_ram_percent": current_pressure,
-                "gcp_idle_minutes": gcp_idle,
-                "estimated_savings": "$0.029/hr (~$0.48/day if idle)",
-            }
-        else:
-            return {
-                "action": "no_optimization",
-                "reason": "Conditions not met",
-                "local_ram_percent": current_pressure,
-                "gcp_idle_minutes": gcp_idle,
-                "local_pressure_ok": local_pressure_ok,
-                "gcp_been_idle": gcp_been_idle,
-            }
-
-
-def _get_ram_monitor():
-    """Lazy load RAM monitor"""
-    try:
-        from backend.core.advanced_ram_monitor import get_ram_monitor
-
-        return get_ram_monitor
-    except ImportError:
-        logger.warning("RAM monitor not available for cost optimization")
-        return None
-
-
-# Global instance (lazy initialized)
-_orchestrator: Optional[HybridOrchestrator] = None
-
-
-def get_orchestrator() -> HybridOrchestrator:
-    """Get or create global orchestrator instance"""
-    global _orchestrator
-    if _orchestrator is None:
-        _orchestrator = HybridOrchestrator()
-    return _orchestrator
-
-
-async def execute_hybrid_command(command: str, **kwargs) -> Dict[str, Any]:
-    """Convenience function for executing commands"""
-    orchestrator = get_orchestrator()
-    if not orchestrator.is_running:
-        await orchestrator.start()
-    return await orchestrator.execute_command(command, **kwargs)
+        """Generate response using LLM with context.
+        
+        Args:
+            command: User

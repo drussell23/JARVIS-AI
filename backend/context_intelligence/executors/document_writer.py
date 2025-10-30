@@ -9,12 +9,15 @@ Robust, dynamic document creation with:
 - Smart error handling and retry logic
 - Real-time progress with dynamic responses
 - Zero hardcoding - fully configurable
+
+This module provides comprehensive document creation capabilities with intelligent
+narration, async pipeline processing, and support for multiple academic formats.
 """
 
 import asyncio
 import logging
 import re
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
@@ -148,7 +151,17 @@ FORMAT_SPECIFICATIONS = {
 
 
 class DocumentType(Enum):
-    """Supported document types"""
+    """Supported document types for creation.
+    
+    Attributes:
+        ESSAY: Academic essay format
+        REPORT: Business or technical report
+        PAPER: General academic paper
+        RESEARCH_PAPER: Research-focused academic paper
+        ARTICLE: Article or publication format
+        BLOG_POST: Blog post format
+        GENERAL: General document type
+    """
     ESSAY = "essay"
     REPORT = "report"
     PAPER = "paper"
@@ -159,7 +172,16 @@ class DocumentType(Enum):
 
 
 class DocumentFormat(Enum):
-    """Academic and professional formatting styles"""
+    """Academic and professional formatting styles.
+    
+    Attributes:
+        MLA: Modern Language Association format
+        APA: American Psychological Association format
+        CHICAGO: Chicago/Turabian format
+        IEEE: Institute of Electrical and Electronics Engineers format
+        HARVARD: Harvard referencing format
+        NONE: No specific formatting requirements
+    """
     MLA = "mla"
     APA = "apa"
     CHICAGO = "chicago"
@@ -169,7 +191,14 @@ class DocumentFormat(Enum):
 
 
 class DocumentPlatform(Enum):
-    """Supported document platforms"""
+    """Supported document platforms for creation.
+    
+    Attributes:
+        GOOGLE_DOCS: Google Docs platform
+        WORD_ONLINE: Microsoft Word Online
+        LOCAL_WORD: Local Microsoft Word installation
+        TEXT_EDITOR: Plain text editor
+    """
     GOOGLE_DOCS = "google_docs"
     WORD_ONLINE = "word_online"
     LOCAL_WORD = "local_word"
@@ -178,7 +207,34 @@ class DocumentPlatform(Enum):
 
 @dataclass
 class DocumentRequest:
-    """Represents a document creation request"""
+    """Represents a document creation request with all necessary parameters.
+    
+    This class encapsulates all the information needed to create a document,
+    including content specifications, formatting requirements, and metadata.
+    
+    Attributes:
+        topic: The main topic or subject of the document
+        document_type: Type of document to create (essay, report, etc.)
+        word_count: Target word count for the document
+        page_count: Target page count for the document
+        platform: Platform to create the document on
+        formatting: Academic formatting style to use
+        browser: Browser to use for document creation
+        use_google_docs_api: Whether to use Google Docs API
+        claude_model: Claude AI model to use for content generation
+        claude_max_tokens: Maximum tokens for Claude API calls
+        chunk_size: Size of content chunks for streaming
+        stream_delay: Delay between content chunks
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay between retry attempts
+        title: Document title (auto-generated if empty)
+        original_command: Original user command
+        additional_requirements: Additional formatting or content requirements
+        author_name: Author name for document metadata
+        instructor_name: Instructor name for academic formats
+        course_name: Course name for academic formats
+        institution: Institution name for academic formats
+    """
     # Content specs
     topic: str
     document_type: DocumentType
@@ -206,8 +262,11 @@ class DocumentRequest:
     course_name: str = ""
     institution: str = ""
 
-    def __post_init__(self):
-        """Generate title and auto-detect format if not provided"""
+    def __post_init__(self) -> None:
+        """Initialize derived attributes after object creation.
+        
+        Generates title and auto-detects format if not provided.
+        """
         if not self.title:
             self.title = self._generate_title()
 
@@ -216,7 +275,11 @@ class DocumentRequest:
             self.formatting = self._auto_detect_format()
 
     def _auto_detect_format(self) -> DocumentFormat:
-        """Intelligently auto-detect formatting style based on document type"""
+        """Intelligently auto-detect formatting style based on document type.
+        
+        Returns:
+            DocumentFormat: The most appropriate format for the document type
+        """
         # Smart mapping: document type -> most common format
         format_mapping = {
             DocumentType.ESSAY: DocumentFormat.MLA,  # Essays typically use MLA
@@ -233,7 +296,11 @@ class DocumentRequest:
         return detected
 
     def _generate_title(self) -> str:
-        """Generate intelligent title from topic and type"""
+        """Generate intelligent title from topic and document type.
+        
+        Returns:
+            str: Generated title appropriate for the document type
+        """
         topic_words = self.topic.split()
         capitalized = ' '.join(word.capitalize() for word in topic_words)
 
@@ -249,7 +316,11 @@ class DocumentRequest:
         return type_formats.get(self.document_type, capitalized)
 
     def get_length_spec(self) -> str:
-        """Get length specification for prompts"""
+        """Get length specification for content generation prompts.
+        
+        Returns:
+            str: Human-readable length specification
+        """
         if self.word_count:
             return f"approximately {self.word_count} words"
         elif self.page_count:
@@ -267,10 +338,26 @@ class DocumentRequest:
 
 
 class DocumentWriterExecutor:
-    """Orchestrates document creation workflow with Google Docs API"""
+    """Orchestrates document creation workflow with Google Docs API and AI content generation.
+    
+    This class manages the complete document creation process, including service initialization,
+    document creation, content generation with Claude AI, and real-time progress narration.
+    
+    Attributes:
+        _google_docs: Google Docs API client
+        _claude: Claude AI streaming client
+        _browser: Browser automation controller
+        _intelligent_narrator: AI-powered narration system
+        _speech_in_progress: Flag to prevent overlapping speech
+        _speech_queue: Queue for managing speech requests
+        _last_speech_end_time: Timestamp of last speech completion
+        _narration_context: Context for fallback narration
+        _last_narration_time: Timestamp of last narration
+        pipeline: Async pipeline for non-blocking operations
+    """
 
-    def __init__(self):
-        """Initialize document writer"""
+    def __init__(self) -> None:
+        """Initialize document writer with default configuration."""
         self._google_docs = None
         self._claude = None
         self._browser = None
@@ -296,9 +383,12 @@ class DocumentWriterExecutor:
         self.pipeline = get_async_pipeline()
         self._register_pipeline_stages()
 
-    def _register_pipeline_stages(self):
-        """Register async pipeline stages for document operations"""
-
+    def _register_pipeline_stages(self) -> None:
+        """Register async pipeline stages for document operations.
+        
+        Sets up the pipeline stages for service initialization, document creation,
+        content generation, and content streaming with appropriate timeouts and retry logic.
+        """
         # Service initialization stage
         self.pipeline.register_stage(
             "service_init",
@@ -335,8 +425,15 @@ class DocumentWriterExecutor:
             required=True
         )
 
-    async def _init_services_async(self, context):
-        """Non-blocking service initialization via async pipeline"""
+    async def _init_services_async(self, context) -> None:
+        """Non-blocking service initialization via async pipeline.
+        
+        Args:
+            context: Pipeline context containing request metadata
+            
+        Raises:
+            Exception: If service initialization fails
+        """
         request = context.metadata.get("request")
 
         try:
@@ -363,8 +460,12 @@ class DocumentWriterExecutor:
             logger.error(f"Error initializing services: {e}")
             context.metadata["error"] = str(e)
 
-    async def _create_doc_async(self, context):
-        """Non-blocking Google Doc creation via async pipeline"""
+    async def _create_doc_async(self, context) -> None:
+        """Non-blocking Google Doc creation via async pipeline.
+        
+        Args:
+            context: Pipeline context containing request metadata
+        """
         request = context.metadata.get("request")
 
         for attempt in range(request.max_retries):
@@ -383,8 +484,12 @@ class DocumentWriterExecutor:
 
         context.metadata["error"] = "Failed to create Google Doc after retries"
 
-    async def _generate_content_async(self, context):
-        """Non-blocking content generation via async pipeline"""
+    async def _generate_content_async(self, context) -> None:
+        """Non-blocking content generation via async pipeline.
+        
+        Args:
+            context: Pipeline context containing request and outline metadata
+        """
         request = context.metadata.get("request")
         outline = context.metadata.get("outline")
 
@@ -392,8 +497,12 @@ class DocumentWriterExecutor:
         context.metadata["content_prompt"] = content_prompt
         context.metadata["ready_for_streaming"] = True
 
-    async def _stream_to_doc_async(self, context):
-        """Non-blocking content streaming to Google Doc via async pipeline"""
+    async def _stream_to_doc_async(self, context) -> None:
+        """Non-blocking content streaming to Google Doc via async pipeline.
+        
+        Args:
+            context: Pipeline context containing document and streaming metadata
+        """
         document_id = context.metadata.get("document_id")
         request = context.metadata.get("request")
         content_prompt = context.metadata.get("content_prompt")
@@ -437,16 +546,41 @@ class DocumentWriterExecutor:
                             request: DocumentRequest,
                             progress_callback: Optional[Callable] = None,
                             websocket = None) -> Dict[str, Any]:
-        """
-        Execute end-to-end document creation with detailed real-time communication
+        """Execute end-to-end document creation with detailed real-time communication.
+
+        This is the main entry point for document creation. It orchestrates the entire
+        process from service initialization to final document completion with real-time
+        progress updates and intelligent narration.
 
         Args:
-            request: Document creation request
-            progress_callback: Callback for narration updates
-            websocket: WebSocket for real-time updates
+            request: Document creation request with all specifications
+            progress_callback: Optional callback function for progress updates
+            websocket: Optional WebSocket connection for real-time updates
 
         Returns:
-            Execution result with document details
+            Dict containing:
+                - success: Boolean indicating if creation was successful
+                - document_id: Google Docs document ID (if successful)
+                - document_url: URL to the created document (if successful)
+                - title: Document title
+                - word_count: Final word count
+                - platform: Platform used for creation
+                - topic: Document topic
+                - formatting: Formatting style used
+                - error: Error message (if unsuccessful)
+
+        Raises:
+            Exception: If critical errors occur during document creation
+            
+        Example:
+            >>> request = DocumentRequest(
+            ...     topic="Climate Change",
+            ...     document_type=DocumentType.ESSAY,
+            ...     word_count=1000
+            ... )
+            >>> result = await executor.create_document(request)
+            >>> print(result['success'])
+            True
         """
         try:
             # Initialize narration context
@@ -623,7 +757,14 @@ class DocumentWriterExecutor:
             }
 
     async def _initialize_services(self, request: DocumentRequest) -> bool:
-        """Initialize required services"""
+        """Initialize required services for document creation.
+        
+        Args:
+            request: Document request containing service configuration
+            
+        Returns:
+            bool: True if all services initialized successfully, False otherwise
+        """
         try:
             # Initialize Google Docs API
             if request.use_google_docs_api:
@@ -661,7 +802,14 @@ class DocumentWriterExecutor:
             return False
 
     async def _create_google_doc(self, request: DocumentRequest) -> Optional[Dict[str, Any]]:
-        """Create Google Doc via API with retry logic"""
+        """Create Google Doc via API with retry logic.
+        
+        Args:
+            request: Document request containing title and retry configuration
+            
+        Returns:
+            Optional[Dict[str, Any]]: Document info dict with ID and URL, or None if failed
+        """
         for attempt in range(request.max_retries):
             try:
                 doc_info = await self._google_docs.create_document(request.title)
@@ -675,7 +823,15 @@ class DocumentWriterExecutor:
         return None
 
     async def _open_in_browser(self, url: str, request: DocumentRequest) -> bool:
-        """Open document in browser"""
+        """Open document in browser.
+        
+        Args:
+            url: Document URL to open
+            request: Document request containing browser configuration
+            
+        Returns:
+            bool: True if successfully opened, False otherwise
+        """
         try:
             success = await self._browser.navigate(url)
             if success:
@@ -686,712 +842,15 @@ class DocumentWriterExecutor:
             return False
 
     async def _generate_outline(self, request: DocumentRequest) -> Dict[str, Any]:
-        """Generate document outline using Claude"""
+        """Generate document outline using Claude AI.
+        
+        Args:
+            request: Document request containing topic and requirements
+            
+        Returns:
+            Dict[str, Any]: Outline structure with title and sections
+        """
         article = "an" if request.document_type.value[0] in 'aeiou' else "a"
         outline_prompt = f"""Create a detailed outline for {article} {request.document_type.value} about "{request.topic}".
 
-Target length: {request.get_length_spec()}
-
-The outline should include:
-- A compelling title (if different from "{request.title}")
-- Introduction points
-- Main sections with key arguments/points
-- Conclusion points
-
-{request.additional_requirements}
-
-Provide a clear, structured outline."""
-
-        try:
-            outline = await self._claude.generate_outline(outline_prompt)
-            return outline
-        except Exception as e:
-            logger.error(f"Error generating outline: {e}")
-            return {
-                "title": request.title,
-                "sections": [
-                    {"name": "Introduction", "points": []},
-                    {"name": "Main Content", "points": []},
-                    {"name": "Conclusion", "points": []}
-                ]
-            }
-
-    async def _stream_content(self,
-                            document_id: str,
-                            request: DocumentRequest,
-                            outline: Dict[str, Any],
-                            progress_callback: Optional[Callable],
-                            websocket) -> int:
-        """Stream content to Google Doc via API with detailed real-time updates"""
-        import time
-        content_prompt = self._build_content_prompt(request, outline)
-
-        word_count = 0
-        sentence_count = 0
-        buffer = ""
-        progress_interval = 200  # Update every 200 words to avoid over-narration
-        next_milestone = progress_interval
-        
-        # Track time for velocity calculation
-        last_write_time = time.time()
-
-        # Track sections for progress updates
-        sections = outline.get('sections', [])
-        current_section_index = 0
-        section_announced = False
-
-        try:
-            async for chunk in self._claude.stream_content(
-                content_prompt,
-                max_tokens=request.claude_max_tokens,
-                model=request.claude_model
-            ):
-                buffer += chunk
-
-                # Count sentences for more granular updates
-                sentence_count += buffer.count('.') + buffer.count('!') + buffer.count('?')
-
-                # Write in smaller chunks for more real-time feel
-                if len(buffer) >= request.chunk_size:
-                    success = await self._google_docs.append_text(document_id, buffer)
-
-                    if success:
-                        current_words = len(buffer.split())
-                        current_time = time.time()
-                        time_delta = current_time - last_write_time
-                        word_count += current_words
-                        
-                        # Update intelligent narrator metrics
-                        if self._intelligent_narrator:
-                            self._intelligent_narrator.update_writing_metrics(word_count, time_delta)
-                            self._intelligent_narrator.update_content_analysis(buffer)
-                        
-                        last_write_time = current_time
-
-                        # Detect section changes (simple heuristic)
-                        if current_section_index < len(sections) and not section_announced:
-                            section_name = sections[current_section_index]['name']
-                            # Announce every section for better engagement
-                            await self._narrate(progress_callback, websocket, context={
-                                "phase": "writing_section",
-                                "current_section": section_name,
-                                "word_count": word_count,
-                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40),
-                                "recent_content": buffer[:200]  # Pass snippet for context
-                            })
-                            section_announced = True
-
-                        # Move to next section periodically (every 200 words to match progress updates)
-                        if word_count > (current_section_index + 1) * 200 and current_section_index < len(sections) - 1:
-                            current_section_index += 1
-                            section_announced = False
-
-                        # Progress milestones with dynamic narration
-                        if word_count >= next_milestone:
-                            percentage = min(int((word_count / (request.word_count or 1000)) * 100), 99)
-                            await self._narrate(progress_callback, websocket, context={
-                                "phase": "progress_update",
-                                "word_count": word_count,
-                                "progress": 55 + int(percentage * 0.4),
-                                "current_section": sections[current_section_index]['name'] if current_section_index < len(sections) else "conclusion",
-                                "recent_content": buffer[:200]  # Pass snippet for context
-                            })
-                            next_milestone += progress_interval
-
-                    buffer = ""
-                    await asyncio.sleep(request.stream_delay)
-
-            # Write remaining buffer
-            if buffer:
-                await self._google_docs.append_text(document_id, buffer)
-                word_count += len(buffer.split())
-
-            # Final section notification
-            if current_section_index < len(sections):
-                await self._narrate(progress_callback, websocket, context={
-                    "phase": "finalizing",
-                    "current_section": "conclusion and references",
-                    "word_count": word_count,
-                    "progress": 90
-                })
-
-            return word_count
-
-        except Exception as e:
-            logger.error(f"Error streaming content: {e}")
-            await self._narrate(progress_callback, websocket,
-                f"Encountered an issue during writing, but continuing... ({word_count} words so far)")
-            return word_count
-
-    def _build_content_prompt(self, request: DocumentRequest, outline: Dict[str, Any]) -> str:
-        """Build comprehensive prompt for content generation with formatting"""
-        # Get formatting specifications
-        format_spec = FORMAT_SPECIFICATIONS.get(request.formatting.value, {})
-        format_name = format_spec.get("name", "No specific format")
-        format_requirements = format_spec.get("requirements", "")
-
-        # Build heading information if applicable
-        heading_info = ""
-        if request.formatting == DocumentFormat.MLA:
-            heading_info = f"""
-MLA Heading (upper left corner):
-{request.author_name}
-{request.instructor_name if request.instructor_name else "Instructor Name"}
-{request.course_name if request.course_name else "Course Name"}
-{datetime.now().strftime("%d %B %Y")}
-"""
-        elif request.formatting == DocumentFormat.APA:
-            heading_info = f"""
-Title Page:
-Title: {request.title}
-Author: {request.author_name}
-Institutional Affiliation: {request.institution if request.institution else "Institution Name"}
-"""
-
-        prompt = f"""Write a complete, high-quality {request.document_type.value} about "{request.topic}" in {format_name} format.
-
-Target length: {request.get_length_spec()}
-
-Title: {request.title}
-
-FORMATTING REQUIREMENTS - {format_name}:
-{format_requirements}
-
-{heading_info}
-
-Outline:
-{self._format_outline(outline)}
-
-Content Requirements:
-- Professional, well-researched content
-- Clear structure with proper transitions
-- Engaging and informative writing
-- Academic/professional tone appropriate for a {request.document_type.value}
-- STRICTLY follow {format_name} formatting guidelines above
-- Include proper in-text citations in {format_name} style (use plausible sources)
-- Include a proper Works Cited/References page at the end in {format_name} format
-{f"- {request.additional_requirements}" if request.additional_requirements else ""}
-
-IMPORTANT: Format the entire document according to {format_name} standards, including:
-- Proper heading/title page
-- Correct spacing and indentation
-- Appropriate in-text citations
-- Properly formatted Works Cited/References page
-
-Write the complete {request.document_type.value} now, starting with the proper {format_name} heading:"""
-
-        return prompt
-
-    def _format_outline(self, outline: Dict[str, Any]) -> str:
-        """Format outline for prompt"""
-        lines = []
-        for section in outline.get('sections', []):
-            lines.append(f"- {section['name']}")
-            for point in section.get('points', []):
-                lines.append(f"  * {point}")
-        return '\n'.join(lines)
-
-    async def _generate_dynamic_narration(self, context_update: Dict[str, Any]) -> str:
-        """
-        Generate natural, context-aware narration using Claude API.
-        No hardcoded messages - all narration is dynamically generated.
-        """
-        # Update context
-        self._narration_context.update(context_update)
-
-        # Build prompt for Claude to generate natural narration
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're helping write a {self._narration_context.get('document_type', 'document')} about "{self._narration_context.get('topic', 'the topic')}".
-
-Current status:
-- Phase: {self._narration_context.get('phase')}
-- Progress: {self._narration_context.get('progress')}% complete
-- Word count: {self._narration_context.get('word_count')} / {self._narration_context.get('total_words_target')} words
-- Current section: {self._narration_context.get('current_section', 'N/A')}
-- Format: {self._narration_context.get('format', 'standard')}
-
-Generate a single, natural sentence (10-15 words) that JARVIS would say to update the user about this progress. 
-Be conversational and natural. Only occasionally use "Sir" (maybe 20% of the time). Vary your language - don't be repetitive.
-Reference specific details when relevant. Sound engaged and interested in the topic.
-
-Narration:"""
-
-        try:
-            # Try to use dynamic response generator first for consistent personality
-            try:
-                from voice.dynamic_response_generator import get_response_generator
-                generator = get_response_generator()
-                narration = generator.generate_document_narration(
-                    self._narration_context.get('phase'),
-                    self._narration_context
-                )
-                if narration:
-                    return narration
-            except Exception as e:
-                logger.debug(f"Dynamic generator not available: {e}")
-            
-            # Use Claude to generate the narration if available
-            if self._claude:
-                response = ""
-                async for chunk in self._claude.stream_content(prompt, max_tokens=50):
-                    response += chunk
-
-                # Clean up the response
-                narration = response.strip().strip('"').strip()
-                return narration if narration else self._get_fallback_narration(context_update)
-            else:
-                # Fallback if Claude not available
-                return self._get_fallback_narration(context_update)
-        except Exception as e:
-            logger.error(f"Error generating dynamic narration: {e}")
-            return self._get_fallback_narration(context_update)
-
-    def _get_fallback_narration(self, context_override: Dict[str, Any] = None) -> str:
-        """Generate intelligent, dynamic fallback narration when Claude is not available"""
-        import random
-        
-        # Use override context if provided, otherwise use stored context
-        ctx = context_override if context_override else self._narration_context
-        
-        phase = ctx.get('phase', 'working')
-        topic = ctx.get('topic', 'your document')
-        progress = ctx.get('progress', 0)
-        current_section = ctx.get('current_section', 'the document')
-        word_count = ctx.get('word_count', 0)
-        doc_type = ctx.get('document_type', 'document')
-        
-        # Dynamic phrase components for natural variation
-        acknowledgments = ["Got it", "Understood", "Absolutely", "Right away", "On it", "Let's begin", "Starting now"]
-        transitions = ["Moving on to", "Now working on", "Progressing to", "Shifting to", "Starting", "Beginning"]
-        progress_phrases = ["We're at", "Progress update:", "Currently at", "Now at", "Reached"]
-        completion_phrases = ["All done", "Finished", "Complete", "Ready", "Done"]
-        
-        # Occasionally use "Sir" (20-30% chance)
-        use_sir = random.random() < 0.25
-        sir_phrase = ", Sir" if use_sir else ""
-        
-        # Generate natural, varied responses based on phase
-        if phase == 'acknowledging_request':
-            intros = [
-                f"{random.choice(acknowledgments)}{sir_phrase}. Creating your {doc_type} about {topic}",
-                f"I'll write that {doc_type} on {topic} for you{sir_phrase}",
-                f"{topic} - interesting topic. Let me create that {doc_type}",
-                f"Starting your {doc_type} about {topic} now"
-            ]
-            return random.choice(intros)
-            
-        elif phase == 'initializing_services':
-            return random.choice([
-                "Connecting to Google Docs",
-                "Setting up document services",
-                "Initializing the writing system",
-                f"Preparing to write{sir_phrase}",
-                "Getting everything ready",
-                "Spinning up the document tools"
-            ])
-            
-        elif phase == 'services_ready':
-            return random.choice([
-                "Services connected",
-                "Ready to create the document",
-                "All systems go",
-                f"Tools initialized{sir_phrase}"
-            ])
-            
-        elif phase == 'creating_document':
-            return random.choice([
-                "Creating your document in Google Docs",
-                "Setting up the document structure",
-                f"Opening a new {doc_type} for you",
-                "Establishing document framework",
-                "Building the document"
-            ])
-            
-        elif phase == 'document_created':
-            return random.choice([
-                "Document created successfully",
-                "Got your new document ready",
-                f"Fresh document set up{sir_phrase}",
-                "Document structure in place"
-            ])
-            
-        elif phase == 'opening_browser':
-            return random.choice([
-                "Opening in Chrome",
-                "Launching the browser",
-                "Bringing up Google Docs"
-            ])
-            
-        elif phase == 'browser_ready':
-            return random.choice([
-                "Browser's open and ready",
-                "Document visible on screen",
-                "Chrome has it loaded"
-            ])
-            
-        elif phase == 'analyzing_topic':
-            analyses = [
-                f"Analyzing key aspects of {topic}",
-                f"Researching {topic} for comprehensive coverage",
-                f"Identifying main themes about {topic}",
-                f"Structuring thoughts on {topic}",
-                f"Planning the approach to {topic}",
-                f"Mapping out {topic} coverage"
-            ]
-            return random.choice(analyses)
-            
-        elif phase == 'outline_complete':
-            return random.choice([
-                f"Outline ready - found several interesting angles",
-                "Structure mapped out, ready to write",
-                f"Framework complete{sir_phrase}",
-                "Got the blueprint, starting content",
-                "Outline looking solid",
-                "Plan's in place, let's write"
-            ])
-            
-        elif phase == 'starting_writing':
-            return random.choice([
-                f"Writing about {topic} now",
-                "Composing the content",
-                f"Let me craft this {doc_type} for you{sir_phrase}",
-                "Beginning the actual writing",
-                f"Starting with the introduction about {topic}",
-                f"Getting the words down now"
-            ])
-            
-        elif phase == 'writing_section':
-            section_updates = [
-                f"{random.choice(transitions)} {current_section}",
-                f"Writing {current_section}",
-                f"Developing {current_section} now",
-                f"Crafting {current_section}",
-                f"{current_section} coming together nicely",
-                f"Building out {current_section}",
-                f"Now covering {current_section}"
-            ]
-            return random.choice(section_updates)
-            
-        elif phase == 'progress_update':
-            # More varied progress announcements with specific milestones
-            if progress < 20:
-                stage_phrases = [
-                    "Just getting started",
-                    "Opening strong",
-                    "Building momentum",
-                    "Laying the groundwork"
-                ]
-            elif progress < 40:
-                stage_phrases = [
-                    "Making solid progress",
-                    "Coming along nicely",
-                    "Building the argument",
-                    "Developing the ideas"
-                ]
-            elif progress < 60:
-                stage_phrases = [
-                    "Halfway there",
-                    "Making great headway",
-                    "Rolling through this",
-                    "Really cooking now"
-                ]
-            elif progress < 80:
-                stage_phrases = [
-                    "Into the home stretch",
-                    "Getting close",
-                    "Nearly there",
-                    "Closing in on completion"
-                ]
-            else:
-                stage_phrases = [
-                    "Almost finished",
-                    "Just about done",
-                    "Final stretch",
-                    "Wrapping it up"
-                ]
-                
-            progress_msgs = [
-                f"{random.choice(stage_phrases)} - {word_count} words",
-                f"{word_count} words written, {random.choice(stage_phrases).lower()}",
-                f"{random.choice(progress_phrases)} {progress}%{sir_phrase}",
-                f"{random.choice(stage_phrases)}"
-            ]
-            return random.choice(progress_msgs)
-            
-        elif phase == 'finalizing':
-            return random.choice([
-                "Adding final touches",
-                "Wrapping up the conclusion",
-                "Polishing the final sections",
-                f"Nearly finished{sir_phrase}"
-            ])
-            
-        elif phase == 'writing_complete':
-            completions = [
-                f"All done{sir_phrase}! {word_count} words on {topic}",
-                f"Finished! Your {doc_type} about {topic} is complete - {word_count} words",
-                f"Writing complete{sir_phrase}. {word_count} words on {topic}",
-                f"That's {word_count} words finished on {topic}",
-                f"Complete! Your essay on {topic} is ready - {word_count} words total"
-            ]
-            return random.choice(completions)
-            
-        elif phase == 'document_ready':
-            ready_msgs = [
-                f"Your {doc_type} about {topic} is open in Google Docs{sir_phrase}",
-                f"It's ready for you in the browser - all {word_count} words",
-                f"Document's on your screen now{sir_phrase}",
-                f"There you go{sir_phrase} - {topic} essay ready to review",
-                f"All set - your {doc_type} on {topic} is open and ready"
-            ]
-            return random.choice(ready_msgs)
-            
-        else:
-            # Default fallback with variation
-            return random.choice([
-                f"Making progress on {current_section}",
-                f"Continuing with {current_section}",
-                f"Still writing{sir_phrase}",
-                f"Moving through {current_section}"
-            ])
-
-    async def _narrate(self, progress_callback: Optional[Callable],
-                      websocket, message: str = None, context: Dict[str, Any] = None):
-        """
-        Intelligent narration with AI-powered decision making and speech queue management
-        Uses IntelligentNarrator for dynamic, context-aware updates
-        """
-        import time
-        import asyncio
-
-        # CRITICAL PHASES: Completion messages MUST always be heard
-        critical_phases = ['writing_complete', 'document_ready', 'acknowledging_request']
-        is_critical = context and context.get('phase') in critical_phases
-        
-        if is_critical:
-            logger.info(f"[DOCUMENT WRITER] 🎯 CRITICAL PHASE: {context.get('phase')} - Will announce regardless")
-            # Wait for any in-progress speech to finish for critical messages
-            if self._speech_in_progress:
-                logger.info(f"[DOCUMENT WRITER] ⏳ Waiting for speech to complete before critical announcement...")
-                max_wait = 10  # Wait up to 10 seconds
-                waited = 0
-                while self._speech_in_progress and waited < max_wait:
-                    await asyncio.sleep(0.5)
-                    waited += 0.5
-                logger.info(f"[DOCUMENT WRITER] ✅ Speech clear, proceeding with critical announcement")
-        else:
-            # REGULAR PHASES: Wait if speech is currently in progress to prevent overlap
-            if self._speech_in_progress:
-                logger.info(f"[DOCUMENT WRITER] ⏸️  Speech in progress, skipping to prevent overlap")
-                return
-            
-            # Wait for minimum gap after last speech completed
-            time_since_last_speech = time.time() - self._last_speech_end_time
-            if time_since_last_speech < 2.0 and self._last_speech_end_time > 0:
-                logger.info(f"[DOCUMENT WRITER] ⏸️  Too soon after last speech ({time_since_last_speech:.1f}s), skipping")
-                return
-
-        # If intelligent narrator is available, use it
-        if self._intelligent_narrator and context and not is_critical:
-            # Regular phases use intelligent narrator with significance checks
-            phase = context.get('phase', 'unknown')
-            
-            # Update narrator context
-            self._intelligent_narrator._context.current_phase = phase
-            self._intelligent_narrator._context.current_section = context.get('current_section', '')
-            self._intelligent_narrator._context.word_count = context.get('word_count', 0)
-            
-            # Intelligently decide if we should narrate
-            should_narrate, reason = await self._intelligent_narrator.should_narrate(
-                phase, 
-                content_update=context.get('recent_content')
-            )
-            
-            if not should_narrate:
-                logger.info(f"[INTELLIGENT NARRATOR] ⏭️  Skipping: {reason}")
-                return
-            
-            logger.info(f"[INTELLIGENT NARRATOR] 🎯 Narrating: {reason}")
-            
-            # Generate intelligent, context-aware message
-            try:
-                message = await self._intelligent_narrator.generate_narration(phase, context)
-            except Exception as e:
-                logger.error(f"[INTELLIGENT NARRATOR] Error, using fallback: {e}")
-                message = await self._generate_dynamic_narration(context)
-        
-        # CRITICAL phases bypass intelligent narrator and use guaranteed messages
-        elif is_critical and context:
-            logger.info(f"[DOCUMENT WRITER] 🔥 Generating CRITICAL message for {context.get('phase')}")
-            message = await self._generate_dynamic_narration(context)
-        
-        # Fallback to old system if no intelligent narrator
-        elif context and not message:
-            message = await self._generate_dynamic_narration(context)
-        
-        if not message:
-            return
-
-        # Mark speech as in progress
-        self._speech_in_progress = True
-        logger.info(f"[DOCUMENT WRITER] 🎤 Speaking: {message}")
-
-        if progress_callback:
-            await progress_callback(message)
-
-        if websocket:
-            try:
-                # Send narration message with voice output
-                await websocket.send_json({
-                    "type": "voice_narration",
-                    "message": message,
-                    "speak": True
-                })
-                
-                # Estimate speech duration (rough: ~3 words per second + 1s buffer)
-                word_count = len(message.split())
-                estimated_duration = (word_count / 3.0) + 1.0
-                
-                # Wait for speech to complete
-                await asyncio.sleep(estimated_duration)
-                
-                # Mark speech as complete
-                self._speech_in_progress = False
-                self._last_speech_end_time = time.time()
-                self._last_narration_time = time.time()
-                
-                logger.info(f"[DOCUMENT WRITER] ✅ Speech completed ({estimated_duration:.1f}s)")
-
-            except Exception as e:
-                logger.error(f"Could not send narration to websocket: {e}")
-                self._speech_in_progress = False
-
-
-def parse_document_request(command: str, intent: Dict[str, Any]) -> DocumentRequest:
-    """
-    Parse command into DocumentRequest (zero hardcoding, fully dynamic)
-
-    Args:
-        command: Original command string
-        intent: Parsed intent information
-
-    Returns:
-        DocumentRequest object
-    """
-    command_lower = command.lower()
-
-    # Detect document type (with research paper detection)
-    type_patterns = {
-        DocumentType.RESEARCH_PAPER: r'\bresearch\s+paper\b',
-        DocumentType.ESSAY: r'\bessay\b',
-        DocumentType.REPORT: r'\breport\b',
-        DocumentType.PAPER: r'\bpaper\b',
-        DocumentType.ARTICLE: r'\barticle\b',
-        DocumentType.BLOG_POST: r'\bblog\s*post\b|\bblog\b'
-    }
-
-    doc_type = DocumentType.GENERAL
-    for dtype, pattern in type_patterns.items():
-        if re.search(pattern, command_lower):
-            doc_type = dtype
-            break
-
-    # Detect formatting style explicitly mentioned in command
-    format_patterns = {
-        DocumentFormat.MLA: r'\bmla\b|\bmla\s+format\b',
-        DocumentFormat.APA: r'\bapa\b|\bapa\s+format\b|\bapa\s+style\b',
-        DocumentFormat.CHICAGO: r'\bchicago\b|\bturabian\b|\bchicago\s+style\b',
-        DocumentFormat.IEEE: r'\bieee\b|\bieee\s+format\b',
-        DocumentFormat.HARVARD: r'\bharvard\b|\bharvard\s+referencing\b'
-    }
-
-    formatting = DocumentFormat.NONE  # Will auto-detect if not found
-    for fmt, pattern in format_patterns.items():
-        if re.search(pattern, command_lower):
-            formatting = fmt
-            logger.info(f"Explicitly detected format from command: {fmt.value}")
-            break
-
-    # Extract word count
-    word_count = None
-    word_match = re.search(r'(\d+)\s*words?', command_lower)
-    if word_match:
-        word_count = int(word_match.group(1))
-
-    # Extract page count
-    page_count = None
-    page_match = re.search(r'(\d+)\s*pages?', command_lower)
-    if page_match:
-        page_count = int(page_match.group(1))
-
-    # Extract topic dynamically
-    topic = _extract_topic(command, doc_type)
-
-    # Extract author name if mentioned
-    author_name = "Student Name"
-    author_match = re.search(r'by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', command)
-    if author_match:
-        author_name = author_match.group(1)
-
-    # Determine platform
-    platform = DocumentPlatform.GOOGLE_DOCS
-    if "word" in command_lower and "online" not in command_lower:
-        platform = DocumentPlatform.LOCAL_WORD
-    elif "word online" in command_lower:
-        platform = DocumentPlatform.WORD_ONLINE
-
-    return DocumentRequest(
-        topic=topic,
-        document_type=doc_type,
-        word_count=word_count,
-        page_count=page_count,
-        platform=platform,
-        formatting=formatting,
-        author_name=author_name,
-        original_command=command
-    )
-
-
-def _extract_topic(command: str, doc_type: DocumentType) -> str:
-    """Dynamically extract topic from command"""
-    command_lower = command.lower()
-
-    # Pattern list (ordered by specificity)
-    # Updated to handle -ing forms: write/writing, create/creating, etc.
-    patterns = [
-        # Pattern 1: "write/writing [me] [an] essay [about/on] topic"
-        r'(?:writ(?:e|ing)|creat(?:e|ing)|draft(?:|ing)|compos(?:e|ing)|generat(?:e|ing))\s+(?:me\s+)?(?:an?\s+)?(?:\d+\s+(?:word|page)s?\s+)?(?:essay|report|paper|article|document|blog\s*post)?\s+(?:about|on|regarding)\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|\s+for\s+me|$)',
-        # Pattern 2: "essay [about/on] topic"
-        r'(?:essay|report|paper|article|document)\s+(?:about|on|regarding)\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|$)',
-        # Pattern 3: "write/writing [me] [an] topic essay"
-        r'(?:writ(?:e|ing)|creat(?:e|ing)|draft(?:|ing))\s+(?:me\s+)?(?:an?\s+)?(.+?)(?:\s+essay|\s+report|\s+paper|\s+article|$)',
-        # Pattern 4: Simple "writing essay on topic" (no "about" connector)
-        r'(?:writ(?:e|ing)|creat(?:e|ing))\s+essay\s+on\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|$)',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, command_lower, re.IGNORECASE)
-        if match:
-            topic = match.group(1).strip()
-            # Clean up the topic
-            topic = re.sub(r'\s+in\s+(?:google\s+)?docs?$', '', topic)
-            topic = re.sub(r'\s+for\s+me$', '', topic)
-            topic = re.sub(r'^\d+\s+(?:word|page)s?\s+', '', topic)
-            if topic:
-                logger.info(f"Extracted topic '{topic}' from command using pattern: {pattern[:50]}...")
-                return topic
-
-    # Fallback: if no pattern matched, log and return default
-    logger.warning(f"Could not extract topic from command: '{command}'. Using default.")
-    return "the requested topic"
-
-
-# Global instance
-_document_writer: Optional[DocumentWriterExecutor] = None
-
-
-def get_document_writer() -> DocumentWriterExecutor:
-    """Get or create global document writer instance"""
-    global _document_writer
-    if _document_writer is None:
-        _document_writer = DocumentWriterExecutor()
-    return _document_writer
+Target length: {request

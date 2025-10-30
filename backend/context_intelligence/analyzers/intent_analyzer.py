@@ -2,7 +2,19 @@
 Intent Analyzer for JARVIS Context Intelligence
 ==============================================
 
-Analyzes command intent to determine context requirements
+This module provides intent analysis capabilities for the JARVIS context intelligence system.
+It analyzes user commands to determine their intent, extract relevant entities, and assess
+whether screen access is required for execution.
+
+The analyzer uses pattern matching with regular expressions to classify commands into
+different intent types such as screen control, app launching, web browsing, file operations,
+document creation, system queries, and more.
+
+Example:
+    >>> analyzer = get_intent_analyzer()
+    >>> intent = await analyzer.analyze("open Safari")
+    >>> print(intent.type)
+    IntentType.APP_LAUNCH
 """
 
 import logging
@@ -15,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 class IntentType(Enum):
-    """Types of command intents"""
+    """Types of command intents that can be recognized by the analyzer.
+    
+    Each intent type represents a different category of user command that may
+    require different handling and context requirements.
+    """
     SCREEN_CONTROL = "screen_control"      # Lock/unlock screen
     APP_LAUNCH = "app_launch"              # Open applications
     WEB_BROWSE = "web_browse"              # Browse websites
@@ -31,7 +47,20 @@ class IntentType(Enum):
 
 @dataclass
 class Intent:
-    """Represents analyzed command intent"""
+    """Represents the analyzed intent of a user command.
+    
+    This dataclass encapsulates all the information extracted from analyzing
+    a user command, including the intent type, confidence level, extracted
+    entities, and metadata.
+    
+    Attributes:
+        type: The classified intent type
+        confidence: Confidence score between 0.0 and 1.0
+        entities: Dictionary of extracted entities from the command
+        requires_screen: Whether this intent requires screen access
+        original_command: The original user command that was analyzed
+        metadata: Additional metadata about the analysis process
+    """
     type: IntentType
     confidence: float
     entities: Dict[str, Any]
@@ -41,13 +70,31 @@ class Intent:
 
 
 class IntentAnalyzer:
-    """Analyzes command intent for context intelligence"""
+    """Analyzes command intent for context intelligence.
+    
+    This class provides the core functionality for analyzing user commands
+    to determine their intent. It uses pattern matching with regular expressions
+    to classify commands and extract relevant entities.
+    
+    Attributes:
+        intent_patterns: Dictionary mapping intent types to regex patterns
+    """
     
     def __init__(self):
+        """Initialize the intent analyzer with predefined patterns."""
         self.intent_patterns = self._initialize_patterns()
         
     def _initialize_patterns(self) -> Dict[IntentType, List[re.Pattern]]:
-        """Initialize intent patterns"""
+        """Initialize regex patterns for each intent type.
+        
+        Creates a comprehensive set of regular expression patterns that are used
+        to match user commands to specific intent types. Each intent type has
+        multiple patterns to handle variations in how users might express the
+        same intent.
+        
+        Returns:
+            Dictionary mapping IntentType to list of compiled regex patterns
+        """
         return {
             IntentType.SCREEN_CONTROL: [
                 re.compile(r'\b(lock|unlock)\s+(my\s+)?(screen|computer|mac)\b', re.I),
@@ -129,15 +176,25 @@ class IntentAnalyzer:
         }
         
     async def analyze(self, command: str, context: Dict[str, Any] = None) -> Intent:
-        """
-        Analyze command to determine intent
+        """Analyze a command to determine its intent.
+        
+        This is the main method for intent analysis. It processes the input command
+        through pattern matching to classify the intent type, extract entities,
+        and determine context requirements.
         
         Args:
-            command: The command to analyze
-            context: Additional context information
+            command: The user command to analyze
+            context: Optional additional context information that may influence analysis
             
         Returns:
-            Intent object with analysis results
+            Intent object containing the analysis results including type, confidence,
+            entities, and screen access requirements
+            
+        Example:
+            >>> analyzer = IntentAnalyzer()
+            >>> intent = await analyzer.analyze("open Safari")
+            >>> print(f"Intent: {intent.type}, Confidence: {intent.confidence}")
+            Intent: IntentType.APP_LAUNCH, Confidence: 0.9
         """
         command_lower = command.lower()
         
@@ -169,7 +226,20 @@ class IntentAnalyzer:
         )
         
     def _extract_entities(self, match: re.Match, command: str) -> Dict[str, Any]:
-        """Extract entities from command"""
+        """Extract entities from a regex match and command.
+        
+        Processes the regex match groups and command text to extract relevant
+        entities such as actions, targets, and search terms that provide
+        additional context about the user's intent.
+        
+        Args:
+            match: The regex match object from pattern matching
+            command: The original command string
+            
+        Returns:
+            Dictionary containing extracted entities with keys like 'action',
+            'target', and 'search_term'
+        """
         entities = {}
         
         # Extract matched groups
@@ -189,7 +259,20 @@ class IntentAnalyzer:
         return entities
         
     def _requires_screen(self, intent_type: IntentType, command: str) -> bool:
-        """Determine if intent requires screen access"""
+        """Determine if an intent type requires screen access.
+        
+        Analyzes the intent type and command content to determine whether
+        executing this command would require access to the user's screen.
+        This is important for context intelligence to know when screen
+        capture or visual analysis might be needed.
+        
+        Args:
+            intent_type: The classified intent type
+            command: The original command string (lowercased)
+            
+        Returns:
+            True if screen access is required, False otherwise
+        """
         # Screen control commands that lock don't need screen
         if intent_type == IntentType.SCREEN_CONTROL and "lock" in command:
             return False
@@ -211,7 +294,18 @@ class IntentAnalyzer:
         return intent_type in screen_required_intents
         
     def _requires_screen_fallback(self, command: str) -> bool:
-        """Fallback check for screen requirement"""
+        """Fallback method to determine screen requirement for unclassified commands.
+        
+        When a command doesn't match any specific intent patterns, this method
+        uses keyword-based heuristics to determine if screen access might be
+        needed. It checks for common action words and exceptions.
+        
+        Args:
+            command: The command string (lowercased)
+            
+        Returns:
+            True if screen access is likely required, False otherwise
+        """
         # Commands that typically require screen
         screen_keywords = [
             'open', 'launch', 'start', 'show', 'display',
@@ -237,11 +331,25 @@ class IntentAnalyzer:
         return False
         
     def validate_intent(self, intent: Intent) -> Tuple[bool, Optional[str]]:
-        """
-        Validate an intent
+        """Validate an analyzed intent for correctness and completeness.
         
+        Performs validation checks on an Intent object to ensure it meets
+        quality standards and contains valid data. This can be used to
+        filter out low-confidence or problematic intent analyses.
+        
+        Args:
+            intent: The Intent object to validate
+            
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple containing:
+                - bool: True if intent is valid, False otherwise
+                - Optional[str]: Error message if invalid, None if valid
+                
+        Example:
+            >>> intent = Intent(type=IntentType.APP_LAUNCH, confidence=0.2, ...)
+            >>> is_valid, error = analyzer.validate_intent(intent)
+            >>> print(f"Valid: {is_valid}, Error: {error}")
+            Valid: False, Error: Low confidence in intent analysis
         """
         if intent.confidence < 0.3:
             return False, "Low confidence in intent analysis"
@@ -256,7 +364,19 @@ class IntentAnalyzer:
 _analyzer = None
 
 def get_intent_analyzer() -> IntentAnalyzer:
-    """Get or create intent analyzer instance"""
+    """Get or create a global intent analyzer instance.
+    
+    This function implements the singleton pattern to ensure only one
+    IntentAnalyzer instance is created and reused throughout the application.
+    This is efficient since the analyzer's patterns are expensive to compile.
+    
+    Returns:
+        IntentAnalyzer: The global analyzer instance
+        
+    Example:
+        >>> analyzer = get_intent_analyzer()
+        >>> intent = await analyzer.analyze("open Chrome")
+    """
     global _analyzer
     if _analyzer is None:
         _analyzer = IntentAnalyzer()

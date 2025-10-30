@@ -4,6 +4,17 @@ Real-time Display Connection State Verifier
 This module provides accurate, real-time verification of display connection state
 rather than relying on cached status. It uses multiple methods to determine
 the actual connection state and integrates with the learning database.
+
+The module implements a multi-method verification approach:
+1. System profiler analysis for hardware-level display detection
+2. Window server queries for active display arrangement
+3. AirPlay-specific status checking for wireless displays
+
+Example:
+    >>> verifier = get_display_verifier()
+    >>> result = await verifier.verify_actual_connection("Living Room TV")
+    >>> print(f"Connected: {result['is_connected']}")
+    Connected: True
 """
 
 import asyncio
@@ -18,24 +29,52 @@ logger = logging.getLogger(__name__)
 
 class DisplayStateVerifier:
     """
-    Verifies actual display connection state in real-time
+    Verifies actual display connection state in real-time.
+    
+    This class provides comprehensive display connection verification using multiple
+    detection methods to ensure accurate real-time status reporting. It maintains
+    a short-term cache to avoid excessive system calls while ensuring freshness.
+    
+    Attributes:
+        last_verification (Dict[str, Dict]): Cache of recent verification results
+        verification_cache_ttl (int): Time-to-live for cached results in seconds
     """
 
-    def __init__(self):
-        self.last_verification = {}
-        self.verification_cache_ttl = 2  # Cache for 2 seconds max
+    def __init__(self) -> None:
+        """
+        Initialize the display state verifier.
+        
+        Sets up caching mechanism with a 2-second TTL to balance performance
+        and accuracy for real-time verification needs.
+        """
+        self.last_verification: Dict[str, Dict] = {}
+        self.verification_cache_ttl: int = 2  # Cache for 2 seconds max
 
     async def verify_actual_connection(self, display_name: str) -> Dict[str, any]:
         """
-        Verify if a display is actually connected right now
-
+        Verify if a display is actually connected right now.
+        
+        Uses multiple verification methods in order of reliability:
+        1. System profiler (highest confidence)
+        2. Window server queries (medium confidence)  
+        3. AirPlay process detection (lower confidence)
+        
+        Args:
+            display_name: Name or identifier of the display to verify
+            
         Returns:
-            Dict with:
-            - is_connected: bool - whether display is actually connected
-            - connection_mode: str - 'extended', 'mirrored', or None
-            - confidence: float - confidence in the verification (0.0-1.0)
-            - method: str - method used for verification
-            - timestamp: datetime - when verification was performed
+            Dict containing:
+                - is_connected (bool): Whether display is actually connected
+                - connection_mode (str): 'extended', 'mirrored', 'airplay', or None
+                - confidence (float): Confidence in verification (0.0-1.0)
+                - method (str): Method used for verification
+                - timestamp (datetime): When verification was performed
+                - details (Dict, optional): Additional display information
+                
+        Example:
+            >>> result = await verifier.verify_actual_connection("Samsung TV")
+            >>> if result['is_connected'] and result['confidence'] > 0.8:
+            ...     print(f"TV connected in {result['connection_mode']} mode")
         """
 
         # Check cache first (very short TTL)
@@ -66,7 +105,20 @@ class DisplayStateVerifier:
 
     async def _verify_via_system_profiler(self, display_name: str) -> Dict[str, any]:
         """
-        Use system_profiler to check actual connected displays
+        Use system_profiler to check actual connected displays.
+        
+        This method provides the highest confidence verification by querying
+        the system's hardware-level display information directly from macOS.
+        
+        Args:
+            display_name: Name of display to verify
+            
+        Returns:
+            Dict with verification results and confidence score of 0.9-0.95
+            for successful detection, 0.0 for failures
+            
+        Raises:
+            No exceptions raised - errors are logged and returned as low confidence
         """
         try:
             # Get display information
@@ -135,7 +187,17 @@ class DisplayStateVerifier:
 
     async def _verify_via_window_server(self, display_name: str) -> Dict[str, any]:
         """
-        Check window server for display arrangement
+        Check window server for display arrangement.
+        
+        Uses AppleScript to query the WindowServer process for active desktop
+        arrangements, providing medium-confidence verification of display state.
+        
+        Args:
+            display_name: Name of display to verify
+            
+        Returns:
+            Dict with verification results and confidence score of 0.8
+            for successful detection, 0.0 for failures
         """
         try:
             # Use AppleScript to get display arrangement
@@ -187,7 +249,17 @@ class DisplayStateVerifier:
 
     async def _verify_via_airplay_status(self, display_name: str) -> Dict[str, any]:
         """
-        Check AirPlay status specifically for TV connections
+        Check AirPlay status specifically for TV connections.
+        
+        Detects active AirPlay connections by checking for the AirPlayXPCHelper
+        process. Provides lower confidence as it can't verify the specific target.
+        
+        Args:
+            display_name: Name of display to verify (used for TV pattern matching)
+            
+        Returns:
+            Dict with verification results and confidence score of 0.7
+            for active AirPlay, 0.6 for no AirPlay detected
         """
         try:
             # Check if screen recording process exists (indicates active AirPlay)
@@ -224,7 +296,22 @@ class DisplayStateVerifier:
 
     def _matches_display_name(self, target: str, display_info: Dict) -> bool:
         """
-        Check if display info matches target display name
+        Check if display info matches target display name.
+        
+        Performs intelligent matching including direct name comparison,
+        TV pattern detection, and AirPlay connection inference.
+        
+        Args:
+            target: Target display name to match
+            display_info: Dictionary containing display information from system
+            
+        Returns:
+            True if the display info matches the target name
+            
+        Example:
+            >>> display_info = {'name': 'Samsung TV', 'airplay': True}
+            >>> verifier._matches_display_name("Living Room TV", display_info)
+            True
         """
         target_lower = target.lower()
 
@@ -245,7 +332,24 @@ class DisplayStateVerifier:
 
     def _fuzzy_match(self, target: str, candidate: str, threshold: float = 0.7) -> bool:
         """
-        Fuzzy string matching for display names
+        Fuzzy string matching for display names.
+        
+        Performs flexible string matching to handle variations in display naming
+        between different system queries and user input.
+        
+        Args:
+            target: Target display name
+            candidate: Candidate display name to compare
+            threshold: Similarity threshold (currently unused but available for future enhancement)
+            
+        Returns:
+            True if strings are considered a match
+            
+        Example:
+            >>> verifier._fuzzy_match("Samsung TV", "Samsung Smart TV")
+            True
+            >>> verifier._fuzzy_match("Living Room", "LivingRoom Display")
+            True
         """
         target_lower = target.lower()
         candidate_lower = candidate.lower()
@@ -265,7 +369,26 @@ class DisplayStateVerifier:
 
     async def get_all_displays(self) -> List[Dict[str, any]]:
         """
-        Get all currently connected displays with their states
+        Get all currently connected displays with their states.
+        
+        Retrieves comprehensive information about all connected displays
+        using system_profiler for complete hardware-level detection.
+        
+        Returns:
+            List of dictionaries, each containing:
+                - name (str): Display name
+                - vendor (str): Display manufacturer
+                - connection_type (str): Connection method (HDMI, AirPlay, etc.)
+                - resolution (str): Current resolution setting
+                - is_airplay (bool): Whether this is an AirPlay connection
+                - is_builtin (bool): Whether this is the built-in display
+                
+        Example:
+            >>> displays = await verifier.get_all_displays()
+            >>> for display in displays:
+            ...     print(f"{display['name']}: {display['connection_type']}")
+            Built-in Display: Internal
+            Samsung TV: AirPlay
         """
         try:
             process = await asyncio.create_subprocess_exec(
@@ -300,11 +423,24 @@ class DisplayStateVerifier:
 
 
 # Singleton instance
-_verifier_instance = None
+_verifier_instance: Optional[DisplayStateVerifier] = None
 
 
 def get_display_verifier() -> DisplayStateVerifier:
-    """Get singleton instance of display verifier"""
+    """
+    Get singleton instance of display verifier.
+    
+    Implements the singleton pattern to ensure only one verifier instance
+    exists throughout the application lifecycle, maintaining cache consistency.
+    
+    Returns:
+        The singleton DisplayStateVerifier instance
+        
+    Example:
+        >>> verifier1 = get_display_verifier()
+        >>> verifier2 = get_display_verifier()
+        >>> assert verifier1 is verifier2  # Same instance
+    """
     global _verifier_instance
     if _verifier_instance is None:
         _verifier_instance = DisplayStateVerifier()

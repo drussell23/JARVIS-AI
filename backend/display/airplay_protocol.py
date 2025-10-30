@@ -45,14 +45,22 @@ logger = logging.getLogger(__name__)
 
 
 class AirPlayMethod(Enum):
-    """AirPlay connection methods"""
+    """AirPlay connection methods.
+    
+    Defines the different strategies for connecting to AirPlay devices,
+    ordered by preference and reliability.
+    """
     SYSTEM_NATIVE = "system_native"  # Use macOS native AirPlay
     RAOP_DIRECT = "raop_direct"       # Direct RAOP protocol
     COREMEDIASTREAM = "coremediastream"  # Private API (if available)
 
 
 class ConnectionState(Enum):
-    """Connection states"""
+    """Connection states for AirPlay devices.
+    
+    Tracks the current state of each device connection throughout
+    the connection lifecycle.
+    """
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -62,7 +70,19 @@ class ConnectionState(Enum):
 
 @dataclass
 class ConnectionResult:
-    """Result of connection attempt"""
+    """Result of connection attempt.
+    
+    Contains comprehensive information about a connection attempt,
+    including success status, timing, and diagnostic information.
+    
+    Attributes:
+        success: Whether the connection was successful
+        state: Current connection state
+        message: Human-readable status message
+        method: Connection method used
+        duration: Time taken for connection attempt in seconds
+        metadata: Additional diagnostic information
+    """
     success: bool
     state: ConnectionState
     message: str
@@ -79,10 +99,29 @@ class AirPlayProtocol:
     1. macOS native AirPlay (preferred - no protocol implementation needed)
     2. Direct RAOP protocol (custom implementation)
     3. CoreMediaStream private API (fallback)
+    
+    This class provides a unified interface for connecting to AirPlay devices
+    regardless of the underlying connection method. It automatically selects
+    the best available method and provides comprehensive error handling and
+    connection state management.
+    
+    Attributes:
+        config: Configuration dictionary loaded from JSON file
+        connections: Mapping of device IDs to connection states
+        active_sessions: Mapping of device IDs to session information
+        stats: Connection statistics and metrics
     """
 
-    def __init__(self, config_path: Optional[str] = None):
-        """Initialize AirPlay protocol handler"""
+    def __init__(self, config_path: Optional[str] = None) -> None:
+        """Initialize AirPlay protocol handler.
+        
+        Args:
+            config_path: Path to configuration file. If None, uses default location.
+            
+        Raises:
+            FileNotFoundError: If configuration file cannot be found
+            json.JSONDecodeError: If configuration file is invalid JSON
+        """
         self.config = self._load_config(config_path)
 
         # Connection state
@@ -99,8 +138,19 @@ class AirPlayProtocol:
 
         logger.info("[AIRPLAY PROTOCOL] Initialized")
 
-    def _load_config(self, config_path: Optional[str]) -> Dict:
-        """Load configuration"""
+    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+        """Load configuration from JSON file.
+        
+        Args:
+            config_path: Path to configuration file
+            
+        Returns:
+            Configuration dictionary
+            
+        Raises:
+            FileNotFoundError: If configuration file doesn't exist
+            json.JSONDecodeError: If configuration file is invalid JSON
+        """
         if config_path is None:
             config_path = Path(__file__).parent.parent / 'config' / 'airplay_config.json'
 
@@ -120,17 +170,27 @@ class AirPlayProtocol:
         method: Optional[AirPlayMethod] = None
     ) -> ConnectionResult:
         """
-        Connect to AirPlay device
+        Connect to AirPlay device.
+        
+        Attempts to establish a connection to the specified AirPlay device using
+        the best available method. Automatically handles method selection if not
+        specified, and provides comprehensive error handling and statistics tracking.
 
         Args:
-            device_name: Name of the AirPlay device
-            ip_address: IP address of device
-            port: Port number
-            mode: Mirroring mode (mirror or extend)
-            method: Preferred connection method
+            device_name: Human-readable name of the AirPlay device
+            ip_address: IP address of the device
+            port: Port number for connection (typically 7000 for AirPlay)
+            mode: Mirroring mode, either "mirror" or "extend"
+            method: Preferred connection method. If None, auto-selects best method
 
         Returns:
-            ConnectionResult with status and details
+            ConnectionResult containing success status, state, timing, and metadata
+
+        Example:
+            >>> protocol = AirPlayProtocol()
+            >>> result = await protocol.connect("Living Room TV", "192.168.1.100", 7000)
+            >>> if result.success:
+            ...     print(f"Connected in {result.duration:.2f}s")
         """
         start_time = time.time()
         device_id = self._get_device_id(device_name, ip_address)
@@ -203,12 +263,22 @@ class AirPlayProtocol:
 
     async def _select_best_method(self, device_name: str, ip_address: str) -> AirPlayMethod:
         """
-        Select best connection method for device
+        Select best connection method for device.
+
+        Automatically chooses the most appropriate connection method based on
+        the current platform and device capabilities.
 
         Strategy:
         1. System Native (preferred - most reliable)
         2. CoreMediaStream (if available)
         3. RAOP Direct (fallback)
+        
+        Args:
+            device_name: Name of the target device
+            ip_address: IP address of the target device
+            
+        Returns:
+            The best available AirPlayMethod for this device
         """
         # Always prefer system native on macOS
         if await self._is_macos():
@@ -220,7 +290,11 @@ class AirPlayProtocol:
         return AirPlayMethod.RAOP_DIRECT
 
     async def _is_macos(self) -> bool:
-        """Check if running on macOS"""
+        """Check if running on macOS.
+        
+        Returns:
+            True if running on macOS, False otherwise
+        """
         import platform
         return platform.system() == 'Darwin'
 
@@ -232,10 +306,24 @@ class AirPlayProtocol:
         mode: str
     ) -> ConnectionResult:
         """
-        Connect via macOS native AirPlay system
+        Connect via macOS native AirPlay system.
 
         This method triggers the system's built-in AirPlay functionality,
         which handles all the complex protocol details (H.264, encryption, etc.)
+        
+        Uses multiple strategies in order of preference:
+        1. CoreMediaStream private framework
+        2. AppleScript automation
+        3. System profiler detection
+        
+        Args:
+            device_name: Name of the AirPlay device
+            ip_address: IP address of the device
+            port: Port number for connection
+            mode: Mirroring mode ("mirror" or "extend")
+            
+        Returns:
+            ConnectionResult with success status and details
         """
         try:
             logger.info(f"[AIRPLAY PROTOCOL] Using macOS native AirPlay for {device_name}")
@@ -281,9 +369,21 @@ class AirPlayProtocol:
         mode: str
     ) -> ConnectionResult:
         """
-        Trigger system AirPlay via CoreMediaStream framework
+        Trigger system AirPlay via CoreMediaStream framework.
 
         This uses macOS private APIs to control AirPlay directly.
+        Requires PyObjC and access to private frameworks.
+        
+        Args:
+            device_name: Name of the target device
+            mode: Mirroring mode
+            
+        Returns:
+            ConnectionResult with attempt status
+            
+        Raises:
+            ImportError: If PyObjC is not available
+            Exception: If CoreMediaStream framework cannot be loaded
         """
         try:
             # Try to import objc bridge
@@ -327,10 +427,22 @@ class AirPlayProtocol:
         mode: str
     ) -> ConnectionResult:
         """
-        Trigger system AirPlay via AppleScript
+        Trigger system AirPlay via AppleScript.
 
         This uses AppleScript to automate the macOS System Preferences
         or Control Center to connect to the AirPlay device.
+        
+        Note: May not work reliably on macOS Sequoia+ due to security restrictions.
+        
+        Args:
+            device_name: Name of the target device
+            mode: Mirroring mode
+            
+        Returns:
+            ConnectionResult with connection status
+            
+        Raises:
+            asyncio.TimeoutError: If AppleScript execution times out
         """
         try:
             logger.info(f"[AIRPLAY PROTOCOL] Using AppleScript to connect to {device_name}")
@@ -411,11 +523,31 @@ class AirPlayProtocol:
         mode: str
     ) -> ConnectionResult:
         """
-        Connect via direct RAOP protocol
+        Connect via direct RAOP protocol.
 
-        This implements a custom RAOP client.
+        This implements a custom RAOP client using RTSP over TCP.
+        
+        RAOP connection steps:
+        1. Open TCP connection to device
+        2. Send RTSP ANNOUNCE request
+        3. Send RTSP SETUP request
+        4. Send RTSP RECORD request
+        5. Start streaming
+        
         Note: Full screen mirroring via RAOP requires H.264 encoding,
-        which is complex. This is a simplified implementation.
+        which is complex. This is a simplified implementation for testing connectivity.
+        
+        Args:
+            device_name: Name of the target device
+            ip_address: IP address of the device
+            port: Port number for RAOP connection
+            mode: Mirroring mode
+            
+        Returns:
+            ConnectionResult with connection status and response metadata
+            
+        Raises:
+            asyncio.TimeoutError: If connection or communication times out
         """
         try:
             logger.info(f"[AIRPLAY PROTOCOL] Direct RAOP connection to {ip_address}:{port}")
@@ -505,16 +637,42 @@ class AirPlayProtocol:
         mode: str
     ) -> ConnectionResult:
         """
-        Connect via CoreMediaStream private API
+        Connect via CoreMediaStream private API.
 
         This method uses macOS private frameworks to control AirPlay.
+        Currently delegates to system native method as a fallback.
+        
+        Args:
+            device_name: Name of the target device
+            ip_address: IP address of the device
+            port: Port number for connection
+            mode: Mirroring mode
+            
+        Returns:
+            ConnectionResult from system native connection method
         """
         # This would require deeper integration with macOS private APIs
         # For now, delegate to system native method
         return await self._connect_via_system(device_name, ip_address, port, mode)
 
     async def disconnect(self, device_name: str, ip_address: str) -> bool:
-        """Disconnect from AirPlay device"""
+        """Disconnect from AirPlay device.
+        
+        Terminates the connection to the specified device using the appropriate
+        method based on how the connection was established.
+        
+        Args:
+            device_name: Name of the device to disconnect from
+            ip_address: IP address of the device
+            
+        Returns:
+            True if disconnection was successful, False otherwise
+            
+        Example:
+            >>> success = await protocol.disconnect("Living Room TV", "192.168.1.100")
+            >>> if success:
+            ...     print("Disconnected successfully")
+        """
         device_id = self._get_device_id(device_name, ip_address)
 
         if device_id not in self.active_sessions:
@@ -546,8 +704,18 @@ class AirPlayProtocol:
             logger.error(f"[AIRPLAY PROTOCOL] Disconnect error: {e}")
             return False
 
-    async def _disconnect_via_applescript(self, device_name: str):
-        """Disconnect via AppleScript"""
+    async def _disconnect_via_applescript(self, device_name: str) -> None:
+        """Disconnect via AppleScript.
+        
+        Uses AppleScript to automate the macOS Control Center to stop
+        screen mirroring.
+        
+        Args:
+            device_name: Name of the device to disconnect from
+            
+        Raises:
+            Exception: If AppleScript execution fails (logged as warning)
+        """
         script = f'''
         tell application "System Events"
             tell process "ControlCenter"
@@ -570,8 +738,18 @@ class AirPlayProtocol:
         except Exception as e:
             logger.warning(f"[AIRPLAY PROTOCOL] AppleScript disconnect failed: {e}")
 
-    async def _disconnect_via_raop(self, ip_address: str, port: int):
-        """Disconnect via RAOP TEARDOWN"""
+    async def _disconnect_via_raop(self, ip_address: str, port: int) -> None:
+        """Disconnect via RAOP TEARDOWN.
+        
+        Sends an RTSP TEARDOWN request to cleanly terminate the RAOP session.
+        
+        Args:
+            ip_address: IP address of the device
+            port: Port number for the connection
+            
+        Raises:
+            Exception: If RAOP disconnect fails (logged as warning)
+        """
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip_address, port),
@@ -589,21 +767,61 @@ class AirPlayProtocol:
             logger.warning(f"[AIRPLAY PROTOCOL] RAOP disconnect failed: {e}")
 
     def _get_device_id(self, device_name: str, ip_address: str) -> str:
-        """Generate device ID"""
+        """Generate unique device ID.
+        
+        Creates a unique identifier for a device based on its name and IP address.
+        Used for tracking connections and sessions.
+        
+        Args:
+            device_name: Name of the device
+            ip_address: IP address of the device
+            
+        Returns:
+            12-character hexadecimal device ID
+        """
         return hashlib.md5(f"{device_name}_{ip_address}".encode()).hexdigest()[:12]
 
     def get_connection_state(self, device_name: str, ip_address: str) -> ConnectionState:
-        """Get connection state for device"""
+        """Get connection state for device.
+        
+        Args:
+            device_name: Name of the device
+            ip_address: IP address of the device
+            
+        Returns:
+            Current ConnectionState for the device
+        """
         device_id = self._get_device_id(device_name, ip_address)
         return self.connections.get(device_id, ConnectionState.DISCONNECTED)
 
     def is_connected(self, device_name: str, ip_address: str) -> bool:
-        """Check if connected to device"""
+        """Check if connected to device.
+        
+        Args:
+            device_name: Name of the device
+            ip_address: IP address of the device
+            
+        Returns:
+            True if device is connected or streaming, False otherwise
+        """
         state = self.get_connection_state(device_name, ip_address)
         return state in [ConnectionState.CONNECTED, ConnectionState.STREAMING]
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get protocol statistics"""
+        """Get protocol statistics.
+        
+        Returns comprehensive statistics about connection attempts,
+        success rates, and performance metrics.
+        
+        Returns:
+            Dictionary containing:
+                - total_connections: Total connection attempts
+                - successful_connections: Number of successful connections
+                - failed_connections: Number of failed connections
+                - avg_connection_time: Average connection time in seconds
+                - active_connections: Current number of active connections
+                - success_rate: Success rate as percentage
+        """
         return {
             **self.stats,
             'active_connections': len(self.active_sessions),
@@ -619,7 +837,21 @@ _protocol_handler: Optional[AirPlayProtocol] = None
 
 
 def get_airplay_protocol(config_path: Optional[str] = None) -> AirPlayProtocol:
-    """Get singleton AirPlay protocol handler"""
+    """Get singleton AirPlay protocol handler.
+    
+    Provides a singleton instance of the AirPlay protocol handler to ensure
+    consistent state management across the application.
+    
+    Args:
+        config_path: Path to configuration file. Only used on first call.
+        
+    Returns:
+        Singleton AirPlayProtocol instance
+        
+    Example:
+        >>> protocol = get_airplay_protocol()
+        >>> result = await protocol.connect("TV", "192.168.1.100", 7000)
+    """
     global _protocol_handler
     if _protocol_handler is None:
         _protocol_handler = AirPlayProtocol(config_path)
@@ -628,7 +860,12 @@ def get_airplay_protocol(config_path: Optional[str] = None) -> AirPlayProtocol:
 
 if __name__ == "__main__":
     # Test protocol handler
-    async def test():
+    async def test() -> None:
+        """Test the AirPlay protocol handler.
+        
+        Demonstrates basic usage of the protocol handler including
+        connection, statistics, and disconnection.
+        """
         logging.basicConfig(level=logging.INFO)
 
         protocol = get_airplay_protocol()

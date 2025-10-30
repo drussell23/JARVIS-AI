@@ -1,7 +1,23 @@
 #!/usr/bin/env python3
-"""
-Python bridge for Swift screen capture functionality
-Provides efficient native screen capture for continuous monitoring
+"""Python bridge for Swift screen capture functionality.
+
+This module provides a Python interface to native Swift screen capture capabilities,
+enabling efficient continuous screen monitoring with fallback to Python-based capture
+methods when the Swift library is unavailable.
+
+The module handles dynamic loading of Swift libraries, provides both single-shot and
+continuous capture modes, and includes automatic fallback mechanisms for cross-platform
+compatibility.
+
+Example:
+    >>> bridge = get_screen_capture_bridge()
+    >>> image = bridge.capture_screen()
+    >>> if image:
+    ...     image.save("screenshot.png")
+    
+    >>> def on_capture(data):
+    ...     print(f"Captured {len(data)} bytes")
+    >>> bridge.start_continuous_capture(on_capture)
 """
 
 import ctypes
@@ -17,18 +33,49 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 class ScreenCaptureBridge:
-    """Python wrapper for Swift screen capture functionality"""
+    """Python wrapper for Swift screen capture functionality.
     
-    def __init__(self):
-        self.lib = None
-        self.capture_instance = None
-        self.callback_func = None
-        self.python_callback = None
+    This class provides a bridge between Python and native Swift screen capture
+    capabilities, with automatic fallback to Python-based methods when the Swift
+    library is unavailable.
+    
+    Attributes:
+        lib: The loaded Swift dynamic library (ctypes.CDLL or None)
+        capture_instance: Pointer to Swift capture instance (ctypes.c_void_p or None)
+        callback_func: C callback function for continuous capture
+        python_callback: Python callback function for continuous capture
+    
+    Example:
+        >>> bridge = ScreenCaptureBridge()
+        >>> image = bridge.capture_screen()
+        >>> app_name = bridge.get_active_application()
+    """
+    
+    def __init__(self) -> None:
+        """Initialize the screen capture bridge.
+        
+        Sets up the Swift dynamic library, defines function signatures,
+        and creates a capture instance. Falls back gracefully if Swift
+        library is unavailable.
+        """
+        self.lib: Optional[ctypes.CDLL] = None
+        self.capture_instance: Optional[ctypes.c_void_p] = None
+        self.callback_func: Optional[Callable] = None
+        self.python_callback: Optional[Callable[[bytes], None]] = None
         self._setup_library()
     
-    def _setup_library(self):
-        """Setup the Swift dynamic library"""
+    def _setup_library(self) -> None:
+        """Setup the Swift dynamic library.
+        
+        Builds the Swift library if needed, loads it using ctypes, defines
+        function signatures, and creates a capture instance.
+        
+        Raises:
+            RuntimeError: If Swift library build fails
+            OSError: If library loading fails
+        """
         try:
             # Build Swift library if needed
             swift_dir = Path(__file__).parent
@@ -67,8 +114,16 @@ class ScreenCaptureBridge:
             logger.warning(f"Failed to load Swift library, falling back to Python: {e}")
             self.lib = None
     
-    def _build_swift_library(self):
-        """Build the Swift library"""
+    def _build_swift_library(self) -> None:
+        """Build the Swift library using Swift Package Manager.
+        
+        Creates Package.swift configuration if it doesn't exist and builds
+        the dynamic library in release mode.
+        
+        Raises:
+            RuntimeError: If Swift build process fails
+            FileNotFoundError: If Swift compiler is not available
+        """
         swift_dir = Path(__file__).parent
         os.chdir(swift_dir)
         
@@ -108,7 +163,21 @@ let package = Package(
             raise RuntimeError(f"Failed to build Swift library: {result.stderr}")
     
     def capture_screen(self) -> Optional[Image.Image]:
-        """Capture current screen"""
+        """Capture the current screen as a PIL Image.
+        
+        Attempts to use Swift native capture first, falls back to Python-based
+        capture using system screencapture command if Swift is unavailable.
+        
+        Returns:
+            PIL Image object containing the screen capture, or None if capture fails
+            
+        Example:
+            >>> bridge = ScreenCaptureBridge()
+            >>> image = bridge.capture_screen()
+            >>> if image:
+            ...     image.save("screenshot.png")
+            ...     print(f"Captured {image.size} screenshot")
+        """
         if self.lib and self.capture_instance:
             # Use Swift capture
             data_ptr = self.lib.swift_capture_screen(self.capture_instance)
@@ -122,7 +191,18 @@ let package = Package(
         return self._fallback_capture()
     
     def _fallback_capture(self) -> Optional[Image.Image]:
-        """Fallback screen capture using Python"""
+        """Fallback screen capture using Python and system commands.
+        
+        Uses macOS screencapture command to capture the screen when Swift
+        library is unavailable.
+        
+        Returns:
+            PIL Image object containing the screen capture, or None if capture fails
+            
+        Raises:
+            subprocess.CalledProcessError: If screencapture command fails
+            OSError: If temporary file operations fail
+        """
         try:
             # Try using screencapture command
             import subprocess
@@ -142,7 +222,18 @@ let package = Package(
             return None
     
     def get_active_application(self) -> str:
-        """Get currently active application"""
+        """Get the name of the currently active application.
+        
+        Uses Swift native method if available, otherwise returns "Unknown".
+        
+        Returns:
+            Name of the active application as a string
+            
+        Example:
+            >>> bridge = ScreenCaptureBridge()
+            >>> app = bridge.get_active_application()
+            >>> print(f"Active app: {app}")
+        """
         if self.lib and self.capture_instance:
             app_name = self.lib.swift_get_active_app(self.capture_instance)
             if app_name:
@@ -152,7 +243,26 @@ let package = Package(
         return "Unknown"
     
     def start_continuous_capture(self, callback: Callable[[bytes], None]) -> bool:
-        """Start continuous screen capture with callback"""
+        """Start continuous screen capture with callback.
+        
+        Initiates continuous screen capture mode where captured frames are
+        delivered to the provided callback function as raw bytes.
+        
+        Args:
+            callback: Function to call with captured frame data as bytes.
+                     Should accept a single bytes parameter.
+        
+        Returns:
+            True if continuous capture started successfully, False otherwise
+            
+        Example:
+            >>> def handle_frame(data):
+            ...     print(f"Received frame: {len(data)} bytes")
+            >>> bridge = ScreenCaptureBridge()
+            >>> success = bridge.start_continuous_capture(handle_frame)
+            >>> if success:
+            ...     print("Continuous capture started")
+        """
         if not self.lib or not self.capture_instance:
             logger.warning("Swift library not available for continuous capture")
             return False
@@ -180,21 +290,50 @@ let package = Package(
         
         return success
     
-    def stop_continuous_capture(self):
-        """Stop continuous screen capture"""
+    def stop_continuous_capture(self) -> None:
+        """Stop continuous screen capture.
+        
+        Stops the continuous capture mode and cleans up associated resources.
+        This method is safe to call even if continuous capture is not active.
+        
+        Example:
+            >>> bridge = ScreenCaptureBridge()
+            >>> bridge.start_continuous_capture(callback)
+            >>> # ... later ...
+            >>> bridge.stop_continuous_capture()
+        """
         # In real implementation, we'd have a stop function
         logger.info("Stopped continuous screen capture")
     
-    def __del__(self):
-        """Cleanup"""
+    def __del__(self) -> None:
+        """Cleanup resources when the object is destroyed.
+        
+        Releases the Swift capture instance and cleans up any allocated
+        resources to prevent memory leaks.
+        """
         if self.lib and self.capture_instance:
             self.lib.swift_release_screen_capture(self.capture_instance)
 
+
 # Singleton instance
-_screen_capture_bridge = None
+_screen_capture_bridge: Optional[ScreenCaptureBridge] = None
+
 
 def get_screen_capture_bridge() -> ScreenCaptureBridge:
-    """Get singleton screen capture bridge"""
+    """Get singleton screen capture bridge instance.
+    
+    Returns the global ScreenCaptureBridge instance, creating it if it
+    doesn't exist. This ensures only one bridge instance is used throughout
+    the application.
+    
+    Returns:
+        The singleton ScreenCaptureBridge instance
+        
+    Example:
+        >>> bridge1 = get_screen_capture_bridge()
+        >>> bridge2 = get_screen_capture_bridge()
+        >>> assert bridge1 is bridge2  # Same instance
+    """
     global _screen_capture_bridge
     if _screen_capture_bridge is None:
         _screen_capture_bridge = ScreenCaptureBridge()

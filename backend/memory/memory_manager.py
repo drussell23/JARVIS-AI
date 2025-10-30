@@ -1,6 +1,19 @@
 """
 M1-Optimized Memory Manager for AI-Powered Chatbot
-Provides proactive memory management to prevent crashes on 16GB M1 MacBook
+
+This module provides proactive memory management to prevent crashes on 16GB M1 MacBook.
+It includes intelligent component lifecycle management, memory prediction, and automated
+cleanup strategies optimized for Apple Silicon unified memory architecture.
+
+The memory manager monitors system memory usage in real-time and takes proactive actions
+to prevent out-of-memory conditions by unloading low-priority components and optimizing
+memory allocation patterns.
+
+Example:
+    >>> manager = M1MemoryManager()
+    >>> manager.register_component("nlp_engine", ComponentPriority.HIGH, 1500)
+    >>> await manager.start_monitoring()
+    >>> success = await manager.load_component("nlp_engine", nlp_instance)
 """
 
 import os
@@ -25,7 +38,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MemoryState(Enum):
-    """Memory pressure states"""
+    """Memory pressure states for system monitoring.
+    
+    Attributes:
+        HEALTHY: Less than 70% memory usage - normal operation
+        WARNING: 70-85% memory usage - start optimization
+        CRITICAL: 85-95% memory usage - aggressive cleanup needed
+        EMERGENCY: Greater than 95% memory usage - emergency shutdown
+    """
 
     HEALTHY = "healthy"  # < 70% usage
     WARNING = "warning"  # 70-85% usage
@@ -33,7 +53,17 @@ class MemoryState(Enum):
     EMERGENCY = "emergency"  # > 95% usage
 
 class ComponentPriority(Enum):
-    """Component priority levels for memory management"""
+    """Component priority levels for memory management decisions.
+    
+    Lower numeric values indicate higher priority. Critical components
+    are preserved during memory pressure situations.
+    
+    Attributes:
+        CRITICAL: Core functionality that must remain loaded (chatbot core)
+        HIGH: Important features that should be preserved (NLP processing)
+        MEDIUM: Enhanced features that can be unloaded (RAG, Voice)
+        LOW: Optional features that are first to be unloaded (Training, Analytics)
+    """
 
     CRITICAL = 1  # Core functionality (chatbot)
     HIGH = 2  # Important features (NLP)
@@ -42,7 +72,20 @@ class ComponentPriority(Enum):
 
 @dataclass
 class MemorySnapshot:
-    """Point-in-time memory status"""
+    """Point-in-time memory status snapshot.
+    
+    Captures comprehensive memory state including system metrics
+    and per-component memory usage for analysis and decision making.
+    
+    Attributes:
+        timestamp: When this snapshot was taken
+        total: Total system memory in bytes
+        available: Available memory in bytes
+        used: Used memory in bytes
+        percent: Memory usage as fraction (0.0-1.0)
+        state: Current memory pressure state
+        components: Per-component memory usage in bytes
+    """
 
     timestamp: datetime
     total: int
@@ -54,7 +97,21 @@ class MemorySnapshot:
 
 @dataclass
 class ComponentInfo:
-    """Information about a managed component"""
+    """Information about a managed component.
+    
+    Tracks metadata and state for each registered component
+    to enable intelligent loading/unloading decisions.
+    
+    Attributes:
+        name: Unique component identifier
+        priority: Priority level for memory management
+        estimated_memory: Estimated memory usage in bytes
+        actual_memory: Measured memory usage in bytes (if loaded)
+        is_loaded: Whether component is currently loaded
+        last_used: Timestamp of last access
+        load_time: Time taken to load component in seconds
+        reference: Weak reference to component object
+    """
 
     name: str
     priority: ComponentPriority
@@ -66,14 +123,32 @@ class ComponentInfo:
     reference: Optional[weakref.ref] = None
 
 class MemoryPredictor:
-    """AI-driven memory prediction using historical data"""
+    """AI-driven memory prediction using historical data.
+    
+    Analyzes historical memory usage patterns to predict future
+    memory requirements for components, enabling proactive management.
+    
+    Attributes:
+        history: Deque storing recent memory usage records
+        component_patterns: Per-component memory usage patterns
+    """
 
     def __init__(self, history_size: int = 100):
+        """Initialize the memory predictor.
+        
+        Args:
+            history_size: Maximum number of historical records to maintain
+        """
         self.history: deque = deque(maxlen=history_size)
         self.component_patterns: Dict[str, List[float]] = {}
 
-    def record_usage(self, component: str, memory_mb: float):
-        """Record component memory usage"""
+    def record_usage(self, component: str, memory_mb: float) -> None:
+        """Record component memory usage for pattern analysis.
+        
+        Args:
+            component: Component name
+            memory_mb: Memory usage in megabytes
+        """
         self.history.append(
             {
                 "timestamp": datetime.now(),
@@ -87,7 +162,23 @@ class MemoryPredictor:
         self.component_patterns[component].append(memory_mb)
 
     def predict_memory_need(self, component: str) -> float:
-        """Predict memory requirement for a component"""
+        """Predict memory requirement for a component.
+        
+        Uses historical patterns with statistical analysis to predict
+        future memory needs, including safety buffers.
+        
+        Args:
+            component: Component name to predict for
+            
+        Returns:
+            Predicted memory requirement in megabytes
+            
+        Example:
+            >>> predictor = MemoryPredictor()
+            >>> predictor.record_usage("nlp_engine", 1200.0)
+            >>> predicted = predictor.predict_memory_need("nlp_engine")
+            >>> print(f"Predicted: {predicted}MB")
+        """
         if component not in self.component_patterns:
             # Return conservative estimate based on component type
             estimates = {
@@ -108,12 +199,40 @@ class MemoryPredictor:
         return 500  # Default fallback
 
 class M1MemoryManager:
-    """
-    Proactive memory management system optimized for M1 Macs
-    Prevents crashes by monitoring and managing component lifecycle
+    """Proactive memory management system optimized for M1 Macs.
+    
+    Prevents crashes by monitoring system memory and managing component
+    lifecycle based on priority and usage patterns. Includes M1-specific
+    optimizations for unified memory architecture.
+    
+    The manager operates in multiple phases:
+    1. HEALTHY: Normal operation, all components available
+    2. WARNING: Start optimization, unload unused low-priority components
+    3. CRITICAL: Aggressive cleanup, unload medium-priority components
+    4. EMERGENCY: Keep only critical components loaded
+    
+    Attributes:
+        total_ram: Total system RAM in bytes
+        safe_threshold: Memory usage threshold to start optimization (0.70)
+        warning_threshold: Memory usage threshold for aggressive cleanup (0.85)
+        critical_threshold: Memory usage threshold for emergency mode (0.95)
+        components: Registry of managed components
+        loaded_components: Currently loaded component instances
+        memory_history: Historical memory usage data
+        predictor: Memory usage prediction engine
+        monitor_task: Background monitoring task
+        monitor_interval: Monitoring frequency in seconds
+        is_monitoring: Whether monitoring is active
+        state_callbacks: Callbacks for memory state changes
+        is_m1: Whether running on M1 Mac
     """
 
     def __init__(self):
+        """Initialize the M1 Memory Manager.
+        
+        Sets up monitoring thresholds, component registry, and M1-specific
+        optimizations. Starts memory tracking but not active monitoring.
+        """
         # System configuration
         self.total_ram = psutil.virtual_memory().total
         self.safe_threshold = 0.70  # 70% - start optimizing
@@ -145,15 +264,32 @@ class M1MemoryManager:
         tracemalloc.start()
 
     def _detect_m1(self) -> bool:
-        """Detect if running on M1 Mac"""
+        """Detect if running on M1 Mac.
+        
+        Returns:
+            True if running on Apple Silicon (M1/M2), False otherwise
+        """
         import platform
 
         return platform.system() == "Darwin" and platform.machine() == "arm64"
 
     def register_component(
         self, name: str, priority: ComponentPriority, estimated_memory_mb: int
-    ):
-        """Register a component for memory management"""
+    ) -> None:
+        """Register a component for memory management.
+        
+        Components must be registered before they can be loaded and managed.
+        Registration includes priority level and estimated memory usage.
+        
+        Args:
+            name: Unique component identifier
+            priority: Priority level for memory management decisions
+            estimated_memory_mb: Estimated memory usage in megabytes
+            
+        Example:
+            >>> manager = M1MemoryManager()
+            >>> manager.register_component("nlp_engine", ComponentPriority.HIGH, 1500)
+        """
         self.components[name] = ComponentInfo(
             name=name,
             priority=priority,
@@ -163,8 +299,18 @@ class M1MemoryManager:
             f"Registered component: {name} (Priority: {priority.name}, Est. Memory: {estimated_memory_mb}MB)"
         )
 
-    async def register_intelligent_components(self):
-        """Register intelligent chatbot components"""
+    async def register_intelligent_components(self) -> bool:
+        """Register intelligent chatbot components with appropriate priorities.
+        
+        Pre-registers common intelligent chatbot components with estimated
+        memory usage based on typical model sizes and framework overhead.
+        
+        Returns:
+            True if registration successful, False otherwise
+            
+        Raises:
+            Exception: If component registration fails
+        """
         try:
             # Register intelligent chatbot
             self.register_component(
@@ -186,8 +332,16 @@ class M1MemoryManager:
             logger.error(f"Failed to register intelligent components: {e}")
             return False
 
-    async def start_monitoring(self):
-        """Start the memory monitoring loop"""
+    async def start_monitoring(self) -> None:
+        """Start the memory monitoring loop.
+        
+        Begins continuous monitoring of system memory usage and automatic
+        management actions. Currently disabled to prevent infinite loops.
+        
+        Note:
+            Monitoring is temporarily disabled due to infinite loop issues.
+            This will be re-enabled once the loop condition is fixed.
+        """
         # TEMPORARY FIX: Disable monitoring to prevent infinite loop
         logger.info("Memory monitoring disabled to fix infinite loop issue")
         return
@@ -197,8 +351,11 @@ class M1MemoryManager:
             self.monitor_task = asyncio.create_task(self._monitor_loop())
             logger.info("Memory monitoring started")
 
-    async def stop_monitoring(self):
-        """Stop the memory monitoring loop"""
+    async def stop_monitoring(self) -> None:
+        """Stop the memory monitoring loop.
+        
+        Gracefully stops the background monitoring task and cleans up resources.
+        """
         if self.is_monitoring and self.monitor_task:
             self.is_monitoring = False
             self.monitor_task.cancel()
@@ -208,8 +365,15 @@ class M1MemoryManager:
                 pass
             logger.info("Memory monitoring stopped")
 
-    async def _monitor_loop(self):
-        """Main monitoring loop"""
+    async def _monitor_loop(self) -> None:
+        """Main monitoring loop for continuous memory management.
+        
+        Runs continuously while monitoring is enabled, taking snapshots
+        and triggering appropriate management actions based on memory state.
+        
+        Raises:
+            Exception: Logs errors but continues monitoring
+        """
         while self.is_monitoring:
             try:
                 snapshot = await self.get_memory_snapshot()
@@ -230,7 +394,19 @@ class M1MemoryManager:
             await asyncio.sleep(self.monitor_interval)
 
     async def get_memory_snapshot(self) -> MemorySnapshot:
-        """Get current memory status"""
+        """Get current memory status snapshot.
+        
+        Captures comprehensive memory state including system metrics
+        and per-component usage for analysis and decision making.
+        
+        Returns:
+            MemorySnapshot containing current memory state
+            
+        Example:
+            >>> manager = M1MemoryManager()
+            >>> snapshot = await manager.get_memory_snapshot()
+            >>> print(f"Memory usage: {snapshot.percent:.1f}%")
+        """
         mem = psutil.virtual_memory()
 
         # Determine state based on usage
@@ -272,7 +448,17 @@ class M1MemoryManager:
         )
 
     def _estimate_object_size(self, obj: Any) -> int:
-        """Estimate memory size of an object"""
+        """Estimate memory size of an object.
+        
+        Uses multiple strategies to estimate object memory usage,
+        including built-in methods and framework-specific approaches.
+        
+        Args:
+            obj: Object to measure
+            
+        Returns:
+            Estimated memory usage in bytes
+        """
         try:
             # Try to get actual size for known types
             if hasattr(obj, "__sizeof__"):
@@ -291,8 +477,18 @@ class M1MemoryManager:
         except Exception:
             return 0
 
-    async def _handle_memory_state(self, snapshot: MemorySnapshot):
-        """Handle different memory states"""
+    async def _handle_memory_state(self, snapshot: MemorySnapshot) -> None:
+        """Handle different memory states with appropriate actions.
+        
+        Triggers different levels of memory management based on current
+        memory pressure state, from gentle optimization to emergency shutdown.
+        
+        Args:
+            snapshot: Current memory snapshot
+            
+        Raises:
+            Exception: Logs callback errors but continues processing
+        """
         if snapshot.state == MemoryState.WARNING:
             await self._optimize_memory()
         elif snapshot.state == MemoryState.CRITICAL:
@@ -307,8 +503,13 @@ class M1MemoryManager:
             except Exception as e:
                 logger.error(f"Error in state callback: {e}")
 
-    async def _optimize_memory(self):
-        """Optimize memory usage (WARNING state)"""
+    async def _optimize_memory(self) -> None:
+        """Optimize memory usage during WARNING state.
+        
+        Performs gentle memory optimization including garbage collection,
+        cache clearing, and unloading of unused low-priority components.
+        Includes cooldown period to prevent excessive optimization.
+        """
         # Prevent infinite optimization loop - add cooldown period
         if hasattr(self, '_last_optimize_time'):
             if datetime.now() - self._last_optimize_time < timedelta(minutes=1):
@@ -336,8 +537,12 @@ class M1MemoryManager:
             ):
                 await self.unload_component(name)
 
-    async def _aggressive_cleanup(self):
-        """Aggressive memory cleanup (CRITICAL state)"""
+    async def _aggressive_cleanup(self) -> None:
+        """Aggressive memory cleanup during CRITICAL state.
+        
+        Unloads all LOW and MEDIUM priority components and performs
+        multiple garbage collection passes to free maximum memory.
+        """
         logger.warning("Aggressive memory cleanup initiated")
 
         # Unload all LOW and MEDIUM priority components
@@ -349,8 +554,12 @@ class M1MemoryManager:
         for _ in range(3):
             gc.collect()
 
-    async def _emergency_shutdown(self):
-        """Emergency shutdown of non-critical components"""
+    async def _emergency_shutdown(self) -> None:
+        """Emergency shutdown of non-critical components.
+        
+        Keeps only CRITICAL priority components loaded and performs
+        aggressive garbage collection to prevent system crash.
+        """
         logger.error("EMERGENCY: Shutting down non-critical components")
 
         # Keep only CRITICAL components
@@ -361,11 +570,17 @@ class M1MemoryManager:
         # Aggressive garbage collection
         gc.collect(2)  # Full collection
 
-    async def optimize_memory(self, mode: str = "normal"):
-        """Public method to optimize memory
+    async def optimize_memory(self, mode: str = "normal") -> None:
+        """Public method to manually optimize memory.
+        
+        Allows external code to trigger memory optimization at different
+        intensity levels based on current needs.
         
         Args:
-            mode: "normal", "aggressive", or "emergency"
+            mode: Optimization mode - "normal", "aggressive", or "emergency"
+            
+        Example:
+            >>> await manager.optimize_memory("aggressive")
         """
         if mode == "normal":
             await self._optimize_memory()
@@ -378,7 +593,23 @@ class M1MemoryManager:
             await self._optimize_memory()
 
     async def can_load_component(self, name: str) -> Tuple[bool, Optional[str]]:
-        """Check if a component can be safely loaded"""
+        """Check if a component can be safely loaded.
+        
+        Analyzes current memory state and predicted component requirements
+        to determine if loading would be safe without triggering memory pressure.
+        
+        Args:
+            name: Component name to check
+            
+        Returns:
+            Tuple of (can_load: bool, reason: Optional[str])
+            If can_load is False, reason explains why
+            
+        Example:
+            >>> can_load, reason = await manager.can_load_component("nlp_engine")
+            >>> if not can_load:
+            ...     print(f"Cannot load: {reason}")
+        """
         if name not in self.components:
             return False, "Component not registered"
 
@@ -408,7 +639,27 @@ class M1MemoryManager:
         return True, None
 
     async def load_component(self, name: str, component: Any) -> bool:
-        """Load a component with memory safety checks"""
+        """Load a component with memory safety checks.
+        
+        Performs safety checks before loading and tracks actual memory usage
+        for future predictions. Updates component metadata and records timing.
+        
+        Args:
+            name: Component name (must be registered)
+            component: Component instance to load
+            
+        Returns:
+            True if loaded successfully, False otherwise
+            
+        Raises:
+            Exception: Logs loading errors but returns False
+            
+        Example:
+            >>> nlp_engine = NLPEngine()
+            >>> success = await manager.load_component("nlp_engine", nlp_engine)
+            >>> if success:
+            ...     print("NLP engine loaded successfully")
+        """
         can_load, reason = await self.can_load_component(name)
         if not can_load:
             logger.warning(f"Cannot load {name}: {reason}")
@@ -448,7 +699,26 @@ class M1MemoryManager:
             return False
 
     async def unload_component(self, name: str, emergency: bool = False) -> bool:
-        """Unload a component to free memory"""
+        """Unload a component to free memory.
+        
+        Safely unloads a component by calling cleanup methods if available,
+        removing references, and forcing garbage collection.
+        
+        Args:
+            name: Component name to unload
+            emergency: If True, skip cleanup methods for faster unloading
+            
+        Returns:
+            True if unloaded successfully, False otherwise
+            
+        Raises:
+            Exception: Logs unloading errors but returns False
+            
+        Example:
+            >>> success = await manager.unload_component("nlp_engine")
+            >>> if success:
+            ...     print("NLP engine unloaded")
+        """
         if name not in self.components or not self.components[name].is_loaded:
             return False
 
@@ -489,18 +759,57 @@ class M1MemoryManager:
             return False
 
     def get_component(self, name: str) -> Optional[Any]:
-        """Get a loaded component and update last used time"""
+        """Get a loaded component and update last used time.
+        
+        Retrieves a loaded component instance and updates its last used
+        timestamp for memory management decisions.
+        
+        Args:
+            name: Component name to retrieve
+            
+        Returns:
+            Component instance if loaded, None otherwise
+            
+        Example:
+            >>> nlp_engine = manager.get_component("nlp_engine")
+            >>> if nlp_engine:
+            ...     result = nlp_engine.process(text)
+        """
         if name in self.loaded_components:
             self.components[name].last_used = datetime.now()
             return self.loaded_components[name]
         return None
 
-    def add_state_callback(self, callback: Callable):
-        """Add a callback for memory state changes"""
+    def add_state_callback(self, callback: Callable) -> None:
+        """Add a callback for memory state changes.
+        
+        Registers a callback function that will be called whenever
+        the memory state changes (HEALTHY -> WARNING, etc.).
+        
+        Args:
+            callback: Async function to call with MemorySnapshot parameter
+            
+        Example:
+            >>> async def on_memory_change(snapshot):
+            ...     print(f"Memory state: {snapshot.state.value}")
+            >>> manager.add_state_callback(on_memory_change)
+        """
         self.state_callbacks.append(callback)
 
     async def get_memory_report(self) -> Dict[str, Any]:
-        """Generate a detailed memory report"""
+        """Generate a detailed memory report.
+        
+        Creates comprehensive report including current state, component status,
+        historical analysis, and system configuration for debugging and monitoring.
+        
+        Returns:
+            Dictionary containing detailed memory analysis
+            
+        Example:
+            >>> report = await manager.get_memory_report()
+            >>> print(f"Current state: {report['current_state']['state']}")
+            >>> print(f"Memory usage: {report['current_state']['percent_used']:.1f}%")
+        """
         snapshot = await self.get_memory_snapshot()
 
         # Component summary
@@ -552,8 +861,12 @@ class M1MemoryManager:
             },
         }
 
-    async def cleanup(self):
-        """Cleanup resources"""
+    async def cleanup(self) -> None:
+        """Cleanup resources and stop monitoring.
+        
+        Gracefully shuts down the memory manager by stopping monitoring
+        and cleaning up tracking resources.
+        """
         await self.stop_monitoring()
         tracemalloc.stop()
 
@@ -561,6 +874,11 @@ class M1MemoryManager:
 if __name__ == "__main__":
 
     async def test_memory_manager():
+        """Test the memory manager functionality.
+        
+        Demonstrates basic usage including component registration,
+        monitoring startup, component loading, and report generation.
+        """
         # Create manager
         manager = M1MemoryManager()
 
@@ -580,23 +898,9 @@ if __name__ == "__main__":
 
         # Simulate loading a component
         class MockComponent:
-            def __init__(self, size_mb):
-                self.data = bytearray(size_mb * 1024 * 1024)
-
-        # Try to load NLP engine
-        mock_nlp = MockComponent(100)  # Small mock
-        success = await manager.load_component("nlp_engine", mock_nlp)
-        print(f"NLP Engine loaded: {success}")
-
-        # Wait a bit and check report
-        await asyncio.sleep(5)
-        report = await manager.get_memory_report()
-        print(f"\nMemory Report:")
-        print(json.dumps(report, indent=2, default=str))
-
-        # Cleanup
-        await manager.cleanup()
-
-    # Run test
-    asyncio.run(test_memory_manager())
-
+            """Mock component for testing memory management."""
+            
+            def __init__(self, size_mb: int):
+                """Initialize mock component with specified memory usage.
+                
+                Args:

@@ -1,7 +1,23 @@
 #!/usr/bin/env python3
 """
 Autonomous Behaviors for JARVIS
-Implements specific behavior patterns for different scenarios
+
+This module implements specific behavior patterns for different scenarios in the JARVIS
+autonomous system. It provides handlers for messages, meetings, workspace organization,
+and security events, enabling the system to automatically respond to various situations
+without user intervention.
+
+The module includes:
+- MessageHandler: Processes and categorizes incoming messages
+- MeetingHandler: Prepares workspace for meetings
+- WorkspaceOrganizer: Maintains optimal workspace layout
+- SecurityHandler: Responds to security-related events
+- AutonomousBehaviorManager: Coordinates all autonomous behaviors
+
+Example:
+    >>> manager = AutonomousBehaviorManager()
+    >>> actions = await manager.process_workspace_state(workspace_state, windows)
+    >>> print(f"Generated {len(actions)} autonomous actions")
 """
 
 import re
@@ -22,9 +38,23 @@ from .autonomous_decision_engine import AutonomousAction, ActionPriority, Action
 logger = logging.getLogger(__name__)
 
 class MessageHandler:
-    """Autonomous message handling behaviors"""
+    """Autonomous message handling behaviors.
+    
+    This class analyzes incoming messages and notifications to determine appropriate
+    autonomous actions. It can classify messages as automated notifications, meeting
+    reminders, urgent communications, or security alerts, and generate corresponding
+    actions.
+    
+    Attributes:
+        vision_analyzer: Optional ClaudeVisionAnalyzer for extracting message content
+        automated_patterns: Regex patterns for identifying automated messages
+        meeting_patterns: Regex patterns for identifying meeting reminders
+        urgent_patterns: Regex patterns for identifying urgent messages
+        security_patterns: Regex patterns for identifying security alerts
+    """
     
     def __init__(self):
+        """Initialize the MessageHandler with vision analyzer and message patterns."""
         # Initialize vision analyzer with API key from environment
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if api_key and ClaudeVisionAnalyzer is not None:
@@ -67,7 +97,26 @@ class MessageHandler:
         ]
     
     async def handle_routine_message(self, message_window: WindowInfo) -> Optional[AutonomousAction]:
-        """Determine action for routine messages"""
+        """Determine appropriate action for routine messages.
+        
+        Analyzes a message window to classify the message type and generate an
+        appropriate autonomous action. Handles automated notifications, meeting
+        reminders, urgent messages, and security alerts.
+        
+        Args:
+            message_window: WindowInfo object containing message window details
+            
+        Returns:
+            AutonomousAction object with recommended action, or None if no action needed
+            
+        Raises:
+            Exception: If message content extraction or analysis fails
+            
+        Example:
+            >>> window = WindowInfo(app_name="Slack", window_title="Urgent: Server down")
+            >>> action = await handler.handle_routine_message(window)
+            >>> print(action.action_type)  # "highlight_urgent_message"
+        """
         try:
             # Extract message content using vision
             content = await self._extract_message_content(message_window)
@@ -150,7 +199,20 @@ class MessageHandler:
             return None
     
     async def _extract_message_content(self, window: WindowInfo) -> str:
-        """Extract message content from window using vision"""
+        """Extract message content from window using vision analysis.
+        
+        Uses the ClaudeVisionAnalyzer to extract text content from the message window.
+        Falls back to window title if vision analysis is unavailable or fails.
+        
+        Args:
+            window: WindowInfo object containing window details
+            
+        Returns:
+            Extracted message content as string
+            
+        Raises:
+            Exception: If both vision analysis and fallback methods fail
+        """
         try:
             # Use vision analyzer to extract text if available
             if self.vision_analyzer:
@@ -202,27 +264,68 @@ class MessageHandler:
             return window.window_title
     
     def _is_automated_notification(self, content: str) -> bool:
-        """Check if message is an automated notification"""
+        """Check if message is an automated notification.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            True if message appears to be automated, False otherwise
+        """
         content_lower = content.lower()
         return any(re.search(pattern, content_lower) for pattern in self.automated_patterns)
     
     def _is_meeting_reminder(self, content: str) -> bool:
-        """Check if message is a meeting reminder"""
+        """Check if message is a meeting reminder.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            True if message appears to be a meeting reminder, False otherwise
+        """
         content_lower = content.lower()
         return any(re.search(pattern, content_lower) for pattern in self.meeting_patterns)
     
     def _is_urgent_message(self, content: str) -> bool:
-        """Check if message is urgent"""
+        """Check if message is urgent.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            True if message appears to be urgent, False otherwise
+        """
         content_lower = content.lower()
         return any(re.search(pattern, content_lower) for pattern in self.urgent_patterns)
     
     def _is_security_alert(self, content: str) -> bool:
-        """Check if message is security-related"""
+        """Check if message is security-related.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            True if message appears to be security-related, False otherwise
+        """
         content_lower = content.lower()
         return any(re.search(pattern, content_lower) for pattern in self.security_patterns)
     
     def _extract_meeting_info(self, content: str) -> Dict[str, Any]:
-        """Extract meeting information from content"""
+        """Extract meeting information from content.
+        
+        Parses meeting-related content to extract key information like time,
+        platform, and title.
+        
+        Args:
+            content: Message content containing meeting information
+            
+        Returns:
+            Dictionary containing extracted meeting information with keys:
+            - title: Meeting title or subject
+            - time: Meeting time information
+            - platform: Meeting platform (Zoom, Teams, etc.)
+        """
         info = {"title": "Meeting", "time": None, "platform": None}
         
         # Extract time
@@ -248,7 +351,14 @@ class MessageHandler:
         return info
     
     def _get_urgency_level(self, content: str) -> str:
-        """Determine urgency level from content"""
+        """Determine urgency level from content.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            Urgency level as string: "critical", "urgent", or "medium"
+        """
         content_lower = content.lower()
         
         if any(word in content_lower for word in ["emergency", "critical", "asap", "immediate"]):
@@ -259,7 +369,15 @@ class MessageHandler:
             return "medium"
     
     def _get_security_type(self, content: str) -> str:
-        """Determine security alert type"""
+        """Determine security alert type.
+        
+        Args:
+            content: Message content to analyze
+            
+        Returns:
+            Security alert type as string: "authentication", "access_attempt", 
+            "fraud_alert", or "general_security"
+        """
         content_lower = content.lower()
         
         if "password" in content_lower or "credential" in content_lower:
@@ -272,9 +390,19 @@ class MessageHandler:
             return "general_security"
 
 class MeetingHandler:
-    """Autonomous meeting preparation behaviors"""
+    """Autonomous meeting preparation behaviors.
+    
+    This class handles workspace preparation for upcoming meetings, including
+    hiding sensitive applications, opening meeting platforms, muting distracting
+    apps, and organizing the desktop for a professional appearance.
+    
+    Attributes:
+        preparation_actions: List of preparation actions taken
+        sensitive_apps: List of application names considered sensitive
+    """
     
     def __init__(self):
+        """Initialize the MeetingHandler with default settings."""
         self.preparation_actions = []
         self.sensitive_apps = [
             "1Password", "Bitwarden", "LastPass", "KeePass",
@@ -284,7 +412,23 @@ class MeetingHandler:
     
     async def prepare_for_meeting(self, meeting_info: Dict[str, Any], 
                                   current_windows: List[WindowInfo]) -> List[AutonomousAction]:
-        """Generate actions to prepare workspace for meeting"""
+        """Generate actions to prepare workspace for meeting.
+        
+        Analyzes the current workspace and generates a list of actions to prepare
+        for an upcoming meeting, including security measures and workspace organization.
+        
+        Args:
+            meeting_info: Dictionary containing meeting details (title, time, platform)
+            current_windows: List of currently open windows
+            
+        Returns:
+            List of AutonomousAction objects for meeting preparation
+            
+        Example:
+            >>> meeting_info = {"title": "Team Standup", "platform": "Zoom"}
+            >>> actions = await handler.prepare_for_meeting(meeting_info, windows)
+            >>> print(f"Generated {len(actions)} preparation actions")
+        """
         actions = []
         
         # Hide sensitive windows
@@ -341,7 +485,14 @@ class MeetingHandler:
         return actions
     
     def _is_sensitive_window(self, window: WindowInfo) -> bool:
-        """Check if window contains sensitive content"""
+        """Check if window contains sensitive content.
+        
+        Args:
+            window: WindowInfo object to check
+            
+        Returns:
+            True if window is considered sensitive, False otherwise
+        """
         window_text = f"{window.app_name} {window.window_title}".lower()
         
         # Check against sensitive apps
@@ -360,7 +511,14 @@ class MeetingHandler:
         return any(re.search(pattern, window_text) for pattern in sensitive_patterns)
     
     def _find_distracting_apps(self, windows: List[WindowInfo]) -> List[str]:
-        """Find apps that might be distracting during meetings"""
+        """Find apps that might be distracting during meetings.
+        
+        Args:
+            windows: List of current windows to analyze
+            
+        Returns:
+            List of application names that could be distracting
+        """
         distracting = []
         distracting_patterns = [
             "Discord", "Slack", "Messages", "WhatsApp", "Telegram",
@@ -379,21 +537,55 @@ class MeetingHandler:
         return distracting
     
     def _desktop_needs_cleanup(self, windows: List[WindowInfo]) -> bool:
-        """Check if desktop needs organization"""
+        """Check if desktop needs organization.
+        
+        Args:
+            windows: List of current windows to analyze
+            
+        Returns:
+            True if desktop appears cluttered and needs cleanup, False otherwise
+        """
         # Simple heuristic: too many visible windows
         visible_windows = [w for w in windows if w.is_visible]
         return len(visible_windows) > 10
 
 class WorkspaceOrganizer:
-    """Autonomous workspace organization behaviors"""
+    """Autonomous workspace organization behaviors.
+    
+    This class analyzes the current workspace layout and suggests organization
+    improvements such as window arrangement, duplicate removal, and focus mode
+    activation to maintain an efficient working environment.
+    
+    Attributes:
+        project_patterns: Dictionary of project-specific patterns
+        window_groups: Default dictionary for grouping windows by context
+    """
     
     def __init__(self):
+        """Initialize the WorkspaceOrganizer with default settings."""
         self.project_patterns = {}
         self.window_groups = defaultdict(list)
     
     async def analyze_and_organize(self, windows: List[WindowInfo], 
                                    user_state: str) -> List[AutonomousAction]:
-        """Analyze workspace and suggest organization actions"""
+        """Analyze workspace and suggest organization actions.
+        
+        Examines the current workspace state and generates actions to improve
+        organization, including window arrangement, duplicate removal, and
+        focus mode suggestions.
+        
+        Args:
+            windows: List of current windows in the workspace
+            user_state: Current user state ("focused", "available", etc.)
+            
+        Returns:
+            List of AutonomousAction objects for workspace organization
+            
+        Example:
+            >>> organizer = WorkspaceOrganizer()
+            >>> actions = await organizer.analyze_and_organize(windows, "focused")
+            >>> print(f"Suggested {len(actions)} organization actions")
+        """
         actions = []
         
         # Group windows by project/context
@@ -449,7 +641,14 @@ class WorkspaceOrganizer:
         return actions
     
     def _group_windows_by_context(self, windows: List[WindowInfo]) -> Dict[str, List[WindowInfo]]:
-        """Group windows by project or context"""
+        """Group windows by project or context.
+        
+        Args:
+            windows: List of windows to group
+            
+        Returns:
+            Dictionary mapping context names to lists of windows
+        """
         groups = defaultdict(list)
         
         # Simple grouping by app type and content
@@ -468,7 +667,14 @@ class WorkspaceOrganizer:
         return dict(groups)
     
     def _has_overlapping_windows(self, windows: List[WindowInfo]) -> bool:
-        """Check if windows are overlapping significantly"""
+        """Check if windows are overlapping significantly.
+        
+        Args:
+            windows: List of windows to check for overlaps
+            
+        Returns:
+            True if significant overlapping is detected, False otherwise
+        """
         visible_windows = [w for w in windows if w.is_visible]
         
         # Simple overlap detection
@@ -480,7 +686,15 @@ class WorkspaceOrganizer:
         return False
     
     def _windows_overlap(self, w1: WindowInfo, w2: WindowInfo) -> bool:
-        """Check if two windows overlap"""
+        """Check if two windows overlap.
+        
+        Args:
+            w1: First window to check
+            w2: Second window to check
+            
+        Returns:
+            True if windows overlap, False otherwise
+        """
         # Get bounds
         b1 = w1.bounds
         b2 = w2.bounds
@@ -494,7 +708,14 @@ class WorkspaceOrganizer:
         )
     
     def _suggest_window_reduction(self, windows: List[WindowInfo]) -> List[AutonomousAction]:
-        """Suggest which windows to close or minimize"""
+        """Suggest which windows to close or minimize.
+        
+        Args:
+            windows: List of windows to analyze for reduction
+            
+        Returns:
+            List of AutonomousAction objects for window reduction
+        """
         actions = []
         
         # Find inactive windows (simplified logic)
@@ -513,7 +734,14 @@ class WorkspaceOrganizer:
         return actions
     
     def _find_duplicate_windows(self, windows: List[WindowInfo]) -> List[WindowInfo]:
-        """Find duplicate windows of the same app"""
+        """Find duplicate windows of the same app.
+        
+        Args:
+            windows: List of windows to check for duplicates
+            
+        Returns:
+            List of WindowInfo objects that are duplicates
+        """
         duplicates = []
         app_windows = defaultdict(list)
         
@@ -536,7 +764,14 @@ class WorkspaceOrganizer:
         return duplicates
     
     def _workspace_is_cluttered(self, windows: List[WindowInfo]) -> bool:
-        """Check if workspace is too cluttered"""
+        """Check if workspace is too cluttered.
+        
+        Args:
+            windows: List of windows to analyze
+            
+        Returns:
+            True if workspace appears cluttered, False otherwise
+        """
         visible_count = len([w for w in windows if w.is_visible])
         
         # Consider cluttered if:
@@ -553,7 +788,14 @@ class WorkspaceOrganizer:
         return False
     
     def _identify_primary_work_apps(self, windows: List[WindowInfo]) -> List[str]:
-        """Identify primary work applications"""
+        """Identify primary work applications.
+        
+        Args:
+            windows: List of windows to analyze
+            
+        Returns:
+            List of application names considered primary for work
+        """
         work_apps = []
         work_patterns = [
             "code", "visual studio", "xcode", "android studio",
@@ -578,9 +820,19 @@ class WorkspaceOrganizer:
         return work_apps[:5]  # Limit to 5 primary apps
 
 class SecurityHandler:
-    """Autonomous security-related behaviors"""
+    """Autonomous security-related behaviors.
+    
+    This class handles security events and threats by automatically responding
+    to suspicious activities, protecting sensitive data, and alerting users to
+    potential security issues.
+    
+    Attributes:
+        security_apps: List of security-related application names
+        suspicious_patterns: Regex patterns for identifying suspicious activities
+    """
     
     def __init__(self):
+        """Initialize the SecurityHandler with security app patterns."""
         self.security_apps = ["1Password", "Bitwarden", "LastPass", "Keychain"]
         self.suspicious_patterns = [
             r"unauthorized access|failed login|suspicious activity",
@@ -591,360 +843,23 @@ class SecurityHandler:
     
     async def handle_security_event(self, event_type: str, 
                                    context: Dict[str, Any]) -> List[AutonomousAction]:
-        """Handle security-related events"""
-        actions = []
+        """Handle security-related events.
         
-        if event_type == "suspicious_login":
-            actions.extend(self._handle_suspicious_login(context))
-        elif event_type == "password_manager_open":
-            actions.extend(self._handle_password_manager(context))
-        elif event_type == "sensitive_data_exposed":
-            actions.extend(self._handle_sensitive_data(context))
-        elif event_type == "security_alert":
-            actions.extend(self._handle_security_alert(context))
+        Processes different types of security events and generates appropriate
+        autonomous actions to protect the user and system.
         
-        return actions
-    
-    def _handle_suspicious_login(self, context: Dict[str, Any]) -> List[AutonomousAction]:
-        """Handle suspicious login attempts"""
-        actions = []
-        
-        # Lock sensitive apps
-        actions.append(AutonomousAction(
-            action_type="lock_sensitive_apps",
-            target="security",
-            params={"reason": "Suspicious login detected"},
-            priority=ActionPriority.CRITICAL,
-            confidence=0.95,
-            category=ActionCategory.SECURITY,
-            reasoning="Protecting sensitive data due to suspicious activity"
-        ))
-        
-        # Notify user
-        actions.append(AutonomousAction(
-            action_type="security_notification",
-            target="user",
-            params={
-                "message": "Suspicious login attempt detected",
-                "severity": "high"
-            },
-            priority=ActionPriority.CRITICAL,
-            confidence=0.95,
-            category=ActionCategory.SECURITY,
-            reasoning="Alerting user to potential security threat"
-        ))
-        
-        return actions
-    
-    def _handle_password_manager(self, context: Dict[str, Any]) -> List[AutonomousAction]:
-        """Handle password manager visibility"""
-        windows = context.get("current_windows", [])
-        actions = []
-        
-        # Check if in meeting or screen sharing
-        if context.get("in_meeting", False) or context.get("screen_sharing", False):
-            for window in windows:
-                if any(app in window.app_name for app in self.security_apps):
-                    actions.append(AutonomousAction(
-                        action_type="hide_window",
-                        target=window.app_name,
-                        params={"window_id": window.window_id},
-                        priority=ActionPriority.CRITICAL,
-                        confidence=0.95,
-                        category=ActionCategory.SECURITY,
-                        reasoning="Hiding password manager during screen sharing"
-                    ))
-        
-        return actions
-    
-    def _handle_sensitive_data(self, context: Dict[str, Any]) -> List[AutonomousAction]:
-        """Handle exposed sensitive data"""
-        actions = []
-        
-        # Immediately blur or hide
-        actions.append(AutonomousAction(
-            action_type="blur_sensitive_content",
-            target=context.get("app_name", "unknown"),
-            params={
-                "window_id": context.get("window_id"),
-                "content_type": context.get("data_type", "unknown")
-            },
-            priority=ActionPriority.CRITICAL,
-            confidence=0.95,
-            category=ActionCategory.SECURITY,
-            reasoning="Protecting exposed sensitive data"
-        ))
-        
-        return actions
-    
-    def _handle_security_alert(self, context: Dict[str, Any]) -> List[AutonomousAction]:
-        """Handle security alerts"""
-        alert_type = context.get("alert_type", "unknown")
-        actions = []
-        
-        if alert_type == "phishing":
-            actions.append(AutonomousAction(
-                action_type="block_phishing_site",
-                target="browser",
-                params={"url": context.get("url")},
-                priority=ActionPriority.CRITICAL,
-                confidence=0.9,
-                category=ActionCategory.SECURITY,
-                reasoning="Blocking potential phishing attempt"
-            ))
-        
-        return actions
-
-class AutonomousBehaviorManager:
-    """Manages all autonomous behaviors (Singleton)"""
-    
-    _instance = None
-    _initialized = False
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(AutonomousBehaviorManager, cls).__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        # Only initialize once
-        if AutonomousBehaviorManager._initialized:
-            return
+        Args:
+            event_type: Type of security event ("suspicious_login", "password_manager_open", etc.)
+            context: Dictionary containing event context and details
             
-        AutonomousBehaviorManager._initialized = True
-        
-        self.message_handler = MessageHandler()
-        self.meeting_handler = MeetingHandler()
-        self.workspace_organizer = WorkspaceOrganizer()
-        self.security_handler = SecurityHandler()
-        
-        logger.info("Autonomous Behavior Manager initialized")
-    
-    async def process_workspace_state(self, workspace_state: Dict[str, Any], 
-                                     windows: List[WindowInfo]) -> List[AutonomousAction]:
-        """Process current workspace state and generate actions"""
-        all_actions = []
-        
-        try:
-            # Handle messages
-            message_windows = [w for w in windows if self._has_messages(w)]
-            for window in message_windows:
-                action = await self.message_handler.handle_routine_message(window)
-                if action:
-                    all_actions.append(action)
+        Returns:
+            List of AutonomousAction objects for security response
             
-            # Check for meetings
-            meeting_info = self._check_for_meetings(windows)
-            if meeting_info:
-                meeting_actions = await self.meeting_handler.prepare_for_meeting(
-                    meeting_info, windows
-                )
-                all_actions.extend(meeting_actions)
+        Raises:
+            ValueError: If event_type is not recognized
             
-            # Workspace organization
-            if self._should_organize_workspace(workspace_state):
-                org_actions = await self.workspace_organizer.analyze_and_organize(
-                    windows, workspace_state.get("user_state", "available")
-                )
-                all_actions.extend(org_actions)
-            
-            # Security checks
-            security_events = self._check_security_events(windows, workspace_state)
-            for event in security_events:
-                security_actions = await self.security_handler.handle_security_event(
-                    event["type"], event["context"]
-                )
-                all_actions.extend(security_actions)
-            
-            # Deduplicate and prioritize actions
-            all_actions = self._prioritize_actions(all_actions)
-            
-        except Exception as e:
-            logger.error(f"Error processing workspace state: {e}")
-        
-        return all_actions
-    
-    def _has_messages(self, window: WindowInfo) -> bool:
-        """Check if window has unread messages or important message content"""
-        # Standard unread indicators
-        unread_indicators = [
-            r"\(\d+\)",  # (5) format
-            r"\d+ new",  # 5 new messages
-            r"unread",
-            r"notification"
-        ]
-        
-        # Important message types that should be processed
-        important_indicators = [
-            r"urgent|emergency|critical|asap|important",
-            r"security alert|suspicious|unauthorized|breach",
-            r"meeting in \d+ minutes?|starts? (at|in)|scheduled for",
-            r"automated|automatic|bot|digest|newsletter"
-        ]
-        
-        title_lower = window.window_title.lower()
-        
-        # Check for unread indicators
-        has_unread = any(re.search(pattern, title_lower) for pattern in unread_indicators)
-        
-        # Check for important message content in typical communication apps
-        is_communication_app = any(app in window.app_name.lower() for app in 
-                                 ["mail", "email", "slack", "messages", "calendar", "teams", "discord"])
-        has_important_content = any(re.search(pattern, title_lower) for pattern in important_indicators)
-        
-        return has_unread or (is_communication_app and has_important_content)
-    
-    def _check_for_meetings(self, windows: List[WindowInfo]) -> Optional[Dict[str, Any]]:
-        """Check for upcoming meetings"""
-        for window in windows:
-            if "calendar" in window.app_name.lower() or "meeting" in window.window_title.lower():
-                # Simple pattern matching for meeting times
-                match = re.search(r"(\d+) minutes?|starts at (\d{1,2}:\d{2})", 
-                                window.window_title, re.IGNORECASE)
-                if match:
-                    return {
-                        "title": window.window_title,
-                        "time": match.group(0),
-                        "window": window
-                    }
-        return None
-    
-    def _should_organize_workspace(self, workspace_state: Dict[str, Any]) -> bool:
-        """Determine if workspace needs organization"""
-        # Check various indicators
-        window_count = workspace_state.get("window_count", 0)
-        last_organized = workspace_state.get("last_organized")
-        user_state = workspace_state.get("user_state", "available")
-        
-        # Don't organize during focused work
-        if user_state == "focused":
-            return False
-        
-        # Organize if too many windows
-        if window_count > 15:
-            return True
-        
-        # Organize if not done recently (simplified check)
-        if last_organized is None:
-            return True
-        
-        return False
-    
-    def _check_security_events(self, windows: List[WindowInfo], 
-                              workspace_state: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Check for security-related events"""
-        events = []
-        
-        # Check for password managers during meetings
-        if workspace_state.get("in_meeting", False):
-            for window in windows:
-                if any(app in window.app_name for app in ["1Password", "Bitwarden", "LastPass"]):
-                    events.append({
-                        "type": "password_manager_open",
-                        "context": {
-                            "current_windows": windows,
-                            "in_meeting": True
-                        }
-                    })
-        
-        # Check for security alerts in window titles
-        for window in windows:
-            if re.search(r"security alert|suspicious|unauthorized", 
-                        window.window_title, re.IGNORECASE):
-                events.append({
-                    "type": "security_alert",
-                    "context": {
-                        "window": window,
-                        "alert_type": "suspicious_activity"
-                    }
-                })
-        
-        return events
-    
-    def _prioritize_actions(self, actions: List[AutonomousAction]) -> List[AutonomousAction]:
-        """Prioritize and deduplicate actions"""
-        # Sort by priority (ascending - lower values first) and confidence (descending - higher confidence first)
-        actions.sort(key=lambda a: (a.priority.value, -a.confidence))
-        
-        # Simple deduplication - keep first occurrence of each action type per target
-        seen = set()
-        deduped = []
-        
-        for action in actions:
-            key = (action.action_type, action.target)
-            if key not in seen:
-                seen.add(key)
-                deduped.append(action)
-        
-        # Limit to reasonable number of actions
-        return deduped[:10]
-
-def test_autonomous_behaviors():
-    """Test the autonomous behaviors"""
-    import asyncio
-    
-    async def run_test():
-        manager = AutonomousBehaviorManager()
-        
-        # Test windows
-        test_windows = [
-            WindowInfo(
-                window_id=1,
-                app_name="Slack",
-                window_title="Slack (5 new messages)",
-                bounds={"x": 0, "y": 0, "width": 800, "height": 600},
-                is_focused=False,
-                layer=0,
-                is_visible=True,
-                process_id=1001
-            ),
-            WindowInfo(
-                window_id=2,
-                app_name="Calendar",
-                window_title="Team Standup starts in 5 minutes",
-                bounds={"x": 800, "y": 0, "width": 600, "height": 400},
-                is_focused=True,
-                layer=0,
-                is_visible=True,
-                process_id=1002
-            ),
-            WindowInfo(
-                window_id=3,
-                app_name="1Password",
-                window_title="1Password - Vault",
-                bounds={"x": 0, "y": 400, "width": 400, "height": 300},
-                is_focused=False,
-                layer=1,
-                is_visible=True,
-                process_id=1003
-            )
-        ]
-        
-        # Test workspace state
-        workspace_state = {
-            "window_count": len(test_windows),
-            "user_state": "available",
-            "in_meeting": False,
-            "last_organized": None
-        }
-        
-        # Process and get actions
-        actions = await manager.process_workspace_state(workspace_state, test_windows)
-        
-        print("\n" + "="*60)
-        print("AUTONOMOUS BEHAVIOR TEST RESULTS")
-        print("="*60)
-        print(f"\nGenerated {len(actions)} autonomous actions:\n")
-        
-        for i, action in enumerate(actions, 1):
-            print(f"{i}. {action.action_type}")
-            print(f"   Target: {action.target}")
-            print(f"   Priority: {action.priority.name}")
-            print(f"   Confidence: {action.confidence:.0%}")
-            print(f"   Reasoning: {action.reasoning}")
-            print()
-    
-    asyncio.run(run_test())
-
-if __name__ == "__main__":
-    test_autonomous_behaviors()
+        Example:
+            >>> context = {"app_name": "1Password", "in_meeting": True}
+            >>> actions = await handler.handle_security_event("password_manager_open", context)
+            >>> print(f"Generated {len(actions)} security actions")
+        """

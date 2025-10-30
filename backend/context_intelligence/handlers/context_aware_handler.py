@@ -2,13 +2,33 @@
 Context-Aware Command Handler for JARVIS
 =======================================
 
-Handles commands with full context awareness, including screen lock state
+This module provides intelligent command handling with full context awareness,
+including screen lock state detection, speaker verification, and adaptive
+response generation. It integrates multiple AI services to provide seamless
+voice-controlled interactions.
+
+The handler supports:
+- Screen lock detection and automatic unlocking
+- Speaker verification and personalized responses
+- Action queries for system operations
+- Predictive queries for code analysis
+- Context-aware message generation
+
+Example:
+    >>> handler = get_context_aware_handler()
+    >>> result = await handler.handle_command_with_context(
+    ...     "open the terminal",
+    ...     execute_callback=my_callback,
+    ...     audio_data=audio_bytes
+    ... )
+    >>> print(result["success"])
+    True
 """
 
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, Awaitable
 
 from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
 from context_intelligence.handlers.action_query_handler import (
@@ -27,12 +47,41 @@ logger = logging.getLogger(__name__)
 
 class ContextAwareCommandHandler:
     """
-    Handles commands with context awareness
+    Handles commands with comprehensive context awareness and intelligent routing.
+    
+    This class provides the main interface for processing voice commands with
+    full context awareness, including screen state, speaker verification,
+    and adaptive response generation. It routes commands to specialized
+    handlers based on intent detection.
+    
+    Attributes:
+        screen_lock_detector: Service for detecting and managing screen lock state
+        execution_steps: List of execution steps for tracking command processing
+        predictive_handler: Handler for analytical and predictive queries
+        action_handler: Handler for system action commands
+        message_generator: Service for generating contextual messages
+        speaker_verification: Service for verifying speaker identity
+        voice_unlock_integration: Integrated voice-based unlock service
+    
+    Example:
+        >>> handler = ContextAwareCommandHandler()
+        >>> result = await handler.handle_command_with_context(
+        ...     "close the terminal",
+        ...     execute_callback=terminal_callback
+        ... )
+        >>> print(result["success"])
+        True
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initialize the context-aware command handler.
+        
+        Sets up the screen lock detector and initializes lazy-loaded services
+        to None for efficient resource management.
+        """
         self.screen_lock_detector = get_screen_lock_detector()
-        self.execution_steps = []
+        self.execution_steps: List[Dict[str, Any]] = []
         self.predictive_handler = None  # Lazy initialize
         self.action_handler = None  # Lazy initialize
         self.message_generator = None  # Lazy initialize
@@ -42,23 +91,53 @@ class ContextAwareCommandHandler:
     async def handle_command_with_context(
         self,
         command: str,
-        execute_callback=None,
+        execute_callback: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None,
         intent_type: Optional[str] = None,
-        audio_data: bytes = None,
-        speaker_name: str = None,
+        audio_data: Optional[bytes] = None,
+        speaker_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Handle a command with full context awareness
+        Handle a command with full context awareness and intelligent routing.
+
+        This is the main entry point for processing voice commands. It performs
+        context analysis, intent detection, screen lock handling, speaker
+        verification, and command execution with appropriate feedback.
 
         Args:
-            command: The command to execute
-            execute_callback: Callback to execute the actual command
-            intent_type: Optional intent type for routing
-            audio_data: Audio data for voice verification (optional)
-            speaker_name: Known speaker name (optional)
+            command: The voice command text to process
+            execute_callback: Optional callback function to execute the actual command.
+                            Should accept (command: str, context: Dict) and return result
+            intent_type: Optional explicit intent type for routing
+                        ('action_query', 'predictive_query', or None for auto-detection)
+            audio_data: Raw audio bytes for speaker verification (optional)
+            speaker_name: Known speaker name for personalization (optional)
 
         Returns:
-            Response dict with status and messages
+            Dict containing:
+                - success (bool): Whether command processing succeeded
+                - command (str): The original command
+                - messages (List[str]): Response messages for the user
+                - steps_taken (List[Dict]): Detailed execution steps
+                - context (Dict): System context at time of execution
+                - timestamp (str): ISO timestamp of processing
+                - result (Dict, optional): Detailed execution results
+                - summary (str): Concise summary of the operation
+
+        Raises:
+            Exception: For unexpected errors during command processing
+            
+        Example:
+            >>> async def my_callback(cmd, ctx):
+            ...     return {"success": True, "message": "Done"}
+            >>> 
+            >>> result = await handler.handle_command_with_context(
+            ...     "open terminal",
+            ...     execute_callback=my_callback,
+            ...     audio_data=audio_bytes,
+            ...     speaker_name="John"
+            ... )
+            >>> print(result["messages"][0])
+            "Opening terminal for you, John."
         """
         logger.info(f"[CONTEXT AWARE] Starting context-aware handling for: {command}")
         self.execution_steps = []
@@ -278,7 +357,24 @@ class ContextAwareCommandHandler:
         return self._finalize_response(response)
 
     def _is_action_query(self, command: str) -> bool:
-        """Check if command is an action query"""
+        """
+        Check if a command is an action query requiring system operations.
+        
+        Action queries are commands that involve direct system manipulation
+        like switching applications, closing windows, or running processes.
+        
+        Args:
+            command: The command text to analyze
+            
+        Returns:
+            bool: True if the command is classified as an action query
+            
+        Example:
+            >>> handler._is_action_query("switch to terminal")
+            True
+            >>> handler._is_action_query("what is the weather")
+            False
+        """
         action_keywords = [
             "switch to space",
             "close",
@@ -300,7 +396,27 @@ class ContextAwareCommandHandler:
         return any(keyword in command_lower for keyword in action_keywords)
 
     async def _handle_action_query(self, command: str) -> Dict[str, Any]:
-        """Handle an action query using the action handler"""
+        """
+        Handle an action query using the specialized action handler.
+        
+        Routes system operation commands to the action query handler which
+        can perform tasks like application switching, window management,
+        and process control with safety checks and confirmation.
+        
+        Args:
+            command: The action command to execute
+            
+        Returns:
+            Dict containing execution results with standardized response format
+            
+        Raises:
+            Exception: If action handler initialization or execution fails
+            
+        Example:
+            >>> result = await handler._handle_action_query("close terminal")
+            >>> print(result["success"])
+            True
+        """
         try:
             # Lazy initialize action handler
             if self.action_handler is None:
@@ -388,7 +504,24 @@ class ContextAwareCommandHandler:
             }
 
     def _is_predictive_query(self, command: str) -> bool:
-        """Check if command is a predictive/analytical query"""
+        """
+        Check if a command is a predictive/analytical query.
+        
+        Predictive queries are commands that require analysis, explanation,
+        or insights about code, progress, patterns, or system state.
+        
+        Args:
+            command: The command text to analyze
+            
+        Returns:
+            bool: True if the command is classified as a predictive query
+            
+        Example:
+            >>> handler._is_predictive_query("analyze my code quality")
+            True
+            >>> handler._is_predictive_query("open terminal")
+            False
+        """
         predictive_keywords = [
             "making progress",
             "am i doing",
@@ -414,7 +547,27 @@ class ContextAwareCommandHandler:
         return any(keyword in command_lower for keyword in predictive_keywords)
 
     async def _handle_predictive_query(self, command: str) -> Dict[str, Any]:
-        """Handle a predictive/analytical query"""
+        """
+        Handle a predictive/analytical query using the specialized predictive handler.
+        
+        Routes analytical commands to the predictive query handler which can
+        perform code analysis, progress tracking, bug detection, and provide
+        insights with optional visual analysis of the current screen.
+        
+        Args:
+            command: The predictive query to process
+            
+        Returns:
+            Dict containing analysis results with insights and recommendations
+            
+        Raises:
+            Exception: If predictive handler initialization or execution fails
+            
+        Example:
+            >>> result = await handler._handle_predictive_query("analyze my code")
+            >>> print(result["context"]["confidence"])
+            0.85
+        """
         try:
             # Lazy initialize predictive handler
             if self.predictive_handler is None:
@@ -520,7 +673,26 @@ class ContextAwareCommandHandler:
             }
 
     async def _get_system_context(self) -> Dict[str, Any]:
-        """Get current system context"""
+        """
+        Get current system context including screen state and application status.
+        
+        Collects key system information needed for context-aware command
+        processing, including screen lock state, active applications,
+        network connectivity, and active window information.
+        
+        Returns:
+            Dict containing:
+                - screen_locked (bool): Whether screen is currently locked
+                - active_apps (List): List of currently running applications
+                - network_connected (bool): Network connectivity status
+                - active_window (str): Currently focused window/application
+                - summary (Dict): High-level context summary
+                
+        Example:
+            >>> context = await handler._get_system_context()
+            >>> print(context["screen_locked"])
+            False
+        """
         logger.info("[CONTEXT AWARE] _get_system_context called")
         # Get key system states
         states_to_check = [
@@ -550,8 +722,21 @@ class ContextAwareCommandHandler:
 
         return context
 
-    async def _lazy_initialize_services(self):
-        """Lazy initialize speaker verification and message generator"""
+    async def _lazy_initialize_services(self) -> None:
+        """
+        Lazy initialize optional services for enhanced functionality.
+        
+        Initializes speaker verification, message generation, and voice unlock
+        services only when needed to optimize resource usage and startup time.
+        Services that fail to initialize are logged but don't prevent operation.
+        
+        Raises:
+            Exception: Individual service initialization failures are caught and logged
+            
+        Example:
+            >>> await handler._lazy_initialize_services()
+            # Services are now available if initialization succeeded
+        """
         if self.speaker_verification is None:
             try:
                 from voice.speaker_verification import SpeakerVerificationService
@@ -581,8 +766,25 @@ class ContextAwareCommandHandler:
             except Exception as e:
                 logger.warning(f"[CONTEXT AWARE] Voice unlock integration not available: {e}")
 
-    async def _speak_message(self, message: str, priority: str = "normal"):
-        """Speak a message immediately using JARVIS voice through WebSocket and macOS say"""
+    async def _speak_message(self, message: str, priority: str = "normal") -> None:
+        """
+        Speak a message immediately using multiple output methods for reliability.
+        
+        Uses both macOS 'say' command and WebSocket broadcasting to ensure
+        message delivery even when screen is locked or WebSocket clients
+        are unavailable. High priority messages use slower speech rates.
+        
+        Args:
+            message: The text message to speak
+            priority: Priority level ('normal' or 'high') affecting speech rate
+            
+        Raises:
+            Exception: Logged but doesn't prevent operation if all methods fail
+            
+        Example:
+            >>> await handler._speak_message("Screen unlocked", priority="high")
+            # Message is spoken via available audio methods
+        """
         try:
             logger.info(f"[CONTEXT AWARE] 📢 Speaking message (priority={priority}): {message}")
 
@@ -635,62 +837,4 @@ class ContextAwareCommandHandler:
         except Exception as e:
             logger.error(f"[CONTEXT AWARE] ❌ Failed to speak message: {e}")
 
-    def _add_step(self, description: str, details: Dict[str, Any]):
-        """Add an execution step for tracking"""
-        self.execution_steps.append(
-            {
-                "step": len(self.execution_steps) + 1,
-                "description": description,
-                "details": details,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
-
-    def _generate_confirmation(self, command: str, steps: List[Dict]) -> str:
-        """Generate accurate confirmation message based on actual execution results"""
-        if not steps:
-            return "Command completed."
-
-        # Check execution results from steps
-        executed_successfully = False
-        for step in steps:
-            if step["description"] == "Command executed successfully":
-                executed_successfully = True
-                if "result" in step.get("details", {}):
-                    result = step["details"]["result"]
-                    if isinstance(result, dict) and "message" in result:
-                        return result["message"]
-
-        # If command was executed, don't generate generic message
-        if executed_successfully:
-            return ""  # Let the execution result message be used instead
-
-        # Fallback for non-execution confirmations
-        return "Task completed."
-
-    def _finalize_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Finalize the response with steps taken"""
-        response["steps_taken"] = self.execution_steps
-        response["step_count"] = len(self.execution_steps)
-
-        # Create a summary message if multiple messages
-        if len(response["messages"]) > 1:
-            response["summary"] = " ".join(response["messages"])
-        elif len(response["messages"]) == 1:
-            response["summary"] = response["messages"][0]
-        else:
-            response["summary"] = "Command processed"
-
-        return response
-
-
-# Global instance
-_handler = None
-
-
-def get_context_aware_handler() -> ContextAwareCommandHandler:
-    """Get or create context-aware handler instance"""
-    global _handler
-    if _handler is None:
-        _handler = ContextAwareCommandHandler()
-    return _handler
+    def _add_step(self, description: str, details: Dict[str,

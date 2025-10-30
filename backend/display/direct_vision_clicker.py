@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
-"""
-Direct Vision Clicker
-=====================
+"""Direct Vision Clicker module for simple screenshot-based UI automation.
 
-Simple, fast approach: Take screenshot → Ask Claude where text is → Click it.
-No complex pipelines, no guessing about Control Center icon shapes.
+This module provides a straightforward approach to UI automation by taking screenshots,
+using Claude Vision to locate text elements, and clicking on them. It avoids complex
+pipelines and focuses on reliability and simplicity.
+
+The main workflow is:
+1. Take a screenshot of the current screen
+2. Use Claude Vision API to locate specific text
+3. Click on the identified coordinates
+
+Example:
+    >>> from direct_vision_clicker import get_direct_clicker
+    >>> clicker = get_direct_clicker()
+    >>> clicker.set_vision_analyzer(vision_analyzer)
+    >>> result = await clicker.find_and_click_text("Living Room TV")
+    >>> print(result['success'])
+    True
 
 Author: Derek Russell
 Date: 2025-10-16
@@ -25,21 +37,28 @@ logger = logging.getLogger(__name__)
 
 
 class DirectVisionClicker:
-    """
-    Dead simple vision-based clicking:
-    1. Take screenshot
-    2. Ask Claude "Where is this text?"
-    3. Click those coordinates
-
-    No pipelines, no complexity, just works.
+    """A simple vision-based UI automation tool for clicking text elements.
+    
+    This class provides a dead-simple approach to UI automation by combining
+    screenshot capture with Claude Vision analysis to locate and click on
+    text elements in the user interface.
+    
+    The workflow is intentionally straightforward:
+    1. Take a screenshot of the entire screen
+    2. Use Claude Vision to analyze the screenshot and locate target text
+    3. Click on the identified coordinates
+    
+    Attributes:
+        vision_analyzer: Claude Vision analyzer instance for image analysis
+        screenshots_dir: Directory path for storing temporary screenshots
     """
 
     def __init__(self, vision_analyzer=None):
-        """
-        Initialize direct vision clicker
+        """Initialize the DirectVisionClicker.
 
         Args:
-            vision_analyzer: Claude Vision analyzer instance
+            vision_analyzer: Optional Claude Vision analyzer instance. Can be set
+                later using set_vision_analyzer().
         """
         self.vision_analyzer = vision_analyzer
         self.screenshots_dir = Path("/tmp/jarvis_vision_clicks")
@@ -48,16 +67,25 @@ class DirectVisionClicker:
         logger.info("[DIRECT CLICKER] Initialized - simple screenshot → click approach")
 
     def set_vision_analyzer(self, analyzer):
-        """Set or update the vision analyzer"""
+        """Set or update the vision analyzer instance.
+        
+        Args:
+            analyzer: Claude Vision analyzer instance for image analysis.
+        """
         self.vision_analyzer = analyzer
         logger.info("[DIRECT CLICKER] Vision analyzer connected")
 
     async def _take_screenshot(self) -> Optional[Path]:
-        """
-        Take a screenshot of the entire screen
+        """Take a screenshot of the entire screen using macOS screencapture.
+
+        Uses the macOS screencapture utility for reliable screenshot capture.
+        Screenshots are saved with timestamp-based filenames to avoid conflicts.
 
         Returns:
-            Path to screenshot file, or None if failed
+            Path to the saved screenshot file, or None if screenshot failed.
+            
+        Raises:
+            Exception: If screencapture command fails or file creation fails.
         """
         try:
             timestamp = int(time.time() * 1000)
@@ -88,15 +116,29 @@ class DirectVisionClicker:
         screenshot_path: Path,
         text_to_find: str
     ) -> Optional[Tuple[int, int]]:
-        """
-        Use Claude Vision to find text coordinates in screenshot
+        """Use Claude Vision to locate text coordinates in a screenshot.
+
+        Sends the screenshot to Claude Vision with a specific prompt asking for
+        the pixel coordinates of the target text. Parses the response to extract
+        x,y coordinates.
 
         Args:
-            screenshot_path: Path to screenshot
-            text_to_find: Text to locate (e.g., "Living Room TV")
+            screenshot_path: Path to the screenshot image file.
+            text_to_find: The text string to locate (e.g., "Living Room TV").
 
         Returns:
-            (x, y) coordinates of text center, or None if not found
+            Tuple of (x, y) coordinates representing the center of the found text,
+            or None if text was not found or analysis failed.
+            
+        Raises:
+            Exception: If image loading fails or vision analysis encounters an error.
+
+        Example:
+            >>> coords = await clicker._find_text_coordinates(
+            ...     Path("/tmp/screen.png"), "Settings"
+            ... )
+            >>> print(coords)
+            (450, 125)
         """
         if not self.vision_analyzer:
             logger.error("[DIRECT CLICKER] No vision analyzer available")
@@ -175,12 +217,23 @@ Do not include any other text or explanation."""
             return None
 
     def _click_coordinates(self, x: int, y: int):
-        """
-        Click at the specified coordinates
+        """Click at the specified screen coordinates.
+
+        Handles the conversion from physical screenshot pixels to logical screen
+        coordinates that PyAutoGUI expects. On Retina displays, screenshots are
+        captured at physical resolution (e.g., 2880x1800) but clicks must be
+        performed at logical resolution (e.g., 1440x900).
 
         Args:
-            x: X coordinate (in PHYSICAL pixels from screenshot)
-            y: Y coordinate (in PHYSICAL pixels from screenshot)
+            x: X coordinate in physical pixels from screenshot.
+            y: Y coordinate in physical pixels from screenshot.
+            
+        Raises:
+            Exception: If click operation fails or coordinate conversion fails.
+
+        Example:
+            >>> clicker._click_coordinates(450, 125)
+            # Clicks at the logical screen position corresponding to physical pixels (450, 125)
         """
         try:
             logger.info(f"[DIRECT CLICKER] Received coordinates: ({x}, {y}) (physical pixels)")
@@ -224,15 +277,33 @@ Do not include any other text or explanation."""
         text_to_find: str,
         max_retries: int = 2
     ) -> Dict[str, Any]:
-        """
-        Find text in current screen and click it
+        """Find and click on text in the current screen display.
+
+        This is the main public method that orchestrates the complete workflow:
+        taking a screenshot, analyzing it with Claude Vision to find the target
+        text, and clicking on the identified coordinates.
 
         Args:
-            text_to_find: Text to locate and click (e.g., "Living Room TV")
-            max_retries: Number of retry attempts if first fails
+            text_to_find: The text string to locate and click (e.g., "Living Room TV").
+            max_retries: Maximum number of retry attempts if the first attempt fails.
+                Defaults to 2.
 
         Returns:
-            Result dictionary with success status and details
+            Dictionary containing operation results with the following keys:
+            - success (bool): Whether the operation succeeded
+            - message (str): Human-readable description of the result
+            - coordinates (dict): x,y coordinates where click occurred (if successful)
+            - duration (float): Total time taken for the operation
+            - attempts (int): Number of attempts made
+            - method (str): Always "direct_vision_click"
+            - error (str): Error message (if unsuccessful)
+
+        Example:
+            >>> result = await clicker.find_and_click_text("Settings")
+            >>> if result['success']:
+            ...     print(f"Clicked at {result['coordinates']}")
+            ... else:
+            ...     print(f"Failed: {result['message']}")
         """
         start_time = time.time()
 
@@ -304,7 +375,20 @@ _direct_clicker: Optional[DirectVisionClicker] = None
 
 
 def get_direct_clicker() -> DirectVisionClicker:
-    """Get singleton direct clicker instance"""
+    """Get the singleton DirectVisionClicker instance.
+    
+    Creates a new instance on first call, then returns the same instance
+    on subsequent calls. This ensures consistent state across the application.
+    
+    Returns:
+        DirectVisionClicker: The singleton clicker instance.
+        
+    Example:
+        >>> clicker = get_direct_clicker()
+        >>> clicker.set_vision_analyzer(my_analyzer)
+        >>> # Later in the code...
+        >>> same_clicker = get_direct_clicker()  # Returns same instance
+    """
     global _direct_clicker
     if _direct_clicker is None:
         _direct_clicker = DirectVisionClicker()
@@ -314,6 +398,12 @@ def get_direct_clicker() -> DirectVisionClicker:
 if __name__ == "__main__":
     # Test the direct clicker
     async def test():
+        """Test function to demonstrate DirectVisionClicker usage.
+        
+        This function shows how to initialize and use the DirectVisionClicker
+        in a real application. Note that a vision analyzer must be connected
+        for actual functionality.
+        """
         logging.basicConfig(level=logging.INFO)
 
         clicker = get_direct_clicker()

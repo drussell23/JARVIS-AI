@@ -1,6 +1,24 @@
 """
 Adaptive Intent Classification System
-ML-ready, pluggable, and dynamically extensible.
+
+This module provides a comprehensive, ML-ready intent classification framework that is
+pluggable and dynamically extensible. It supports multiple classification strategies
+including lexical pattern matching, semantic embeddings, and context-aware classification.
+
+The system uses an ensemble approach where multiple classifiers can contribute signals
+that are then aggregated using configurable strategies to determine the final intent.
+
+Example:
+    >>> from backend.core.intent.adaptive_classifier import AdaptiveIntentEngine, LexicalClassifier
+    >>> 
+    >>> # Create a simple lexical classifier
+    >>> patterns = {"greeting": ["hello", "hi", "hey"], "goodbye": ["bye", "farewell"]}
+    >>> classifier = LexicalClassifier("lexical", patterns)
+    >>> 
+    >>> # Create engine and classify
+    >>> engine = AdaptiveIntentEngine([classifier])
+    >>> result = await engine.classify("hello there")
+    >>> print(result.primary_intent)  # "greeting"
 """
 from __future__ import annotations
 
@@ -17,7 +35,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class IntentSignal:
-    """Single intent detection signal."""
+    """Single intent detection signal from a classifier.
+    
+    Represents a single classification result with confidence score and metadata.
+    Multiple signals can be generated for the same input text by different classifiers.
+    
+    Attributes:
+        label: The intent label/name (e.g., "greeting", "question", "command")
+        confidence: Confidence score between 0.0 and 1.0
+        source: Name of the classifier that generated this signal
+        features: Additional features extracted during classification
+        metadata: Extra metadata about the classification process
+        
+    Raises:
+        ValueError: If confidence is not between 0.0 and 1.0
+        
+    Example:
+        >>> signal = IntentSignal("greeting", 0.85, "lexical_classifier")
+        >>> print(f"{signal.label}: {signal.confidence}")
+        greeting: 0.85
+    """
     label: str
     confidence: float  # 0.0-1.0
     source: str  # classifier name
@@ -25,13 +62,34 @@ class IntentSignal:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
+        """Validate confidence score is within valid range.
+        
+        Raises:
+            ValueError: If confidence is not between 0.0 and 1.0
+        """
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"Confidence must be 0-1, got {self.confidence}")
 
 
 @dataclass(slots=True)
 class IntentResult:
-    """Aggregated intent classification result."""
+    """Aggregated intent classification result from multiple classifiers.
+    
+    Contains the final classification decision along with all contributing signals
+    and reasoning for the decision.
+    
+    Attributes:
+        primary_intent: The final determined intent label
+        confidence: Overall confidence in the primary intent
+        all_signals: List of all signals that contributed to this result
+        reasoning: Human-readable explanation of how the decision was made
+        context_hints: Additional context information for downstream processing
+        
+    Example:
+        >>> result = IntentResult("greeting", 0.9)
+        >>> result.add_signal(IntentSignal("greeting", 0.85, "lexical"))
+        >>> print(len(result.all_signals))  # 1
+    """
     primary_intent: str
     confidence: float
     all_signals: list[IntentSignal] = field(default_factory=list)
@@ -39,54 +97,117 @@ class IntentResult:
     context_hints: dict[str, Any] = field(default_factory=dict)
 
     def add_signal(self, signal: IntentSignal) -> None:
-        """Add signal and recalculate."""
+        """Add a signal to the result.
+        
+        Args:
+            signal: The IntentSignal to add to this result
+        """
         self.all_signals.append(signal)
 
     def get_signals_by_label(self, label: str) -> list[IntentSignal]:
-        """Filter signals by intent label."""
+        """Filter signals by intent label.
+        
+        Args:
+            label: The intent label to filter by
+            
+        Returns:
+            List of signals matching the specified label
+        """
         return [s for s in self.all_signals if s.label == label]
 
 
 class IntentClassifier(ABC):
-    """Base classifier interface."""
+    """Abstract base class for intent classifiers.
+    
+    Defines the interface that all intent classifiers must implement.
+    Supports both synchronous and asynchronous classification.
+    """
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Classifier identifier."""
+        """Unique identifier for this classifier.
+        
+        Returns:
+            String identifier for the classifier
+        """
         ...
 
     @property
     def priority(self) -> int:
-        """Execution priority (higher = earlier). Default: 50."""
+        """Execution priority for this classifier.
+        
+        Higher values execute earlier. Used for ordering classifiers
+        when multiple are available.
+        
+        Returns:
+            Priority value (default: 50)
+        """
         return 50
 
     @property
     def async_capable(self) -> bool:
-        """Whether this classifier supports async execution."""
+        """Whether this classifier supports asynchronous execution.
+        
+        Returns:
+            True if classifier can run asynchronously, False otherwise
+        """
         return False
 
     @abstractmethod
     def classify(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
-        """
-        Synchronous classification.
-        Returns list of signals (can be multiple intents with different confidences).
+        """Perform synchronous intent classification.
+        
+        Args:
+            text: Input text to classify
+            context: Additional context information
+            
+        Returns:
+            List of IntentSignal objects representing classification results
+            
+        Note:
+            Can return multiple signals with different intents and confidences
         """
         ...
 
     async def classify_async(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
-        """
-        Async classification (for ML models, API calls, etc.).
-        Default: runs sync version in executor.
+        """Perform asynchronous intent classification.
+        
+        Default implementation runs the synchronous version in an executor.
+        Override for true async implementations (e.g., API calls, ML models).
+        
+        Args:
+            text: Input text to classify
+            context: Additional context information
+            
+        Returns:
+            List of IntentSignal objects representing classification results
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.classify, text, context)
 
 
 class LexicalClassifier(IntentClassifier):
-    """
-    Pattern-based classifier using configurable rules.
-    No hardcoding - loads from config.
+    """Pattern-based classifier using configurable regex rules.
+    
+    Uses regular expressions to match text patterns against predefined intent patterns.
+    Supports case sensitivity and word boundary matching options.
+    
+    Attributes:
+        _name: Classifier identifier
+        _case_sensitive: Whether pattern matching is case sensitive
+        _word_boundary: Whether to enforce word boundaries in patterns
+        _priority: Execution priority
+        _compiled: Compiled regex patterns organized by intent
+        
+    Example:
+        >>> patterns = {
+        ...     "greeting": ["hello", "hi", "hey"],
+        ...     "question": ["what", "how", "why"]
+        ... }
+        >>> classifier = LexicalClassifier("lexical", patterns)
+        >>> signals = classifier.classify("hello world", {})
+        >>> print(signals[0].label)  # "greeting"
     """
 
     def __init__(
@@ -97,6 +218,15 @@ class LexicalClassifier(IntentClassifier):
         case_sensitive: bool = False,
         word_boundary: bool = True,
     ):
+        """Initialize the lexical classifier.
+        
+        Args:
+            name: Unique identifier for this classifier
+            patterns: Dictionary mapping intent labels to lists of pattern strings
+            priority: Execution priority (higher = earlier)
+            case_sensitive: Whether pattern matching should be case sensitive
+            word_boundary: Whether to enforce word boundaries in pattern matching
+        """
         self._name = name
         self._case_sensitive = case_sensitive
         self._word_boundary = word_boundary
@@ -113,13 +243,35 @@ class LexicalClassifier(IntentClassifier):
 
     @property
     def name(self) -> str:
+        """Return the classifier name.
+        
+        Returns:
+            The classifier's unique identifier
+        """
         return self._name
 
     @property
     def priority(self) -> int:
+        """Return the classifier priority.
+        
+        Returns:
+            The execution priority value
+        """
         return self._priority
 
     def classify(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
+        """Classify text using lexical patterns.
+        
+        Args:
+            text: Input text to classify
+            context: Additional context (unused in lexical classification)
+            
+        Returns:
+            List of IntentSignal objects for matching patterns
+            
+        Note:
+            Confidence is calculated based on match ratio and text coverage
+        """
         signals = []
 
         for intent, patterns in self._compiled.items():
@@ -143,9 +295,28 @@ class LexicalClassifier(IntentClassifier):
 
 
 class SemanticEmbeddingClassifier(IntentClassifier):
-    """
-    Embedding-based classifier (sentence transformers, OpenAI embeddings, etc.).
-    Loads reference embeddings dynamically.
+    """Embedding-based classifier using semantic similarity.
+    
+    Uses vector embeddings to classify text based on semantic similarity
+    to reference examples. Supports various embedding providers (sentence
+    transformers, OpenAI, etc.).
+    
+    Attributes:
+        _name: Classifier identifier
+        _embedding_fn: Async function to generate embeddings
+        _intent_embeddings: Reference embeddings for each intent
+        _threshold: Minimum similarity threshold for classification
+        _priority: Execution priority
+        
+    Example:
+        >>> async def embed_fn(text):
+        ...     # Your embedding implementation
+        ...     return [0.1, 0.2, 0.3]  # Mock embedding
+        >>> 
+        >>> intent_embeddings = {
+        ...     "greeting": [[0.1, 0.2, 0.3], [0.15, 0.25, 0.35]]
+        ... }
+        >>> classifier = SemanticEmbeddingClassifier("semantic", embed_fn, intent_embeddings)
     """
 
     def __init__(
@@ -156,6 +327,15 @@ class SemanticEmbeddingClassifier(IntentClassifier):
         threshold: float = 0.75,
         priority: int = 60,
     ):
+        """Initialize the semantic embedding classifier.
+        
+        Args:
+            name: Unique identifier for this classifier
+            embedding_fn: Async function that takes text and returns embedding vector
+            intent_embeddings: Dictionary mapping intents to lists of reference embeddings
+            threshold: Minimum cosine similarity threshold for classification
+            priority: Execution priority (higher = earlier)
+        """
         self._name = name
         self._embedding_fn = embedding_fn
         self._intent_embeddings = intent_embeddings
@@ -164,21 +344,57 @@ class SemanticEmbeddingClassifier(IntentClassifier):
 
     @property
     def name(self) -> str:
+        """Return the classifier name.
+        
+        Returns:
+            The classifier's unique identifier
+        """
         return self._name
 
     @property
     def priority(self) -> int:
+        """Return the classifier priority.
+        
+        Returns:
+            The execution priority value
+        """
         return self._priority
 
     @property
     def async_capable(self) -> bool:
+        """Return async capability status.
+        
+        Returns:
+            True, as this classifier requires async embedding generation
+        """
         return True
 
     def classify(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
+        """Synchronous classification not supported.
+        
+        Args:
+            text: Input text to classify
+            context: Additional context information
+            
+        Raises:
+            NotImplementedError: Always, as this classifier requires async operation
+        """
         # Sync version not supported
         raise NotImplementedError("Use classify_async for embedding-based classification")
 
     async def classify_async(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
+        """Classify text using semantic embeddings.
+        
+        Args:
+            text: Input text to classify
+            context: Additional context (unused in embedding classification)
+            
+        Returns:
+            List of IntentSignal objects for intents above similarity threshold
+            
+        Note:
+            Uses cosine similarity to compare input embedding with reference embeddings
+        """
         text_embedding = await self._embedding_fn(text)
         signals = []
 
@@ -204,7 +420,18 @@ class SemanticEmbeddingClassifier(IntentClassifier):
 
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
-        """Compute cosine similarity."""
+        """Compute cosine similarity between two vectors.
+        
+        Args:
+            a: First vector
+            b: Second vector
+            
+        Returns:
+            Cosine similarity value between -1 and 1
+            
+        Note:
+            Returns 0.0 if vectors have different lengths or zero norms
+        """
         if len(a) != len(b):
             return 0.0
         dot = sum(x * y for x, y in zip(a, b))
@@ -214,9 +441,22 @@ class SemanticEmbeddingClassifier(IntentClassifier):
 
 
 class ContextAwareClassifier(IntentClassifier):
-    """
-    Uses conversation context to boost/suppress intents.
-    Example: if recent context is "vision", boost vision-related intents.
+    """Context-aware classifier that modifies base classifier results.
+    
+    Wraps another classifier and applies context-based boosts or penalties
+    to classification results based on conversation history or other contextual
+    information.
+    
+    Attributes:
+        _name: Classifier identifier
+        _base: Base classifier to wrap
+        _boosters: Context-based boost factors for different intents
+        _priority: Execution priority
+        
+    Example:
+        >>> base = LexicalClassifier("base", {"greeting": ["hello"]})
+        >>> boosters = {"recent_greeting": {"greeting": 1.5, "goodbye": 0.5}}
+        >>> classifier = ContextAwareClassifier("context", base, boosters)
     """
 
     def __init__(
@@ -226,6 +466,14 @@ class ContextAwareClassifier(IntentClassifier):
         context_boosters: dict[str, dict[str, float]],  # context_key -> {intent: boost_factor}
         priority: int = 70,
     ):
+        """Initialize the context-aware classifier.
+        
+        Args:
+            name: Unique identifier for this classifier
+            base_classifier: The base classifier to wrap
+            context_boosters: Dictionary mapping context keys to intent boost factors
+            priority: Execution priority (higher = earlier)
+        """
         self._name = name
         self._base = base_classifier
         self._boosters = context_boosters
@@ -233,27 +481,69 @@ class ContextAwareClassifier(IntentClassifier):
 
     @property
     def name(self) -> str:
+        """Return the classifier name.
+        
+        Returns:
+            The classifier's unique identifier
+        """
         return self._name
 
     @property
     def priority(self) -> int:
+        """Return the classifier priority.
+        
+        Returns:
+            The execution priority value
+        """
         return self._priority
 
     @property
     def async_capable(self) -> bool:
+        """Return async capability based on base classifier.
+        
+        Returns:
+            True if base classifier supports async operation
+        """
         return self._base.async_capable
 
     def classify(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
+        """Classify text with context-aware boosting.
+        
+        Args:
+            text: Input text to classify
+            context: Context information used for boosting
+            
+        Returns:
+            List of IntentSignal objects with context-adjusted confidences
+        """
         base_signals = self._base.classify(text, context)
         return self._apply_boosts(base_signals, context)
 
     async def classify_async(self, text: str, context: dict[str, Any]) -> list[IntentSignal]:
+        """Classify text asynchronously with context-aware boosting.
+        
+        Args:
+            text: Input text to classify
+            context: Context information used for boosting
+            
+        Returns:
+            List of IntentSignal objects with context-adjusted confidences
+        """
         base_signals = await self._base.classify_async(text, context)
         return self._apply_boosts(base_signals, context)
 
     def _apply_boosts(
         self, signals: list[IntentSignal], context: dict[str, Any]
     ) -> list[IntentSignal]:
+        """Apply context-based boosts to classification signals.
+        
+        Args:
+            signals: Original signals from base classifier
+            context: Context information for determining boosts
+            
+        Returns:
+            List of signals with adjusted confidence scores
+        """
         boosted = []
         for signal in signals:
             boost = 1.0
@@ -276,25 +566,66 @@ class ContextAwareClassifier(IntentClassifier):
 
 
 class EnsembleStrategy(ABC):
-    """Strategy for combining multiple signals."""
+    """Abstract base class for signal aggregation strategies.
+    
+    Defines the interface for combining multiple IntentSignal objects
+    into a single IntentResult.
+    """
 
     @abstractmethod
     def aggregate(self, signals: list[IntentSignal]) -> IntentResult:
+        """Aggregate multiple signals into a single result.
+        
+        Args:
+            signals: List of IntentSignal objects to aggregate
+            
+        Returns:
+            IntentResult containing the aggregated classification decision
+        """
         ...
 
 
 class WeightedVotingStrategy(EnsembleStrategy):
-    """Combine signals using weighted voting."""
+    """Ensemble strategy using weighted voting to combine signals.
+    
+    Combines signals by weighting them based on their source classifier
+    and computing weighted averages for each intent.
+    
+    Attributes:
+        _source_weights: Weights for different classifier sources
+        _min_confidence: Minimum confidence threshold for valid results
+        
+    Example:
+        >>> weights = {"lexical": 1.0, "semantic": 1.5}
+        >>> strategy = WeightedVotingStrategy(weights, min_confidence=0.6)
+    """
 
     def __init__(
         self,
         source_weights: dict[str, float] | None = None,
         min_confidence: float = 0.5,
     ):
+        """Initialize the weighted voting strategy.
+        
+        Args:
+            source_weights: Dictionary mapping classifier names to weight values
+            min_confidence: Minimum confidence threshold for accepting results
+        """
         self._source_weights = source_weights or {}
         self._min_confidence = min_confidence
 
     def aggregate(self, signals: list[IntentSignal]) -> IntentResult:
+        """Aggregate signals using weighted voting.
+        
+        Args:
+            signals: List of IntentSignal objects to aggregate
+            
+        Returns:
+            IntentResult with the highest-scoring intent or "unknown" if below threshold
+            
+        Note:
+            Groups signals by intent label and computes weighted average scores
+        """
         if not signals:
             return IntentResult(primary_intent="unknown", confidence=0.0)
 
@@ -333,12 +664,35 @@ class WeightedVotingStrategy(EnsembleStrategy):
 
 
 class ConfidenceThresholdStrategy(EnsembleStrategy):
-    """Pick highest confidence signal above threshold."""
+    """Ensemble strategy that selects the highest confidence signal above threshold.
+    
+    Simple strategy that picks the single signal with the highest confidence,
+    provided it meets the minimum threshold requirement.
+    
+    Attributes:
+        _min_confidence: Minimum confidence threshold for accepting results
+        
+    Example:
+        >>> strategy = ConfidenceThresholdStrategy(min_confidence=0.8)
+    """
 
     def __init__(self, min_confidence: float = 0.7):
+        """Initialize the confidence threshold strategy.
+        
+        Args:
+            min_confidence: Minimum confidence threshold for accepting results
+        """
         self._min_confidence = min_confidence
 
     def aggregate(self, signals: list[IntentSignal]) -> IntentResult:
+        """Aggregate signals by selecting highest confidence above threshold.
+        
+        Args:
+            signals: List of IntentSignal objects to aggregate
+            
+        Returns:
+            IntentResult with the highest confidence intent or "unknown" if below threshold
+        """
         if not signals:
             return IntentResult(primary_intent="unknown", confidence=0.0)
 
@@ -363,9 +717,20 @@ class ConfidenceThresholdStrategy(EnsembleStrategy):
 
 
 class AdaptiveIntentEngine:
-    """
-    Orchestrates multiple classifiers and aggregates results.
-    Fully dynamic - classifiers can be added/removed at runtime.
+    """Main orchestrator for the adaptive intent classification system.
+    
+    Manages multiple classifiers and aggregates their results using configurable
+    strategies. Supports dynamic addition/removal of classifiers at runtime.
+    
+    Attributes:
+        _classifiers: List of registered intent classifiers
+        _strategy: Strategy for aggregating classification results
+        
+    Example:
+        >>> lexical = LexicalClassifier("lex", {"greeting": ["hello", "hi"]})
+        >>> engine = AdaptiveIntentEngine([lexical])
+        >>> result = await engine.classify("hello world")
+        >>> print(result.primary_intent)  # "greeting"
     """
 
     def __init__(
@@ -373,24 +738,54 @@ class AdaptiveIntentEngine:
         classifiers: Sequence[IntentClassifier] | None = None,
         strategy: EnsembleStrategy | None = None,
     ):
+        """Initialize the adaptive intent engine.
+        
+        Args:
+            classifiers: Initial list of classifiers to register
+            strategy: Strategy for aggregating results (defaults to WeightedVotingStrategy)
+        """
         self._classifiers: list[IntentClassifier] = list(classifiers or [])
         self._strategy = strategy or WeightedVotingStrategy()
 
     def add_classifier(self, classifier: IntentClassifier) -> None:
-        """Add classifier at runtime."""
+        """Add a classifier to the engine at runtime.
+        
+        Args:
+            classifier: The IntentClassifier to add
+            
+        Note:
+            Classifiers are automatically sorted by priority after addition
+        """
         self._classifiers.append(classifier)
         self._classifiers.sort(key=lambda c: c.priority, reverse=True)
 
     def remove_classifier(self, name: str) -> None:
-        """Remove classifier by name."""
+        """Remove a classifier from the engine by name.
+        
+        Args:
+            name: Name of the classifier to remove
+        """
         self._classifiers = [c for c in self._classifiers if c.name != name]
 
     async def classify(
         self, text: str, context: dict[str, Any] | None = None
     ) -> IntentResult:
-        """
-        Run all classifiers and aggregate results.
-        Handles both sync and async classifiers efficiently.
+        """Classify input text using all registered classifiers.
+        
+        Runs all classifiers (both sync and async) and aggregates their results
+        using the configured strategy. Handles errors gracefully by logging
+        and continuing with other classifiers.
+        
+        Args:
+            text: Input text to classify
+            context: Optional context information for classification
+            
+        Returns:
+            IntentResult containing the aggregated classification decision
+            
+        Note:
+            Synchronous and asynchronous classifiers are handled efficiently,
+            with async classifiers run concurrently
         """
         context = context or {}
         all_signals: list[IntentSignal] = []
@@ -431,9 +826,21 @@ class AdaptiveIntentEngine:
         return self._strategy.aggregate(all_signals)
 
     def get_classifier(self, name: str) -> IntentClassifier | None:
-        """Retrieve classifier by name."""
+        """Retrieve a classifier by name.
+        
+        Args:
+            name: Name of the classifier to retrieve
+            
+        Returns:
+            The IntentClassifier with the given name, or None if not found
+        """
         return next((c for c in self._classifiers if c.name == name), None)
 
     @property
     def classifier_count(self) -> int:
+        """Get the number of registered classifiers.
+        
+        Returns:
+            Number of classifiers currently registered
+        """
         return len(self._classifiers)

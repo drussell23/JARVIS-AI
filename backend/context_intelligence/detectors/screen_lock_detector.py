@@ -2,8 +2,18 @@
 Screen Lock Context Detector for JARVIS
 ======================================
 
-Detects screen lock state and provides context-aware responses.
-Integrated with async_pipeline.py for dynamic, robust operation.
+This module provides intelligent screen lock detection and context-aware responses
+for the JARVIS voice assistant. It integrates with the async pipeline to provide
+dynamic, robust operation and handles voice-authenticated screen unlocking.
+
+The detector analyzes commands to determine if screen access is required and
+provides contextual unlock messages with speaker recognition support.
+
+Example:
+    >>> detector = get_screen_lock_detector()
+    >>> context = await detector.check_screen_context("open Safari")
+    >>> if context["requires_unlock"]:
+    ...     success, message = await detector.handle_screen_lock_context("open Safari")
 """
 
 import asyncio
@@ -19,10 +29,25 @@ logger = logging.getLogger(__name__)
 class ScreenLockContextDetector:
     """
     Detects screen lock state and provides context for command execution.
-    Dynamic pattern matching - NO hardcoding.
+    
+    This class uses dynamic pattern matching and compound action parsing to
+    intelligently determine when commands require screen access and provides
+    contextual unlock messages with speaker recognition.
+    
+    Attributes:
+        screen_required_actions (Dict[str, set]): Categories of actions requiring screen access
+        screen_exempt_patterns (set): Commands that don't require screen unlock
+        _last_check (Optional[datetime]): Timestamp of last screen lock check
+        _last_state (Optional[bool]): Last known screen lock state
+    
+    Example:
+        >>> detector = ScreenLockContextDetector()
+        >>> is_locked = await detector.is_screen_locked()
+        >>> context = await detector.check_screen_context("open Safari", "John")
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the screen lock context detector with dynamic action categories."""
         self._last_check = None
         self._last_state = None
 
@@ -68,7 +93,17 @@ class ScreenLockContextDetector:
         }
 
     async def is_screen_locked(self) -> bool:
-        """Check if screen is currently locked"""
+        """
+        Check if screen is currently locked.
+        
+        Returns:
+            bool: True if screen is locked, False otherwise
+            
+        Example:
+            >>> detector = ScreenLockContextDetector()
+            >>> locked = await detector.is_screen_locked()
+            >>> print(f"Screen locked: {locked}")
+        """
         try:
             from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
 
@@ -79,14 +114,27 @@ class ScreenLockContextDetector:
 
     async def check_screen_context(self, command: str, speaker_name: str = None) -> Dict[str, Any]:
         """
-        Check screen lock context for a command
+        Check screen lock context for a command.
+
+        Analyzes the given command to determine if it requires screen access
+        and provides context information for unlock handling.
 
         Args:
-            command: The command to execute
-            speaker_name: Identified speaker name (for personalization)
+            command (str): The command to execute
+            speaker_name (Optional[str]): Identified speaker name for personalization
 
         Returns:
-            Context dict with screen state and recommendations
+            Dict[str, Any]: Context dictionary containing:
+                - screen_locked (bool): Current screen lock state
+                - requires_unlock (bool): Whether unlock is needed
+                - unlock_message (Optional[str]): Message to speak to user
+                - command_requires_screen (bool): Whether command needs screen
+                - timestamp (str): ISO timestamp of check
+                
+        Example:
+            >>> context = await detector.check_screen_context("open Safari", "John")
+            >>> if context["requires_unlock"]:
+            ...     print(context["unlock_message"])
         """
         is_locked = await self.is_screen_locked()
         command_needs_screen = await self._command_requires_screen(command)
@@ -127,13 +175,18 @@ class ScreenLockContextDetector:
     async def _command_requires_screen(self, command: str) -> bool:
         """
         Dynamically determine if a command requires screen access.
-        Uses compound action parser for intelligent detection.
+        
+        Uses compound action parser for intelligent detection with fallback
+        to pattern matching for robust operation.
 
         Args:
-            command: The command to check
+            command (str): The command to analyze
 
         Returns:
-            True if command requires unlocked screen
+            bool: True if command requires unlocked screen, False otherwise
+            
+        Raises:
+            Exception: Logs but doesn't raise exceptions from parser failures
         """
         command_lower = command.lower()
 
@@ -209,14 +262,20 @@ class ScreenLockContextDetector:
     async def _generate_unlock_message(self, command: str, speaker_name: str = None) -> str:
         """
         Generate dynamic, contextual unlock message based on command analysis.
-        Advanced, robust, and completely dynamic with no hardcoding.
+        
+        Creates personalized messages using advanced command parsing and
+        speaker recognition for natural user interaction.
 
         Args:
-            command: The command that requires unlock
-            speaker_name: Identified speaker name (for personalization)
+            command (str): The command that requires unlock
+            speaker_name (Optional[str]): Identified speaker name for personalization
 
         Returns:
-            Contextual message to speak to user
+            str: Contextual message to speak to user
+            
+        Example:
+            >>> message = await detector._generate_unlock_message("open Safari", "John")
+            >>> print(message)  # "Hello, John. Your screen is locked. Let me unlock it to open Safari."
         """
         # Parse command into actions for intelligent messaging
         actions = await self._extract_actions_dynamic(command)
@@ -230,7 +289,18 @@ class ScreenLockContextDetector:
         )
 
     async def _extract_actions_dynamic(self, command: str) -> List[str]:
-        """Extract all actions from command using CompoundActionParser"""
+        """
+        Extract all actions from command using CompoundActionParser.
+        
+        Args:
+            command (str): Command to parse for actions
+            
+        Returns:
+            List[str]: Human-readable action descriptions
+            
+        Raises:
+            Exception: Logs parser failures but returns fallback descriptions
+        """
         try:
             from context_intelligence.analyzers.compound_action_parser import get_compound_parser
 
@@ -260,7 +330,26 @@ class ScreenLockContextDetector:
             return ["complete your request"]
 
     async def _analyze_command_context(self, command: str) -> Dict[str, Any]:
-        """Analyze command for contextual information"""
+        """
+        Analyze command for contextual information.
+        
+        Extracts semantic information about the command to enable
+        more natural and contextual unlock messages.
+        
+        Args:
+            command (str): Command to analyze
+            
+        Returns:
+            Dict[str, Any]: Context information including:
+                - is_document_creation (bool): Whether creating documents
+                - is_web_search (bool): Whether searching web
+                - is_app_opening (bool): Whether opening applications
+                - is_compound (bool): Whether compound command
+                - urgency (str): Urgency level ('normal' or 'urgent')
+                - topic (Optional[str]): Document topic if applicable
+                - app_name (Optional[str]): Application name if applicable
+                - search_query (Optional[str]): Search query if applicable
+        """
         command_lower = command.lower()
 
         context = {
@@ -317,7 +406,21 @@ class ScreenLockContextDetector:
     async def _generate_contextual_message(
         self, command: str, actions: List[str], context: Dict[str, Any], speaker_name: str = None
     ) -> str:
-        """Generate contextual unlock message based on analysis with speaker recognition"""
+        """
+        Generate contextual unlock message based on analysis with speaker recognition.
+        
+        Creates natural, personalized messages based on command context,
+        detected actions, and speaker identity.
+        
+        Args:
+            command (str): Original command
+            actions (List[str]): Parsed action descriptions
+            context (Dict[str, Any]): Command context from analysis
+            speaker_name (Optional[str]): Recognized speaker name
+            
+        Returns:
+            str: Personalized contextual unlock message
+        """
         import random  # nosec B311 # UI message selection, not cryptographic
 
         # Determine greeting based on speaker
@@ -386,7 +489,15 @@ class ScreenLockContextDetector:
         return random.choice(templates)  # nosec B311 # UI message selection
 
     def _extract_search_query(self, command: str) -> str:
-        """Extract search query from command"""
+        """
+        Extract search query from command using pattern matching.
+        
+        Args:
+            command (str): Command containing search query
+            
+        Returns:
+            str: Extracted and cleaned search query, limited to 50 characters
+        """
         import re
 
         # Common patterns for search queries
@@ -409,7 +520,15 @@ class ScreenLockContextDetector:
         return "your search"
 
     def _extract_app_name(self, command: str) -> str:
-        """Extract app name from command"""
+        """
+        Extract application name from command using pattern matching.
+        
+        Args:
+            command (str): Command containing app name
+            
+        Returns:
+            str: Extracted and cleaned application name in title case
+        """
         import re
 
         # Common patterns for app names
@@ -432,7 +551,18 @@ class ScreenLockContextDetector:
     async def _extract_action_dynamic(self, command: str) -> str:
         """
         Dynamically extract action description using CompoundActionParser.
-        Falls back to simple extraction if parser fails.
+        
+        Uses the compound action parser to get a human-readable execution plan,
+        with fallback to simple extraction if parser fails.
+        
+        Args:
+            command (str): Command to extract action from
+            
+        Returns:
+            str: Human-readable action description
+            
+        Raises:
+            Exception: Logs parser failures but doesn't raise
         """
         try:
             from context_intelligence.analyzers.compound_action_parser import get_compound_parser
@@ -454,7 +584,22 @@ class ScreenLockContextDetector:
         return self._extract_action_simple(command)
 
     def _extract_topic_from_command(self, command: str) -> str:
-        """Extract the document topic from command for natural messaging"""
+        """
+        Extract document topic from command for natural messaging.
+        
+        Uses regex patterns to identify document topics from various
+        command formats for more natural unlock messages.
+        
+        Args:
+            command (str): Command containing document creation request
+            
+        Returns:
+            str: Extracted topic or generic document type
+            
+        Example:
+            >>> topic = detector._extract_topic_from_command("write an essay about dogs")
+            >>> print(topic)  # "essay on dogs"
+        """
         import re
 
         command_lower = command.lower()
@@ -488,7 +633,15 @@ class ScreenLockContextDetector:
             return "document"
 
     def _extract_action_simple(self, command: str) -> str:
-        """Simple fallback action extraction"""
+        """
+        Simple fallback action extraction using basic pattern matching.
+        
+        Args:
+            command (str): Command to extract action from
+            
+        Returns:
+            str: Simple action description
+        """
         command_lower = command.lower()
 
         # Common patterns
@@ -509,15 +662,32 @@ class ScreenLockContextDetector:
         self, command: str, audio_data: bytes = None, speaker_name: str = None
     ) -> Tuple[bool, Optional[str]]:
         """
-        Handle screen lock context and unlock if needed using Intelligent Voice Unlock Service
+        Handle screen lock context and unlock if needed using Intelligent Voice Unlock Service.
+        
+        Manages the complete screen unlock workflow including voice authentication,
+        context analysis, and verification of unlock success.
 
         Args:
-            command: The command to execute
-            audio_data: Audio data for voice verification (optional)
-            speaker_name: Known speaker name (optional)
+            command (str): The command to execute that may require screen unlock
+            audio_data (Optional[bytes]): Audio data for voice verification
+            speaker_name (Optional[str]): Known speaker name for personalization
 
         Returns:
-            Tuple of (success, message)
+            Tuple[bool, Optional[str]]: Success status and response message
+                - (True, message): Unlock successful or not needed
+                - (False, error_message): Unlock failed with error details
+                
+        Raises:
+            Exception: Logs but handles all exceptions gracefully
+            
+        Example:
+            >>> success, message = await detector.handle_screen_lock_context(
+            ...     "open Safari", audio_data, "John"
+            ... )
+            >>> if success:
+            ...     print(f"Ready to proceed: {message}")
+            ... else:
+            ...     print(f"Unlock failed: {message}")
         """
         context = await self.check_screen_context(command)
 
@@ -653,8 +823,18 @@ _detector = None
 
 
 def get_screen_lock_detector() -> ScreenLockContextDetector:
-    """Get or create screen lock detector instance"""
+    """
+    Get or create the global screen lock detector instance.
+    
+    Implements singleton pattern to ensure consistent state across
+    the application while avoiding unnecessary re-initialization.
+    
+    Returns:
+        ScreenLockContextDetector: The global detector instance
+        
+    Example:
+        >>> detector = get_screen_lock_detector()
+        >>> context = await detector.check_screen_context("open Safari")
+    """
     global _detector
-    if _detector is None:
-        _detector = ScreenLockContextDetector()
-    return _detector
+    if _

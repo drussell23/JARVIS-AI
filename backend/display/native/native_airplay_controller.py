@@ -33,7 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectionMethod(Enum):
-    """Available connection methods"""
+    """Available connection methods for AirPlay display connections.
+    
+    Attributes:
+        MENU_BAR_CLICK: Connect via macOS menu bar interaction
+        KEYBOARD_AUTOMATION: Connect using keyboard shortcuts
+        APPLESCRIPT: Connect via AppleScript automation
+        PRIVATE_API: Connect using private macOS APIs
+    """
     MENU_BAR_CLICK = "menu_bar_click"
     KEYBOARD_AUTOMATION = "keyboard_automation"
     APPLESCRIPT = "applescript"
@@ -42,7 +49,17 @@ class ConnectionMethod(Enum):
 
 @dataclass
 class ConnectionResult:
-    """Result of a connection attempt"""
+    """Result of a connection attempt to an AirPlay display.
+    
+    Attributes:
+        success: Whether the connection was successful
+        message: Human-readable status message
+        method: Connection method that was used
+        display_name: Name of the target display
+        duration: Time taken for connection attempt in seconds
+        fallback_used: Whether fallback methods were employed
+        error_details: Additional error information if connection failed
+    """
     success: bool
     message: str
     method: str
@@ -54,7 +71,15 @@ class ConnectionResult:
 
 @dataclass
 class DisplayDevice:
-    """Information about a display device"""
+    """Information about a discovered AirPlay display device.
+    
+    Attributes:
+        id: Unique identifier for the display
+        name: Human-readable display name
+        type: Type of display device (e.g., "AppleTV", "AirPlayReceiver")
+        is_available: Whether the display is currently available for connection
+        metadata: Additional device-specific information
+    """
     id: str
     name: str
     type: str
@@ -63,9 +88,25 @@ class DisplayDevice:
 
 
 class SwiftBridgeManager:
-    """Manages Swift bridge compilation and execution"""
+    """Manages Swift bridge compilation and execution for native AirPlay operations.
+    
+    This class handles the compilation of Swift code into a native binary and
+    provides an interface for executing commands through the compiled bridge.
+    
+    Attributes:
+        swift_file: Path to the Swift source file
+        config_file: Path to the configuration file
+        binary_path: Path where the compiled binary will be stored
+        build_cache: Directory for build cache files
+    """
     
     def __init__(self, swift_file: Path, config_file: Path):
+        """Initialize the Swift bridge manager.
+        
+        Args:
+            swift_file: Path to the Swift source file to compile
+            config_file: Path to the JSON configuration file
+        """
         self.swift_file = swift_file
         self.config_file = config_file
         self.binary_path = swift_file.parent / "AirPlayBridge"
@@ -73,7 +114,17 @@ class SwiftBridgeManager:
         self.build_cache.mkdir(exist_ok=True)
         
     async def ensure_compiled(self) -> bool:
-        """Ensure Swift bridge is compiled, compile if needed"""
+        """Ensure Swift bridge is compiled, compile if needed.
+        
+        Checks if the binary exists and is up-to-date with the source file.
+        If not, triggers a compilation process.
+        
+        Returns:
+            True if binary is available and current, False otherwise
+            
+        Raises:
+            Exception: If compilation check fails due to system errors
+        """
         try:
             # Check if binary exists and is up-to-date
             if await self._is_binary_current():
@@ -88,7 +139,14 @@ class SwiftBridgeManager:
             return False
     
     async def _is_binary_current(self) -> bool:
-        """Check if compiled binary is up-to-date"""
+        """Check if compiled binary is up-to-date with source file.
+        
+        Compares the hash of the current source file with the cached hash
+        from the last successful compilation.
+        
+        Returns:
+            True if binary is current, False if recompilation is needed
+        """
         if not self.binary_path.exists():
             return False
         
@@ -104,12 +162,27 @@ class SwiftBridgeManager:
         return False
     
     def _get_source_hash(self) -> str:
-        """Get hash of Swift source file"""
+        """Get SHA256 hash of Swift source file content.
+        
+        Returns:
+            Hexadecimal string representation of the file hash
+        """
         content = self.swift_file.read_bytes()
         return hashlib.sha256(content).hexdigest()
     
     async def _compile(self) -> bool:
-        """Compile Swift bridge"""
+        """Compile Swift bridge with required frameworks.
+        
+        Compiles the Swift source file into an optimized binary with all
+        necessary macOS frameworks linked.
+        
+        Returns:
+            True if compilation successful, False otherwise
+            
+        Raises:
+            asyncio.TimeoutError: If compilation takes longer than 30 seconds
+            Exception: If compilation process fails to start
+        """
         try:
             cmd = [
                 "swiftc",
@@ -155,7 +228,26 @@ class SwiftBridgeManager:
             return False
     
     async def execute(self, command: str, args: List[str]) -> Dict[str, Any]:
-        """Execute Swift bridge command"""
+        """Execute a command through the Swift bridge.
+        
+        Runs the compiled Swift binary with the specified command and arguments,
+        returning the JSON response.
+        
+        Args:
+            command: The command to execute (e.g., "discover", "connect")
+            args: List of command arguments
+            
+        Returns:
+            Dictionary containing the command result, typically with keys:
+            - success: Boolean indicating if command succeeded
+            - message: Status message
+            - method: Method used (for connection commands)
+            - Additional command-specific data
+            
+        Raises:
+            asyncio.TimeoutError: If command execution exceeds 30 seconds
+            json.JSONDecodeError: If bridge returns invalid JSON
+        """
         try:
             cmd = [str(self.binary_path), command] + args + [str(self.config_file)]
             
@@ -205,19 +297,41 @@ class SwiftBridgeManager:
 
 
 class NativeAirPlayController:
-    """
-    Production-grade native AirPlay controller
+    """Production-grade native AirPlay controller with comprehensive error handling.
+    
+    This controller provides a high-level interface for discovering and connecting
+    to AirPlay displays using native macOS APIs through a Swift bridge. It features
+    automatic compilation, multiple connection strategies, and detailed statistics.
     
     Features:
-    - Async/await support
+    - Async/await support for non-blocking operations
     - Multiple connection strategies with automatic fallback
     - Self-healing error recovery
     - Zero hardcoding - fully configuration-driven
-    - Comprehensive logging and metrics
+    - Comprehensive logging and metrics collection
+    
+    Attributes:
+        module_dir: Directory containing this module
+        swift_file: Path to the Swift bridge source file
+        config_file: Path to the configuration file
+        config: Loaded configuration dictionary
+        bridge: Swift bridge manager instance
+        is_compiled: Whether the Swift bridge is compiled and ready
+        last_connection_time: Timestamp of last successful connection
+        connection_stats: Dictionary tracking connection statistics
     """
     
     def __init__(self, config_path: Optional[str] = None):
-        """Initialize native controller"""
+        """Initialize native AirPlay controller.
+        
+        Args:
+            config_path: Optional path to configuration file. If None, uses
+                        default path relative to module location.
+                        
+        Raises:
+            FileNotFoundError: If configuration file doesn't exist
+            json.JSONDecodeError: If configuration file contains invalid JSON
+        """
         # Paths
         self.module_dir = Path(__file__).parent
         self.swift_file = self.module_dir / "AirPlayBridge.swift"
@@ -245,7 +359,15 @@ class NativeAirPlayController:
         logger.info("[NATIVE AIRPLAY] Controller initialized")
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration file"""
+        """Load and parse the configuration file.
+        
+        Returns:
+            Dictionary containing the parsed configuration
+            
+        Raises:
+            FileNotFoundError: If configuration file doesn't exist
+            json.JSONDecodeError: If configuration file contains invalid JSON
+        """
         try:
             with open(self.config_file) as f:
                 config = json.load(f)
@@ -259,7 +381,15 @@ class NativeAirPlayController:
             raise
     
     async def initialize(self) -> bool:
-        """Initialize the native bridge (compile if needed)"""
+        """Initialize the native bridge by ensuring Swift code is compiled.
+        
+        This method checks if the Swift bridge is already compiled and ready.
+        If not, it triggers the compilation process. This is safe to call
+        multiple times.
+        
+        Returns:
+            True if bridge is ready for use, False if compilation failed
+        """
         if self.is_compiled:
             return True
         
@@ -274,7 +404,21 @@ class NativeAirPlayController:
         return self.is_compiled
     
     async def discover_displays(self) -> List[DisplayDevice]:
-        """Discover available displays"""
+        """Discover available AirPlay displays on the network.
+        
+        Scans for AirPlay-compatible displays and returns information about
+        each discovered device including availability status.
+        
+        Returns:
+            List of DisplayDevice objects representing discovered displays.
+            Returns empty list if no displays found or if bridge unavailable.
+            
+        Example:
+            >>> controller = NativeAirPlayController()
+            >>> displays = await controller.discover_displays()
+            >>> for display in displays:
+            ...     print(f"Found: {display.name} ({display.type})")
+        """
         logger.info("[NATIVE AIRPLAY] Discovering displays...")
         
         # Ensure bridge is compiled
@@ -298,14 +442,27 @@ class NativeAirPlayController:
             return []
     
     async def connect(self, display_name: str) -> ConnectionResult:
-        """
-        Connect to a display using native methods
+        """Connect to an AirPlay display using native methods with fallback strategies.
+        
+        Attempts to connect to the specified display using multiple connection
+        methods as configured. Automatically falls back to alternative methods
+        if the primary method fails.
         
         Args:
-            display_name: Name of display to connect to
+            display_name: Name of the display to connect to (case-sensitive)
             
         Returns:
-            ConnectionResult with details
+            ConnectionResult object containing detailed information about the
+            connection attempt including success status, method used, duration,
+            and any error details.
+            
+        Example:
+            >>> controller = NativeAirPlayController()
+            >>> result = await controller.connect("Living Room TV")
+            >>> if result.success:
+            ...     print(f"Connected via {result.method} in {result.duration:.2f}s")
+            ... else:
+            ...     print(f"Failed: {result.message}")
         """
         start_time = datetime.now()
         self.connection_stats["total_attempts"] += 1
@@ -382,7 +539,22 @@ class NativeAirPlayController:
             )
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get connection statistics"""
+        """Get comprehensive connection statistics.
+        
+        Returns:
+            Dictionary containing connection statistics including:
+            - total_attempts: Total number of connection attempts
+            - successful: Number of successful connections
+            - failed: Number of failed connections
+            - success_rate: Success rate as a percentage
+            - by_method: Breakdown of successful connections by method
+            - last_connection: ISO timestamp of last successful connection
+            - bridge_compiled: Whether the Swift bridge is compiled
+            
+        Example:
+            >>> stats = controller.get_stats()
+            >>> print(f"Success rate: {stats['success_rate']}%")
+        """
         success_rate = 0.0
         if self.connection_stats["total_attempts"] > 0:
             success_rate = (self.connection_stats["successful"] / 
@@ -399,7 +571,23 @@ class NativeAirPlayController:
         }
     
     def get_status(self) -> Dict[str, Any]:
-        """Get controller status"""
+        """Get comprehensive controller status information.
+        
+        Returns:
+            Dictionary containing detailed status information including:
+            - initialized: Whether the controller is fully initialized
+            - config_loaded: Whether configuration was loaded successfully
+            - swift_file_exists: Whether the Swift source file exists
+            - binary_exists: Whether the compiled binary exists
+            - config_file: Path to the configuration file
+            - connection_methods: List of available connection methods
+            - stats: Current connection statistics
+            
+        Example:
+            >>> status = controller.get_status()
+            >>> if status['initialized']:
+            ...     print("Controller is ready")
+        """
         return {
             "initialized": self.is_compiled,
             "config_loaded": self.config is not None,
@@ -416,7 +604,22 @@ _native_controller: Optional[NativeAirPlayController] = None
 
 
 def get_native_controller(config_path: Optional[str] = None) -> NativeAirPlayController:
-    """Get singleton native controller instance"""
+    """Get singleton native controller instance.
+    
+    Returns the same controller instance across multiple calls to ensure
+    consistent state and avoid recompilation overhead.
+    
+    Args:
+        config_path: Optional path to configuration file. Only used on first call.
+        
+    Returns:
+        NativeAirPlayController instance
+        
+    Example:
+        >>> controller = get_native_controller()
+        >>> # Later in the code...
+        >>> same_controller = get_native_controller()  # Returns same instance
+    """
     global _native_controller
     if _native_controller is None:
         _native_controller = NativeAirPlayController(config_path)
@@ -426,6 +629,12 @@ def get_native_controller(config_path: Optional[str] = None) -> NativeAirPlayCon
 if __name__ == "__main__":
     # Test the controller
     async def test():
+        """Test function demonstrating controller usage and capabilities.
+        
+        This function provides a comprehensive test of the controller's
+        functionality including initialization, discovery, connection,
+        and statistics reporting.
+        """
         logging.basicConfig(level=logging.INFO)
         
         controller = get_native_controller()

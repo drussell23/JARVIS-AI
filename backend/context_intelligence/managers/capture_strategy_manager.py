@@ -11,6 +11,11 @@ Implements intelligent capture fallback strategies:
 
 Uses Error Handling Matrix for graceful degradation.
 
+This module provides a comprehensive capture strategy system that handles
+various failure scenarios gracefully, maintains a cache of recent captures,
+and integrates with the Error Handling Matrix for sophisticated fallback
+behavior.
+
 Author: Derek Russell
 Date: 2025-10-19
 """
@@ -49,7 +54,19 @@ except ImportError:
 
 @dataclass
 class CachedCapture:
-    """Cached screenshot with metadata"""
+    """Cached screenshot with metadata.
+    
+    Represents a cached screenshot capture with associated metadata including
+    timing information, capture method, and window/space identifiers.
+    
+    Attributes:
+        image: Image data (PIL Image, numpy array, etc.)
+        window_id: Optional window identifier for window-specific captures
+        space_id: Space identifier where the capture was taken
+        timestamp: When the capture was created
+        method: Method used for capture (e.g., 'window_capture', 'space_capture')
+        metadata: Additional metadata dictionary
+    """
     image: Any  # Image data (PIL Image, numpy array, etc.)
     window_id: Optional[int]
     space_id: int
@@ -58,33 +75,47 @@ class CachedCapture:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def is_valid(self, max_age_seconds: float = 60.0) -> bool:
-        """Check if cache is still valid"""
+        """Check if cache is still valid based on age.
+        
+        Args:
+            max_age_seconds: Maximum age in seconds before cache is considered stale
+            
+        Returns:
+            True if cache is still valid, False otherwise
+        """
         age = (datetime.now() - self.timestamp).total_seconds()
         return age < max_age_seconds
 
     def age_seconds(self) -> float:
-        """Get age in seconds"""
+        """Get age of cached capture in seconds.
+        
+        Returns:
+            Age in seconds since capture was created
+        """
         return (datetime.now() - self.timestamp).total_seconds()
 
 
 class CaptureCache:
     """
-    Manages cached screenshots with TTL
+    Manages cached screenshots with TTL.
 
     Features:
     - Time-based expiration
     - Space-based caching
     - Window-based caching
     - Automatic cleanup
+    
+    The cache maintains separate indexes for space-based and window-based
+    captures to enable efficient lookups for different capture scenarios.
     """
 
     def __init__(self, default_ttl: float = 60.0, max_entries: int = 100):
         """
-        Initialize capture cache
+        Initialize capture cache.
 
         Args:
-            default_ttl: Default time-to-live in seconds
-            max_entries: Maximum cache entries
+            default_ttl: Default time-to-live in seconds for cached entries
+            max_entries: Maximum number of cache entries before cleanup
         """
         self.default_ttl = default_ttl
         self.max_entries = max_entries
@@ -99,14 +130,14 @@ class CaptureCache:
 
     def get_by_space(self, space_id: int, max_age: Optional[float] = None) -> Optional[CachedCapture]:
         """
-        Get cached capture by space ID
+        Get cached capture by space ID.
 
         Args:
-            space_id: Space ID
+            space_id: Space ID to look up
             max_age: Maximum age in seconds (uses default if not provided)
 
         Returns:
-            CachedCapture if valid, None otherwise
+            CachedCapture if valid entry exists, None otherwise
         """
         max_age = max_age or self.default_ttl
 
@@ -123,7 +154,15 @@ class CaptureCache:
         return None
 
     def get_by_window(self, window_id: int, max_age: Optional[float] = None) -> Optional[CachedCapture]:
-        """Get cached capture by window ID"""
+        """Get cached capture by window ID.
+        
+        Args:
+            window_id: Window ID to look up
+            max_age: Maximum age in seconds (uses default if not provided)
+            
+        Returns:
+            CachedCapture if valid entry exists, None otherwise
+        """
         max_age = max_age or self.default_ttl
 
         cached = self._window_cache.get(window_id)
@@ -138,8 +177,12 @@ class CaptureCache:
 
         return None
 
-    def store(self, capture: CachedCapture):
-        """Store capture in cache"""
+    def store(self, capture: CachedCapture) -> None:
+        """Store capture in cache.
+        
+        Args:
+            capture: CachedCapture instance to store
+        """
         # Store by space
         self._space_cache[capture.space_id] = capture
 
@@ -152,8 +195,8 @@ class CaptureCache:
 
         logger.debug(f"[CAPTURE-CACHE] Stored capture for space={capture.space_id}, window={capture.window_id}")
 
-    def _cleanup_old_entries(self):
-        """Remove old entries if cache is too large"""
+    def _cleanup_old_entries(self) -> None:
+        """Remove old entries if cache is too large."""
         total_entries = len(self._space_cache) + len(self._window_cache)
 
         if total_entries > self.max_entries:
@@ -168,14 +211,18 @@ class CaptureCache:
 
             logger.info(f"[CAPTURE-CACHE] Cleaned up {remove_count} old entries")
 
-    def clear(self):
-        """Clear all cache"""
+    def clear(self) -> None:
+        """Clear all cache entries."""
         self._space_cache.clear()
         self._window_cache.clear()
         logger.info("[CAPTURE-CACHE] Cleared all cache")
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics.
+        
+        Returns:
+            Dictionary containing cache statistics including entry counts and configuration
+        """
         return {
             "space_entries": len(self._space_cache),
             "window_entries": len(self._window_cache),
@@ -191,7 +238,7 @@ class CaptureCache:
 
 class CaptureStrategyManager:
     """
-    Manages intelligent capture strategies with fallbacks
+    Manages intelligent capture strategies with fallbacks.
 
     Implements the capture fallback chain:
     1. Primary: Capture specific window
@@ -199,7 +246,12 @@ class CaptureStrategyManager:
     3. Fallback 2: Use cached screenshot (if <60s old)
     4. Fallback 3: Return user-friendly error
 
-    Uses Error Handling Matrix for graceful degradation.
+    Uses Error Handling Matrix for graceful degradation when available,
+    otherwise falls back to sequential execution with basic error handling.
+    
+    Attributes:
+        cache: CaptureCache instance for managing cached screenshots
+        error_matrix: Optional Error Handling Matrix for sophisticated fallback behavior
     """
 
     def __init__(
@@ -209,12 +261,12 @@ class CaptureStrategyManager:
         enable_error_matrix: bool = True
     ):
         """
-        Initialize capture strategy manager
+        Initialize capture strategy manager.
 
         Args:
             cache_ttl: Cache time-to-live in seconds
-            max_cache_entries: Maximum cache entries
-            enable_error_matrix: Use Error Handling Matrix
+            max_cache_entries: Maximum number of cache entries
+            enable_error_matrix: Whether to use Error Handling Matrix if available
         """
         self.cache = CaptureCache(default_ttl=cache_ttl, max_entries=max_cache_entries)
 
@@ -244,7 +296,13 @@ class CaptureStrategyManager:
         cache_max_age: Optional[float] = None
     ) -> Tuple[bool, Any, str]:
         """
-        Capture with intelligent fallbacks
+        Capture with intelligent fallbacks.
+
+        Attempts to capture a screenshot using multiple strategies in order of preference:
+        1. Window-specific capture (if window_id provided)
+        2. Space-wide capture
+        3. Cached screenshot (if recent enough)
+        4. User-friendly error message
 
         Args:
             space_id: Space ID to capture
@@ -254,7 +312,18 @@ class CaptureStrategyManager:
             cache_max_age: Maximum cache age in seconds
 
         Returns:
-            (success, image_data, message)
+            Tuple of (success: bool, image_data: Any, message: str)
+            
+        Example:
+            >>> manager = CaptureStrategyManager()
+            >>> success, image, msg = await manager.capture_with_fallbacks(
+            ...     space_id=1,
+            ...     window_id=123,
+            ...     window_capture_func=my_window_capture,
+            ...     space_capture_func=my_space_capture
+            ... )
+            >>> if success:
+            ...     print(f"Captured: {msg}")
         """
         logger.info(f"[CAPTURE-STRATEGY] Starting capture for space={space_id}, window={window_id}")
 
@@ -287,7 +356,18 @@ class CaptureStrategyManager:
         space_capture_func: Optional[Callable],
         cache_max_age: float
     ) -> Tuple[bool, Any, str]:
-        """Capture using Error Handling Matrix"""
+        """Capture using Error Handling Matrix.
+        
+        Args:
+            space_id: Space ID to capture
+            window_id: Optional window ID
+            window_capture_func: Window capture function
+            space_capture_func: Space capture function
+            cache_max_age: Maximum cache age in seconds
+            
+        Returns:
+            Tuple of (success, image_data, message)
+        """
         logger.info(f"[CAPTURE-STRATEGY] Using Error Handling Matrix")
 
         # Build fallback chain
@@ -408,7 +488,18 @@ class CaptureStrategyManager:
         space_capture_func: Optional[Callable],
         cache_max_age: float
     ) -> Tuple[bool, Any, str]:
-        """Fallback sequential capture (without Error Handling Matrix)"""
+        """Fallback sequential capture (without Error Handling Matrix).
+        
+        Args:
+            space_id: Space ID to capture
+            window_id: Optional window ID
+            window_capture_func: Window capture function
+            space_capture_func: Space capture function
+            cache_max_age: Maximum cache age in seconds
+            
+        Returns:
+            Tuple of (success, image_data, message)
+        """
         logger.warning("[CAPTURE-STRATEGY] Error Handling Matrix not available, using sequential fallback")
 
         # 1. Try window capture
@@ -478,11 +569,15 @@ class CaptureStrategyManager:
         return False, None, f"Unable to capture Space {space_id}"
 
     def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics.
+        
+        Returns:
+            Dictionary containing cache statistics and configuration
+        """
         return self.cache.get_stats()
 
-    def clear_cache(self):
-        """Clear all cache"""
+    def clear_cache(self) -> None:
+        """Clear all cached captures."""
         self.cache.clear()
 
 
@@ -494,7 +589,11 @@ _global_manager: Optional[CaptureStrategyManager] = None
 
 
 def get_capture_strategy_manager() -> Optional[CaptureStrategyManager]:
-    """Get the global capture strategy manager instance"""
+    """Get the global capture strategy manager instance.
+    
+    Returns:
+        The global CaptureStrategyManager instance if initialized, None otherwise
+    """
     return _global_manager
 
 
@@ -503,7 +602,24 @@ def initialize_capture_strategy_manager(
     max_cache_entries: int = 100,
     enable_error_matrix: bool = True
 ) -> CaptureStrategyManager:
-    """Initialize the global capture strategy manager"""
+    """Initialize the global capture strategy manager.
+    
+    Args:
+        cache_ttl: Cache time-to-live in seconds
+        max_cache_entries: Maximum number of cache entries
+        enable_error_matrix: Whether to enable Error Handling Matrix integration
+        
+    Returns:
+        The initialized CaptureStrategyManager instance
+        
+    Example:
+        >>> manager = initialize_capture_strategy_manager(
+        ...     cache_ttl=120.0,
+        ...     max_cache_entries=200,
+        ...     enable_error_matrix=True
+        ... )
+        >>> print("Capture strategy manager initialized")
+    """
     global _global_manager
     _global_manager = CaptureStrategyManager(
         cache_ttl=cache_ttl,

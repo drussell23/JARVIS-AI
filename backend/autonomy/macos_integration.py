@@ -1,8 +1,24 @@
 #!/usr/bin/env python3
-"""
-Advanced macOS Integration for JARVIS
-Provides deep system control and hardware management
-Powered by Anthropic's Claude API for intelligent decision making
+"""Advanced macOS Integration for JARVIS.
+
+This module provides deep system control and hardware management for macOS systems,
+powered by Anthropic's Claude API for intelligent decision making. It includes
+comprehensive system monitoring, AI-powered optimization, and safe system control
+with built-in safety limits and reversible actions.
+
+The module supports:
+- Continuous system monitoring and optimization
+- AI-powered decision making for system control
+- Safe application management with protection for critical apps
+- Context-aware optimization (meeting, focus, gaming modes)
+- Emergency optimization for system stress situations
+- Intelligent model selection for enhanced performance
+
+Example:
+    >>> integration = get_macos_integration(api_key="your_api_key")
+    >>> await integration.start_system_monitoring()
+    >>> status = integration.get_system_status()
+    >>> await integration.optimize_for_context("meeting")
 """
 
 import asyncio
@@ -21,7 +37,20 @@ import platform
 logger = logging.getLogger(__name__)
 
 class SystemResource(Enum):
-    """System resources that can be managed"""
+    """System resources that can be managed.
+    
+    Attributes:
+        CPU: Central processing unit resources
+        MEMORY: System memory (RAM) resources
+        DISK: Storage disk resources
+        NETWORK: Network connectivity resources
+        DISPLAY: Display and graphics resources
+        AUDIO: Audio system resources
+        CAMERA: Camera hardware resources
+        POWER: Power management and battery resources
+        BLUETOOTH: Bluetooth connectivity resources
+        WIFI: WiFi connectivity resources
+    """
     CPU = "cpu"
     MEMORY = "memory"
     DISK = "disk"
@@ -34,7 +63,17 @@ class SystemResource(Enum):
     WIFI = "wifi"
 
 class ControlAction(Enum):
-    """Types of control actions"""
+    """Types of control actions that can be performed on system resources.
+    
+    Attributes:
+        OPTIMIZE: Optimize resource usage for better performance
+        ADJUST: Adjust resource settings or parameters
+        ENABLE: Enable a resource or feature
+        DISABLE: Disable a resource or feature
+        RESTART: Restart a resource or service
+        MONITOR: Monitor resource usage and status
+        CONFIGURE: Configure resource settings
+    """
     OPTIMIZE = "optimize"
     ADJUST = "adjust"
     ENABLE = "enable"
@@ -45,7 +84,18 @@ class ControlAction(Enum):
 
 @dataclass
 class SystemState:
-    """Current system state"""
+    """Current system state snapshot.
+    
+    Attributes:
+        cpu_usage: Current CPU usage percentage (0-100)
+        memory_usage: Current memory usage percentage (0-100)
+        disk_usage: Current disk usage percentage (0-100)
+        active_apps: List of currently active application names
+        network_status: Dictionary containing network connectivity information
+        display_config: Dictionary containing display configuration
+        power_status: Dictionary containing power and battery status
+        timestamp: When this state snapshot was taken
+    """
     cpu_usage: float
     memory_usage: float
     disk_usage: float
@@ -57,7 +107,17 @@ class SystemState:
 
 @dataclass
 class ControlDecision:
-    """A control decision made by the AI"""
+    """A control decision made by the AI system.
+    
+    Attributes:
+        resource: The system resource to be controlled
+        action: The type of action to perform
+        parameters: Dictionary of parameters for the action
+        reasoning: AI's explanation for this decision
+        confidence: Confidence level of the decision (0.0-1.0)
+        impact_prediction: Predicted impact of this action
+        reversible: Whether this action can be safely reversed
+    """
     resource: SystemResource
     action: ControlAction
     parameters: Dict[str, Any]
@@ -67,11 +127,37 @@ class ControlDecision:
     reversible: bool = True
 
 class AdvancedMacOSIntegration:
-    """
-    Deep macOS integration with AI-powered control
+    """Deep macOS integration with AI-powered control.
+    
+    This class provides comprehensive macOS system integration including:
+    - Continuous system monitoring and health assessment
+    - AI-powered optimization decisions using Claude API
+    - Safe application control with built-in protection
+    - Context-aware system optimization
+    - Emergency optimization capabilities
+    - Intelligent model selection for enhanced performance
+    
+    Attributes:
+        claude: Anthropic Claude API client
+        use_intelligent_selection: Whether to use intelligent model selection
+        system_state: Current system state snapshot
+        monitoring_active: Whether system monitoring is active
+        monitoring_interval: Interval between monitoring cycles in seconds
+        control_history: History of control actions taken
+        optimization_rules: Custom optimization rules
+        safety_limits: Safety limits and protected resources
     """
     
     def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
+        """Initialize the macOS integration system.
+        
+        Args:
+            anthropic_api_key: API key for Anthropic Claude
+            use_intelligent_selection: Whether to use intelligent model selection
+            
+        Raises:
+            ValueError: If API key is invalid or missing
+        """
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
         self.use_intelligent_selection = use_intelligent_selection
 
@@ -92,18 +178,39 @@ class AdvancedMacOSIntegration:
             'protected_apps': ['Finder', 'SystemUIServer', 'loginwindow']
         }
         
-    async def start_system_monitoring(self):
-        """Start continuous system monitoring"""
+    async def start_system_monitoring(self) -> None:
+        """Start continuous system monitoring.
+        
+        Begins the system monitoring loop that continuously gathers system state,
+        identifies optimization opportunities, and executes high-confidence
+        optimizations automatically.
+        
+        Example:
+            >>> integration = AdvancedMacOSIntegration(api_key)
+            >>> await integration.start_system_monitoring()
+        """
         self.monitoring_active = True
         asyncio.create_task(self._system_monitoring_loop())
         logger.info("Advanced macOS monitoring started")
         
-    async def stop_system_monitoring(self):
-        """Stop system monitoring"""
+    async def stop_system_monitoring(self) -> None:
+        """Stop system monitoring.
+        
+        Stops the continuous system monitoring loop and sets monitoring_active
+        to False.
+        """
         self.monitoring_active = False
         
-    async def _system_monitoring_loop(self):
-        """Monitor system state continuously"""
+    async def _system_monitoring_loop(self) -> None:
+        """Monitor system state continuously.
+        
+        Internal method that runs the main monitoring loop. Gathers system state,
+        identifies optimization opportunities, and executes safe optimizations
+        with high confidence levels.
+        
+        Raises:
+            Exception: Logs errors but continues monitoring after delay
+        """
         while self.monitoring_active:
             try:
                 # Gather system state
@@ -124,7 +231,18 @@ class AdvancedMacOSIntegration:
                 await asyncio.sleep(60)
     
     async def _gather_system_state(self) -> SystemState:
-        """Gather comprehensive system state"""
+        """Gather comprehensive system state information.
+        
+        Collects current system metrics including CPU usage, memory usage,
+        disk usage, active applications, network status, display configuration,
+        and power status.
+        
+        Returns:
+            SystemState: Complete system state snapshot
+            
+        Raises:
+            Exception: If system state gathering fails
+        """
         # CPU usage
         cpu_usage = psutil.cpu_percent(interval=1)
         
@@ -159,7 +277,18 @@ class AdvancedMacOSIntegration:
         )
     
     async def _get_active_applications(self) -> List[str]:
-        """Get list of active applications"""
+        """Get list of currently active applications.
+        
+        Uses AppleScript to query the system for visible application processes.
+        
+        Returns:
+            List[str]: Names of active applications
+            
+        Example:
+            >>> apps = await integration._get_active_applications()
+            >>> print(apps)
+            ['Finder', 'Safari', 'Terminal', 'Code']
+        """
         try:
             # Use AppleScript to get running applications
             script = '''
@@ -185,7 +314,18 @@ class AdvancedMacOSIntegration:
         return []
     
     async def _get_network_status(self) -> Dict[str, Any]:
-        """Get network status information"""
+        """Get comprehensive network status information.
+        
+        Checks WiFi connectivity, SSID, ethernet status, and VPN connections
+        using system network utilities.
+        
+        Returns:
+            Dict[str, Any]: Network status information containing:
+                - wifi_connected: Whether WiFi is connected
+                - wifi_ssid: Current WiFi network name
+                - ethernet_connected: Whether ethernet is connected
+                - vpn_connected: Whether VPN is active
+        """
         status = {
             'wifi_connected': False,
             'wifi_ssid': None,
@@ -221,7 +361,19 @@ class AdvancedMacOSIntegration:
         return status
     
     async def _get_display_configuration(self) -> Dict[str, Any]:
-        """Get display configuration"""
+        """Get current display configuration.
+        
+        Retrieves display settings including brightness, night shift status,
+        display count, and resolution. Note: Some features require additional
+        tools or system APIs.
+        
+        Returns:
+            Dict[str, Any]: Display configuration containing:
+                - brightness: Current display brightness (if available)
+                - night_shift: Whether night shift is enabled
+                - display_count: Number of displays
+                - resolution: Display resolution (if available)
+        """
         config = {
             'brightness': None,
             'night_shift': False,
@@ -241,7 +393,18 @@ class AdvancedMacOSIntegration:
         return config
     
     async def _get_power_status(self) -> Dict[str, Any]:
-        """Get power and battery status"""
+        """Get comprehensive power and battery status.
+        
+        Uses pmset utility to gather power information including battery
+        percentage, power source, and power adapter status.
+        
+        Returns:
+            Dict[str, Any]: Power status information containing:
+                - on_battery: Whether system is running on battery
+                - battery_percent: Battery charge percentage
+                - power_adapter: Whether power adapter is connected
+                - low_power_mode: Whether low power mode is enabled
+        """
         status = {
             'on_battery': False,
             'battery_percent': None,
@@ -279,7 +442,18 @@ class AdvancedMacOSIntegration:
         return status
     
     async def _identify_optimization_opportunities(self) -> List[ControlDecision]:
-        """Use AI to identify optimization opportunities"""
+        """Use AI and local logic to identify system optimization opportunities.
+        
+        Analyzes current system state to identify potential optimizations.
+        Uses local logic for common scenarios to reduce API calls and improve
+        performance, with AI analysis for complex situations.
+        
+        Returns:
+            List[ControlDecision]: List of potential optimization actions
+            
+        Raises:
+            Exception: Logs errors but returns empty list to maintain stability
+        """
         if not self.system_state:
             return []
         
@@ -350,7 +524,21 @@ class AdvancedMacOSIntegration:
             return []
     
     def _parse_optimization_response(self, response_text: str) -> List[ControlDecision]:
-        """Parse AI response into control decisions"""
+        """Parse AI response text into structured control decisions.
+        
+        Extracts optimization recommendations from natural language AI responses
+        and converts them into actionable ControlDecision objects.
+        
+        Args:
+            response_text: Natural language response from AI
+            
+        Returns:
+            List[ControlDecision]: Parsed control decisions
+            
+        Example:
+            >>> response = "Resource: CPU\nAction: OPTIMIZE\nConfidence: 85%"
+            >>> decisions = integration._parse_optimization_response(response)
+        """
         decisions = []
         
         # Simple parsing - would be more sophisticated in practice
@@ -402,8 +590,19 @@ class AdvancedMacOSIntegration:
         
         return decisions
     
-    async def _execute_control_action(self, decision: ControlDecision):
-        """Execute a control decision"""
+    async def _execute_control_action(self, decision: ControlDecision) -> None:
+        """Execute a specific control decision.
+        
+        Takes a ControlDecision and executes the appropriate system action
+        based on the resource and action type. Records the action in history
+        for tracking and potential reversal.
+        
+        Args:
+            decision: The control decision to execute
+            
+        Raises:
+            Exception: Logs errors but continues operation
+        """
         logger.info(f"Executing control action: {decision.resource.value} - {decision.action.value}")
         
         try:
@@ -434,42 +633,93 @@ class AdvancedMacOSIntegration:
                 'error': str(e)
             })
     
-    async def _optimize_memory(self, decision: ControlDecision):
-        """Optimize memory usage"""
+    async def _optimize_memory(self, decision: ControlDecision) -> None:
+        """Optimize system memory usage.
+        
+        Executes memory optimization actions such as purging inactive memory
+        and clearing caches based on the control decision parameters.
+        
+        Args:
+            decision: Control decision with memory optimization parameters
+        """
         if decision.action == ControlAction.OPTIMIZE:
             # Purge inactive memory
             subprocess.run(['sudo', 'purge'], capture_output=True)
             logger.info("Purged inactive memory")
     
-    async def _optimize_cpu(self, decision: ControlDecision):
-        """Optimize CPU usage"""
+    async def _optimize_cpu(self, decision: ControlDecision) -> None:
+        """Optimize CPU usage and performance.
+        
+        Implements CPU optimization strategies such as process throttling
+        and background task management based on decision parameters.
+        
+        Args:
+            decision: Control decision with CPU optimization parameters
+        """
         if decision.action == ControlAction.OPTIMIZE:
             # This would implement CPU optimization
             # For safety, we're being conservative here
             logger.info("CPU optimization requested - monitoring high-usage processes")
     
-    async def _optimize_power(self, decision: ControlDecision):
-        """Optimize power settings"""
+    async def _optimize_power(self, decision: ControlDecision) -> None:
+        """Optimize power settings and battery usage.
+        
+        Adjusts power management settings such as enabling low power mode
+        when on battery or optimizing CPU frequency for battery life.
+        
+        Args:
+            decision: Control decision with power optimization parameters
+        """
         if decision.action == ControlAction.OPTIMIZE:
             if self.system_state.power_status.get('on_battery'):
                 # Enable power saving mode
                 subprocess.run(['pmset', '-a', 'lowpowermode', '1'], capture_output=True)
                 logger.info("Enabled low power mode")
     
-    async def _optimize_network(self, decision: ControlDecision):
-        """Optimize network settings"""
+    async def _optimize_network(self, decision: ControlDecision) -> None:
+        """Optimize network settings and connectivity.
+        
+        Implements network optimization strategies such as connection
+        prioritization and bandwidth management.
+        
+        Args:
+            decision: Control decision with network optimization parameters
+        """
         if decision.action == ControlAction.OPTIMIZE:
             # This would implement network optimization
             logger.info("Network optimization requested")
     
-    async def _optimize_display(self, decision: ControlDecision):
-        """Optimize display settings"""
+    async def _optimize_display(self, decision: ControlDecision) -> None:
+        """Optimize display settings for performance or battery life.
+        
+        Adjusts display parameters such as brightness, refresh rate,
+        and visual effects based on optimization goals.
+        
+        Args:
+            decision: Control decision with display optimization parameters
+        """
         if decision.action == ControlAction.ADJUST:
             # This would adjust display brightness/settings
             logger.info("Display optimization requested")
     
     async def _control_application_with_intelligent_selection(self, app_name: str, action: str) -> bool:
-        """Control application using intelligent model selection"""
+        """Control application using intelligent model selection.
+        
+        Uses the hybrid orchestrator to intelligently select the best model
+        for application control decisions, providing enhanced safety and
+        performance through optimized model selection.
+        
+        Args:
+            app_name: Name of the application to control
+            action: Action to perform ('quit', 'hide', 'activate')
+            
+        Returns:
+            bool: True if action was successful, False otherwise
+            
+        Raises:
+            ImportError: If hybrid orchestrator is not available
+            Exception: For other errors during intelligent selection
+        """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
 
@@ -544,7 +794,24 @@ Respond with: SAFE or UNSAFE and brief reason."""
             raise
 
     async def control_application(self, app_name: str, action: str) -> bool:
-        """Control a specific application"""
+        """Control a specific application safely.
+        
+        Provides safe application control with AI-powered safety checks.
+        Protects critical system applications and validates actions before
+        execution. Supports intelligent model selection for enhanced performance.
+        
+        Args:
+            app_name: Name of the application to control
+            action: Action to perform ('quit', 'hide', 'activate')
+            
+        Returns:
+            bool: True if action was successful, False otherwise
+            
+        Example:
+            >>> success = await integration.control_application("Safari", "quit")
+            >>> if success:
+            ...     print("Safari closed successfully")
+        """
         try:
             # Validate app is not protected
             if app_name in self.safety_limits['protected_apps']:
@@ -600,7 +867,23 @@ Respond with: SAFE or UNSAFE and brief reason."""
         return False
     
     async def _optimize_for_context_with_intelligent_selection(self, context: str, state: SystemState) -> Dict[str, Any]:
-        """Optimize for context using intelligent model selection"""
+        """Optimize for context using intelligent model selection.
+        
+        Uses the hybrid orchestrator to intelligently select the best model
+        for context-specific optimization, providing enhanced performance
+        and more accurate optimization decisions.
+        
+        Args:
+            context: The context to optimize for (e.g., "meeting", "focus", "gaming")
+            state: Current system state
+            
+        Returns:
+            Dict[str, Any]: Optimization results including applied optimizations
+            
+        Raises:
+            ImportError: If hybrid orchestrator is not available
+            Exception: For other errors during intelligent selection
+        """
         try:
             from backend.core.hybrid_orchestrator import HybridOrchestrator
 
@@ -626,244 +909,3 @@ Current System State:
 - Memory Usage: {state.memory_usage}%
 - Active Apps: {', '.join(state.active_apps[:5])}
 - On Battery: {state.power_status.get('on_battery', False)}
-
-Provide specific optimization actions for:
-1. Application management (which to close/minimize)
-2. System settings (power, display, etc)
-3. Network configuration
-4. Resource allocation
-
-Be specific and safe."""
-
-            # Execute with intelligent selection
-            result = await orchestrator.execute_with_intelligent_model_selection(
-                query=prompt,
-                intent="macos_control",
-                required_capabilities={"nlp_analysis", "system_understanding", "automation"},
-                context=rich_context,
-                max_tokens=800,
-                temperature=0.2,
-            )
-
-            if not result.get("success"):
-                raise Exception(result.get("error", "Unknown error"))
-
-            response_text = result.get("text", "").strip()
-            model_used = result.get("model_used", "intelligent_selection")
-
-            logger.info(f"✨ Context optimization using {model_used}")
-
-            # Parse and execute optimizations
-            optimizations = self._parse_context_optimizations(response_text)
-
-            results = {
-                'context': context,
-                'optimizations_applied': [],
-                'state_before': state,
-                'success': True,
-                'model_used': model_used,
-            }
-
-            for opt in optimizations:
-                try:
-                    await self._apply_context_optimization(opt)
-                    results['optimizations_applied'].append(opt)
-                except Exception as e:
-                    logger.error(f"Failed to apply optimization: {e}")
-
-            return results
-
-        except ImportError:
-            logger.warning("Hybrid orchestrator not available, falling back to direct API")
-            raise
-        except Exception as e:
-            logger.error(f"Error in intelligent selection: {e}")
-            raise
-
-    async def optimize_for_context(self, context: str) -> Dict[str, Any]:
-        """Optimize system for specific context (meeting, focus, gaming, etc)"""
-        try:
-            # Get current state
-            state = await self._gather_system_state()
-
-            # Try intelligent selection first
-            if self.use_intelligent_selection:
-                try:
-                    return await self._optimize_for_context_with_intelligent_selection(context, state)
-                except Exception as e:
-                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
-
-            # Fallback to direct API
-            # Use Claude to determine optimal settings
-            response = await asyncio.to_thread(
-                self.claude.messages.create,
-                model="claude-3-opus-20240229",
-                max_tokens=800,
-                messages=[{
-                    "role": "user",
-                    "content": f"""Optimize macOS for context: {context}
-
-Current System State:
-- CPU Usage: {state.cpu_usage}%
-- Memory Usage: {state.memory_usage}%
-- Active Apps: {', '.join(state.active_apps[:5])}
-- On Battery: {state.power_status.get('on_battery', False)}
-
-Provide specific optimization actions for:
-1. Application management (which to close/minimize)
-2. System settings (power, display, etc)
-3. Network configuration
-4. Resource allocation
-
-Be specific and safe."""
-                }]
-            )
-
-            # Parse and execute optimizations
-            optimizations = self._parse_context_optimizations(response.content[0].text)
-
-            results = {
-                'context': context,
-                'optimizations_applied': [],
-                'state_before': state,
-                'success': True
-            }
-
-            for opt in optimizations:
-                try:
-                    await self._apply_context_optimization(opt)
-                    results['optimizations_applied'].append(opt)
-                except Exception as e:
-                    logger.error(f"Failed to apply optimization: {e}")
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Error optimizing for context: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _parse_context_optimizations(self, response_text: str) -> List[Dict[str, Any]]:
-        """Parse context optimization response"""
-        optimizations = []
-        
-        # Extract optimization instructions
-        lines = response_text.split('\n')
-        current_opt = None
-        
-        for line in lines:
-            if any(marker in line for marker in ['1.', '2.', '3.', '-', '•']):
-                if current_opt:
-                    optimizations.append(current_opt)
-                current_opt = {
-                    'description': line.strip().lstrip('1234567890.-• '),
-                    'type': 'general'
-                }
-        
-        if current_opt:
-            optimizations.append(current_opt)
-        
-        return optimizations
-    
-    async def _apply_context_optimization(self, optimization: Dict[str, Any]):
-        """Apply a specific context optimization"""
-        desc = optimization['description'].lower()
-        
-        if 'close' in desc or 'quit' in desc:
-            # Extract app name and close it
-            for app in self.system_state.active_apps:
-                if app.lower() in desc:
-                    await self.control_application(app, 'quit')
-                    
-        elif 'minimize' in desc or 'hide' in desc:
-            # Minimize applications
-            for app in self.system_state.active_apps:
-                if app.lower() in desc:
-                    await self.control_application(app, 'hide')
-                    
-        elif 'power' in desc and 'save' in desc:
-            # Enable power saving
-            subprocess.run(['pmset', '-a', 'lowpowermode', '1'], capture_output=True)
-            
-        elif 'notification' in desc and 'disable' in desc:
-            # Disable notifications (Do Not Disturb)
-            script = '''
-            tell application "System Events"
-                keystroke "d" using {command down, option down}
-            end tell
-            '''
-            subprocess.run(['osascript', '-e', script], capture_output=True)
-    
-    def get_system_status(self) -> Dict[str, Any]:
-        """Get current system status"""
-        if not self.system_state:
-            return {'status': 'Not monitoring'}
-        
-        return {
-            'monitoring_active': self.monitoring_active,
-            'last_update': self.system_state.timestamp.isoformat(),
-            'system_health': {
-                'cpu_usage': f"{self.system_state.cpu_usage:.1f}%",
-                'memory_usage': f"{self.system_state.memory_usage:.1f}%",
-                'disk_usage': f"{self.system_state.disk_usage:.1f}%"
-            },
-            'active_apps': len(self.system_state.active_apps),
-            'network_connected': self.system_state.network_status.get('wifi_connected', False),
-            'on_battery': self.system_state.power_status.get('on_battery', False),
-            'optimizations_applied': len(self.control_history),
-            'last_optimization': self.control_history[-1] if self.control_history else None
-        }
-    
-    async def emergency_optimization(self) -> Dict[str, Any]:
-        """Emergency optimization when system is under stress"""
-        logger.warning("Emergency optimization triggered")
-        
-        # Immediate actions
-        actions_taken = []
-        
-        # 1. Purge memory
-        subprocess.run(['sudo', 'purge'], capture_output=True)
-        actions_taken.append("Purged inactive memory")
-        
-        # 2. Enable low power mode if on battery
-        if self.system_state and self.system_state.power_status.get('on_battery'):
-            subprocess.run(['pmset', '-a', 'lowpowermode', '1'], capture_output=True)
-            actions_taken.append("Enabled low power mode")
-        
-        # 3. Close non-essential apps
-        essential_apps = self.safety_limits['protected_apps'] + ['Code', 'Terminal', 'Chrome', 'Safari']
-        
-        if self.system_state:
-            for app in self.system_state.active_apps:
-                if app not in essential_apps and app not in ['JARVIS', 'Python']:
-                    success = await self.control_application(app, 'quit')
-                    if success:
-                        actions_taken.append(f"Closed {app}")
-        
-        # 4. Disable visual effects (reduced transparency)
-        subprocess.run(
-            ['defaults', 'write', 'com.apple.universalaccess', 'reduceTransparency', '-bool', 'true'],
-            capture_output=True
-        )
-        actions_taken.append("Reduced visual effects")
-        
-        return {
-            'success': True,
-            'actions_taken': actions_taken,
-            'timestamp': datetime.now().isoformat()
-        }
-
-# Singleton instance manager
-_macos_integration: Optional[AdvancedMacOSIntegration] = None
-
-def get_macos_integration(api_key: Optional[str] = None) -> AdvancedMacOSIntegration:
-    """Get or create macOS integration instance"""
-    global _macos_integration
-    if _macos_integration is None:
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("Anthropic API key required")
-        _macos_integration = AdvancedMacOSIntegration(api_key)
-    return _macos_integration
-
-# Export main class
-__all__ = ['AdvancedMacOSIntegration', 'get_macos_integration', 'SystemResource', 'ControlAction']

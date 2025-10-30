@@ -3,6 +3,22 @@ Wake Word Service
 =================
 
 Main service for managing wake word detection and JARVIS activation.
+
+This module provides the core wake word detection service that orchestrates
+audio processing, wake word detection, and activation responses. It manages
+the complete lifecycle from audio input to user command processing.
+
+Classes:
+    ServiceState: Enumeration of service states
+    ActivationEvent: Data class for activation events
+    WakeWordService: Main service class
+    WakeWordAPI: API wrapper for the service
+
+Example:
+    >>> service = WakeWordService()
+    >>> await service.start(activation_callback)
+    >>> # Service now listening for wake words
+    >>> await service.stop()
 """
 
 import asyncio
@@ -23,7 +39,16 @@ logger = logging.getLogger(__name__)
 
 
 class ServiceState(str, Enum):
-    """Service state"""
+    """Enumeration of wake word service states.
+    
+    Attributes:
+        STOPPED: Service is not running
+        STARTING: Service is initializing
+        RUNNING: Service is active and monitoring
+        LISTENING: Service detected wake word and listening for command
+        PROCESSING: Service is processing a user command
+        ERROR: Service encountered an error
+    """
     STOPPED = "stopped"
     STARTING = "starting"
     RUNNING = "running"
@@ -34,7 +59,15 @@ class ServiceState(str, Enum):
 
 @dataclass
 class ActivationEvent:
-    """Represents a wake word activation event"""
+    """Represents a wake word activation event.
+    
+    Attributes:
+        detection: The wake word detection that triggered this event
+        response: The activation response given to the user
+        timestamp: Unix timestamp when the activation occurred
+        user_command: Optional command received after activation
+        success: Whether the activation was successful
+    """
     detection: Detection
     response: str
     timestamp: float
@@ -43,12 +76,32 @@ class ActivationEvent:
 
 
 class WakeWordService:
-    """
-    Main service orchestrating wake word detection and JARVIS activation.
+    """Main service orchestrating wake word detection and JARVIS activation.
+    
+    This service manages the complete wake word detection pipeline including
+    audio processing, detection engines, activation responses, and command
+    listening states. It provides callbacks for integration with the main
+    JARVIS system.
+    
+    Attributes:
+        config: Configuration object for wake word settings
+        audio_processor: Audio processing component
+        detector: Wake word detection component
+        state: Current service state
+        is_listening_for_command: Whether waiting for user command
+        command_timeout_task: Async task for command timeout
+        activation_callback: Callback for wake word activations
+        state_callback: Callback for state changes
+        activation_history: List of recent activation events
+        event_queue: Queue for processing events
     """
     
     def __init__(self):
-        """Initialize wake word service"""
+        """Initialize wake word service.
+        
+        Sets up the service with default configuration and initializes
+        all components in a stopped state.
+        """
         self.config = get_config()
         
         # Components
@@ -73,7 +126,26 @@ class WakeWordService:
         logger.info("Wake word service initialized")
     
     async def start(self, activation_callback: Callable[[str], Any]) -> bool:
-        """Start the wake word service"""
+        """Start the wake word service.
+        
+        Initializes all components, calibrates audio, and begins monitoring
+        for wake words. The service must be in STOPPED state to start.
+        
+        Args:
+            activation_callback: Callback function to handle wake word activations.
+                                Should accept a dict with activation details.
+        
+        Returns:
+            True if service started successfully, False otherwise.
+        
+        Raises:
+            Exception: If audio processor fails to start or other initialization errors.
+        
+        Example:
+            >>> async def handle_activation(data):
+            ...     print(f"Wake word: {data['wake_word']}")
+            >>> success = await service.start(handle_activation)
+        """
         if self.state != ServiceState.STOPPED:
             logger.warning(f"Cannot start service in state: {self.state}")
             return False
@@ -118,7 +190,11 @@ class WakeWordService:
             return False
     
     async def stop(self):
-        """Stop the wake word service"""
+        """Stop the wake word service.
+        
+        Cleanly shuts down all components, cancels running tasks, and
+        transitions to STOPPED state.
+        """
         logger.info("Stopping wake word service...")
         
         # Cancel timeout task if running
@@ -139,27 +215,58 @@ class WakeWordService:
         logger.info("Wake word service stopped")
     
     def _on_audio_frame(self, frame: AudioFrame):
-        """Handle audio frame from processor"""
+        """Handle audio frame from processor.
+        
+        Processes incoming audio frames through the wake word detector
+        when the service is in RUNNING state.
+        
+        Args:
+            frame: Audio frame containing PCM data and timestamp
+        """
         if self.detector and self.state == ServiceState.RUNNING:
             # Process for wake word
             self.detector.process_audio(frame.data, frame.timestamp)
     
     def _on_detection(self, detection: Detection):
-        """Handle wake word detection"""
+        """Handle wake word detection.
+        
+        Called when the detector identifies a wake word. Triggers the
+        activation handling process asynchronously.
+        
+        Args:
+            detection: Detection object containing wake word details
+        """
         logger.info(f"Wake word detected: {detection.wake_word} (confidence: {detection.confidence:.2f})")
         
         # Add to event queue
         asyncio.create_task(self._handle_activation(detection))
     
     def _on_detector_state_change(self, state: DetectionState):
-        """Handle detector state changes"""
+        """Handle detector state changes.
+        
+        Updates service state based on detector state transitions.
+        
+        Args:
+            state: New detector state
+        """
         logger.debug(f"Detector state: {state}")
         
         if state == DetectionState.ACTIVATED:
             self._set_state(ServiceState.LISTENING)
     
     async def _handle_activation(self, detection: Detection):
-        """Handle wake word activation"""
+        """Handle wake word activation.
+        
+        Orchestrates the complete activation process including playing sounds,
+        generating responses, notifying callbacks, and setting up command
+        listening state.
+        
+        Args:
+            detection: The wake word detection that triggered activation
+        
+        Raises:
+            Exception: If activation handling fails
+        """
         try:
             # Play activation sound if configured
             if self.config.response.play_activation_sound:
@@ -208,8 +315,11 @@ class WakeWordService:
             logger.error(f"Error handling activation: {e}")
     
     def _get_activation_response(self, context: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Get context-aware activation response based on configuration
+        """Get context-aware activation response based on configuration.
+
+        Generates intelligent, contextually appropriate responses based on
+        time of day, user activity patterns, workspace context, and Phase 4
+        proactive intelligence features.
 
         Args:
             context: Optional context containing:
@@ -219,7 +329,12 @@ class WakeWordService:
                 - user_focus_level: str - deep_work, focused, casual, idle
 
         Returns:
-            Contextually appropriate activation response
+            Contextually appropriate activation response string.
+            
+        Example:
+            >>> context = {'user_focus_level': 'deep_work', 'proactive_mode': True}
+            >>> response = service._get_activation_response(context)
+            >>> print(response)  # "Yes? I'll keep this brief."
         """
         context = context or {}
         responses = []
@@ -349,18 +464,35 @@ class WakeWordService:
         return random.choice(responses)
     
     async def _speak_response(self, response: str):
-        """Speak the response using TTS"""
+        """Speak the response using TTS.
+        
+        Integrates with the text-to-speech system to vocalize the
+        activation response.
+        
+        Args:
+            response: Text response to speak
+        """
         # This would integrate with your existing TTS system
         logger.info(f"Speaking: {response}")
         # TODO: Integrate with JARVISVoiceAPI
     
     async def _play_activation_sound(self):
-        """Play activation sound effect"""
+        """Play activation sound effect.
+        
+        Plays a configured sound effect to indicate wake word activation.
+        """
         # TODO: Implement sound playback
         logger.debug("Playing activation sound")
     
     async def _command_timeout(self, timeout: float):
-        """Handle command timeout"""
+        """Handle command timeout.
+        
+        Waits for the specified timeout period and returns the service
+        to idle state if no command is received.
+        
+        Args:
+            timeout: Timeout duration in seconds
+        """
         await asyncio.sleep(timeout)
         
         if self.is_listening_for_command:
@@ -373,7 +505,11 @@ class WakeWordService:
                 await self._speak_response("Standing by, Sir.")
     
     async def handle_command_received(self):
-        """Called when a command is received after wake word"""
+        """Called when a command is received after wake word.
+        
+        Transitions the service from listening to processing state
+        and cancels the command timeout.
+        """
         self.is_listening_for_command = False
         
         # Cancel timeout
@@ -384,16 +520,31 @@ class WakeWordService:
         self._set_state(ServiceState.PROCESSING)
     
     async def handle_command_complete(self):
-        """Called when command processing is complete"""
+        """Called when command processing is complete.
+        
+        Returns the service to the running state, ready for the next
+        wake word detection.
+        """
         self._set_state(ServiceState.RUNNING)
     
     def report_false_positive(self):
-        """Report false positive detection"""
+        """Report false positive detection.
+        
+        Notifies the detector that the last activation was a false positive
+        to improve future detection accuracy through machine learning.
+        """
         if self.detector:
             self.detector.report_false_positive()
     
     def _set_state(self, state: ServiceState):
-        """Set service state"""
+        """Set service state.
+        
+        Updates the internal state and notifies registered callbacks
+        of state changes.
+        
+        Args:
+            state: New service state
+        """
         if self.state != state:
             logger.debug(f"Service state: {self.state} -> {state}")
             self.state = state
@@ -402,7 +553,14 @@ class WakeWordService:
                 self.state_callback(state)
     
     async def _process_events(self):
-        """Process events from the event queue"""
+        """Process events from the event queue.
+        
+        Continuously processes events while the service is running.
+        This is a placeholder for future event handling functionality.
+        
+        Raises:
+            Exception: If event processing encounters errors
+        """
         while self.state != ServiceState.STOPPED:
             try:
                 # This would handle various events
@@ -411,7 +569,22 @@ class WakeWordService:
                 logger.error(f"Event processing error: {e}")
     
     def get_status(self) -> Dict[str, Any]:
-        """Get service status"""
+        """Get service status.
+        
+        Returns comprehensive status information about the service
+        including configuration, state, and statistics.
+        
+        Returns:
+            Dictionary containing:
+                - enabled: Whether wake word detection is enabled
+                - state: Current service state
+                - is_listening: Whether listening for command
+                - engines: Detection engine statistics
+                - activation_count: Number of activations
+                - last_activation: Timestamp of last activation
+                - wake_words: Configured wake words
+                - sensitivity: Current sensitivity setting
+        """
         return {
             'enabled': self.config.enabled,
             'state': self.state,
@@ -424,7 +597,17 @@ class WakeWordService:
         }
     
     def update_config(self, updates: Dict[str, Any]):
-        """Update configuration dynamically"""
+        """Update configuration dynamically.
+        
+        Applies configuration changes without requiring a service restart.
+        Some changes may require component reinitialization.
+        
+        Args:
+            updates: Dictionary of configuration updates containing:
+                - wake_words: List of wake words to detect
+                - sensitivity: Detection sensitivity level
+                - Other configuration parameters
+        """
         # Update wake words
         if 'wake_words' in updates:
             self.config.detection.wake_words = updates['wake_words']
@@ -439,17 +622,40 @@ class WakeWordService:
 
 
 class WakeWordAPI:
-    """API wrapper for wake word service"""
+    """API wrapper for wake word service.
+    
+    Provides a clean API interface for external components to interact
+    with the wake word service. Handles request validation and response
+    formatting.
+    
+    Attributes:
+        service: The WakeWordService instance to wrap
+    """
     
     def __init__(self, service: WakeWordService):
+        """Initialize API wrapper.
+        
+        Args:
+            service: WakeWordService instance to wrap
+        """
         self.service = service
     
     async def get_status(self) -> Dict[str, Any]:
-        """Get current status"""
+        """Get current status.
+        
+        Returns:
+            Dictionary containing current service status and configuration.
+        """
         return self.service.get_status()
     
     async def enable(self) -> Dict[str, Any]:
-        """Enable wake word detection"""
+        """Enable wake word detection.
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether the operation succeeded
+                - message: Status message
+        """
         if self.service.state == ServiceState.STOPPED:
             # Service needs to be started by main app
             return {
@@ -464,7 +670,13 @@ class WakeWordAPI:
         }
     
     async def disable(self) -> Dict[str, Any]:
-        """Disable wake word detection"""
+        """Disable wake word detection.
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether the operation succeeded
+                - message: Status message
+        """
         self.service.config.enabled = False
         return {
             'success': True,
@@ -472,7 +684,16 @@ class WakeWordAPI:
         }
     
     async def test_activation(self) -> Dict[str, Any]:
-        """Test activation response"""
+        """Test activation response.
+        
+        Generates and optionally speaks a test activation response
+        without requiring an actual wake word detection.
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether the test succeeded
+                - response: The generated response text
+        """
         response = self.service._get_activation_response()
         
         if self.service.config.response.use_voice_response:
@@ -484,7 +705,17 @@ class WakeWordAPI:
         }
     
     async def update_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Update wake word settings"""
+        """Update wake word settings.
+        
+        Args:
+            settings: Dictionary of settings to update
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether the update succeeded
+                - message: Status message
+                - current_settings: Updated service status
+        """
         self.service.update_config(settings)
         return {
             'success': True,

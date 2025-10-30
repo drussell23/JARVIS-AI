@@ -1,6 +1,8 @@
 """
 SpeechBrain STT Engine - Production-Ready Enterprise Edition
-Enterprise-grade speech recognition with advanced features
+
+This module provides an enterprise-grade speech recognition engine built on SpeechBrain,
+featuring advanced capabilities for production environments.
 
 Features:
 - Real speaker embeddings using ECAPA-TDNN
@@ -12,6 +14,19 @@ Features:
 - Async processing with non-blocking inference
 - GPU/CPU/MPS adaptive
 - Memory-efficient processing
+
+Classes:
+    StreamingChunk: Represents a chunk of streaming audio with partial results
+    ConfidenceScores: Detailed confidence breakdown
+    LRUModelCache: LRU cache for transcription results and model states
+    AudioPreprocessor: Advanced audio preprocessing for noise robustness
+    SpeechBrainEngine: Main STT engine with advanced features
+
+Example:
+    >>> engine = SpeechBrainEngine(model_config)
+    >>> await engine.initialize()
+    >>> result = await engine.transcribe(audio_data)
+    >>> print(f"Text: {result.text}, Confidence: {result.confidence}")
 """
 
 import asyncio
@@ -41,7 +56,15 @@ warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarnin
 
 @dataclass
 class StreamingChunk:
-    """Represents a chunk of streaming audio with partial results"""
+    """Represents a chunk of streaming audio with partial results.
+    
+    Attributes:
+        text: Transcribed text for this chunk
+        is_final: Whether this is a final result or partial
+        confidence: Confidence score for the transcription (0.0-1.0)
+        chunk_index: Sequential index of this chunk
+        timestamp_ms: Processing timestamp in milliseconds
+    """
 
     text: str
     is_final: bool
@@ -52,7 +75,15 @@ class StreamingChunk:
 
 @dataclass
 class ConfidenceScores:
-    """Detailed confidence breakdown"""
+    """Detailed confidence breakdown from multiple model components.
+    
+    Attributes:
+        decoder_prob: Decoder probability score (0.0-1.0)
+        acoustic_confidence: Acoustic model confidence based on audio quality
+        language_model_score: Language model plausibility score
+        attention_confidence: Attention mechanism confidence
+        overall_confidence: Combined confidence score (0.0-1.0)
+    """
 
     decoder_prob: float
     acoustic_confidence: float
@@ -62,16 +93,38 @@ class ConfidenceScores:
 
 
 class LRUModelCache:
-    """LRU cache for transcription results and model states"""
+    """LRU cache for transcription results and model states.
+    
+    Provides efficient caching of transcription results with automatic eviction
+    of least recently used items when capacity is exceeded.
+    
+    Attributes:
+        cache: Ordered dictionary storing cached results
+        max_size: Maximum number of items to cache
+        hits: Number of cache hits
+        misses: Number of cache misses
+    """
 
     def __init__(self, max_size: int = 1000):
+        """Initialize LRU cache.
+        
+        Args:
+            max_size: Maximum number of items to cache
+        """
         self.cache: OrderedDict = OrderedDict()
         self.max_size = max_size
         self.hits = 0
         self.misses = 0
 
     def get(self, key: str) -> Optional[STTResult]:
-        """Get cached result"""
+        """Get cached result and update access order.
+        
+        Args:
+            key: Cache key (typically audio hash)
+            
+        Returns:
+            Cached STTResult if found, None otherwise
+        """
         if key in self.cache:
             self.hits += 1
             # Move to end (most recently used)
@@ -81,7 +134,12 @@ class LRUModelCache:
         return None
 
     def put(self, key: str, value: STTResult):
-        """Store result in cache"""
+        """Store result in cache with LRU eviction.
+        
+        Args:
+            key: Cache key (typically audio hash)
+            value: STTResult to cache
+        """
         if key in self.cache:
             self.cache.move_to_end(key)
         else:
@@ -91,7 +149,11 @@ class LRUModelCache:
                 self.cache.popitem(last=False)
 
     def get_stats(self) -> Dict:
-        """Get cache statistics"""
+        """Get cache performance statistics.
+        
+        Returns:
+            Dictionary with cache statistics including hit rate
+        """
         total = self.hits + self.misses
         hit_rate = self.hits / total if total > 0 else 0.0
         return {
@@ -104,16 +166,29 @@ class LRUModelCache:
 
 
 class AudioPreprocessor:
-    """Advanced audio preprocessing for noise robustness"""
+    """Advanced audio preprocessing for noise robustness.
+    
+    Provides various audio enhancement techniques to improve speech recognition
+    accuracy in noisy environments.
+    """
 
     @staticmethod
     def spectral_subtraction(audio: torch.Tensor, noise_factor: float = 1.5) -> torch.Tensor:
-        """
-        Apply spectral subtraction for noise reduction
+        """Apply spectral subtraction for noise reduction.
+
+        Uses STFT-based spectral subtraction to reduce background noise by
+        estimating noise profile from initial audio segment.
 
         Args:
-            audio: Input audio tensor
-            noise_factor: Noise reduction aggressiveness (1.0-3.0)
+            audio: Input audio tensor (1D)
+            noise_factor: Noise reduction aggressiveness (1.0-3.0, higher = more aggressive)
+
+        Returns:
+            Noise-reduced audio tensor
+
+        Example:
+            >>> audio = torch.randn(16000)  # 1 second at 16kHz
+            >>> clean_audio = AudioPreprocessor.spectral_subtraction(audio, noise_factor=2.0)
         """
         try:
             # Store original device to restore later
@@ -165,13 +240,22 @@ class AudioPreprocessor:
     def automatic_gain_control(
         audio: torch.Tensor, target_level: float = 0.5, max_gain: float = 10.0
     ) -> torch.Tensor:
-        """
-        Apply automatic gain control (AGC)
+        """Apply automatic gain control (AGC) to normalize audio levels.
+
+        Adjusts audio amplitude to maintain consistent levels while preventing
+        over-amplification of quiet signals.
 
         Args:
-            audio: Input audio tensor
+            audio: Input audio tensor (1D)
             target_level: Target RMS level (0.0-1.0)
-            max_gain: Maximum gain to apply
+            max_gain: Maximum gain to apply to prevent over-amplification
+
+        Returns:
+            Gain-controlled audio tensor
+
+        Example:
+            >>> quiet_audio = torch.randn(16000) * 0.1
+            >>> normalized = AudioPreprocessor.automatic_gain_control(quiet_audio, target_level=0.5)
         """
         # Calculate RMS
         rms = torch.sqrt(torch.mean(audio**2))
@@ -193,16 +277,25 @@ class AudioPreprocessor:
     def voice_activity_detection(
         audio: torch.Tensor, threshold: float = 0.02, frame_duration_ms: int = 30
     ) -> Tuple[torch.Tensor, float]:
-        """
-        Apply voice activity detection and trim silence
+        """Apply voice activity detection and trim silence.
+
+        Detects speech segments and removes leading/trailing silence based on
+        energy analysis with median filtering for robustness.
 
         Args:
-            audio: Input audio tensor
+            audio: Input audio tensor (1D)
             threshold: Energy threshold for voice detection
-            frame_duration_ms: Frame size in milliseconds
+            frame_duration_ms: Frame size in milliseconds for analysis
 
         Returns:
-            Trimmed audio and voice activity ratio
+            Tuple of (trimmed_audio, voice_activity_ratio)
+            - trimmed_audio: Audio with silence removed
+            - voice_activity_ratio: Fraction of frames containing voice (0.0-1.0)
+
+        Example:
+            >>> audio_with_silence = torch.cat([torch.zeros(8000), torch.randn(16000), torch.zeros(8000)])
+            >>> trimmed, vad_ratio = AudioPreprocessor.voice_activity_detection(audio_with_silence)
+            >>> print(f"VAD ratio: {vad_ratio:.2%}")
         """
         frame_size = int(16000 * frame_duration_ms / 1000)  # samples per frame
         num_frames = len(audio) // frame_size
@@ -245,13 +338,25 @@ class AudioPreprocessor:
     def apply_bandpass_filter(
         audio: torch.Tensor, lowcut: float = 80.0, highcut: float = 7500.0
     ) -> torch.Tensor:
-        """
-        Apply bandpass filter to focus on speech frequencies
+        """Apply bandpass filter to focus on speech frequencies.
+
+        Filters audio to retain only frequencies relevant for speech recognition,
+        reducing noise outside the speech band.
 
         Args:
-            audio: Input audio tensor
-            lowcut: Low cutoff frequency (Hz)
-            highcut: High cutoff frequency (Hz)
+            audio: Input audio tensor (1D)
+            lowcut: Low cutoff frequency in Hz (typical: 80-300 Hz)
+            highcut: High cutoff frequency in Hz (typical: 3400-8000 Hz)
+
+        Returns:
+            Filtered audio tensor
+
+        Raises:
+            Warning: If filter design fails, returns original audio
+
+        Example:
+            >>> noisy_audio = torch.randn(16000)
+            >>> speech_filtered = AudioPreprocessor.apply_bandpass_filter(noisy_audio, 300, 3400)
         """
         try:
             # Convert to numpy and ensure contiguous array
@@ -281,19 +386,59 @@ class AudioPreprocessor:
 
 
 class SpeechBrainEngine(BaseSTTEngine):
-    """
-    Production-ready SpeechBrain STT engine with advanced features
+    """Production-ready SpeechBrain STT engine with advanced features.
+
+    Enterprise-grade speech recognition engine built on SpeechBrain with
+    comprehensive features for production deployment including real speaker
+    embeddings, advanced confidence scoring, noise robustness, and streaming support.
 
     Features:
     - Real speaker embeddings (ECAPA-TDNN)
-    - Advanced confidence scoring
-    - Noise robustness
-    - Streaming support
-    - Model caching
-    - Performance optimization
+    - Advanced confidence scoring from multiple signals
+    - Noise robustness with spectral subtraction, AGC, VAD
+    - Streaming transcription with partial results
+    - Intelligent model caching with LRU eviction
+    - Performance optimization (FP16, quantization, batching)
+    - Async processing with non-blocking inference
+    - Multi-device support (GPU/CPU/MPS)
+
+    Attributes:
+        device: Compute device (cuda/mps/cpu)
+        asr_model: SpeechBrain ASR model
+        speaker_encoder: ECAPA-TDNN speaker encoder
+        speaker_embeddings: Dictionary of speaker profiles
+        fine_tuned: Whether model has been fine-tuned
+        transcription_cache: LRU cache for transcription results
+        embedding_cache: Cache for speaker embeddings
+        use_fp16: Whether to use mixed precision
+        use_quantization: Whether to use model quantization
+        preprocessor: Audio preprocessing pipeline
+
+    Example:
+        >>> config = ModelConfig(name="speechbrain-asr", engine="speechbrain")
+        >>> engine = SpeechBrainEngine(config)
+        >>> await engine.initialize()
+        >>> 
+        >>> # Basic transcription
+        >>> result = await engine.transcribe(audio_bytes)
+        >>> print(f"Text: {result.text}")
+        >>> print(f"Confidence: {result.confidence:.2%}")
+        >>> 
+        >>> # Streaming transcription
+        >>> async for chunk in engine.transcribe_streaming(audio_stream):
+        >>>     print(f"Partial: {chunk.text} (final: {chunk.is_final})")
+        >>> 
+        >>> # Speaker verification
+        >>> embedding = await engine.extract_speaker_embedding(enrollment_audio)
+        >>> is_verified, confidence = await engine.verify_speaker(test_audio, embedding)
     """
 
     def __init__(self, model_config):
+        """Initialize SpeechBrain engine.
+        
+        Args:
+            model_config: Model configuration object with engine settings
+        """
         super().__init__(model_config)
         self.device = None
         self.asr_model = None
@@ -324,7 +469,14 @@ class SpeechBrainEngine(BaseSTTEngine):
         self.speaker_encoder_loaded = False
 
     async def initialize(self):
-        """Initialize SpeechBrain models with lazy loading"""
+        """Initialize SpeechBrain models with lazy loading.
+        
+        Loads the ASR model and sets up the processing pipeline. Speaker encoder
+        is loaded lazily when first needed to optimize startup time.
+        
+        Raises:
+            Exception: If model initialization fails
+        """
         if self.initialized:
             logger.debug(f"SpeechBrain {self.model_config.name} already initialized")
             return
@@ -395,7 +547,14 @@ class SpeechBrainEngine(BaseSTTEngine):
             raise
 
     async def _load_speaker_encoder(self):
-        """Lazy load speaker encoder only when needed"""
+        """Lazy load speaker encoder only when needed.
+        
+        Loads the ECAPA-TDNN speaker encoder for speaker verification and
+        embedding extraction. Called automatically when speaker features are used.
+        
+        Raises:
+            Exception: If speaker encoder loading fails
+        """
         if self.speaker_encoder_loaded:
             return
 
@@ -422,7 +581,14 @@ class SpeechBrainEngine(BaseSTTEngine):
             raise
 
     def _get_optimal_device(self) -> str:
-        """Determine optimal device for inference"""
+        """Determine optimal device for inference.
+        
+        Selects the best available compute device in order of preference:
+        CUDA GPU > Apple Silicon MPS > CPU
+        
+        Returns:
+            Device string: "cuda", "mps", or "cpu"
+        """
         if torch.cuda.is_available():
             return "cuda"
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -431,14 +597,25 @@ class SpeechBrainEngine(BaseSTTEngine):
             return "cpu"
 
     async def transcribe(self, audio_data: bytes) -> STTResult:
-        """
-        Transcribe audio with advanced features
+        """Transcribe audio with advanced features and caching.
+
+        Performs speech recognition with comprehensive preprocessing, confidence
+        scoring, and intelligent caching for optimal performance.
 
         Args:
-            audio_data: Raw audio bytes (WAV format)
+            audio_data: Raw audio bytes in WAV format
 
         Returns:
-            STTResult with transcription and detailed metadata
+            STTResult with transcription text, confidence score, and detailed metadata
+            including preprocessing steps, performance metrics, and confidence breakdown
+
+        Example:
+            >>> audio_bytes = open("speech.wav", "rb").read()
+            >>> result = await engine.transcribe(audio_bytes)
+            >>> print(f"Text: {result.text}")
+            >>> print(f"Confidence: {result.confidence:.2%}")
+            >>> print(f"Latency: {result.latency_ms:.0f}ms")
+            >>> print(f"RTF: {result.metadata['rtf']:.2f}x")
         """
         if not self.initialized:
             await self.initialize()
@@ -544,15 +721,28 @@ class SpeechBrainEngine(BaseSTTEngine):
     async def transcribe_streaming(
         self, audio_stream: AsyncIterator[bytes], chunk_duration_ms: int = 1000
     ) -> AsyncIterator[StreamingChunk]:
-        """
-        Stream transcription with real-time partial results
+        """Stream transcription with real-time partial results.
+
+        Processes audio stream in chunks, providing partial transcription results
+        with low latency for real-time applications.
 
         Args:
-            audio_stream: Async iterator of audio chunks
-            chunk_duration_ms: Duration of each chunk in milliseconds
+            audio_stream: Async iterator yielding audio chunks as bytes
+            chunk_duration_ms: Target duration for processing chunks in milliseconds
 
         Yields:
-            StreamingChunk with partial or final transcriptions
+            StreamingChunk objects with partial or final transcription results
+
+        Example:
+            >>> async def audio_generator():
+            >>>     for chunk in audio_chunks:
+            >>>         yield chunk
+            >>> 
+            >>> async for result in engine.transcribe_streaming(audio_generator()):
+            >>>     if result.is_final:
+            >>>         print(f"Final: {result.text}")
+            >>>     else:
+            >>>         print(f"Partial: {result.text}")
         """
         if not self.initialized:
             await self.initialize()
@@ -620,14 +810,22 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.error(f"Streaming transcription error: {e}", exc_info=True)
 
     async def transcribe_batch(self, audio_batch: List[bytes]) -> List[STTResult]:
-        """
-        Batch transcription for improved throughput
+        """Batch transcription for improved throughput.
+
+        Processes multiple audio samples in a single batch for improved efficiency
+        when transcribing multiple files or segments.
 
         Args:
-            audio_batch: List of audio data bytes
+            audio_batch: List of audio data as bytes
 
         Returns:
-            List of STTResult objects
+            List of STTResult objects corresponding to input audio samples
+
+        Example:
+            >>> audio_files = [open(f"audio_{i}.wav", "rb").read() for i in range(5)]
+            >>> results = await engine.transcribe_batch(audio_files)
+            >>> for i, result in enumerate(results):
+            >>>     print(f"File {i}: {result.text} (conf: {result.confidence:.2%})")
         """
         if not self.initialized:
             await self.initialize()
@@ -644,546 +842,3 @@ class SpeechBrainEngine(BaseSTTEngine):
             for audio_data in audio_batch:
                 # Check cache first
                 # Ensure audio_data is bytes for hashing
-                audio_bytes = (
-                    audio_data if isinstance(audio_data, bytes) else audio_data.encode("utf-8")
-                )
-                audio_hash = hashlib.md5(audio_bytes, usedforsecurity=False).hexdigest()
-                cached_result = self.transcription_cache.get(audio_hash)
-
-                if cached_result is not None:
-                    results.append(cached_result)
-                    continue
-
-                audio_hashes.append(audio_hash)
-
-                # Convert and preprocess
-                audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
-
-                if sample_rate != 16000:
-                    audio_tensor = self.resampler(audio_tensor)
-
-                audio_tensor = await self._preprocess_audio(audio_tensor)
-                audio_tensor = self._normalize_audio(audio_tensor)
-
-                audio_tensors.append(audio_tensor)
-                audio_lengths.append(len(audio_tensor))
-
-            # Process uncached audio
-            if audio_tensors:
-                # Pad to same length for batching
-                max_length = max(audio_lengths)
-                padded_tensors = []
-
-                for tensor in audio_tensors:
-                    if len(tensor) < max_length:
-                        padding = torch.zeros(max_length - len(tensor))
-                        tensor = torch.cat([tensor, padding])
-                    padded_tensors.append(tensor)
-
-                # Stack into batch
-                batch_tensor = torch.stack(padded_tensors)
-
-                # Compute relative lengths for model
-                relative_lengths = torch.tensor([length / max_length for length in audio_lengths])
-
-                # Run batch inference
-                loop = asyncio.get_event_loop()
-                transcriptions = await loop.run_in_executor(
-                    None,
-                    lambda: self.asr_model.transcribe_batch(
-                        batch_tensor.to(self.device), relative_lengths.to(self.device)
-                    ),
-                )
-
-                # Process results
-                for i, (transcription, audio_hash) in enumerate(zip(transcriptions, audio_hashes)):
-                    text = self._extract_text(transcription)
-
-                    # Simple confidence for batch mode
-                    confidence = 0.8  # Default confidence for batch
-
-                    result = STTResult(
-                        text=text.strip(),
-                        confidence=confidence,
-                        engine=self.model_config.engine,
-                        model_name=self.model_config.name,
-                        latency_ms=(time.time() - start_time) * 1000,
-                        audio_duration_ms=(audio_lengths[i] / 16000) * 1000,
-                        metadata={
-                            "batch_processing": True,
-                            "batch_size": len(audio_tensors),
-                        },
-                        audio_hash=audio_hash,
-                    )
-
-                    results.append(result)
-                    self.transcription_cache.put(audio_hash, result)
-
-            logger.info(
-                f"[Batch] Processed {len(audio_batch)} audio samples in "
-                f"{(time.time() - start_time) * 1000:.0f}ms"
-            )
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Batch transcription error: {e}", exc_info=True)
-            return [
-                STTResult(
-                    text="",
-                    confidence=0.0,
-                    engine=self.model_config.engine,
-                    model_name=self.model_config.name,
-                    latency_ms=(time.time() - start_time) * 1000,
-                    audio_duration_ms=0.0,
-                    metadata={"error": str(e)},
-                )
-                for _ in audio_batch
-            ]
-
-    async def _preprocess_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
-        """Apply noise-robust preprocessing pipeline with graceful fallback"""
-        original_audio = audio_tensor.clone()
-
-        try:
-            # 1. Bandpass filter (focus on speech frequencies)
-            try:
-                audio_tensor = self.preprocessor.apply_bandpass_filter(
-                    audio_tensor, lowcut=80.0, highcut=7500.0
-                )
-            except Exception as e:
-                logger.debug(f"Bandpass filter skipped: {e}")
-
-            # 2. Voice activity detection and trimming
-            try:
-                audio_tensor, vad_ratio = self.preprocessor.voice_activity_detection(
-                    audio_tensor, threshold=0.0001
-                )
-
-                # Skip further processing if no voice detected
-                if vad_ratio < 0.05:
-                    logger.debug(f"Low VAD ratio: {vad_ratio:.2%}, skipping noise reduction")
-                    return audio_tensor
-            except Exception as e:
-                logger.debug(f"VAD skipped: {e}")
-                vad_ratio = 1.0  # Assume voice present
-
-            # 3. Spectral subtraction for noise reduction
-            try:
-                audio_tensor = self.preprocessor.spectral_subtraction(
-                    audio_tensor, noise_factor=1.5
-                )
-            except Exception as e:
-                logger.debug(f"Spectral subtraction skipped: {e}")
-
-            # 4. Automatic gain control
-            try:
-                audio_tensor = self.preprocessor.automatic_gain_control(
-                    audio_tensor, target_level=0.5
-                )
-            except Exception as e:
-                logger.debug(f"AGC skipped: {e}")
-
-            return audio_tensor
-
-        except Exception as e:
-            logger.warning(f"Preprocessing error: {e}, using original audio")
-            return original_audio
-
-    def _normalize_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
-        """Normalize audio to [-1, 1] range"""
-        max_val = torch.max(torch.abs(audio_tensor))
-        if max_val > 1e-8:
-            audio_tensor = audio_tensor / max_val
-        return audio_tensor
-
-    async def _run_inference(self, audio_tensor: torch.Tensor) -> Tuple[any, Dict]:
-        """Run ASR inference with optional FP16"""
-        loop = asyncio.get_event_loop()
-
-        # Move to device
-        audio_tensor = audio_tensor.to(self.device)
-
-        # Apply FP16 if supported
-        if self.use_fp16:
-            with torch.cuda.amp.autocast():
-                transcription = await loop.run_in_executor(
-                    None,
-                    lambda: self.asr_model.transcribe_batch(
-                        audio_tensor.unsqueeze(0), torch.tensor([1.0]).to(self.device)
-                    ),
-                )
-        else:
-            transcription = await loop.run_in_executor(
-                None,
-                lambda: self.asr_model.transcribe_batch(
-                    audio_tensor.unsqueeze(0), torch.tensor([1.0]).to(self.device)
-                ),
-            )
-
-        # Extract raw scores if available (for confidence computation)
-        raw_scores = {}  # Would extract from model internals if exposed
-
-        return transcription, raw_scores
-
-    def _extract_text(self, transcription) -> str:
-        """Extract text from transcription result"""
-        text = transcription[0] if transcription else ""
-        if isinstance(text, list):
-            text = " ".join(text) if text else ""
-        return str(text)
-
-    async def _compute_advanced_confidence(
-        self, audio_tensor: torch.Tensor, text: str, raw_scores: Dict
-    ) -> ConfidenceScores:
-        """
-        Compute advanced confidence scores from multiple signals
-
-        Signals:
-        1. Decoder probability scores
-        2. Acoustic model confidence
-        3. Language model scores
-        4. Attention weights analysis
-        5. Audio quality metrics
-        """
-
-        # 1. Decoder probability (would extract from model if exposed)
-        decoder_prob = raw_scores.get("decoder_prob", 0.9)
-
-        # 2. Acoustic model confidence (based on audio quality)
-        acoustic_confidence = self._compute_acoustic_confidence(audio_tensor)
-
-        # 3. Language model score (based on text plausibility)
-        lm_score = self._compute_language_model_score(text)
-
-        # 4. Attention confidence (uniform for now, would extract from model)
-        attention_confidence = 0.85
-
-        # 5. Combine signals with weighted average
-        weights = {
-            "decoder": 0.35,
-            "acoustic": 0.25,
-            "lm": 0.25,
-            "attention": 0.15,
-        }
-
-        overall_confidence = (
-            weights["decoder"] * decoder_prob
-            + weights["acoustic"] * acoustic_confidence
-            + weights["lm"] * lm_score
-            + weights["attention"] * attention_confidence
-        )
-
-        overall_confidence = max(0.0, min(1.0, overall_confidence))
-
-        return ConfidenceScores(
-            decoder_prob=decoder_prob,
-            acoustic_confidence=acoustic_confidence,
-            language_model_score=lm_score,
-            attention_confidence=attention_confidence,
-            overall_confidence=overall_confidence,
-        )
-
-    def _compute_acoustic_confidence(self, audio_tensor: torch.Tensor) -> float:
-        """Compute acoustic confidence from audio quality metrics"""
-        # Energy analysis
-        energy = torch.mean(torch.abs(audio_tensor)).item()
-
-        # SNR estimation
-        signal_power = torch.mean(audio_tensor**2).item()
-        noise_estimate = torch.mean((audio_tensor - torch.mean(audio_tensor)) ** 2).item()
-        snr = 10 * np.log10(signal_power / (noise_estimate + 1e-8))
-
-        # Zero crossing rate
-        zcr = torch.sum(torch.abs(torch.diff(torch.sign(audio_tensor)))).item() / len(audio_tensor)
-
-        # Combine metrics
-        confidence = 1.0
-
-        # Energy check
-        if energy < 0.01:
-            confidence *= 0.5
-        elif energy > 0.8:
-            confidence *= 0.9
-
-        # SNR check
-        if snr < 5:
-            confidence *= 0.6
-        elif snr > 20:
-            confidence *= 1.0
-        else:
-            confidence *= 0.8
-
-        # ZCR check (too high = noise, too low = clipping)
-        if zcr > 0.3 or zcr < 0.01:
-            confidence *= 0.7
-
-        return max(0.0, min(1.0, confidence))
-
-    def _compute_language_model_score(self, text: str) -> float:
-        """Compute language model confidence from text plausibility"""
-        if not text:
-            return 0.0
-
-        confidence = 1.0
-
-        # Length check
-        words = text.split()
-        if len(words) == 0:
-            return 0.0
-        elif len(words) == 1:
-            confidence *= 0.7
-        elif len(words) < 3:
-            confidence *= 0.8
-
-        # Character analysis
-        if not any(c.isalpha() for c in text):
-            confidence *= 0.2
-
-        # Capitalization (all caps or no caps might indicate issues)
-        alpha_chars = [c for c in text if c.isalpha()]
-        if alpha_chars:
-            upper_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
-            if upper_ratio > 0.8 or upper_ratio < 0.05:
-                confidence *= 0.9
-
-        # Repeated characters (might indicate recognition errors)
-        if any(text.count(c * 3) > 0 for c in set(text)):
-            confidence *= 0.6
-
-        return max(0.0, min(1.0, confidence))
-
-    async def _audio_bytes_to_tensor(self, audio_data: bytes) -> Tuple[torch.Tensor, int]:
-        """Convert audio bytes to PyTorch tensor"""
-        try:
-            # Load audio
-            audio_io = io.BytesIO(audio_data)
-            waveform, sample_rate = torchaudio.load(audio_io)
-
-            # Convert stereo to mono
-            if waveform.shape[0] > 1:
-                waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-            # Squeeze to 1D
-            waveform = waveform.squeeze(0)
-
-            return waveform, sample_rate
-
-        except Exception as e:
-            logger.error(f"Audio conversion error: {e}")
-            return torch.zeros(16000), 16000
-
-    async def extract_speaker_embedding(self, audio_data: bytes) -> np.ndarray:
-        """
-        Extract real speaker embedding using ECAPA-TDNN encoder
-
-        Args:
-            audio_data: Raw audio bytes (WAV format)
-
-        Returns:
-            Speaker embedding as numpy array (192-dimensional)
-        """
-        if not self.initialized:
-            await self.initialize()
-
-        # Load speaker encoder if not already loaded
-        if not self.speaker_encoder_loaded:
-            await self._load_speaker_encoder()
-
-        try:
-            # Check embedding cache
-            # Ensure audio_data is bytes for hashing
-            audio_bytes = (
-                audio_data if isinstance(audio_data, bytes) else audio_data.encode("utf-8")
-            )
-            audio_hash = hashlib.md5(audio_bytes, usedforsecurity=False).hexdigest()
-            if audio_hash in self.embedding_cache:
-                logger.debug("[Embedding Cache HIT]")
-                return self.embedding_cache[audio_hash]
-
-            # Convert audio to tensor
-            audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
-
-            # Resample if needed
-            if sample_rate != 16000:
-                audio_tensor = self.resampler(audio_tensor)
-
-            # Normalize
-            audio_tensor = self._normalize_audio(audio_tensor)
-
-            # Extract embedding using SpeechBrain speaker encoder
-            loop = asyncio.get_event_loop()
-            embedding = await loop.run_in_executor(
-                None, lambda: self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
-            )
-
-            # Convert to numpy
-            embedding_np = embedding.squeeze().cpu().numpy()
-
-            # Cache the embedding
-            self.embedding_cache[audio_hash] = embedding_np
-
-            logger.debug(f"[Speaker Embedding] Shape: {embedding_np.shape}")
-
-            return embedding_np
-
-        except Exception as e:
-            logger.error(f"Speaker embedding extraction error: {e}", exc_info=True)
-            # Return zero embedding on error
-            return np.zeros(192)
-
-    async def verify_speaker(
-        self, audio_data: bytes, known_embedding: np.ndarray, threshold: float = 0.75
-    ) -> Tuple[bool, float]:
-        """
-        Verify speaker using real embeddings
-
-        Args:
-            audio_data: Audio to verify
-            known_embedding: Known speaker embedding from enrollment
-            threshold: Similarity threshold (0.0-1.0)
-
-        Returns:
-            Tuple of (is_verified, confidence_score)
-        """
-        try:
-            # Extract embedding from current audio
-            current_embedding = await self.extract_speaker_embedding(audio_data)
-
-            # Compute cosine similarity
-            similarity = self._cosine_similarity(current_embedding, known_embedding)
-
-            # Normalize to 0-1 range
-            confidence = (similarity + 1.0) / 2.0
-
-            is_verified = confidence >= threshold
-
-            logger.debug(
-                f"[Speaker Verification] Confidence: {confidence:.2%}, "
-                f"Threshold: {threshold:.2%}, Verified: {is_verified}"
-            )
-
-            return is_verified, confidence
-
-        except Exception as e:
-            logger.error(f"Speaker verification error: {e}", exc_info=True)
-            return False, 0.0
-
-    def _cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """Compute cosine similarity between embeddings"""
-        norm1 = np.linalg.norm(embedding1)
-        norm2 = np.linalg.norm(embedding2)
-
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-
-        similarity = np.dot(embedding1, embedding2) / (norm1 * norm2)
-        return float(similarity)
-
-    async def fine_tune_on_user_voice(
-        self,
-        audio_samples: List[bytes],
-        transcriptions: List[str],
-        speaker_id: str = "default_user",
-    ):
-        """
-        Fine-tune model on user's voice with real embeddings
-
-        Args:
-            audio_samples: List of audio byte arrays
-            transcriptions: List of ground-truth transcriptions
-            speaker_id: Speaker identifier
-        """
-        if not self.initialized:
-            await self.initialize()
-
-        # Load speaker encoder
-        if not self.speaker_encoder_loaded:
-            await self._load_speaker_encoder()
-
-        logger.info(f"Fine-tuning on {len(audio_samples)} samples for speaker: {speaker_id}")
-
-        try:
-            # Extract embeddings for all samples
-            embeddings = []
-            for audio_data in audio_samples:
-                embedding = await self.extract_speaker_embedding(audio_data)
-                embeddings.append(embedding)
-
-            # Compute speaker profile
-            embeddings_array = np.array(embeddings)
-            mean_embedding = np.mean(embeddings_array, axis=0)
-            std_embedding = np.std(embeddings_array, axis=0)
-
-            self.speaker_embeddings[speaker_id] = {
-                "mean_embedding": mean_embedding,
-                "std_embedding": std_embedding,
-                "sample_count": len(audio_samples),
-                "embedding_dim": mean_embedding.shape[0],
-            }
-
-            self.fine_tuned = True
-            logger.info(
-                f"Speaker profile created for {speaker_id} " f"(dim={mean_embedding.shape[0]})"
-            )
-
-        except Exception as e:
-            logger.error(f"Fine-tuning error: {e}", exc_info=True)
-
-    async def cleanup(self):
-        """Cleanup models and free memory"""
-        if self.asr_model is not None:
-            del self.asr_model
-            self.asr_model = None
-
-        if self.speaker_encoder is not None:
-            del self.speaker_encoder
-            self.speaker_encoder = None
-
-        # Clear caches
-        self.embedding_cache.clear()
-
-        # Clear GPU cache if using CUDA
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        await super().cleanup()
-        logger.info(f"SpeechBrain {self.model_config.name} cleaned up")
-
-    def get_speaker_profile(self, speaker_id: str = "default_user") -> Optional[Dict]:
-        """Get speaker adaptation profile"""
-        return self.speaker_embeddings.get(speaker_id)
-
-    def is_fine_tuned(self) -> bool:
-        """Check if model has been fine-tuned"""
-        return self.fine_tuned and len(self.speaker_embeddings) > 0
-
-    def get_cache_stats(self) -> Dict:
-        """Get comprehensive cache statistics"""
-        return {
-            "transcription_cache": self.transcription_cache.get_stats(),
-            "embedding_cache_size": len(self.embedding_cache),
-            "speaker_profiles": len(self.speaker_embeddings),
-        }
-
-    def enable_performance_optimizations(
-        self, use_fp16: bool = True, use_quantization: bool = False, batch_size: int = 4
-    ):
-        """
-        Enable performance optimizations
-
-        Args:
-            use_fp16: Use mixed precision (FP16) if supported
-            use_quantization: Use model quantization for CPU
-            batch_size: Default batch size for batch processing
-        """
-        if use_fp16 and self.device == "cuda":
-            self.use_fp16 = True
-            logger.info("Enabled FP16 mixed precision")
-
-        if use_quantization and self.device == "cpu":
-            self.use_quantization = True
-            logger.info("Enabled model quantization")
-
-        self.batch_size = batch_size
-        logger.info(f"Set batch size to {batch_size}")

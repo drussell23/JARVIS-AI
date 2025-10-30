@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
 """
 Comprehensive Microphone Diagnostic and Auto-Fix System
-Automatically detects and resolves microphone issues for JARVIS
+
+This module provides automated detection and resolution of microphone issues for JARVIS.
+It performs system-level diagnostics, identifies blocking applications, tests microphone
+access, and applies automatic fixes where possible.
+
+The diagnostic system supports multiple platforms with enhanced functionality on macOS,
+including Core Audio service management, TCC permission checking, and browser compatibility
+testing for Web Speech API integration.
+
+Example:
+    >>> diagnostic = MicrophoneDiagnostic()
+    >>> results = diagnostic.run_diagnostic()
+    >>> print(diagnostic.generate_report(results))
 """
 
 import subprocess
@@ -11,7 +23,7 @@ import time
 import os
 import sys
 import psutil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -19,7 +31,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MicrophoneStatus(Enum):
-    """Microphone status states"""
+    """Enumeration of possible microphone status states.
+    
+    Attributes:
+        AVAILABLE: Microphone is accessible and ready for use
+        BUSY: Microphone is currently in use by another application
+        PERMISSION_DENIED: Application lacks necessary permissions
+        NOT_FOUND: No microphone devices detected
+        ERROR: General error or unknown status
+    """
     AVAILABLE = "available"
     BUSY = "busy"
     PERMISSION_DENIED = "permission_denied"
@@ -27,7 +47,15 @@ class MicrophoneStatus(Enum):
     ERROR = "error"
 
 class BrowserType(Enum):
-    """Supported browsers"""
+    """Enumeration of supported web browsers for Web Speech API.
+    
+    Attributes:
+        CHROME: Google Chrome browser
+        SAFARI: Apple Safari browser
+        FIREFOX: Mozilla Firefox browser
+        EDGE: Microsoft Edge browser
+        UNKNOWN: Unidentified or unsupported browser
+    """
     CHROME = "chrome"
     SAFARI = "safari"
     FIREFOX = "firefox"
@@ -36,7 +64,15 @@ class BrowserType(Enum):
 
 @dataclass
 class DiagnosticResult:
-    """Result of a diagnostic check"""
+    """Result of a single diagnostic check.
+    
+    Attributes:
+        check_name: Human-readable name of the diagnostic check
+        status: Whether the check passed (True) or failed (False)
+        message: Descriptive message about the check result
+        fix_available: Whether an automatic fix is available
+        fix_command: Optional command to execute for fixing the issue
+    """
     check_name: str
     status: bool
     message: str
@@ -45,7 +81,14 @@ class DiagnosticResult:
 
 @dataclass
 class MicrophoneDevice:
-    """Microphone device information"""
+    """Information about a detected microphone device.
+    
+    Attributes:
+        name: Display name of the microphone device
+        device_id: System identifier for the device
+        is_default: Whether this is the default input device
+        is_available: Whether the device is currently available for use
+    """
     name: str
     device_id: str
     is_default: bool
@@ -53,10 +96,28 @@ class MicrophoneDevice:
 
 class MicrophoneDiagnostic:
     """
-    Comprehensive microphone diagnostic and auto-fix system
+    Comprehensive microphone diagnostic and auto-fix system.
+    
+    This class provides a complete suite of diagnostic tools for detecting and
+    resolving microphone-related issues. It can identify blocking applications,
+    test device access, check permissions, and apply automatic fixes.
+    
+    Attributes:
+        platform: Current operating system platform
+        diagnostic_results: List of completed diagnostic check results
+        blocking_apps: List of applications currently using the microphone
+        available_devices: List of detected microphone devices
+        audio_apps: Known applications that commonly use microphone access
+    
+    Example:
+        >>> diagnostic = MicrophoneDiagnostic()
+        >>> results = diagnostic.run_diagnostic()
+        >>> if results['status'] == MicrophoneStatus.AVAILABLE:
+        ...     print("Microphone is ready!")
     """
     
     def __init__(self):
+        """Initialize the diagnostic system with platform detection and app lists."""
         self.platform = platform.system()
         self.diagnostic_results: List[DiagnosticResult] = []
         self.blocking_apps: List[str] = []
@@ -71,12 +132,34 @@ class MicrophoneDiagnostic:
             "Chrome", "Safari", "Firefox", "Edge"
         ]
         
-    def run_diagnostic(self) -> Dict[str, any]:
-        """Run complete diagnostic suite"""
+    def run_diagnostic(self) -> Dict[str, Any]:
+        """Run the complete diagnostic suite and return comprehensive results.
+        
+        Performs all available diagnostic checks including platform compatibility,
+        blocking application detection, device enumeration, browser compatibility,
+        microphone access testing, and automatic fix application.
+        
+        Returns:
+            Dict containing diagnostic results with the following keys:
+                - timestamp: When the diagnostic was run
+                - platform: Operating system platform
+                - checks: List of diagnostic check results
+                - devices: List of detected microphone devices
+                - blocking_apps: List of applications using microphone
+                - fixes_applied: List of automatic fixes that were applied
+                - status: Overall microphone status
+                - recommendations: List of user recommendations
+        
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> results = diagnostic.run_diagnostic()
+            >>> print(f"Status: {results['status']}")
+            >>> print(f"Found {len(results['devices'])} devices")
+        """
         print("\n🔍 JARVIS Microphone Diagnostic System")
         print("=" * 50)
         
-        results: Dict[str, any] = {
+        results: Dict[str, Any] = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "platform": self.platform,
             "checks": [],
@@ -150,8 +233,12 @@ class MicrophoneDiagnostic:
         
         return results
     
-    def _check_macos_compatibility(self):
-        """Check macOS specific requirements"""
+    def _check_macos_compatibility(self) -> None:
+        """Check macOS-specific requirements and system compatibility.
+        
+        Verifies macOS version compatibility, microphone permissions, and
+        Core Audio service status. Adds results to diagnostic_results list.
+        """
         # Check macOS version
         try:
             version = subprocess.run(
@@ -177,8 +264,8 @@ class MicrophoneDiagnostic:
                         f"macOS {version} may have compatibility issues"
                     )
                 )
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not check macOS version: {e}")
         
         # Check if Terminal/IDE has microphone permission
         self._check_macos_microphone_permission()
@@ -186,8 +273,12 @@ class MicrophoneDiagnostic:
         # Check Core Audio
         self._check_core_audio()
     
-    def _check_macos_microphone_permission(self):
-        """Check if current process has microphone permission"""
+    def _check_macos_microphone_permission(self) -> None:
+        """Check if the current process has microphone permission on macOS.
+        
+        Uses tccutil to verify microphone access permissions in the TCC database.
+        Adds permission status to diagnostic results with fix recommendations.
+        """
         try:
             # Check TCC database for microphone permissions
             result = subprocess.run(
@@ -206,7 +297,8 @@ class MicrophoneDiagnostic:
                     fix_command="tccutil reset Microphone"
                 )
             )
-        except:
+        except Exception as e:
+            logger.warning(f"Could not check microphone permission: {e}")
             # Fallback check
             self.diagnostic_results.append(
                 DiagnosticResult(
@@ -217,8 +309,12 @@ class MicrophoneDiagnostic:
                 )
             )
     
-    def _check_core_audio(self):
-        """Check Core Audio service status"""
+    def _check_core_audio(self) -> None:
+        """Check the status of the Core Audio service on macOS.
+        
+        Verifies that the coreaudiod daemon is running, which is essential
+        for audio device functionality. Provides restart command if needed.
+        """
         try:
             result = subprocess.run(
                 ["pgrep", "coreaudiod"],
@@ -236,11 +332,23 @@ class MicrophoneDiagnostic:
                     fix_command="sudo killall coreaudiod"
                 )
             )
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not check Core Audio status: {e}")
     
     def _find_blocking_apps(self) -> List[str]:
-        """Find applications that might be using the microphone"""
+        """Find applications that might be using the microphone.
+        
+        Scans running processes for known audio applications and checks
+        system resources for audio device access using lsof.
+        
+        Returns:
+            List of application names that may be blocking microphone access.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> blocking = diagnostic._find_blocking_apps()
+            >>> print(f"Found {len(blocking)} blocking apps")
+        """
         blocking_apps = []
         
         if self.platform == "Darwin":
@@ -252,7 +360,7 @@ class MicrophoneDiagnostic:
                         if app.lower() in proc_name.lower():
                             blocking_apps.append(proc_name)
                             print(f"  ⚠️  Found: {proc_name} (PID: {proc.info['pid']})")
-                except:
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
             
             # Check lsof for audio device access
@@ -272,8 +380,8 @@ class MicrophoneDiagnostic:
                                 app_name = parts[0]
                                 if app_name not in blocking_apps:
                                     blocking_apps.append(app_name)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not check lsof for audio devices: {e}")
         
         if blocking_apps:
             self.diagnostic_results.append(
@@ -296,7 +404,20 @@ class MicrophoneDiagnostic:
         return blocking_apps
     
     def _list_microphone_devices(self) -> List[MicrophoneDevice]:
-        """List available microphone devices"""
+        """Enumerate available microphone devices on the system.
+        
+        Uses system_profiler on macOS to detect audio input devices and
+        their configuration status.
+        
+        Returns:
+            List of MicrophoneDevice objects representing detected devices.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> devices = diagnostic._list_microphone_devices()
+            >>> for device in devices:
+            ...     print(f"{device.name}: {'Default' if device.is_default else 'Available'}")
+        """
         devices = []
         
         if self.platform == "Darwin":
@@ -322,8 +443,8 @@ class MicrophoneDiagnostic:
                                     is_available=True
                                 )
                             )
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not enumerate audio devices: {e}")
         
         if devices:
             self.diagnostic_results.append(
@@ -345,8 +466,13 @@ class MicrophoneDiagnostic:
         
         return devices
     
-    def _check_browser_compatibility(self):
-        """Check browser compatibility for Web Speech API"""
+    def _check_browser_compatibility(self) -> None:
+        """Check browser compatibility for Web Speech API support.
+        
+        Identifies running browsers and evaluates their Web Speech API support
+        level. Chrome and Edge have full support, Safari has partial support,
+        and Firefox has no support.
+        """
         browsers = {
             BrowserType.CHROME: self._is_browser_running("Google Chrome"),
             BrowserType.SAFARI: self._is_browser_running("Safari"),
@@ -379,17 +505,47 @@ class MicrophoneDiagnostic:
         )
     
     def _is_browser_running(self, browser_name: str) -> bool:
-        """Check if a specific browser is running"""
+        """Check if a specific browser process is currently running.
+        
+        Args:
+            browser_name: Name of the browser to check for (e.g., "Google Chrome")
+            
+        Returns:
+            True if the browser process is found, False otherwise.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> if diagnostic._is_browser_running("Google Chrome"):
+            ...     print("Chrome is running")
+        """
         for proc in psutil.process_iter(['name']):
             try:
                 if browser_name.lower() in proc.info['name'].lower():
                     return True
-            except:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return False
     
     def _test_microphone_access(self) -> MicrophoneStatus:
-        """Test actual microphone access"""
+        """Test actual microphone access by attempting to record audio.
+        
+        Attempts to record a brief audio sample using sox to verify that
+        the microphone is accessible and not blocked by permissions or
+        other applications.
+        
+        Returns:
+            MicrophoneStatus indicating the current state of microphone access.
+            
+        Raises:
+            No exceptions are raised; all errors are caught and converted
+            to appropriate MicrophoneStatus values.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> status = diagnostic._test_microphone_access()
+            >>> if status == MicrophoneStatus.AVAILABLE:
+            ...     print("Microphone is ready!")
+        """
         if self.platform == "Darwin":
             try:
                 # Try to record a short audio sample
@@ -432,7 +588,21 @@ class MicrophoneDiagnostic:
         return MicrophoneStatus.ERROR
     
     def _apply_automatic_fixes(self) -> List[str]:
-        """Apply automatic fixes for common issues"""
+        """Apply automatic fixes for common microphone issues.
+        
+        Attempts to resolve detected issues by restarting services,
+        identifying blocking applications, and providing guidance for
+        permission issues.
+        
+        Returns:
+            List of strings describing the fixes that were applied or attempted.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> fixes = diagnostic._apply_automatic_fixes()
+            >>> for fix in fixes:
+            ...     print(f"Applied: {fix}")
+        """
         fixes_applied = []
         
         # 1. Restart Core Audio if needed
@@ -443,7 +613,8 @@ class MicrophoneDiagnostic:
                 subprocess.run(["sudo", "killall", "coreaudiod"], capture_output=True)
                 time.sleep(2)
                 fixes_applied.append("Restarted Core Audio service")
-            except:
+            except Exception as e:
+                logger.warning(f"Could not restart Core Audio: {e}")
                 print("  ⚠️  Could not restart Core Audio (may need sudo)")
         
         # 2. Kill blocking applications (with user confirmation)
@@ -456,7 +627,7 @@ class MicrophoneDiagnostic:
             fixes_applied.append(f"Identified {len(self.blocking_apps)} blocking apps")
         
         # 3. Reset microphone permissions if needed
-        permission_check = next((r for r in self.diagnostic_results if r.check_name == "Microphone Permission"), None)  # type: ignore
+        permission_check = next((r for r in self.diagnostic_results if r.check_name == "Microphone Permission"), None)
         if permission_check and not permission_check.status:
             print("  🔧 Microphone permission needs to be granted")
             print("     Please grant permission when prompted by your browser")
@@ -465,7 +636,20 @@ class MicrophoneDiagnostic:
         return fixes_applied
     
     def _generate_recommendations(self) -> List[str]:
-        """Generate specific recommendations based on diagnostic results"""
+        """Generate specific recommendations based on diagnostic results.
+        
+        Analyzes the diagnostic results to provide actionable recommendations
+        for resolving microphone issues and optimizing JARVIS performance.
+        
+        Returns:
+            List of recommendation strings for the user to follow.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> recommendations = diagnostic._generate_recommendations()
+            >>> for rec in recommendations:
+            ...     print(f"Recommendation: {rec}")
+        """
         recommendations = []
         
         # Browser recommendations
@@ -481,14 +665,31 @@ class MicrophoneDiagnostic:
             recommendations.append("Connect a microphone or check System Preferences → Sound → Input")
         
         # Permission recommendations
-        permission_check = next((r for r in self.diagnostic_results if r.check_name == "Microphone Permission"), None)  # type: ignore
+        permission_check = next((r for r in self.diagnostic_results if r.check_name == "Microphone Permission"), None)
         if permission_check and not permission_check.status:
             recommendations.append("Grant microphone permission in System Preferences → Security & Privacy → Privacy → Microphone")
         
         return recommendations
     
-    def generate_report(self, results: Dict[str, any]) -> str:
-        """Generate a human-readable diagnostic report"""
+    def generate_report(self, results: Dict[str, Any]) -> str:
+        """Generate a human-readable diagnostic report from results.
+        
+        Creates a formatted text report summarizing all diagnostic findings,
+        device information, blocking applications, applied fixes, and
+        recommendations.
+        
+        Args:
+            results: Dictionary containing diagnostic results from run_diagnostic()
+            
+        Returns:
+            Formatted string report suitable for display or logging.
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> results = diagnostic.run_diagnostic()
+            >>> report = diagnostic.generate_report(results)
+            >>> print(report)
+        """
         report = []
         report.append("\n" + "=" * 60)
         report.append("📊 JARVIS MICROPHONE DIAGNOSTIC REPORT")
@@ -539,19 +740,45 @@ class MicrophoneDiagnostic:
         
         return "\n".join(report)
     
-    def save_diagnostic_log(self, results: Dict[str, any], filepath: str = "microphone_diagnostic.log"):
-        """Save diagnostic results to a log file"""
+    def save_diagnostic_log(self, results: Dict[str, Any], filepath: str = "microphone_diagnostic.log") -> None:
+        """Save diagnostic results to a log file.
+        
+        Writes both the human-readable report and raw diagnostic data
+        to a specified log file for later analysis or troubleshooting.
+        
+        Args:
+            results: Dictionary containing diagnostic results from run_diagnostic()
+            filepath: Path where the log file should be saved
+            
+        Example:
+            >>> diagnostic = MicrophoneDiagnostic()
+            >>> results = diagnostic.run_diagnostic()
+            >>> diagnostic.save_diagnostic_log(results, "my_diagnostic.log")
+        """
         report = self.generate_report(results)
         
         with open(filepath, 'w') as f:
             f.write(report)
             f.write("\n\nRAW DIAGNOSTIC DATA:\n")
-            f.write(json.dumps(results, indent=2))
+            f.write(json.dumps(results, indent=2, default=str))
         
         print(f"\n📄 Diagnostic log saved to: {filepath}")
 
-def run_diagnostic_sync():
-    """Run diagnostic synchronously"""
+def run_diagnostic_sync() -> Dict[str, Any]:
+    """Run diagnostic synchronously and save results to log.
+    
+    Convenience function that creates a MicrophoneDiagnostic instance,
+    runs the complete diagnostic suite, displays the report, and saves
+    the results to a log file.
+    
+    Returns:
+        Dictionary containing complete diagnostic results.
+        
+    Example:
+        >>> results = run_diagnostic_sync()
+        >>> if results['status'] == MicrophoneStatus.AVAILABLE:
+        ...     print("Microphone is working!")
+    """
     diagnostic = MicrophoneDiagnostic()
     results = diagnostic.run_diagnostic()
     report = diagnostic.generate_report(results)
@@ -564,8 +791,20 @@ def run_diagnostic_sync():
     
     return results
 
-def main():
-    """Run diagnostic from command line"""
+def main() -> int:
+    """Run diagnostic from command line interface.
+    
+    Main entry point for command-line execution. Displays platform
+    compatibility warnings, runs the diagnostic suite, generates
+    a report, and saves results to a log file.
+    
+    Returns:
+        Exit code: 0 if microphone is available, 1 if issues detected.
+        
+    Example:
+        $ python microphone_diagnostic.py
+        # Runs complete diagnostic and displays results
+    """
     if platform.system() != "Darwin":
         print("⚠️  This diagnostic tool is currently optimized for macOS")
         print("   Limited functionality on other platforms")

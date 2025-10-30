@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
-"""
-Python-based fallback classifier for when Swift is not available
-Uses NLP libraries to provide intelligent command routing
+"""Python-based fallback classifier for when Swift is not available.
+
+This module provides a comprehensive NLP-based command classification system
+that serves as a fallback when Swift-based classification is unavailable.
+It uses various NLP libraries (spaCy, NLTK) to intelligently route commands
+between system operations and vision analysis tasks.
+
+The classifier learns from user feedback and maintains patterns to improve
+accuracy over time. It provides linguistic analysis, intent detection, and
+confidence scoring for command routing decisions.
+
+Example:
+    >>> router = FallbackIntelligentCommandRouter()
+    >>> handler_type, details = await router.route_command("close whatsapp")
+    >>> print(handler_type)  # "system"
+    >>> print(details["confidence"])  # 0.8
 """
 
 import re
@@ -14,7 +27,9 @@ import logging
 
 # Optional NLP imports
 try:
-        nlp =     SPACY_AVAILABLE = True
+    import spacy
+    nlp = spacy.load("en_core_web_sm")
+    SPACY_AVAILABLE = True
 except:
     SPACY_AVAILABLE = False
 
@@ -29,12 +44,27 @@ except:
 logger = logging.getLogger(__name__)
 
 class PythonCommandClassifier:
-    """
-    Python-based intelligent command classifier
-    Uses linguistic analysis to route commands without hardcoding
+    """Python-based intelligent command classifier using linguistic analysis.
+    
+    This class uses NLP techniques to analyze commands and determine whether
+    they should be routed to system operations or vision analysis handlers.
+    It maintains learned patterns and provides confidence scoring for decisions.
+    
+    Attributes:
+        cache_file (Path): Path to the pattern cache file
+        learned_patterns (Dict[str, Any]): Dictionary of learned command patterns
+        action_verbs (set): Set of verbs that indicate system commands
+        question_words (set): Set of words that indicate vision queries
+        vision_verbs (set): Set of verbs related to vision operations
     """
     
     def __init__(self, cache_file: Optional[str] = None):
+        """Initialize the command classifier.
+        
+        Args:
+            cache_file: Optional path to cache file for learned patterns.
+                       Defaults to ~/.jarvis/command_patterns.json
+        """
         self.cache_file = cache_file or Path.home() / ".jarvis" / "command_patterns.json"
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
         
@@ -63,13 +93,18 @@ class PythonCommandClassifier:
         }
     
     def _load_patterns(self) -> Dict[str, Any]:
-        """Load learned patterns from cache"""
+        """Load learned patterns from cache file.
+        
+        Returns:
+            Dictionary containing learned patterns, commands, and statistics.
+            Returns default structure if cache file doesn't exist or is invalid.
+        """
         if self.cache_file.exists():
             try:
                 with open(self.cache_file, 'r') as f:
                     return json.load(f)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load patterns cache: {e}")
         return {
             "commands": {},
             "patterns": {},
@@ -77,7 +112,11 @@ class PythonCommandClassifier:
         }
     
     def _save_patterns(self):
-        """Save learned patterns to cache"""
+        """Save learned patterns to cache file.
+        
+        Raises:
+            Exception: If unable to write to cache file (logged as error)
+        """
         try:
             with open(self.cache_file, 'w') as f:
                 json.dump(self.learned_patterns, f, indent=2)
@@ -85,7 +124,24 @@ class PythonCommandClassifier:
             logger.error(f"Failed to save patterns: {e}")
     
     def _extract_linguistic_features(self, text: str) -> Dict[str, Any]:
-        """Extract linguistic features from text"""
+        """Extract linguistic features from input text using available NLP libraries.
+        
+        Analyzes text using spaCy (preferred), NLTK, or basic pattern matching
+        to extract features like verbs, entities, and sentence structure.
+        
+        Args:
+            text: Input text to analyze
+            
+        Returns:
+            Dictionary containing extracted features:
+                - has_question (bool): Whether text contains question indicators
+                - has_action_verb (bool): Whether text contains action verbs
+                - has_vision_verb (bool): Whether text contains vision-related verbs
+                - first_word (str): First word of the text
+                - verb_count (int): Number of verbs detected
+                - entities (List[str]): Named entities found in text
+                - sentence_type (str): "question" or "statement"
+        """
         features = {
             "has_question": False,
             "has_action_verb": False,
@@ -150,7 +206,15 @@ class PythonCommandClassifier:
         return features
     
     def _determine_intent(self, text: str, features: Dict[str, Any]) -> str:
-        """Determine the intent of the command"""
+        """Determine the intent of the command based on linguistic features.
+        
+        Args:
+            text: Original command text
+            features: Extracted linguistic features
+            
+        Returns:
+            Intent classification: "query", "action", "analysis", or "help_request"
+        """
         # Questions about state or content -> vision
         if features["has_question"]:
             if "how" in text.lower() and any(verb in text.lower() for verb in ["close", "open", "quit"]):
@@ -179,7 +243,29 @@ class PythonCommandClassifier:
         return "action"  # Default to action for statements
     
     async def classify(self, text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Classify a command and return routing information"""
+        """Classify a command and return comprehensive routing information.
+        
+        Performs linguistic analysis to determine the appropriate handler type,
+        intent, and confidence level for the given command.
+        
+        Args:
+            text: Command text to classify
+            context: Optional context information (currently unused)
+            
+        Returns:
+            Classification result containing:
+                - type (str): Handler type ("system" or "vision")
+                - intent (str): Command intent classification
+                - confidence (float): Confidence score (0.0-0.95)
+                - features (Dict): Extracted linguistic features
+                - reasoning (str): Human-readable explanation
+                - entities (List[str]): Named entities found
+                
+        Example:
+            >>> result = await classifier.classify("close whatsapp")
+            >>> print(result["type"])  # "system"
+            >>> print(result["confidence"])  # 0.8
+        """
         # Extract features
         features = self._extract_linguistic_features(text)
         
@@ -230,7 +316,17 @@ class PythonCommandClassifier:
         return result
     
     def _generate_reasoning(self, text: str, features: Dict[str, Any], intent: str, handler_type: str) -> str:
-        """Generate human-readable reasoning for the classification"""
+        """Generate human-readable reasoning for the classification decision.
+        
+        Args:
+            text: Original command text
+            features: Extracted linguistic features
+            intent: Determined intent
+            handler_type: Determined handler type
+            
+        Returns:
+            Human-readable explanation of the classification decision
+        """
         reasons = []
         
         if features["has_question"]:
@@ -254,7 +350,16 @@ class PythonCommandClassifier:
         return ". ".join(reasons) + "."
     
     async def learn(self, text: str, correct_type: str, was_successful: bool):
-        """Learn from feedback"""
+        """Learn from user feedback to improve future classifications.
+        
+        Updates the learned patterns cache with feedback about whether
+        a classification was correct and successful.
+        
+        Args:
+            text: Original command text
+            correct_type: The correct handler type ("system" or "vision")
+            was_successful: Whether the command execution was successful
+        """
         normalized = text.lower().strip()
         
         if normalized not in self.learned_patterns["commands"]:
@@ -282,7 +387,15 @@ class PythonCommandClassifier:
         self._save_patterns()
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get classifier statistics"""
+        """Get classifier performance statistics.
+        
+        Returns:
+            Dictionary containing:
+                - total (int): Total number of classifications
+                - correct (int): Number of correct classifications
+                - learned_commands (int): Number of learned command patterns
+                - accuracy (float): Overall accuracy ratio
+        """
         stats = self.learned_patterns["stats"].copy()
         stats["learned_commands"] = len(self.learned_patterns["commands"])
         
@@ -294,29 +407,62 @@ class PythonCommandClassifier:
         return stats
 
 class FallbackIntelligentCommandRouter:
-    """
-    Fallback intelligent command router using Python NLP
-    Drop-in replacement for Swift-based router
+    """Fallback intelligent command router using Python NLP.
+    
+    This class provides a drop-in replacement for Swift-based command routing
+    when Swift is not available. It uses the PythonCommandClassifier to make
+    intelligent routing decisions based on linguistic analysis.
+    
+    Attributes:
+        classifier (PythonCommandClassifier): The underlying classification engine
     """
     
     def __init__(self):
+        """Initialize the fallback command router.
+        
+        Creates a PythonCommandClassifier instance and logs that the fallback
+        system is being used.
+        """
         self.classifier = PythonCommandClassifier()
         logger.info("Using Python-based NLP classifier (Swift unavailable)")
     
     async def route_command(self, text: str, context: Optional[Dict] = None) -> Tuple[str, Dict[str, Any]]:
-        """
-        Route a command to the appropriate handler
-        Returns: (handler_type, classification_details)
+        """Route a command to the appropriate handler based on linguistic analysis.
+        
+        Args:
+            text: Command text to route
+            context: Optional context information for routing decisions
+            
+        Returns:
+            Tuple containing:
+                - handler_type (str): "system" or "vision"
+                - classification_details (Dict): Detailed classification information
+                
+        Example:
+            >>> router = FallbackIntelligentCommandRouter()
+            >>> handler_type, details = await router.route_command("close safari")
+            >>> print(handler_type)  # "system"
+            >>> print(details["confidence"])  # 0.8
         """
         classification = await self.classifier.classify(text, context)
         return classification["type"], classification
     
     async def provide_feedback(self, command: str, correct_type: str, was_successful: bool):
-        """Provide feedback to improve classification"""
+        """Provide feedback to improve future classification accuracy.
+        
+        Args:
+            command: The original command text
+            correct_type: The correct handler type ("system" or "vision")
+            was_successful: Whether the command execution was successful
+        """
         await self.classifier.learn(command, correct_type, was_successful)
     
     def get_statistics(self) -> Dict[str, Any]:
-        """Get routing statistics"""
+        """Get comprehensive routing and classification statistics.
+        
+        Returns:
+            Dictionary containing performance metrics and learned patterns count
+        """
         return self.classifier.get_stats()
 
 # Export the fallback router
@@ -325,6 +471,11 @@ IntelligentCommandRouter = FallbackIntelligentCommandRouter
 if __name__ == "__main__":
     # Test the classifier
     async def test():
+        """Test function to demonstrate classifier capabilities.
+        
+        Creates a router instance and tests it with various command types
+        to show classification results, confidence scores, and reasoning.
+        """
         router = FallbackIntelligentCommandRouter()
         
         test_commands = [

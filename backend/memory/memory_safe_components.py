@@ -1,6 +1,21 @@
 """
 Memory-Safe Component Wrappers for Intelligence Integration
-Provides safe loading and management of AI components with memory constraints
+
+This module provides safe loading and management of AI components with memory constraints
+on Apple Silicon M1/M2 systems. It implements automatic component loading/unloading based
+on memory availability and usage patterns.
+
+The module includes:
+- Base classes for memory-safe components
+- Specific wrappers for NLP, RAG, and Voice engines
+- Intelligent component management with usage tracking
+- Decorators for safe method execution
+
+Example:
+    >>> memory_manager = M1MemoryManager()
+    >>> component_manager = IntelligentComponentManager(memory_manager)
+    >>> await component_manager.preload_essential_components()
+    >>> nlp_component = await component_manager.get_component("nlp_engine")
 """
 
 import asyncio
@@ -16,7 +31,17 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 class ComponentState:
-    """Track component loading state"""
+    """Track component loading state.
+    
+    Defines the possible states a memory-safe component can be in during its lifecycle.
+    
+    Attributes:
+        UNLOADED: Component is not loaded in memory
+        LOADING: Component is currently being loaded
+        LOADED: Component is loaded and ready for use
+        UNLOADING: Component is currently being unloaded
+        ERROR: Component encountered an error during loading/unloading
+    """
 
     UNLOADED = "unloaded"
     LOADING = "loading"
@@ -26,8 +51,20 @@ class ComponentState:
 
 class MemorySafeComponent(Generic[T], ABC):
     """
-    Base class for memory-safe components
-    Handles automatic loading/unloading based on memory availability
+    Base class for memory-safe components.
+    
+    Handles automatic loading/unloading based on memory availability and provides
+    a consistent interface for managing AI components with memory constraints.
+    
+    This abstract base class implements the core memory management logic while
+    allowing subclasses to define component-specific creation and cleanup behavior.
+    
+    Attributes:
+        component_name: Unique identifier for the component
+        memory_manager: M1MemoryManager instance for memory tracking
+        priority: Component priority level for loading decisions
+        estimated_memory_mb: Estimated memory usage in megabytes
+        load_timeout: Maximum time to wait for component loading
     """
 
     def __init__(
@@ -38,6 +75,15 @@ class MemorySafeComponent(Generic[T], ABC):
         estimated_memory_mb: int = 500,
         load_timeout: float = 30.0,
     ):
+        """Initialize a memory-safe component.
+        
+        Args:
+            component_name: Unique identifier for the component
+            memory_manager: M1MemoryManager instance for memory tracking
+            priority: Component priority level for loading decisions
+            estimated_memory_mb: Estimated memory usage in megabytes
+            load_timeout: Maximum time to wait for component loading in seconds
+        """
         self.component_name = component_name
         self.memory_manager = memory_manager
         self.priority = priority
@@ -58,16 +104,44 @@ class MemorySafeComponent(Generic[T], ABC):
 
     @abstractmethod
     async def _create_component(self) -> T:
-        """Create the actual component instance"""
+        """Create the actual component instance.
+        
+        This method must be implemented by subclasses to define how to create
+        the specific component type.
+        
+        Returns:
+            The created component instance
+            
+        Raises:
+            Exception: Any error that occurs during component creation
+        """
         pass
 
     @abstractmethod
     async def _cleanup_component(self, component: T) -> None:
-        """Cleanup component resources"""
+        """Cleanup component resources.
+        
+        This method must be implemented by subclasses to define how to properly
+        cleanup the component and release its resources.
+        
+        Args:
+            component: The component instance to cleanup
+            
+        Raises:
+            Exception: Any error that occurs during cleanup
+        """
         pass
 
     async def get_component(self) -> Optional[T]:
-        """Get the component, loading it if necessary and possible"""
+        """Get the component, loading it if necessary and possible.
+        
+        Returns the component instance if it's loaded or can be loaded.
+        If the component cannot be loaded due to memory constraints or errors,
+        returns None.
+        
+        Returns:
+            The component instance if available, None otherwise
+        """
         if self._state == ComponentState.LOADED and self._component:
             return self._component
 
@@ -76,7 +150,14 @@ class MemorySafeComponent(Generic[T], ABC):
         return self._component if success else None
 
     async def ensure_loaded(self) -> bool:
-        """Ensure component is loaded, return success status"""
+        """Ensure component is loaded, return success status.
+        
+        Attempts to load the component if it's not already loaded. Handles
+        concurrent loading attempts and memory availability checks.
+        
+        Returns:
+            True if component is loaded successfully, False otherwise
+        """
         async with self._load_lock:
             if self._state == ComponentState.LOADED:
                 return True
@@ -100,7 +181,14 @@ class MemorySafeComponent(Generic[T], ABC):
             return await self._load_component()
 
     async def _load_component(self) -> bool:
-        """Load the component with memory management"""
+        """Load the component with memory management.
+        
+        Internal method that handles the actual component loading process,
+        including timeout handling and memory manager registration.
+        
+        Returns:
+            True if component loaded successfully, False otherwise
+        """
         self._state = ComponentState.LOADING
 
         try:
@@ -144,7 +232,14 @@ class MemorySafeComponent(Generic[T], ABC):
             return False
 
     async def unload(self) -> bool:
-        """Unload the component to free memory"""
+        """Unload the component to free memory.
+        
+        Safely unloads the component and releases its resources. Updates
+        the memory manager and component state accordingly.
+        
+        Returns:
+            True if component unloaded successfully, False otherwise
+        """
         async with self._load_lock:
             if self._state != ComponentState.LOADED:
                 return True
@@ -170,7 +265,22 @@ class MemorySafeComponent(Generic[T], ABC):
                 return False
 
     def get_status(self) -> Dict[str, Any]:
-        """Get component status information"""
+        """Get component status information.
+        
+        Returns comprehensive status information about the component including
+        its current state, statistics, and availability.
+        
+        Returns:
+            Dictionary containing component status information with keys:
+            - name: Component name
+            - state: Current component state
+            - priority: Component priority level
+            - estimated_memory_mb: Estimated memory usage
+            - load_count: Number of times component has been loaded
+            - error_count: Number of errors encountered
+            - last_error: Last error message if any
+            - is_available: Whether component is currently available
+        """
         return {
             "name": self.component_name,
             "state": self._state,
@@ -184,8 +294,26 @@ class MemorySafeComponent(Generic[T], ABC):
 
 def memory_safe_method(method: Callable) -> Callable:
     """
-    Decorator for methods that require a loaded component
-    Automatically loads component if needed and handles errors
+    Decorator for methods that require a loaded component.
+    
+    Automatically loads component if needed and handles errors gracefully.
+    The decorated method will receive the component instance as its first
+    parameter after self.
+    
+    Args:
+        method: The method to decorate
+        
+    Returns:
+        Decorated method that ensures component availability
+        
+    Raises:
+        TypeError: If used on non-MemorySafeComponent instance
+        RuntimeError: If component cannot be loaded for non-getter methods
+        
+    Example:
+        >>> @memory_safe_method
+        >>> async def process_data(self, component, data):
+        >>>     return await component.process(data)
     """
 
     @functools.wraps(method)
@@ -212,9 +340,22 @@ def memory_safe_method(method: Callable) -> Callable:
     return wrapper
 
 class MemorySafeNLPEngine(MemorySafeComponent):
-    """Memory-safe wrapper for NLP Engine"""
+    """Memory-safe wrapper for NLP Engine.
+    
+    Provides safe access to natural language processing capabilities with
+    automatic memory management. Handles text analysis, intent recognition,
+    and entity extraction.
+    
+    The NLP engine is configured with high priority due to its frequent use
+    in conversational AI scenarios.
+    """
 
     def __init__(self, memory_manager: M1MemoryManager):
+        """Initialize memory-safe NLP engine.
+        
+        Args:
+            memory_manager: M1MemoryManager instance for memory tracking
+        """
         super().__init__(
             component_name="nlp_engine",
             memory_manager=memory_manager,
@@ -223,19 +364,42 @@ class MemorySafeNLPEngine(MemorySafeComponent):
         )
 
     async def _create_component(self):
-        """Create NLP Engine instance"""
+        """Create NLP Engine instance.
+        
+        Returns:
+            Initialized NLPEngine instance
+            
+        Raises:
+            ImportError: If NLP engine module cannot be imported
+            Exception: Any error during NLP engine initialization
+        """
         from engines.nlp_engine import NLPEngine
 
         return NLPEngine()
 
     async def _cleanup_component(self, component):
-        """Cleanup NLP Engine resources"""
+        """Cleanup NLP Engine resources.
+        
+        Args:
+            component: NLPEngine instance to cleanup
+        """
         # NLP Engine doesn't have specific cleanup
         pass
 
     @memory_safe_method
     async def analyze_text(self, component, text: str):
-        """Analyze text with NLP engine"""
+        """Analyze text with NLP engine.
+        
+        Performs comprehensive text analysis including intent recognition,
+        entity extraction, and sentiment analysis.
+        
+        Args:
+            component: The loaded NLP engine instance
+            text: Text to analyze
+            
+        Returns:
+            Analysis results object or None if analysis fails
+        """
         try:
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
@@ -247,20 +411,49 @@ class MemorySafeNLPEngine(MemorySafeComponent):
 
     @memory_safe_method
     async def get_intent(self, component, text: str):
-        """Get intent from text"""
+        """Get intent from text.
+        
+        Args:
+            component: The loaded NLP engine instance
+            text: Text to analyze for intent
+            
+        Returns:
+            Detected intent or None if analysis fails
+        """
         analysis = await self.analyze_text(component, text)
         return analysis.intent if analysis else None
 
     @memory_safe_method
     async def extract_entities(self, component, text: str):
-        """Extract entities from text"""
+        """Extract entities from text.
+        
+        Args:
+            component: The loaded NLP engine instance
+            text: Text to analyze for entities
+            
+        Returns:
+            List of extracted entities or empty list if analysis fails
+        """
         analysis = await self.analyze_text(component, text)
         return analysis.entities if analysis else []
 
 class MemorySafeRAGEngine(MemorySafeComponent):
-    """Memory-safe wrapper for RAG Engine"""
+    """Memory-safe wrapper for RAG Engine.
+    
+    Provides safe access to Retrieval-Augmented Generation capabilities with
+    automatic memory management. Handles knowledge base operations and
+    context-aware response generation.
+    
+    The RAG engine has higher memory requirements due to embedding models
+    and vector databases.
+    """
 
     def __init__(self, memory_manager: M1MemoryManager):
+        """Initialize memory-safe RAG engine.
+        
+        Args:
+            memory_manager: M1MemoryManager instance for memory tracking
+        """
         super().__init__(
             component_name="rag_engine",
             memory_manager=memory_manager,
@@ -269,7 +462,15 @@ class MemorySafeRAGEngine(MemorySafeComponent):
         )
 
     async def _create_component(self):
-        """Create RAG Engine instance"""
+        """Create RAG Engine instance.
+        
+        Returns:
+            Initialized RAGEngine instance
+            
+        Raises:
+            ImportError: If RAG engine module cannot be imported
+            Exception: Any error during RAG engine initialization
+        """
         from engines.rag_engine import RAGEngine
 
         engine = RAGEngine()
@@ -277,13 +478,30 @@ class MemorySafeRAGEngine(MemorySafeComponent):
         return engine
 
     async def _cleanup_component(self, component):
-        """Cleanup RAG Engine resources"""
+        """Cleanup RAG Engine resources.
+        
+        Args:
+            component: RAGEngine instance to cleanup
+        """
         if hasattr(component, "cleanup"):
             await component.cleanup()
 
     @memory_safe_method
     async def add_knowledge(self, component, content: str, metadata: Dict = None):
-        """Add knowledge to the RAG engine"""
+        """Add knowledge to the RAG engine.
+        
+        Args:
+            component: The loaded RAG engine instance
+            content: Knowledge content to add
+            metadata: Optional metadata dictionary
+            
+        Returns:
+            Dictionary with success status and document information:
+            - success: Boolean indicating if operation succeeded
+            - document_id: ID of created document (if successful)
+            - chunks: Number of chunks created (if successful)
+            - error: Error message (if failed)
+        """
         try:
             document = await component.add_knowledge(content, metadata or {})
             return {
@@ -297,7 +515,19 @@ class MemorySafeRAGEngine(MemorySafeComponent):
 
     @memory_safe_method
     async def search_knowledge(self, component, query: str, k: int = 5):
-        """Search the knowledge base"""
+        """Search the knowledge base.
+        
+        Args:
+            component: The loaded RAG engine instance
+            query: Search query string
+            k: Number of results to return
+            
+        Returns:
+            Dictionary with search results:
+            - success: Boolean indicating if search succeeded
+            - results: List of search results with content, score, and metadata
+            - error: Error message (if failed)
+        """
         try:
             results = await component.knowledge_base.search(query, k=k)
             return {
@@ -317,7 +547,18 @@ class MemorySafeRAGEngine(MemorySafeComponent):
 
     @memory_safe_method
     async def generate_response(self, component, query: str):
-        """Generate response using RAG"""
+        """Generate response using RAG.
+        
+        Args:
+            component: The loaded RAG engine instance
+            query: Query to generate response for
+            
+        Returns:
+            Dictionary with response data:
+            - success: Boolean indicating if generation succeeded
+            - response: Generated response text
+            - error: Error message (if failed)
+        """
         try:
             response_data = await component.generate_response(query)
             return response_data
@@ -330,9 +571,21 @@ class MemorySafeRAGEngine(MemorySafeComponent):
             }
 
 class MemorySafeVoiceEngine(MemorySafeComponent):
-    """Memory-safe wrapper for Voice Engine"""
+    """Memory-safe wrapper for Voice Engine.
+    
+    Provides safe access to speech-to-text and text-to-speech capabilities
+    with automatic memory management. Handles audio transcription and
+    speech synthesis.
+    
+    The voice engine requires significant memory for audio processing models.
+    """
 
     def __init__(self, memory_manager: M1MemoryManager):
+        """Initialize memory-safe voice engine.
+        
+        Args:
+            memory_manager: M1MemoryManager instance for memory tracking
+        """
         super().__init__(
             component_name="voice_engine",
             memory_manager=memory_manager,
@@ -341,19 +594,42 @@ class MemorySafeVoiceEngine(MemorySafeComponent):
         )
 
     async def _create_component(self):
-        """Create Voice Engine instance"""
+        """Create Voice Engine instance.
+        
+        Returns:
+            Initialized VoiceEngine instance
+            
+        Raises:
+            ImportError: If voice engine module cannot be imported
+            Exception: Any error during voice engine initialization
+        """
         from engines.voice_engine import VoiceEngine
 
         return VoiceEngine()
 
     async def _cleanup_component(self, component):
-        """Cleanup Voice Engine resources"""
+        """Cleanup Voice Engine resources.
+        
+        Args:
+            component: VoiceEngine instance to cleanup
+        """
         if hasattr(component, "cleanup"):
             await component.cleanup()
 
     @memory_safe_method
     async def transcribe_audio(self, component, audio_data: bytes):
-        """Transcribe audio to text"""
+        """Transcribe audio to text.
+        
+        Args:
+            component: The loaded voice engine instance
+            audio_data: Raw audio data in bytes
+            
+        Returns:
+            Dictionary with transcription results:
+            - success: Boolean indicating if transcription succeeded
+            - text: Transcribed text
+            - error: Error message (if failed)
+        """
         try:
             text = await component.transcribe(audio_data)
             return {"success": True, "text": text}
@@ -363,7 +639,18 @@ class MemorySafeVoiceEngine(MemorySafeComponent):
 
     @memory_safe_method
     async def synthesize_speech(self, component, text: str):
-        """Convert text to speech"""
+        """Convert text to speech.
+        
+        Args:
+            component: The loaded voice engine instance
+            text: Text to convert to speech
+            
+        Returns:
+            Dictionary with synthesis results:
+            - success: Boolean indicating if synthesis succeeded
+            - audio: Generated audio data in bytes
+            - error: Error message (if failed)
+        """
         try:
             audio_data = await component.synthesize(text)
             return {"success": True, "audio": audio_data}
@@ -373,10 +660,27 @@ class MemorySafeVoiceEngine(MemorySafeComponent):
 
 class IntelligentComponentManager:
     """
-    Manages all memory-safe components with intelligent loading strategies
+    Manages all memory-safe components with intelligent loading strategies.
+    
+    Provides centralized management of AI components with automatic optimization
+    based on usage patterns and memory availability. Implements intelligent
+    preloading and component lifecycle management.
+    
+    Attributes:
+        memory_manager: M1MemoryManager instance for memory tracking
+        components: Dictionary of managed components
+        nlp: Memory-safe NLP engine instance
+        rag: Memory-safe RAG engine instance
+        voice: Memory-safe voice engine instance
+        usage_stats: Usage statistics for intelligent optimization
     """
 
     def __init__(self, memory_manager: M1MemoryManager):
+        """Initialize intelligent component manager.
+        
+        Args:
+            memory_manager: M1MemoryManager instance for memory tracking
+        """
         self.memory_manager = memory_manager
         self.components: Dict[str, MemorySafeComponent] = {}
 
@@ -397,7 +701,12 @@ class IntelligentComponentManager:
         }
 
     async def preload_essential_components(self):
-        """Preload components based on priority and available memory"""
+        """Preload components based on priority and available memory.
+        
+        Attempts to load components in priority order, ensuring critical
+        components are loaded first and high-priority components are loaded
+        if memory permits.
+        """
         # Sort by priority
         sorted_components = sorted(
             self.components.items(), key=lambda x: x[1].priority.value
@@ -414,7 +723,17 @@ class IntelligentComponentManager:
                     await component.ensure_loaded()
 
     async def get_component(self, name: str) -> Optional[MemorySafeComponent]:
-        """Get a component by name, tracking usage"""
+        """Get a component by name, tracking usage.
+        
+        Retrieves a component and updates usage statistics for intelligent
+        optimization decisions.
+        
+        Args:
+            name: Component name to retrieve
+            
+        Returns:
+            MemorySafeComponent instance if found, None otherwise
+        """
         if name in self.components:
             # Update usage stats
             self.usage_stats[name]["uses"] += 1
@@ -424,7 +743,12 @@ class IntelligentComponentManager:
         return None
 
     async def optimize_loaded_components(self):
-        """Optimize which components are loaded based on usage patterns"""
+        """Optimize which components are loaded based on usage patterns.
+        
+        Analyzes current memory usage and component usage patterns to make
+        intelligent decisions about which components to keep loaded. Unloads
+        least recently used components when memory pressure is high.
+        """
         # Get current memory state
         snapshot = await self.memory_manager.get_memory_snapshot()
 
@@ -447,13 +771,20 @@ class IntelligentComponentManager:
                         break
 
     def get_status(self) -> Dict[str, Any]:
-        """Get status of all components"""
+        """Get status of all components.
+        
+        Returns:
+            Dictionary mapping component names to their status information
+        """
         return {
             name: component.get_status() for name, component in self.components.items()
         }
 
     async def cleanup(self):
-        """Cleanup all components"""
+        """Cleanup all components.
+        
+        Unloads all managed components and releases their resources.
+        Should be called during application shutdown.
+        """
         for component in self.components.values():
             await component.unload()
-
