@@ -240,11 +240,12 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
     action = command_analysis["action"]
     context = command_analysis["context"]
 
-    # Generate dynamic response based on context
-    response_text = await _generate_contextual_response(action, context, response_gen)
-
-    # Execute the action with multiple fallback methods
+    # Execute the action with multiple fallback methods FIRST
+    # This will set the verified_speaker_name in the context
     result = await _execute_screen_action(action, context, jarvis_instance)
+
+    # Generate dynamic response AFTER verification with speaker name from context
+    response_text = await _generate_contextual_response(action, context, response_gen)
 
     # Enhance result with dynamic response and context
     return await _enhance_result_with_context(result, response_text, action, context, response_gen)
@@ -649,6 +650,10 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
         if hasattr(jarvis_instance, "last_speaker_name"):
             speaker_name = jarvis_instance.last_speaker_name
 
+    logger.info(
+        f"🎤 Audio data status: {len(audio_data) if audio_data else 0} bytes, speaker: {speaker_name}"
+    )
+
     if audio_data:
         # Verify speaker using NEW speaker verification service (with pre-loaded profiles)
         try:
@@ -658,6 +663,7 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             logger.info(
                 f"🔐 Speaker service has {len(speaker_service.speaker_profiles)} profiles loaded"
             )
+            logger.info(f"🔐 Available profiles: {list(speaker_service.speaker_profiles.keys())}")
 
             # Verify speaker using voice biometrics from database
             verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
@@ -704,6 +710,7 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
         # TODO: Enforce voice verification once audio capture is confirmed working
         logger.warning("⚠️ No audio data for voice verification - using default owner")
         context["verified_speaker_name"] = "Derek"
+        logger.info("⚠️ Using default owner 'Derek' for now - need audio capture working")
 
     # Step 2: Use enhanced Keychain integration for actual unlock
     try:
