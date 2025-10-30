@@ -788,6 +788,11 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             context["status_message"] = (
                 f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
             )
+            # Store intermediate message for JARVIS to speak
+            context["verification_message"] = (
+                f"Identity confirmed, {speaker_name}. Voice biometrics verified at {confidence:.0%} confidence. "
+                f"Initiating screen unlock sequence now."
+            )
 
         except Exception as e:
             logger.error(f"Voice verification error: {e}", exc_info=True)
@@ -825,10 +830,15 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             confidence_msg = f" (verified at {confidence:.0%} confidence)" if confidence > 0 else ""
             logger.info(f"🔓 Screen unlocked successfully for {verified_speaker}{confidence_msg}")
             context["status_message"] = f"Screen unlocked for {verified_speaker}"
-            return (
-                True,
-                f"Welcome back, {verified_speaker}. Your screen is now unlocked{confidence_msg}.",
-            )
+
+            # Build complete response with verification message
+            verification_msg = context.get("verification_message", "")
+            if verification_msg:
+                full_message = f"{verification_msg} Welcome back, {verified_speaker}. Your screen is now unlocked."
+            else:
+                full_message = f"Welcome back, {verified_speaker}. Your screen is now unlocked{confidence_msg}."
+
+            return (True, full_message)
         else:
             # Check if setup is required
             if unlock_result.get("action") == "setup_required":
