@@ -934,7 +934,16 @@ def get_implicit_resolver() -> ImplicitReferenceResolver:
     global _resolver_instance
 
     if _resolver_instance is None:
-        _resolver_instance = ImplicitReferenceResolver()
+        # Get the context graph first
+        from backend.core.context.multi_space_context_graph import get_multi_space_context_graph
+        context_graph = get_multi_space_context_graph()
+
+        # Create resolver with required context_graph
+        _resolver_instance = ImplicitReferenceResolver(
+            context_graph=context_graph,
+            conversational_context=ConversationalContext(),
+            attention_tracker=VisualAttentionTracker()
+        )
         logger.info("Created ImplicitReferenceResolver singleton instance")
 
     return _resolver_instance

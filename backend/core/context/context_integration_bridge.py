@@ -1386,8 +1386,8 @@ async def initialize_integration_bridge(
     if context_graph is None:
         from backend.core.context.multi_space_context_graph import MultiSpaceContextGraph
         context_graph = MultiSpaceContextGraph(
-            decay_ttl_seconds=300,  # 5 minutes
-            enable_cross_space_correlation=True
+            temporal_decay_minutes=5,  # 5 minutes
+            max_history_size=1000
         )
         logger.info("[INTEGRATION-BRIDGE] Created new MultiSpaceContextGraph")
 

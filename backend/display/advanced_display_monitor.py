@@ -913,3 +913,6 @@ class AdvancedDisplayMonitor:
                 logger.info(
                     f"[DISPLAY MONITOR] Initial scan complete. Currently monitoring {len(self.active_connections)} connections"
                 )
+
+        except Exception as e:
+            logger.error(f"[DISPLAY MONITOR] Error during check_displays: {e}", exc_info=True)

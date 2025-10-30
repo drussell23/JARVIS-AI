@@ -703,6 +703,37 @@ class AdvancedAsyncPipeline:
 
         return context
 
+    async def _check_screen_lock_universal(self, context: PipelineContext) -> PipelineContext:
+        """
+        Universal screen lock detection across all paths.
+
+        Checks if the screen is currently locked and handles accordingly.
+
+        Args:
+            context: Pipeline context
+
+        Returns:
+            PipelineContext: Updated context with lock status
+
+        Note:
+            This provides a unified screen lock check for all command paths.
+        """
+        # Check if we have screen lock detection available
+        try:
+            if hasattr(self, 'screen_lock_detector') and self.screen_lock_detector:
+                is_locked = await self.screen_lock_detector.is_locked()
+                context.data["screen_locked"] = is_locked
+                if is_locked:
+                    logger.info("Screen is currently locked")
+            else:
+                # No lock detector available, assume unlocked
+                context.data["screen_locked"] = False
+        except Exception as e:
+            logger.debug(f"Screen lock check failed: {e}")
+            context.data["screen_locked"] = False
+
+        return context
+
     def _init_followup_system(self):
         """Initialize follow-up handling system components.
 
