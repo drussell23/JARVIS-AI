@@ -3767,9 +3767,14 @@ class AsyncSystemManager:
 
             env["JARVIS_DB_TYPE"] = "cloudsql"
             env["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
+            env["JARVIS_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
+            env["JARVIS_DB_PORT"] = str(db_config["cloud_sql"]["port"])
             env["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
 
             print(f"{Colors.GREEN}   ✓ Database config loaded from {config_path}{Colors.ENDC}")
+            print(
+                f"{Colors.CYAN}   └─ Proxy host: 127.0.0.1:{db_config['cloud_sql']['port']}{Colors.ENDC}"
+            )
             print(f"{Colors.CYAN}   └─ Type: Cloud SQL (PostgreSQL){Colors.ENDC}")
             print(f"{Colors.CYAN}   └─ Project: {db_config.get('project_id', 'N/A')}{Colors.ENDC}")
             print(f"{Colors.CYAN}   └─ Region: {db_config.get('region', 'N/A')}{Colors.ENDC}")
