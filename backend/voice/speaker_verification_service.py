@@ -360,7 +360,8 @@ async def get_speaker_verification_service(
     if _speaker_verification_service is None:
         logger.info("🔐 Creating new speaker verification service...")
         _speaker_verification_service = SpeakerVerificationService(learning_db)
-        await _speaker_verification_service.initialize()
+        # Use fast initialization to avoid blocking (encoder loads in background)
+        await _speaker_verification_service.initialize_fast()
 
     return _speaker_verification_service
 
