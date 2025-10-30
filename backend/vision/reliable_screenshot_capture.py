@@ -163,6 +163,16 @@ class ReliableScreenshotCapture:
                 logger.warning(f"Failed to initialize Error Handling Matrix: {e}")
 
         self._init_capture_cache()
+
+        # Try to import the advanced cache system
+        try:
+            from .space_screenshot_cache import SpaceScreenshotCache
+
+            self.advanced_cache = SpaceScreenshotCache()
+            logger.info("✅ Advanced screenshot cache available")
+        except Exception as e:
+            logger.debug(f"Advanced cache not available: {e}")
+            self.advanced_cache = None
         logger.info(f"Reliable Screenshot Capture initialized with {len(self.methods)} methods")
 
     def _init_capture_cache(self) -> None:
@@ -855,5 +865,33 @@ class ReliableScreenshotCapture:
         Returns:
             ScreenshotResult if cached and valid, None otherwise
         """
-        # TODO: Implement cache lookup logic
-        return None
+        if space_id not in self.cache:
+            return None
+
+        cached_time, cached_result = self.cache[space_id]
+
+        # Check if cache is still valid (within TTL)
+        age = time.time() - cached_time
+        if age > self.cache_ttl:
+            # Cache expired, remove it
+            del self.cache[space_id]
+            return None
+
+        logger.debug(f"Cache HIT for space {space_id} (age: {age:.1f}s)")
+        return cached_result
+
+    def _cache_result(self, space_id: int, result: ScreenshotResult) -> None:
+        """Cache a screenshot result.
+
+        Args:
+            space_id: The ID of the desktop space
+            result: The ScreenshotResult to cache
+        """
+        self.cache[space_id] = (time.time(), result)
+
+        # Also cache in advanced cache if available
+        if self.advanced_cache and result.success:
+            try:
+                self.advanced_cache.put_screenshot(space_id, result.image, result.metadata)
+            except Exception as e:
+                logger.debug(f"Failed to cache in advanced cache: {e}")

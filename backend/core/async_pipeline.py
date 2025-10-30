@@ -904,13 +904,83 @@ class AdvancedAsyncPipeline:
     ) -> Dict:
         """Fast lock/unlock handler for voice commands.
 
+        Bypasses heavy pipeline processing for instant screen lock/unlock
+        using macOS controller directly.
+
         Args:
             text: Command text
             user_name: User name
             metadata: Optional metadata dict
 
         Returns:
-            Result dict with success status
+            Result dict with success status, response message, and timing
         """
-        # TODO: Implement fast lock/unlock logic
-        return {"success": False, "error": "not_implemented"}
+        start_time = time.time()
+        text_lower = text.lower()
+
+        try:
+            # Import macOS controller for direct lock/unlock
+            from backend.system_control.macos_controller import MacOSController
+
+            controller = MacOSController()
+
+            # Determine if this is lock or unlock
+            is_lock = "lock" in text_lower and "unlock" not in text_lower
+            is_unlock = "unlock" in text_lower
+
+            if is_lock:
+                success, message = await controller.lock_screen()
+                action = "locked"
+            elif is_unlock:
+                # For unlock, try voice unlock service first
+                try:
+                    from backend.voice_unlock.intelligent_voice_unlock_service import (
+                        get_intelligent_unlock_service,
+                    )
+
+                    unlock_service = get_intelligent_unlock_service()
+                    result = await unlock_service.process_voice_unlock_command(
+                        text, audio_data=metadata.get("audio_data") if metadata else None
+                    )
+
+                    success = result.get("success", False)
+                    message = result.get("message", "Unlock processing complete")
+                    action = "unlocked"
+
+                except Exception as e:
+                    logger.warning(f"Voice unlock service unavailable: {e}, using fallback")
+                    success, message = await controller.unlock_screen()
+                    action = "unlocked"
+            else:
+                return {
+                    "success": False,
+                    "error": "Command must contain 'lock' or 'unlock'",
+                    "response": "I didn't understand if you wanted to lock or unlock, Sir.",
+                    "latency_ms": (time.time() - start_time) * 1000,
+                }
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            logger.info(f"[FAST-PATH] Screen {action} in {latency_ms:.0f}ms (success={success})")
+
+            return {
+                "success": success,
+                "response": message,
+                "fast_path": True,
+                "action": action,
+                "latency_ms": latency_ms,
+                "metadata": {
+                    "method": "fast_lock_unlock",
+                    "command": text,
+                    "user": user_name,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Fast lock/unlock failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "response": f"Failed to {action if 'action' in locals() else 'process'} screen: {str(e)}",
+                "latency_ms": (time.time() - start_time) * 1000,
+            }
