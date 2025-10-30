@@ -234,6 +234,7 @@ jobs:
             ci
             chore
             revert
+            deps
           requireScope: false
           subjectPattern: ^[A-Z].+$
           subjectPatternError: |
@@ -243,6 +244,7 @@ jobs:
             - feat: Add new voice recognition feature
             - fix: Resolve database connection timeout
             - docs: Update README with setup instructions
+            - deps: Bump package version
 
   # ============================================================================
   # PR Description Check
