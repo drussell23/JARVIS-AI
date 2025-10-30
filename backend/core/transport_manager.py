@@ -322,8 +322,8 @@ class TransportManager:
         timeout = timeout_map.get(method, 5.0)
         handler = self._handlers[method]
 
-        async with asyncio.timeout(timeout):
-            return await handler(action, context, **kwargs)
+        # Use asyncio.wait_for for Python 3.10 compatibility
+        return await asyncio.wait_for(handler(action, context, **kwargs), timeout=timeout)
 
     async def _health_monitor_loop(self):
         """Background task to monitor transport health and reset circuit breakers"""
