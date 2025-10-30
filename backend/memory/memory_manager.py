@@ -899,8 +899,23 @@ if __name__ == "__main__":
         # Simulate loading a component
         class MockComponent:
             """Mock component for testing memory management."""
-            
+
             def __init__(self, size_mb: int):
                 """Initialize mock component with specified memory usage.
-                
+
                 Args:
+                    size_mb: Size in MB
+                """
+                self.data = bytearray(size_mb * 1024 * 1024)
+
+        # Test component registration
+        component = MockComponent(50)
+        await manager.register_component("test_component", component, 50.0)
+
+        report = await manager.get_memory_report()
+        print(f"\nAfter loading component: {report['current_state']['state']}")
+        print(f"Memory usage: {report['current_state']['percent_used']:.1f}%")
+
+
+if __name__ == "__main__":
+    asyncio.run(test_memory_manager())

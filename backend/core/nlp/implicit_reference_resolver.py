@@ -911,3 +911,60 @@ class ImplicitReferenceResolver:
                 pass
 
         return parsed
+
+
+# ============================================================================
+# SINGLETON PATTERN - Global accessor
+# ============================================================================
+
+_resolver_instance: Optional[ImplicitReferenceResolver] = None
+
+
+def get_implicit_resolver() -> ImplicitReferenceResolver:
+    """
+    Get or create the global ImplicitReferenceResolver instance.
+
+    Returns:
+        ImplicitReferenceResolver: The singleton instance
+
+    Example:
+        resolver = get_implicit_resolver()
+        result = await resolver.resolve_query("what does it say?")
+    """
+    global _resolver_instance
+
+    if _resolver_instance is None:
+        _resolver_instance = ImplicitReferenceResolver()
+        logger.info("Created ImplicitReferenceResolver singleton instance")
+
+    return _resolver_instance
+
+
+# ============================================================================
+# TEST FUNCTION
+# ============================================================================
+
+
+async def test_resolver():
+    """Test the implicit reference resolver."""
+    resolver = get_implicit_resolver()
+
+    # Test queries
+    test_queries = [
+        "What does it say?",
+        "What's wrong with that?",
+        "Fix this error",
+        "Tell me more about the deployment",
+    ]
+
+    for query in test_queries:
+        logger.info(f"\nTesting query: {query}")
+        result = await resolver.resolve_query(query)
+        logger.info(f"Result: {result}")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(test_resolver())

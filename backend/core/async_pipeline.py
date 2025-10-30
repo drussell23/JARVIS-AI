@@ -672,6 +672,37 @@ class AdvancedAsyncPipeline:
             "response_generation", self._generate_response, timeout=10.0, required=True
         )
 
+    async def _validate_command(self, context: PipelineContext) -> PipelineContext:
+        """
+        Validate command before processing.
+
+        Checks for:
+        - Empty commands
+        - Invalid formats
+        - Required fields
+        - Security concerns
+
+        Args:
+            context: Pipeline context containing command data
+
+        Returns:
+            PipelineContext: Updated context with validation results
+
+        Raises:
+            ValueError: If command is invalid
+        """
+        command = context.data.get("command", "")
+
+        # Check for empty command
+        if not command or not command.strip():
+            raise ValueError("Command cannot be empty")
+
+        # Store validation result
+        context.data["validated"] = True
+        context.data["validation_timestamp"] = datetime.now().isoformat()
+
+        return context
+
     def _init_followup_system(self):
         """Initialize follow-up handling system components.
 

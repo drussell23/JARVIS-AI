@@ -911,4 +911,5 @@ class AdvancedDisplayMonitor:
             if not self.initial_scan_complete:
                 self.initial_scan_complete = True
                 logger.info(
-                    f"[DISPLAY MONITOR] Initial scan complete. Currently
+                    f"[DISPLAY MONITOR] Initial scan complete. Currently monitoring {len(self.active_connections)} connections"
+                )

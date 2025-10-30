@@ -891,3 +891,265 @@ class CrossSpaceCorrelator:
         """
         # TODO: Implement quick doc lookup detection
         return []
+
+
+# ============================================================================
+# MULTI-SPACE CONTEXT GRAPH - Main Coordinator Class
+# ============================================================================
+
+
+class MultiSpaceContextGraph:
+    """
+    Main coordinator for multi-space context tracking.
+
+    This class orchestrates all context tracking across macOS Spaces,
+    managing space contexts, correlating cross-space activities, and
+    providing natural language query capabilities.
+
+    Attributes:
+        spaces: Dictionary mapping space IDs to SpaceContext objects
+        correlator: CrossSpaceCorrelator for detecting relationships
+        max_history_size: Maximum number of historical activities to retain
+        temporal_decay_minutes: Time before contexts start to decay
+    """
+
+    def __init__(
+        self,
+        max_history_size: int = 1000,
+        temporal_decay_minutes: int = 5,
+    ):
+        """
+        Initialize the Multi-Space Context Graph.
+
+        Args:
+            max_history_size: Maximum activities to store per space
+            temporal_decay_minutes: Minutes before context decays
+        """
+        self.spaces: Dict[int, SpaceContext] = {}
+        self.correlator = CrossSpaceCorrelator()
+        self.max_history_size = max_history_size
+        self.temporal_decay_minutes = temporal_decay_minutes
+        self._initialized = False
+
+        logger.info(
+            f"Initialized MultiSpaceContextGraph "
+            f"(history={max_history_size}, decay={temporal_decay_minutes}m)"
+        )
+
+    async def initialize(self):
+        """Initialize the context graph and start monitoring."""
+        if self._initialized:
+            logger.warning("MultiSpaceContextGraph already initialized")
+            return
+
+        logger.info("Starting MultiSpaceContextGraph initialization...")
+        self._initialized = True
+        logger.info("✅ MultiSpaceContextGraph initialized")
+
+    def get_space(self, space_id: int) -> SpaceContext:
+        """
+        Get or create a SpaceContext for the given space ID.
+
+        Args:
+            space_id: macOS Space identifier
+
+        Returns:
+            SpaceContext: The context for this space
+        """
+        if space_id not in self.spaces:
+            self.spaces[space_id] = SpaceContext(
+                space_id=space_id,
+                max_history=self.max_history_size,
+            )
+            logger.debug(f"Created new SpaceContext for space {space_id}")
+
+        return self.spaces[space_id]
+
+    async def update_activity(
+        self,
+        space_id: int,
+        app_name: str,
+        context_data: Dict[str, Any],
+    ):
+        """
+        Update activity for a specific space and application.
+
+        Args:
+            space_id: macOS Space ID
+            app_name: Name of the application
+            context_data: Rich context data for the activity
+        """
+        space = self.get_space(space_id)
+
+        # Create activity event
+        event = ActivityEvent(
+            timestamp=datetime.now(),
+            space_id=space_id,
+            app_name=app_name,
+            context_data=context_data,
+            significance=self._calculate_significance(app_name, context_data),
+        )
+
+        # Add to space context
+        space.add_activity(event)
+
+        # Check for cross-space correlations
+        await self.correlator.analyze(self.spaces)
+
+    def _calculate_significance(
+        self,
+        app_name: str,
+        context_data: Dict[str, Any],
+    ) -> ActivitySignificance:
+        """
+        Calculate the significance of an activity.
+
+        Args:
+            app_name: Name of the application
+            context_data: Context data for the activity
+
+        Returns:
+            ActivitySignificance: The calculated significance level
+        """
+        # Check for critical indicators
+        if "error" in str(context_data).lower():
+            return ActivitySignificance.CRITICAL
+
+        # Terminal commands are usually important
+        if app_name in ["Terminal", "iTerm2"]:
+            return ActivitySignificance.HIGH
+
+        # Browser activity varies
+        if app_name in ["Google Chrome", "Safari", "Firefox"]:
+            if "documentation" in str(context_data).lower():
+                return ActivitySignificance.HIGH
+            return ActivitySignificance.MEDIUM
+
+        # Default to medium
+        return ActivitySignificance.MEDIUM
+
+    async def query_context(self, query: str, space_id: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Query context using natural language.
+
+        Args:
+            query: Natural language query (e.g., "what does it say?")
+            space_id: Optional space ID to focus on
+
+        Returns:
+            Dict containing query results
+        """
+        if space_id is not None and space_id in self.spaces:
+            space = self.spaces[space_id]
+            recent = space.get_recent_activity(count=10)
+            return {
+                "query": query,
+                "space_id": space_id,
+                "recent_activities": [
+                    {
+                        "timestamp": event.timestamp.isoformat(),
+                        "app": event.app_name,
+                        "data": event.context_data,
+                    }
+                    for event in recent
+                ],
+            }
+
+        # Query all spaces
+        all_activities = []
+        for space in self.spaces.values():
+            all_activities.extend(space.get_recent_activity(count=5))
+
+        return {
+            "query": query,
+            "all_spaces": True,
+            "recent_activities": [
+                {
+                    "timestamp": event.timestamp.isoformat(),
+                    "space_id": event.space_id,
+                    "app": event.app_name,
+                    "data": event.context_data,
+                }
+                for event in sorted(all_activities, key=lambda e: e.timestamp, reverse=True)[:20]
+            ],
+        }
+
+    def get_active_relationships(self) -> List[CrossSpaceRelationship]:
+        """
+        Get all currently active cross-space relationships.
+
+        Returns:
+            List of active relationships
+        """
+        return self.correlator.get_active_relationships()
+
+    async def cleanup_old_contexts(self):
+        """Clean up contexts that have exceeded the temporal decay window."""
+        cutoff = datetime.now() - timedelta(minutes=self.temporal_decay_minutes)
+
+        for space in self.spaces.values():
+            # Clean up old activities
+            space.activities = deque(
+                [event for event in space.activities if event.timestamp > cutoff],
+                maxlen=self.max_history_size,
+            )
+
+        logger.debug(f"Cleaned up contexts older than {self.temporal_decay_minutes} minutes")
+
+
+# ============================================================================
+# SINGLETON PATTERN - Global accessor
+# ============================================================================
+
+_context_graph_instance: Optional[MultiSpaceContextGraph] = None
+
+
+def get_multi_space_context_graph() -> MultiSpaceContextGraph:
+    """
+    Get or create the global MultiSpaceContextGraph instance.
+
+    Returns:
+        MultiSpaceContextGraph: The singleton instance
+    """
+    global _context_graph_instance
+
+    if _context_graph_instance is None:
+        _context_graph_instance = MultiSpaceContextGraph()
+        logger.info("Created MultiSpaceContextGraph singleton instance")
+
+    return _context_graph_instance
+
+
+# ============================================================================
+# TEST FUNCTION
+# ============================================================================
+
+
+async def test_multi_space_context():
+    """Test multi-space context tracking."""
+    graph = get_multi_space_context_graph()
+    await graph.initialize()
+
+    # Simulate some activities
+    await graph.update_activity(
+        space_id=1,
+        app_name="Terminal",
+        context_data={"command": "pytest tests/", "exit_code": 0},
+    )
+
+    await graph.update_activity(
+        space_id=2,
+        app_name="Google Chrome",
+        context_data={"url": "https://docs.python.org", "title": "Python Documentation"},
+    )
+
+    # Query context
+    result = await graph.query_context("what's happening?")
+    logger.info(f"Query result: {result}")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(test_multi_space_context())

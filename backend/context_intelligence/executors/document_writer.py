@@ -870,3 +870,96 @@ Return a JSON structure with:
 """
         # TODO: Implement outline generation using Claude API
         return {"title": request.topic, "sections": []}
+
+
+# ============================================================================
+# SINGLETON PATTERN - Global accessor
+# ============================================================================
+
+_document_writer_instance: Optional[DocumentWriterExecutor] = None
+
+
+def parse_document_request(command: str) -> Optional[DocumentRequest]:
+    """
+    Parse a natural language command into a DocumentRequest.
+
+    Args:
+        command: Natural language command
+
+    Returns:
+        DocumentRequest if parseable, None otherwise
+    """
+    command_lower = command.lower()
+
+    # Simple pattern matching for document requests
+    if any(word in command_lower for word in ["write", "create", "draft", "compose"]):
+        # Extract topic (very basic - could be improved with NLP)
+        topic = command.replace("write", "").replace("create", "").replace("draft", "").replace("compose", "").strip()
+        topic = topic.replace("a ", "").replace("an ", "").replace("about ", "").replace("on ", "").strip()
+
+        # Determine document type
+        doc_type = DocumentType.DOCUMENT  # Default
+        if "essay" in command_lower:
+            doc_type = DocumentType.ESSAY
+        elif "report" in command_lower:
+            doc_type = DocumentType.REPORT
+        elif "email" in command_lower:
+            doc_type = DocumentType.EMAIL
+        elif "letter" in command_lower:
+            doc_type = DocumentType.LETTER
+
+        if topic:
+            return DocumentRequest(
+                topic=topic,
+                document_type=doc_type,
+                target_length=1000,  # Default
+                style="Professional",
+            )
+
+    return None
+
+
+def get_document_writer() -> DocumentWriterExecutor:
+    """
+    Get or create the global DocumentWriterExecutor instance.
+
+    Returns:
+        DocumentWriterExecutor: The singleton instance
+
+    Example:
+        writer = get_document_writer()
+        result = await writer.execute(request)
+    """
+    global _document_writer_instance
+
+    if _document_writer_instance is None:
+        _document_writer_instance = DocumentWriterExecutor()
+        logger.info("Created DocumentWriterExecutor singleton instance")
+
+    return _document_writer_instance
+
+
+# ============================================================================
+# TEST FUNCTION
+# ============================================================================
+
+
+async def test_document_writer():
+    """Test document writer functionality."""
+    writer = get_document_writer()
+
+    request = DocumentRequest(
+        topic="The Impact of AI on Education",
+        document_type=DocumentType.ESSAY,
+        target_length=1000,
+        style="Academic",
+    )
+
+    logger.info(f"Testing document writer with topic: {request.topic}")
+    result = await writer.execute(request)
+    logger.info(f"Result: {result}")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(test_document_writer())
