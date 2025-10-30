@@ -1024,10 +1024,11 @@ class AdvancedAsyncPipeline:
         audio_data: Optional[bytes] = None,
         speaker_name: Optional[str] = None,
     ) -> Dict:
-        """Fast lock/unlock handler for voice commands.
+        """Fast lock/unlock handler for voice commands with comprehensive monitoring.
 
         Bypasses heavy pipeline processing for instant screen lock/unlock
-        using macOS controller directly.
+        using macOS controller directly. Includes timeout protection and
+        detailed performance tracking.
 
         Args:
             text: Command text
@@ -1042,50 +1043,153 @@ class AdvancedAsyncPipeline:
         start_time = time.time()
         text_lower = text.lower()
 
-        try:
-            # Import macOS controller for direct lock/unlock
-            from backend.system_control.macos_controller import MacOSController
+        # Determine action type for logging
+        is_lock = "lock" in text_lower and "unlock" not in text_lower
+        action_type = "LOCK" if is_lock else "UNLOCK"
 
-            controller = MacOSController()
+        logger.info(f"🔒 [LOCK-UNLOCK-START] {action_type} command received at {datetime.now().isoformat()}")
+        logger.info(f"🔒 [LOCK-UNLOCK-DETAILS] Command: '{text}', User: {user_name}, Speaker: {speaker_name}")
 
-            # Determine if this is lock or unlock
-            is_lock = "lock" in text_lower and "unlock" not in text_lower
-            is_unlock = "unlock" in text_lower
+        # Create monitoring task to detect hangs
+        async def timeout_monitor():
+            """Monitor for command timeout and log detailed info."""
+            await asyncio.sleep(5)  # 5 second warning
+            elapsed = time.time() - start_time
+            if elapsed > 5:
+                logger.warning(
+                    f"⚠️ [LOCK-UNLOCK-SLOW] {action_type} taking longer than expected: {elapsed:.1f}s"
+                )
 
-            if is_lock:
-                success, message = await controller.lock_screen()
-                action = "locked"
-            elif is_unlock:
-                # For unlock, try voice unlock service first
+            await asyncio.sleep(25)  # Total 30 second timeout
+            elapsed = time.time() - start_time
+            if elapsed > 30:
+                logger.error(
+                    f"🚨 [LOCK-UNLOCK-TIMEOUT] {action_type} HUNG for {elapsed:.1f}s - "
+                    f"Command: '{text}', User: {user_name}"
+                )
+                # Write to dedicated hang detection file
                 try:
-                    from backend.voice_unlock.intelligent_voice_unlock_service import (
-                        get_intelligent_unlock_service,
-                    )
+                    hang_file = Path("backend/logs/hanging_commands.log")
+                    hang_file.parent.mkdir(exist_ok=True)
+                    with open(hang_file, "a") as f:
+                        f.write(
+                            f"{datetime.now().isoformat()} | TIMEOUT | {action_type} | "
+                            f"{elapsed:.1f}s | {text} | {user_name}\n"
+                        )
+                except:
+                    pass
 
-                    unlock_service = get_intelligent_unlock_service()
-                    result = await unlock_service.process_voice_unlock_command(
-                        text, audio_data=metadata.get("audio_data") if metadata else None
-                    )
+        # Start monitoring task
+        monitor_task = asyncio.create_task(timeout_monitor())
 
-                    success = result.get("success", False)
-                    message = result.get("message", "Unlock processing complete")
-                    action = "unlocked"
+        try:
+            # Add timeout wrapper around the entire operation
+            async def execute_lock_unlock():
+                """Execute lock/unlock with detailed step tracking."""
+                step_times = {}
 
-                except Exception as e:
-                    logger.warning(f"Voice unlock service unavailable: {e}, using fallback")
-                    success, message = await controller.unlock_screen()
-                    action = "unlocked"
-            else:
+                # Step 1: Import controller
+                step_start = time.time()
+                from backend.system_control.macos_controller import MacOSController
+                step_times["import"] = (time.time() - step_start) * 1000
+                logger.debug(f"🔒 [LOCK-UNLOCK-STEP] Controller imported in {step_times['import']:.1f}ms")
+
+                # Step 2: Initialize controller
+                step_start = time.time()
+                controller = MacOSController()
+                step_times["init"] = (time.time() - step_start) * 1000
+                logger.debug(f"🔒 [LOCK-UNLOCK-STEP] Controller initialized in {step_times['init']:.1f}ms")
+
+                # Step 3: Execute action
+                step_start = time.time()
+                if is_lock:
+                    logger.info(f"🔒 [LOCK-UNLOCK-EXECUTE] Calling controller.lock_screen()...")
+                    success, message = await controller.lock_screen()
+                    action = "locked"
+                else:  # unlock
+                    # Try voice unlock service first
+                    try:
+                        logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Attempting voice unlock service...")
+                        from backend.voice_unlock.intelligent_voice_unlock_service import (
+                            get_intelligent_unlock_service,
+                        )
+
+                        unlock_service = get_intelligent_unlock_service()
+                        result = await unlock_service.process_voice_unlock_command(
+                            text, audio_data=metadata.get("audio_data") if metadata else None
+                        )
+
+                        success = result.get("success", False)
+                        message = result.get("message", "Unlock processing complete")
+                        action = "unlocked"
+                        logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Voice unlock service returned: {success}")
+
+                    except Exception as e:
+                        logger.warning(f"🔓 [LOCK-UNLOCK-FALLBACK] Voice unlock unavailable: {e}, using direct unlock")
+                        success, message = await controller.unlock_screen()
+                        action = "unlocked"
+
+                step_times["execute"] = (time.time() - step_start) * 1000
+                logger.info(
+                    f"🔒 [LOCK-UNLOCK-STEP] {action_type} executed in {step_times['execute']:.1f}ms "
+                    f"(success={success})"
+                )
+
+                return success, message, action, step_times
+
+            # Execute with 60 second timeout
+            try:
+                success, message, action, step_times = await asyncio.wait_for(
+                    execute_lock_unlock(),
+                    timeout=60.0
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"🚨 [LOCK-UNLOCK-TIMEOUT] {action_type} command timed out after 60s")
+                # Write to hang detection file
+                try:
+                    hang_file = Path("backend/logs/hanging_commands.log")
+                    with open(hang_file, "a") as f:
+                        f.write(
+                            f"{datetime.now().isoformat()} | TIMEOUT-60s | {action_type} | "
+                            f"60.0s | {text} | {user_name}\n"
+                        )
+                except:
+                    pass
+
                 return {
                     "success": False,
-                    "error": "Command must contain 'lock' or 'unlock'",
-                    "response": "I didn't understand if you wanted to lock or unlock, Sir.",
-                    "latency_ms": (time.time() - start_time) * 1000,
+                    "error": f"{action_type} command timed out after 60 seconds",
+                    "response": f"The screen {action_type.lower()} operation timed out. Please try again.",
+                    "latency_ms": 60000,
+                    "timeout": True,
+                    "metadata": {"command": text, "user": user_name}
                 }
+
+            # Cancel monitor task since we completed
+            monitor_task.cancel()
 
             latency_ms = (time.time() - start_time) * 1000
 
-            logger.info(f"[FAST-PATH] Screen {action} in {latency_ms:.0f}ms (success={success})")
+            # Log completion with full details
+            logger.info(
+                f"✅ [LOCK-UNLOCK-COMPLETE] {action_type} finished in {latency_ms:.0f}ms "
+                f"(success={success}) | Steps: import={step_times.get('import', 0):.1f}ms, "
+                f"init={step_times.get('init', 0):.1f}ms, execute={step_times.get('execute', 0):.1f}ms"
+            )
+
+            # Log to performance tracking file
+            try:
+                perf_file = Path("backend/logs/lock_unlock_performance.log")
+                perf_file.parent.mkdir(exist_ok=True)
+                with open(perf_file, "a") as f:
+                    f.write(
+                        f"{datetime.now().isoformat()} | {action_type} | {latency_ms:.0f}ms | "
+                        f"success={success} | import={step_times.get('import', 0):.1f}ms | "
+                        f"init={step_times.get('init', 0):.1f}ms | execute={step_times.get('execute', 0):.1f}ms | "
+                        f"{text}\n"
+                    )
+            except Exception as e:
+                logger.debug(f"Could not write performance log: {e}")
 
             return {
                 "success": success,
@@ -1093,20 +1197,42 @@ class AdvancedAsyncPipeline:
                 "fast_path": True,
                 "action": action,
                 "latency_ms": latency_ms,
+                "step_times_ms": step_times,
                 "metadata": {
                     "method": "fast_lock_unlock",
                     "command": text,
                     "user": user_name,
+                    "action_type": action_type,
                 },
             }
 
         except Exception as e:
-            logger.error(f"Fast lock/unlock failed: {e}", exc_info=True)
+            # Cancel monitor task
+            monitor_task.cancel()
+
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.error(
+                f"❌ [LOCK-UNLOCK-ERROR] {action_type} failed after {elapsed_ms:.0f}ms: {e}",
+                exc_info=True
+            )
+
+            # Write error to hang detection file
+            try:
+                hang_file = Path("backend/logs/hanging_commands.log")
+                with open(hang_file, "a") as f:
+                    f.write(
+                        f"{datetime.now().isoformat()} | ERROR | {action_type} | "
+                        f"{elapsed_ms:.0f}ms | {str(e)} | {text} | {user_name}\n"
+                    )
+            except:
+                pass
+
             return {
                 "success": False,
                 "error": str(e),
-                "response": f"Failed to {action if 'action' in locals() else 'process'} screen: {str(e)}",
-                "latency_ms": (time.time() - start_time) * 1000,
+                "response": f"Failed to {action_type.lower()} screen: {str(e)}",
+                "latency_ms": elapsed_ms,
+                "metadata": {"command": text, "user": user_name, "action_type": action_type}
             }
 
 

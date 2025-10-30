@@ -203,8 +203,43 @@ jobs:
                       )
 
               async def check_stuck_lock_commands(self) -> List[MonitoringAlert]:
-                  """Check for stuck lock/unlock commands in logs"""
+                  """Check for stuck lock/unlock commands in logs and dedicated hang file"""
                   alerts = []
+
+                  # Check dedicated hanging_commands.log first
+                  hang_log = Path("backend/logs/hanging_commands.log")
+                  if hang_log.exists():
+                      try:
+                          with open(hang_log, 'r') as f:
+                              lines = f.readlines()[-20:]  # Last 20 entries
+
+                          for line in lines:
+                              if '|' in line:
+                                  parts = line.strip().split('|')
+                                  if len(parts) >= 5:
+                                      timestamp_str, event_type, action_type, duration, command = parts[:5]
+
+                                      # Check if recent (last 30 minutes)
+                                      try:
+                                          ts = datetime.fromisoformat(timestamp_str.strip())
+                                          age_minutes = (datetime.now() - ts).total_seconds() / 60
+
+                                          if age_minutes < 30 and event_type.strip() in ['TIMEOUT', 'TIMEOUT-60s']:
+                                              alerts.append(MonitoringAlert(
+                                                  severity="critical",
+                                                  category="stuck",
+                                                  message=f"Lock/Unlock {event_type.strip()} detected",
+                                                  details={
+                                                      "action": action_type.strip(),
+                                                      "duration": duration.strip(),
+                                                      "command": command.strip(),
+                                                      "age_minutes": age_minutes
+                                                  }
+                                              ))
+                                      except:
+                                          pass
+                      except Exception as e:
+                          logger.debug(f"Could not read hanging_commands.log: {e}")
 
                   # Find recent log file
                   log_dir = Path("backend/logs")
