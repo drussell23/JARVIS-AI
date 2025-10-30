@@ -984,3 +984,22 @@ class AdvancedAsyncPipeline:
                 "response": f"Failed to {action if 'action' in locals() else 'process'} screen: {str(e)}",
                 "latency_ms": (time.time() - start_time) * 1000,
             }
+
+
+# Global pipeline instance
+_pipeline_instance: Optional[AdvancedAsyncPipeline] = None
+
+
+def get_async_pipeline(jarvis_instance=None) -> AdvancedAsyncPipeline:
+    """Get or create the global async pipeline instance.
+
+    Args:
+        jarvis_instance: Optional JARVIS instance to use
+
+    Returns:
+        AdvancedAsyncPipeline: The global pipeline instance
+    """
+    global _pipeline_instance
+    if _pipeline_instance is None:
+        _pipeline_instance = AdvancedAsyncPipeline(jarvis_instance)
+    return _pipeline_instance

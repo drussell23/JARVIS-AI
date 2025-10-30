@@ -3,15 +3,6 @@
 # Run manually: pre-commit run --all-files
 
 repos:
-  # Python code formatting
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3.10
-        args: ['--line-length=100']
-        stages: [pre-commit]
-
   # Import sorting
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2

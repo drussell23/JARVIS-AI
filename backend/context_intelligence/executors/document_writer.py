@@ -16,21 +16,21 @@ narration, async pipeline processing, and support for multiple academic formats.
 
 import asyncio
 import logging
-import re
-from typing import Dict, Any, Optional, Callable, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from datetime import datetime
+from typing import Any, Callable, Dict, Optional
 
 # Import async pipeline for non-blocking document operations
 try:
-    from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+    from core.async_pipeline import AdvancedAsyncPipeline, get_async_pipeline
 except ImportError:
     # Fallback - define stub functions
     def get_async_pipeline():
         return None
+
     class AdvancedAsyncPipeline:
         pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ FORMAT_SPECIFICATIONS = {
 - Title centered (no bold, italics, or underline)
 - Indent first line of each paragraph 0.5 inch
 - In-text citations: (Author Page#)
-- Works Cited page at end with hanging indent"""
+- Works Cited page at end with hanging indent""",
     },
     "apa": {
         "name": "APA (American Psychological Association)",
@@ -79,7 +79,7 @@ FORMAT_SPECIFICATIONS = {
 - Title page with title (bold, centered), author name, institutional affiliation
 - Headings: Level 1 (Centered, Bold), Level 2 (Flush Left, Bold)
 - In-text citations: (Author, Year) or (Author, Year, p. #)
-- References page with hanging indent, alphabetical order"""
+- References page with hanging indent, alphabetical order""",
     },
     "chicago": {
         "name": "Chicago/Turabian",
@@ -100,7 +100,7 @@ FORMAT_SPECIFICATIONS = {
 - Page numbers in header (top right) or footer (bottom center)
 - Footnotes or endnotes with full citation on first reference
 - Shortened citations for subsequent references
-- Bibliography page with hanging indent, alphabetical order"""
+- Bibliography page with hanging indent, alphabetical order""",
     },
     "ieee": {
         "name": "IEEE (Institute of Electrical and Electronics Engineers)",
@@ -121,7 +121,7 @@ FORMAT_SPECIFICATIONS = {
 - Author names below title
 - Abstract in italics
 - In-text citations: numbered [1], [2]
-- References numbered in order of appearance"""
+- References numbered in order of appearance""",
     },
     "harvard": {
         "name": "Harvard Referencing",
@@ -141,18 +141,18 @@ FORMAT_SPECIFICATIONS = {
 - In-text citations: (Author Year) or (Author, Year, p.#)
 - Reference list at end with hanging indent
 - Alphabetical order by author's surname
-- Multiple works by same author ordered chronologically"""
+- Multiple works by same author ordered chronologically""",
     },
     "none": {
         "name": "No specific format",
-        "requirements": "Write in a clear, professional manner without specific formatting requirements"
-    }
+        "requirements": "Write in a clear, professional manner without specific formatting requirements",
+    },
 }
 
 
 class DocumentType(Enum):
     """Supported document types for creation.
-    
+
     Attributes:
         ESSAY: Academic essay format
         REPORT: Business or technical report
@@ -162,6 +162,7 @@ class DocumentType(Enum):
         BLOG_POST: Blog post format
         GENERAL: General document type
     """
+
     ESSAY = "essay"
     REPORT = "report"
     PAPER = "paper"
@@ -173,7 +174,7 @@ class DocumentType(Enum):
 
 class DocumentFormat(Enum):
     """Academic and professional formatting styles.
-    
+
     Attributes:
         MLA: Modern Language Association format
         APA: American Psychological Association format
@@ -182,6 +183,7 @@ class DocumentFormat(Enum):
         HARVARD: Harvard referencing format
         NONE: No specific formatting requirements
     """
+
     MLA = "mla"
     APA = "apa"
     CHICAGO = "chicago"
@@ -192,13 +194,14 @@ class DocumentFormat(Enum):
 
 class DocumentPlatform(Enum):
     """Supported document platforms for creation.
-    
+
     Attributes:
         GOOGLE_DOCS: Google Docs platform
         WORD_ONLINE: Microsoft Word Online
         LOCAL_WORD: Local Microsoft Word installation
         TEXT_EDITOR: Plain text editor
     """
+
     GOOGLE_DOCS = "google_docs"
     WORD_ONLINE = "word_online"
     LOCAL_WORD = "local_word"
@@ -208,10 +211,10 @@ class DocumentPlatform(Enum):
 @dataclass
 class DocumentRequest:
     """Represents a document creation request with all necessary parameters.
-    
+
     This class encapsulates all the information needed to create a document,
     including content specifications, formatting requirements, and metadata.
-    
+
     Attributes:
         topic: The main topic or subject of the document
         document_type: Type of document to create (essay, report, etc.)
@@ -235,6 +238,7 @@ class DocumentRequest:
         course_name: Course name for academic formats
         institution: Institution name for academic formats
     """
+
     # Content specs
     topic: str
     document_type: DocumentType
@@ -264,7 +268,7 @@ class DocumentRequest:
 
     def __post_init__(self) -> None:
         """Initialize derived attributes after object creation.
-        
+
         Generates title and auto-detects format if not provided.
         """
         if not self.title:
@@ -276,7 +280,7 @@ class DocumentRequest:
 
     def _auto_detect_format(self) -> DocumentFormat:
         """Intelligently auto-detect formatting style based on document type.
-        
+
         Returns:
             DocumentFormat: The most appropriate format for the document type
         """
@@ -288,7 +292,7 @@ class DocumentRequest:
             DocumentType.REPORT: DocumentFormat.APA,  # Business/scientific reports use APA
             DocumentType.ARTICLE: DocumentFormat.CHICAGO,  # Articles often use Chicago
             DocumentType.BLOG_POST: DocumentFormat.NONE,  # Blog posts are informal
-            DocumentType.GENERAL: DocumentFormat.NONE
+            DocumentType.GENERAL: DocumentFormat.NONE,
         }
 
         detected = format_mapping.get(self.document_type, DocumentFormat.NONE)
@@ -297,12 +301,12 @@ class DocumentRequest:
 
     def _generate_title(self) -> str:
         """Generate intelligent title from topic and document type.
-        
+
         Returns:
             str: Generated title appropriate for the document type
         """
         topic_words = self.topic.split()
-        capitalized = ' '.join(word.capitalize() for word in topic_words)
+        capitalized = " ".join(word.capitalize() for word in topic_words)
 
         type_formats = {
             DocumentType.ESSAY: f"{capitalized}: An Essay",
@@ -311,13 +315,13 @@ class DocumentRequest:
             DocumentType.RESEARCH_PAPER: f"{capitalized}",
             DocumentType.ARTICLE: capitalized,
             DocumentType.BLOG_POST: capitalized,
-            DocumentType.GENERAL: capitalized
+            DocumentType.GENERAL: capitalized,
         }
         return type_formats.get(self.document_type, capitalized)
 
     def get_length_spec(self) -> str:
         """Get length specification for content generation prompts.
-        
+
         Returns:
             str: Human-readable length specification
         """
@@ -332,17 +336,17 @@ class DocumentRequest:
             DocumentType.REPORT: "1000-1500 words",
             DocumentType.PAPER: "1500-2500 words",
             DocumentType.ARTICLE: "800-1200 words",
-            DocumentType.BLOG_POST: "600-1000 words"
+            DocumentType.BLOG_POST: "600-1000 words",
         }
         return defaults.get(self.document_type, "750-1000 words")
 
 
 class DocumentWriterExecutor:
     """Orchestrates document creation workflow with Google Docs API and AI content generation.
-    
+
     This class manages the complete document creation process, including service initialization,
     document creation, content generation with Claude AI, and real-time progress narration.
-    
+
     Attributes:
         _google_docs: Google Docs API client
         _claude: Claude AI streaming client
@@ -362,12 +366,12 @@ class DocumentWriterExecutor:
         self._claude = None
         self._browser = None
         self._intelligent_narrator = None  # Will be initialized with Claude
-        
+
         # Speech queue management to prevent overlapping
         self._speech_in_progress = False
         self._speech_queue = []
         self._last_speech_end_time = 0
-        
+
         # Fallback context for non-intelligent mode
         self._narration_context = {
             "phase": "initializing",
@@ -375,7 +379,7 @@ class DocumentWriterExecutor:
             "progress": 0,
             "current_section": "",
             "word_count": 0,
-            "total_words_target": 0
+            "total_words_target": 0,
         }
         self._last_narration_time = 0
 
@@ -385,26 +389,18 @@ class DocumentWriterExecutor:
 
     def _register_pipeline_stages(self) -> None:
         """Register async pipeline stages for document operations.
-        
+
         Sets up the pipeline stages for service initialization, document creation,
         content generation, and content streaming with appropriate timeouts and retry logic.
         """
         # Service initialization stage
         self.pipeline.register_stage(
-            "service_init",
-            self._init_services_async,
-            timeout=15.0,
-            retry_count=2,
-            required=True
+            "service_init", self._init_services_async, timeout=15.0, retry_count=2, required=True
         )
 
         # Google Doc creation stage
         self.pipeline.register_stage(
-            "doc_creation",
-            self._create_doc_async,
-            timeout=20.0,
-            retry_count=3,
-            required=True
+            "doc_creation", self._create_doc_async, timeout=20.0, retry_count=3, required=True
         )
 
         # Content generation stage
@@ -413,7 +409,7 @@ class DocumentWriterExecutor:
             self._generate_content_async,
             timeout=120.0,  # Longer timeout for AI content generation
             retry_count=1,
-            required=True
+            required=True,
         )
 
         # Content streaming stage
@@ -422,15 +418,15 @@ class DocumentWriterExecutor:
             self._stream_to_doc_async,
             timeout=60.0,
             retry_count=1,
-            required=True
+            required=True,
         )
 
     async def _init_services_async(self, context) -> None:
         """Non-blocking service initialization via async pipeline.
-        
+
         Args:
             context: Pipeline context containing request metadata
-            
+
         Raises:
             Exception: If service initialization fails
         """
@@ -440,6 +436,7 @@ class DocumentWriterExecutor:
             # Initialize Google Docs API
             if request.use_google_docs_api:
                 from ..automation.google_docs_api import get_google_docs_client
+
                 self._google_docs = get_google_docs_client()
 
                 if not await self._google_docs.authenticate():
@@ -448,10 +445,12 @@ class DocumentWriterExecutor:
 
             # Initialize Claude
             from ..automation.claude_streamer import get_claude_streamer
+
             self._claude = get_claude_streamer()
 
             # Initialize browser
             from ..automation.browser_controller import get_browser_controller
+
             self._browser = get_browser_controller(request.browser)
 
             context.metadata["services_ready"] = True
@@ -462,7 +461,7 @@ class DocumentWriterExecutor:
 
     async def _create_doc_async(self, context) -> None:
         """Non-blocking Google Doc creation via async pipeline.
-        
+
         Args:
             context: Pipeline context containing request metadata
         """
@@ -474,8 +473,8 @@ class DocumentWriterExecutor:
                 if doc_info:
                     logger.info(f"Created Google Doc: {doc_info['document_id']}")
                     context.metadata["doc_info"] = doc_info
-                    context.metadata["document_id"] = doc_info['document_id']
-                    context.metadata["document_url"] = doc_info['document_url']
+                    context.metadata["document_id"] = doc_info["document_id"]
+                    context.metadata["document_url"] = doc_info["document_url"]
                     return
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
@@ -486,7 +485,7 @@ class DocumentWriterExecutor:
 
     async def _generate_content_async(self, context) -> None:
         """Non-blocking content generation via async pipeline.
-        
+
         Args:
             context: Pipeline context containing request and outline metadata
         """
@@ -499,24 +498,22 @@ class DocumentWriterExecutor:
 
     async def _stream_to_doc_async(self, context) -> None:
         """Non-blocking content streaming to Google Doc via async pipeline.
-        
+
         Args:
             context: Pipeline context containing document and streaming metadata
         """
         document_id = context.metadata.get("document_id")
         request = context.metadata.get("request")
         content_prompt = context.metadata.get("content_prompt")
-        progress_callback = context.metadata.get("progress_callback")
-        websocket = context.metadata.get("websocket")
+        context.metadata.get("progress_callback")
+        context.metadata.get("websocket")
 
         word_count = 0
         buffer = ""
 
         try:
             async for chunk in self._claude.stream_content(
-                content_prompt,
-                max_tokens=request.claude_max_tokens,
-                model=request.claude_model
+                content_prompt, max_tokens=request.claude_max_tokens, model=request.claude_model
             ):
                 buffer += chunk
 
@@ -542,10 +539,9 @@ class DocumentWriterExecutor:
             context.metadata["error"] = str(e)
             context.metadata["word_count"] = word_count
 
-    async def create_document(self,
-                            request: DocumentRequest,
-                            progress_callback: Optional[Callable] = None,
-                            websocket = None) -> Dict[str, Any]:
+    async def create_document(
+        self, request: DocumentRequest, progress_callback: Optional[Callable] = None, websocket=None
+    ) -> Dict[str, Any]:
         """Execute end-to-end document creation with detailed real-time communication.
 
         This is the main entry point for document creation. It orchestrates the entire
@@ -571,7 +567,7 @@ class DocumentWriterExecutor:
 
         Raises:
             Exception: If critical errors occur during document creation
-            
+
         Example:
             >>> request = DocumentRequest(
             ...     topic="Climate Change",
@@ -592,147 +588,156 @@ class DocumentWriterExecutor:
                 "progress": 0,
                 "word_count": 0,
                 "total_words_target": request.word_count or 1000,
-                "current_section": "initialization"
+                "current_section": "initialization",
             }
 
             # Phase 1: Dynamic announcement
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "acknowledging_request",
-                "topic": request.topic,
-                "document_type": request.document_type.value,
-                "format": request.formatting.value,
-                "total_words_target": request.word_count or 1000
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "acknowledging_request",
+                    "topic": request.topic,
+                    "document_type": request.document_type.value,
+                    "format": request.formatting.value,
+                    "total_words_target": request.word_count or 1000,
+                },
+            )
 
             # Phase 2: Initialize services via async pipeline
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "initializing_services",
-                "progress": 10
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={"phase": "initializing_services", "progress": 10},
+            )
 
             # Route through async pipeline for service initialization
             init_result = await self.pipeline.process_async(
                 text=f"Initialize document services for {request.topic}",
-                metadata={
-                    "request": request,
-                    "stage": "service_init"
-                }
+                metadata={"request": request, "stage": "service_init"},
             )
 
             if init_result.get("metadata", {}).get("error"):
-                return {
-                    "success": False,
-                    "error": init_result["metadata"]["error"]
-                }
+                return {"success": False, "error": init_result["metadata"]["error"]}
 
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "services_ready",
-                "progress": 20
-            })
+            await self._narrate(
+                progress_callback, websocket, context={"phase": "services_ready", "progress": 20}
+            )
 
             # Phase 3: Create Google Doc via async pipeline
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "creating_document",
-                "progress": 25,
-                "current_section": f"Google Doc: {request.title}"
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "creating_document",
+                    "progress": 25,
+                    "current_section": f"Google Doc: {request.title}",
+                },
+            )
 
             # Route through async pipeline for doc creation
             doc_result = await self.pipeline.process_async(
                 text=f"Create Google Doc: {request.title}",
-                metadata={
-                    "request": request,
-                    "stage": "doc_creation"
-                }
+                metadata={"request": request, "stage": "doc_creation"},
             )
 
             doc_metadata = doc_result.get("metadata", {})
             if doc_metadata.get("error"):
-                return {
-                    "success": False,
-                    "error": doc_metadata["error"]
-                }
+                return {"success": False, "error": doc_metadata["error"]}
 
             document_id = doc_metadata.get("document_id")
             document_url = doc_metadata.get("document_url")
 
             if not document_id or not document_url:
-                return {
-                    "success": False,
-                    "error": "Failed to create Google Doc"
-                }
+                return {"success": False, "error": "Failed to create Google Doc"}
 
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "document_created",
-                "progress": 30
-            })
+            await self._narrate(
+                progress_callback, websocket, context={"phase": "document_created", "progress": 30}
+            )
 
             # Phase 4: Open in Chrome
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "opening_browser",
-                "progress": 35
-            })
+            await self._narrate(
+                progress_callback, websocket, context={"phase": "opening_browser", "progress": 35}
+            )
 
             await self._open_in_browser(document_url, request)
             await asyncio.sleep(1.5)
 
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "browser_ready",
-                "progress": 40
-            })
+            await self._narrate(
+                progress_callback, websocket, context={"phase": "browser_ready", "progress": 40}
+            )
 
             # Phase 5: Generate outline with detail
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "analyzing_topic",
-                "progress": 45,
-                "current_section": "outline generation"
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "analyzing_topic",
+                    "progress": 45,
+                    "current_section": "outline generation",
+                },
+            )
 
             outline = await self._generate_outline(request)
 
-            section_count = len(outline.get('sections', []))
-            sections = outline.get('sections', [])
-            section_names = ', '.join([s['name'] for s in sections])
+            section_count = len(outline.get("sections", []))
+            sections = outline.get("sections", [])
+            section_names = ", ".join([s["name"] for s in sections])
 
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "outline_complete",
-                "progress": 50,
-                "section_count": section_count,
-                "sections": section_names
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "outline_complete",
+                    "progress": 50,
+                    "section_count": section_count,
+                    "sections": section_names,
+                },
+            )
 
             # Phase 6: Stream content with detailed progress
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "starting_writing",
-                "progress": 55,
-                "current_section": sections[0]['name'] if sections else "introduction"
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "starting_writing",
+                    "progress": 55,
+                    "current_section": sections[0]["name"] if sections else "introduction",
+                },
+            )
 
             word_count = await self._stream_content(
-                document_id, request, outline,
-                progress_callback, websocket
+                document_id, request, outline, progress_callback, websocket
             )
 
             # Phase 7: Completion with summary - CRITICAL announcements
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "writing_complete",
-                "progress": 95,
-                "word_count": word_count,
-                "topic": request.topic,
-                "document_type": request.document_type.value
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "writing_complete",
+                    "progress": 95,
+                    "word_count": word_count,
+                    "topic": request.topic,
+                    "document_type": request.document_type.value,
+                },
+            )
 
             # Small delay for natural pacing between completion messages
             await asyncio.sleep(1.5)
 
-            await self._narrate(progress_callback, websocket, context={
-                "phase": "document_ready",
-                "progress": 100,
-                "word_count": word_count,
-                "section_count": section_count,
-                "topic": request.topic,
-                "document_type": request.document_type.value
-            })
+            await self._narrate(
+                progress_callback,
+                websocket,
+                context={
+                    "phase": "document_ready",
+                    "progress": 100,
+                    "word_count": word_count,
+                    "section_count": section_count,
+                    "topic": request.topic,
+                    "document_type": request.document_type.value,
+                },
+            )
 
             return {
                 "success": True,
@@ -742,26 +747,25 @@ class DocumentWriterExecutor:
                 "word_count": word_count,
                 "platform": request.platform.value,
                 "topic": request.topic,
-                "formatting": request.formatting.value
+                "formatting": request.formatting.value,
             }
 
         except Exception as e:
             logger.error(f"Error in document creation: {e}", exc_info=True)
-            await self._narrate(progress_callback, websocket,
-                f"I apologize, Sir. I encountered an error: {str(e)}")
-            await self._narrate(progress_callback, websocket,
-                "I'll attempt to recover and continue...")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            await self._narrate(
+                progress_callback, websocket, f"I apologize, Sir. I encountered an error: {str(e)}"
+            )
+            await self._narrate(
+                progress_callback, websocket, "I'll attempt to recover and continue..."
+            )
+            return {"success": False, "error": str(e)}
 
     async def _initialize_services(self, request: DocumentRequest) -> bool:
         """Initialize required services for document creation.
-        
+
         Args:
             request: Document request containing service configuration
-            
+
         Returns:
             bool: True if all services initialized successfully, False otherwise
         """
@@ -769,6 +773,7 @@ class DocumentWriterExecutor:
             # Initialize Google Docs API
             if request.use_google_docs_api:
                 from ..automation.google_docs_api import get_google_docs_client
+
                 self._google_docs = get_google_docs_client()
 
                 if not await self._google_docs.authenticate():
@@ -777,22 +782,25 @@ class DocumentWriterExecutor:
 
             # Initialize Claude
             from ..automation.claude_streamer import get_claude_streamer
+
             self._claude = get_claude_streamer()
 
             # Initialize Intelligent Narrator with Claude
             from .intelligent_narrator import get_intelligent_narrator
+
             self._intelligent_narrator = get_intelligent_narrator(self._claude)
             await self._intelligent_narrator.initialize(
                 topic=request.topic,
                 doc_type=request.document_type.value,
                 format_style=request.formatting.value,
                 target_words=request.word_count or 1000,
-                claude_client=self._claude
+                claude_client=self._claude,
             )
             logger.info("[DOCUMENT WRITER] ✅ Intelligent Narrator initialized")
 
             # Initialize browser
             from ..automation.browser_controller import get_browser_controller
+
             self._browser = get_browser_controller(request.browser)
 
             return True
@@ -803,10 +811,10 @@ class DocumentWriterExecutor:
 
     async def _create_google_doc(self, request: DocumentRequest) -> Optional[Dict[str, Any]]:
         """Create Google Doc via API with retry logic.
-        
+
         Args:
             request: Document request containing title and retry configuration
-            
+
         Returns:
             Optional[Dict[str, Any]]: Document info dict with ID and URL, or None if failed
         """
@@ -824,11 +832,11 @@ class DocumentWriterExecutor:
 
     async def _open_in_browser(self, url: str, request: DocumentRequest) -> bool:
         """Open document in browser.
-        
+
         Args:
             url: Document URL to open
             request: Document request containing browser configuration
-            
+
         Returns:
             bool: True if successfully opened, False otherwise
         """
@@ -843,14 +851,22 @@ class DocumentWriterExecutor:
 
     async def _generate_outline(self, request: DocumentRequest) -> Dict[str, Any]:
         """Generate document outline using Claude AI.
-        
+
         Args:
             request: Document request containing topic and requirements
-            
+
         Returns:
             Dict[str, Any]: Outline structure with title and sections
         """
-        article = "an" if request.document_type.value[0] in 'aeiou' else "a"
+        article = "an" if request.document_type.value[0] in "aeiou" else "a"
         outline_prompt = f"""Create a detailed outline for {article} {request.document_type.value} about "{request.topic}".
 
-Target length: {request
+Target length: {request.target_length} words
+Style: {request.style}
+
+Return a JSON structure with:
+- title: Document title
+- sections: List of section objects with title and bullet points
+"""
+        # TODO: Implement outline generation using Claude API
+        return {"title": request.topic, "sections": []}

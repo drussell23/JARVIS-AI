@@ -28,16 +28,13 @@ Integration Points:
     - TemporalContextEngine (vision/intelligence/temporal_context_engine.py)
     - FeedbackLearningLoop (core/learning/feedback_loop.py)
 """
-import asyncio
+
 import logging
-from typing import Dict, List, Optional, Set, Any, Tuple, Union, Callable
-from dataclasses import dataclass, field, asdict
+from collections import deque
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum, auto
-from collections import defaultdict, deque
-import hashlib
-import json
-from pathlib import Path
+from enum import Enum
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +43,14 @@ logger = logging.getLogger(__name__)
 # CONTEXT TYPES - Rich, Structured Context for Different Applications
 # ============================================================================
 
+
 class ContextType(Enum):
     """Types of application contexts we track.
-    
+
     This enum defines the different categories of applications that JARVIS
     can provide specialized context tracking for.
     """
+
     TERMINAL = "terminal"
     BROWSER = "browser"
     IDE = "ide"
@@ -62,24 +61,25 @@ class ContextType(Enum):
 
 class ActivitySignificance(Enum):
     """How significant is this activity?
-    
+
     Used to prioritize context and determine what should be preserved
     longer or highlighted in natural language queries.
     """
-    CRITICAL = "critical"      # Errors, crashes, important notifications
-    HIGH = "high"              # Code changes, command execution, search queries
-    NORMAL = "normal"          # Regular interactions, scrolling, reading
-    LOW = "low"                # Idle, background activity
+
+    CRITICAL = "critical"  # Errors, crashes, important notifications
+    HIGH = "high"  # Code changes, command execution, search queries
+    NORMAL = "normal"  # Regular interactions, scrolling, reading
+    LOW = "low"  # Idle, background activity
     BACKGROUND = "background"  # No user interaction
 
 
 @dataclass
 class TerminalContext:
     """Context for terminal/command-line applications.
-    
+
     Tracks command execution, output, errors, and working directory
     to understand development workflows and debugging sessions.
-    
+
     Attributes:
         last_command: Most recently executed command
         last_output: Output from the last command
@@ -90,6 +90,7 @@ class TerminalContext:
         shell_type: Type of shell (bash, zsh, fish, etc.)
         recent_commands: Deque of recent commands with timestamps
     """
+
     last_command: Optional[str] = None
     last_output: Optional[str] = None
     errors: List[str] = field(default_factory=list)
@@ -101,7 +102,7 @@ class TerminalContext:
 
     def has_error(self) -> bool:
         """Check if this terminal context contains any errors.
-        
+
         Returns:
             bool: True if there are errors or non-zero exit code
         """
@@ -111,10 +112,10 @@ class TerminalContext:
 @dataclass
 class BrowserContext:
     """Context for web browsers.
-    
+
     Tracks browsing activity, research patterns, and content to understand
     what the user is reading or researching.
-    
+
     Attributes:
         active_url: Currently active URL
         page_title: Title of the current page
@@ -124,6 +125,7 @@ class BrowserContext:
         is_researching: Whether user appears to be researching
         research_topic: Detected topic of research
     """
+
     active_url: Optional[str] = None
     page_title: Optional[str] = None
     tabs: List[Dict[str, str]] = field(default_factory=list)  # [{"url": ..., "title": ...}]
@@ -136,10 +138,10 @@ class BrowserContext:
 @dataclass
 class IDEContext:
     """Context for IDEs (VS Code, IntelliJ, etc.).
-    
+
     Tracks code editing activity, open files, errors, and debugging
     to understand development workflows.
-    
+
     Attributes:
         open_files: List of currently open file paths
         active_file: Currently active/focused file
@@ -150,6 +152,7 @@ class IDEContext:
         is_debugging: Whether debugger is active
         language: Programming language of active file
     """
+
     open_files: List[str] = field(default_factory=list)
     active_file: Optional[str] = None
     cursor_position: Optional[Tuple[int, int]] = None  # (line, column)
@@ -163,16 +166,17 @@ class IDEContext:
 @dataclass
 class GenericAppContext:
     """Generic context for applications we don't have special handling for.
-    
+
     Provides basic context tracking for any application through OCR
     and interaction monitoring.
-    
+
     Attributes:
         window_title: Title of the application window
         extracted_text: OCR extracted text from the window
         interaction_count: Number of interactions detected
         last_interaction: Timestamp of last interaction
     """
+
     window_title: Optional[str] = None
     extracted_text: Optional[str] = None  # OCR
     interaction_count: int = 0
@@ -183,13 +187,14 @@ class GenericAppContext:
 # APPLICATION CONTEXT - State Tracking for Individual Applications
 # ============================================================================
 
+
 @dataclass
 class ApplicationContext:
     """Tracks state for a specific application within a space.
-    
+
     This is the main container for application-specific context, containing
     both metadata and type-specific context objects.
-    
+
     Attributes:
         app_name: Name of the application
         context_type: Type of context (terminal, browser, etc.)
@@ -205,6 +210,7 @@ class ApplicationContext:
         significance: Current significance level of this app
         screenshots: Deque of recent screenshot references
     """
+
     app_name: str
     context_type: ContextType
     space_id: int
@@ -225,11 +231,13 @@ class ApplicationContext:
     # Screenshot references
     screenshots: deque = field(default_factory=lambda: deque(maxlen=5))
 
-    def get_typed_context(self) -> Union[TerminalContext, BrowserContext, IDEContext, GenericAppContext]:
+    def get_typed_context(
+        self,
+    ) -> Union[TerminalContext, BrowserContext, IDEContext, GenericAppContext]:
         """Get the specific context object for this app type.
-        
+
         Returns:
-            Union[TerminalContext, BrowserContext, IDEContext, GenericAppContext]: 
+            Union[TerminalContext, BrowserContext, IDEContext, GenericAppContext]:
                 The appropriate context object for this application type
         """
         if self.context_type == ContextType.TERMINAL:
@@ -243,7 +251,7 @@ class ApplicationContext:
 
     def update_activity(self, significance: Optional[ActivitySignificance] = None):
         """Record activity in this application.
-        
+
         Args:
             significance: Optional significance level for this activity
         """
@@ -254,23 +262,21 @@ class ApplicationContext:
 
     def add_screenshot(self, screenshot_path: str, ocr_text: Optional[str] = None):
         """Add screenshot reference with optional OCR text.
-        
+
         Args:
             screenshot_path: Path to the screenshot file
             ocr_text: Optional OCR extracted text from the screenshot
         """
-        self.screenshots.append({
-            "path": screenshot_path,
-            "timestamp": datetime.now(),
-            "ocr_text": ocr_text
-        })
+        self.screenshots.append(
+            {"path": screenshot_path, "timestamp": datetime.now(), "ocr_text": ocr_text}
+        )
 
     def is_recent(self, within_seconds: int = 180) -> bool:
         """Check if this app had recent activity.
-        
+
         Args:
             within_seconds: Time window to consider as "recent" (default: 3 minutes)
-            
+
         Returns:
             bool: True if the app had activity within the specified time window
         """
@@ -281,13 +287,14 @@ class ApplicationContext:
 # SPACE CONTEXT - Per-Space Activity Tracking
 # ============================================================================
 
+
 @dataclass
 class ActivityEvent:
     """Individual activity event within a space.
-    
+
     Represents a single event in the activity timeline, such as app launches,
     command executions, errors, etc.
-    
+
     Attributes:
         event_type: Type of event (e.g., "app_launched", "command_executed")
         timestamp: When the event occurred
@@ -295,6 +302,7 @@ class ActivityEvent:
         significance: Significance level of this event
         details: Additional event-specific details
     """
+
     event_type: str  # "app_launched", "command_executed", "error_detected", etc.
     timestamp: datetime
     app_name: Optional[str] = None
@@ -303,7 +311,7 @@ class ActivityEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert event to dictionary for serialization.
-        
+
         Returns:
             Dict[str, Any]: Dictionary representation of the event
         """
@@ -312,7 +320,7 @@ class ActivityEvent:
             "timestamp": self.timestamp.isoformat(),
             "app_name": self.app_name,
             "significance": self.significance.value,
-            "details": self.details
+            "details": self.details,
         }
 
 
@@ -321,7 +329,7 @@ class SpaceContext:
 
     This is the per-space view that gets aggregated into the global context graph.
     Each space maintains its own timeline of events and application contexts.
-    
+
     Attributes:
         space_id: Unique identifier for this space
         created_at: When this space context was created
@@ -336,7 +344,7 @@ class SpaceContext:
 
     def __init__(self, space_id: int):
         """Initialize space context.
-        
+
         Args:
             space_id: Unique identifier for this space
         """
@@ -361,7 +369,7 @@ class SpaceContext:
 
     def activate(self):
         """Mark this space as currently active.
-        
+
         Records activation time and adds an activation event to the timeline.
         """
         self.is_active = True
@@ -369,15 +377,17 @@ class SpaceContext:
         self._last_activated = datetime.now()
         self.last_activity = datetime.now()
 
-        self.add_event(ActivityEvent(
-            event_type="space_activated",
-            timestamp=datetime.now(),
-            significance=ActivitySignificance.NORMAL
-        ))
+        self.add_event(
+            ActivityEvent(
+                event_type="space_activated",
+                timestamp=datetime.now(),
+                significance=ActivitySignificance.NORMAL,
+            )
+        )
 
     def deactivate(self):
         """Mark this space as no longer active.
-        
+
         Calculates session duration and adds a deactivation event.
         """
         if self.is_active and self._last_activated:
@@ -386,58 +396,62 @@ class SpaceContext:
 
         self.is_active = False
 
-        self.add_event(ActivityEvent(
-            event_type="space_deactivated",
-            timestamp=datetime.now(),
-            significance=ActivitySignificance.LOW
-        ))
+        self.add_event(
+            ActivityEvent(
+                event_type="space_deactivated",
+                timestamp=datetime.now(),
+                significance=ActivitySignificance.LOW,
+            )
+        )
 
     def add_application(self, app_name: str, context_type: ContextType) -> ApplicationContext:
         """Add or retrieve application context.
-        
+
         Args:
             app_name: Name of the application
             context_type: Type of context for this application
-            
+
         Returns:
             ApplicationContext: The application context object
         """
         if app_name not in self.applications:
             self.applications[app_name] = ApplicationContext(
-                app_name=app_name,
-                context_type=context_type,
-                space_id=self.space_id
+                app_name=app_name, context_type=context_type, space_id=self.space_id
             )
 
-            self.add_event(ActivityEvent(
-                event_type="app_added",
-                timestamp=datetime.now(),
-                app_name=app_name,
-                significance=ActivitySignificance.NORMAL,
-                details={"context_type": context_type.value}
-            ))
+            self.add_event(
+                ActivityEvent(
+                    event_type="app_added",
+                    timestamp=datetime.now(),
+                    app_name=app_name,
+                    significance=ActivitySignificance.NORMAL,
+                    details={"context_type": context_type.value},
+                )
+            )
 
         return self.applications[app_name]
 
     def remove_application(self, app_name: str):
         """Remove application from this space.
-        
+
         Args:
             app_name: Name of the application to remove
         """
         if app_name in self.applications:
             del self.applications[app_name]
 
-            self.add_event(ActivityEvent(
-                event_type="app_removed",
-                timestamp=datetime.now(),
-                app_name=app_name,
-                significance=ActivitySignificance.LOW
-            ))
+            self.add_event(
+                ActivityEvent(
+                    event_type="app_removed",
+                    timestamp=datetime.now(),
+                    app_name=app_name,
+                    significance=ActivitySignificance.LOW,
+                )
+            )
 
     def add_event(self, event: ActivityEvent):
         """Add activity event to timeline.
-        
+
         Args:
             event: The activity event to add
         """
@@ -446,10 +460,10 @@ class SpaceContext:
 
     def get_recent_events(self, within_seconds: int = 180) -> List[ActivityEvent]:
         """Get events from the last N seconds.
-        
+
         Args:
             within_seconds: Time window in seconds (default: 3 minutes)
-            
+
         Returns:
             List[ActivityEvent]: List of recent events
         """
@@ -458,10 +472,10 @@ class SpaceContext:
 
     def get_recent_errors(self, within_seconds: int = 300) -> List[Tuple[str, ActivityEvent]]:
         """Get recent errors from any application in this space.
-        
+
         Args:
             within_seconds: Time window in seconds (default: 5 minutes)
-            
+
         Returns:
             List[Tuple[str, ActivityEvent]]: List of (app_name, error_event) tuples
         """
@@ -473,26 +487,40 @@ class SpaceContext:
             if app_ctx.context_type == ContextType.TERMINAL and app_ctx.terminal_context:
                 if app_ctx.last_activity > cutoff and app_ctx.terminal_context.has_error():
                     for error in app_ctx.terminal_context.errors:
-                        errors.append((app_name, ActivityEvent(
-                            event_type="terminal_error",
-                            timestamp=app_ctx.last_activity,
-                            app_name=app_name,
-                            significance=ActivitySignificance.CRITICAL,
-                            details={"error": error}
-                        )))
+                        errors.append(
+                            (
+                                app_name,
+                                ActivityEvent(
+                                    event_type="terminal_error",
+                                    timestamp=app_ctx.last_activity,
+                                    app_name=app_name,
+                                    significance=ActivitySignificance.CRITICAL,
+                                    details={"error": error},
+                                ),
+                            )
+                        )
 
         return errors
 
     def infer_tags(self):
         """Automatically infer tags based on applications present.
-        
+
         Analyzes the applications in this space to automatically categorize
         the space with relevant tags like "development", "research", etc.
         """
         new_tags = set()
 
         # Development indicators
-        dev_apps = {"Terminal", "iTerm", "iTerm2", "VS Code", "Code", "IntelliJ", "PyCharm", "Sublime"}
+        dev_apps = {
+            "Terminal",
+            "iTerm",
+            "iTerm2",
+            "VS Code",
+            "Code",
+            "IntelliJ",
+            "PyCharm",
+            "Sublime",
+        }
         if any(app in self.applications for app in dev_apps):
             new_tags.add("development")
 
@@ -510,7 +538,7 @@ class SpaceContext:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary.
-        
+
         Returns:
             Dict[str, Any]: Dictionary representation of the space context
         """
@@ -528,11 +556,11 @@ class SpaceContext:
                     "context_type": ctx.context_type.value,
                     "last_activity": ctx.last_activity.isoformat(),
                     "activity_count": ctx.activity_count,
-                    "significance": ctx.significance.value
+                    "significance": ctx.significance.value,
                 }
                 for name, ctx in self.applications.items()
             },
-            "recent_events": [event.to_dict() for event in self.get_recent_events()]
+            "recent_events": [event.to_dict() for event in self.get_recent_events()],
         }
 
 
@@ -540,13 +568,14 @@ class SpaceContext:
 # CROSS-SPACE CORRELATION - Detecting Relationships Across Spaces
 # ============================================================================
 
+
 @dataclass
 class CrossSpaceRelationship:
     """Represents a detected relationship between activities in different spaces.
-    
+
     This captures patterns like debugging workflows that span multiple spaces,
     research activities that inform coding, etc.
-    
+
     Attributes:
         relationship_id: Unique identifier for this relationship
         relationship_type: Type of relationship (e.g., "debugging_workflow")
@@ -558,6 +587,7 @@ class CrossSpaceRelationship:
         evidence: List of evidence supporting this relationship
         description: Human-readable description of the relationship
     """
+
     relationship_id: str
     relationship_type: str  # "debugging_workflow", "research_and_code", "cross_reference"
     involved_spaces: List[int]
@@ -570,7 +600,7 @@ class CrossSpaceRelationship:
 
     def update_detection(self, new_evidence: Dict[str, Any]):
         """Update when we see more evidence of this relationship.
-        
+
         Args:
             new_evidence: New evidence supporting this relationship
         """
@@ -587,7 +617,7 @@ class CrossSpaceCorrelator:
     - Terminal error in Space 1 + Researching docs in Space 3 = Same problem
     - Editing code in Space 2 + Running tests in Space 1 = Development workflow
     - Reading Slack in Space 4 + Editing doc in Space 2 = Responding to request
-    
+
     Attributes:
         relationships: Dictionary of detected relationships
         relationship_patterns: List of pattern detection functions
@@ -600,7 +630,7 @@ class CrossSpaceCorrelator:
 
     def _init_patterns(self) -> List[Dict[str, Any]]:
         """Initialize relationship detection patterns.
-        
+
         Returns:
             List[Dict[str, Any]]: List of pattern detection configurations
         """
@@ -609,34 +639,36 @@ class CrossSpaceCorrelator:
                 "name": "debugging_workflow",
                 "description": "Terminal error + browser research + code editing",
                 "detector": self._detect_debugging_workflow,
-                "min_confidence": 0.7
+                "min_confidence": 0.7,
             },
             {
                 "name": "research_and_code",
                 "description": "Reading documentation while coding",
                 "detector": self._detect_research_and_code,
-                "min_confidence": 0.6
+                "min_confidence": 0.6,
             },
             {
                 "name": "cross_terminal_workflow",
                 "description": "Multiple terminals working on related tasks",
                 "detector": self._detect_cross_terminal_workflow,
-                "min_confidence": 0.5
+                "min_confidence": 0.5,
             },
             {
                 "name": "documentation_lookup",
                 "description": "Quickly checking docs then returning to work",
                 "detector": self._detect_documentation_lookup,
-                "min_confidence": 0.8
-            }
+                "min_confidence": 0.8,
+            },
         ]
 
-    async def analyze_relationships(self, spaces: Dict[int, SpaceContext]) -> List[CrossSpaceRelationship]:
+    async def analyze_relationships(
+        self, spaces: Dict[int, SpaceContext]
+    ) -> List[CrossSpaceRelationship]:
         """Analyze all spaces and detect cross-space relationships.
 
         Args:
             spaces: Dictionary of space contexts to analyze
-            
+
         Returns:
             List[CrossSpaceRelationship]: New or updated relationships detected
         """
@@ -654,21 +686,25 @@ class CrossSpaceCorrelator:
                     else:
                         self.relationships[result.relationship_id] = result
                         detected.append(result)
-                        logger.info(f"[CROSS-SPACE] Detected new relationship: {result.relationship_type}")
+                        logger.info(
+                            f"[CROSS-SPACE] Detected new relationship: {result.relationship_type}"
+                        )
             except Exception as e:
                 logger.error(f"[CROSS-SPACE] Error in pattern '{pattern['name']}': {e}")
 
         return detected
 
-    async def _detect_debugging_workflow(self, spaces: Dict[int, SpaceContext]) -> Optional[CrossSpaceRelationship]:
+    async def _detect_debugging_workflow(
+        self, spaces: Dict[int, SpaceContext]
+    ) -> Optional[CrossSpaceRelationship]:
         """Detect: Terminal error + Browser research + IDE editing.
-        
+
         This is a very common developer workflow where an error occurs,
         the developer researches solutions, and then implements fixes.
-        
+
         Args:
             spaces: Dictionary of space contexts to analyze
-            
+
         Returns:
             Optional[CrossSpaceRelationship]: Detected relationship or None
         """
@@ -695,7 +731,9 @@ class CrossSpaceCorrelator:
         # Find browser with research activity
         for space in spaces.values():
             for app_name, app_ctx in space.applications.items():
-                if app_ctx.context_type == ContextType.BROWSER and app_ctx.is_recent(within_seconds=300):
+                if app_ctx.context_type == ContextType.BROWSER and app_ctx.is_recent(
+                    within_seconds=300
+                ):
                     if app_ctx.browser_context and app_ctx.browser_context.is_researching:
                         browser_space = space.space_id
                         browser_research = app_ctx
@@ -706,16 +744,22 @@ class CrossSpaceCorrelator:
         # Find IDE with recent activity
         for space in spaces.values():
             for app_name, app_ctx in space.applications.items():
-                if app_ctx.context_type == ContextType.IDE and app_ctx.is_recent(within_seconds=300):
+                if app_ctx.context_type == ContextType.IDE and app_ctx.is_recent(
+                    within_seconds=300
+                ):
                     ide_space = space.space_id
                     break
             if ide_space:
                 break
 
         # If we found at least 2 of 3, we have a debugging workflow
-        found_count = sum([terminal_space is not None, browser_space is not None, ide_space is not None])
+        found_count = sum(
+            [terminal_space is not None, browser_space is not None, ide_space is not None]
+        )
         if found_count >= 2:
-            involved_spaces = [s for s in [terminal_space, browser_space, ide_space] if s is not None]
+            involved_spaces = [
+                s for s in [terminal_space, browser_space, ide_space] if s is not None
+            ]
             relationship_id = f"debug_workflow_{hash(tuple(sorted(involved_spaces)))}"
 
             return CrossSpaceRelationship(
@@ -725,26 +769,36 @@ class CrossSpaceCorrelator:
                 involved_apps=[
                     (terminal_space, "Terminal") if terminal_space else None,
                     (browser_space, "Browser") if browser_space else None,
-                    (ide_space, "IDE") if ide_space else None
+                    (ide_space, "IDE") if ide_space else None,
                 ],
                 confidence=0.7 + (0.1 * (found_count - 2)),
                 first_detected=datetime.now(),
                 last_detected=datetime.now(),
-                evidence=[{
-                    "terminal_error": terminal_error.details.get("error") if terminal_error else None,
-                    "browser_research": browser_research.browser_context.research_topic if browser_research and browser_research.browser_context else None
-                }],
-                description=f"Debugging workflow across {found_count} spaces: Terminal error → Research → Fixing code"
+                evidence=[
+                    {
+                        "terminal_error": (
+                            terminal_error.details.get("error") if terminal_error else None
+                        ),
+                        "browser_research": (
+                            browser_research.browser_context.research_topic
+                            if browser_research and browser_research.browser_context
+                            else None
+                        ),
+                    }
+                ],
+                description=f"Debugging workflow across {found_count} spaces: Terminal error → Research → Fixing code",
             )
 
         return None
 
-    async def _detect_research_and_code(self, spaces: Dict[int, SpaceContext]) -> Optional[CrossSpaceRelationship]:
+    async def _detect_research_and_code(
+        self, spaces: Dict[int, SpaceContext]
+    ) -> Optional[CrossSpaceRelationship]:
         """Detect: Browser docs + IDE coding happening simultaneously.
-        
+
         Args:
             spaces: Dictionary of space contexts to analyze
-            
+
         Returns:
             Optional[CrossSpaceRelationship]: Detected relationship or None
         """
@@ -754,13 +808,17 @@ class CrossSpaceCorrelator:
         for space in spaces.values():
             # Find browser with docs/research
             for app_name, app_ctx in space.applications.items():
-                if app_ctx.context_type == ContextType.BROWSER and app_ctx.is_recent(within_seconds=180):
+                if app_ctx.context_type == ContextType.BROWSER and app_ctx.is_recent(
+                    within_seconds=180
+                ):
                     browser_space = space.space_id
                     break
 
             # Find IDE with activity
             for app_name, app_ctx in space.applications.items():
-                if app_ctx.context_type == ContextType.IDE and app_ctx.is_recent(within_seconds=180):
+                if app_ctx.context_type == ContextType.IDE and app_ctx.is_recent(
+                    within_seconds=180
+                ):
                     ide_space = space.space_id
                     break
 
@@ -774,17 +832,19 @@ class CrossSpaceCorrelator:
                 confidence=0.6,
                 first_detected=datetime.now(),
                 last_detected=datetime.now(),
-                description=f"Reading documentation in Space {browser_space} while coding in Space {ide_space}"
+                description=f"Reading documentation in Space {browser_space} while coding in Space {ide_space}",
             )
 
         return None
 
-    async def _detect_cross_terminal_workflow(self, spaces: Dict[int, SpaceContext]) -> Optional[CrossSpaceRelationship]:
+    async def _detect_cross_terminal_workflow(
+        self, spaces: Dict[int, SpaceContext]
+    ) -> Optional[CrossSpaceRelationship]:
         """Detect: Multiple terminals with related commands (e.g., dev server + tests).
-        
+
         Args:
             spaces: Dictionary of space contexts to analyze
-            
+
         Returns:
             Optional[CrossSpaceRelationship]: Detected relationship or None
         """
@@ -792,7 +852,9 @@ class CrossSpaceCorrelator:
 
         for space in spaces.values():
             for app_name, app_ctx in space.applications.items():
-                if app_ctx.context_type == ContextType.TERMINAL and app_ctx.is_recent(within_seconds=300):
+                if app_ctx.context_type == ContextType.TERMINAL and app_ctx.is_recent(
+                    within_seconds=300
+                ):
                     terminal_spaces.append((space.space_id, app_name, app_ctx))
 
         if len(terminal_spaces) >= 2:
@@ -806,18 +868,26 @@ class CrossSpaceCorrelator:
                 confidence=0.5,
                 first_detected=datetime.now(),
                 last_detected=datetime.now(),
-                description=f"Multiple terminals across {len(terminal_spaces)} spaces working on related tasks"
+                description=f"Multiple terminals across {len(terminal_spaces)} spaces working on related tasks",
             )
 
         return None
 
-    async def _detect_documentation_lookup(self, spaces: Dict[int, SpaceContext]) -> Optional[CrossSpaceRelationship]:
+    async def _detect_documentation_lookup(
+        self, spaces: Dict[int, SpaceContext]
+    ) -> Optional[CrossSpaceRelationship]:
         """Detect: Quick doc lookup (browser opened briefly, then back to work).
-        
+
         This would look for a pattern of:
         - Space switch to browser
         - Brief activity (< 30 seconds)
         - Switch back to original space
-        
+
         Args:
             spaces: Dictionary of space contexts to analyze
+
+        Returns:
+            List of detected quick doc lookup patterns
+        """
+        # TODO: Implement quick doc lookup detection
+        return []
