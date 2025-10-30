@@ -503,6 +503,116 @@ async def _execute_screen_action(
     if jarvis_instance:
         context["jarvis_instance"] = jarvis_instance
 
+    # VOICE BIOMETRIC VERIFICATION (for unlock actions only)
+    if action == "unlock_screen":
+        # Extract audio data from jarvis_instance if available
+        audio_data = None
+        speaker_name = None
+
+        if jarvis_instance:
+            if hasattr(jarvis_instance, "last_audio_data"):
+                audio_data = jarvis_instance.last_audio_data
+                logger.debug(
+                    f"✅ Audio data extracted: {len(audio_data) if audio_data else 0} bytes"
+                )
+
+            if hasattr(jarvis_instance, "last_speaker_name"):
+                speaker_name = jarvis_instance.last_speaker_name
+                logger.debug(f"✅ Speaker name extracted: {speaker_name}")
+
+        logger.info(
+            f"🎤 Audio data status: {len(audio_data) if audio_data else 0} bytes, speaker: {speaker_name}"
+        )
+
+        if audio_data:
+            # Verify speaker using voice biometrics
+            try:
+                from voice.speaker_verification_service import get_speaker_verification_service
+
+                # Step 1: Announce verification start
+                logger.info("🎤 Starting voice biometric verification...")
+                context["status_message"] = "Verifying your voice biometrics..."
+
+                speaker_service = await get_speaker_verification_service()
+                sample_count = sum(
+                    profile.get("total_samples", 0)
+                    for profile in speaker_service.speaker_profiles.values()
+                )
+                logger.info(
+                    f"🔐 Speaker service ready: {len(speaker_service.speaker_profiles)} profiles, "
+                    f"{sample_count} voice samples loaded"
+                )
+
+                # Step 2: Verify speaker using voice biometrics
+                logger.info("🔐 Analyzing voice pattern against biometric database...")
+                context["status_message"] = "Analyzing voice pattern..."
+
+                verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
+                logger.info(f"🎤 Verification result: {verification_result}")
+
+                speaker_name = verification_result["speaker_name"]
+                is_verified = verification_result["verified"]
+                confidence = verification_result["confidence"]
+                is_owner = verification_result["is_owner"]
+
+                # Step 3: Announce verification result
+                logger.info(
+                    f"🔐 Speaker verification: {speaker_name} - "
+                    f"{'✅ VERIFIED' if is_verified else '❌ FAILED'} "
+                    f"(confidence: {confidence:.1%}, owner: {is_owner})"
+                )
+
+                if not is_verified:
+                    logger.warning(
+                        f"🚫 Voice verification failed for {speaker_name} - unlock denied"
+                    )
+                    context["status_message"] = "Voice verification failed - access denied"
+                    return {
+                        "success": False,
+                        "error": "voice_verification_failed",
+                        "message": (
+                            f"I'm sorry, I couldn't verify your voice biometrics. "
+                            f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security."
+                        ),
+                    }
+
+                # Check if speaker is the device owner
+                if not is_owner:
+                    logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
+                    context["status_message"] = "Non-owner detected - access denied"
+                    return {
+                        "success": False,
+                        "error": "not_owner",
+                        "message": f"Voice verified as {speaker_name}, but only the device owner Derek can unlock the screen.",
+                    }
+
+                # Store verified speaker name in context for personalized response
+                context["verified_speaker_name"] = speaker_name
+                context["verification_confidence"] = confidence
+
+                logger.info(
+                    f"✅ Voice verification passed for owner: {speaker_name} ({confidence:.1%})"
+                )
+                context["status_message"] = (
+                    f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
+                )
+                # Store intermediate message for JARVIS to speak
+                context["verification_message"] = (
+                    f"Identity confirmed, {speaker_name}. Voice biometrics verified at {confidence:.0%} confidence. "
+                    f"Initiating screen unlock sequence now."
+                )
+
+            except Exception as e:
+                logger.error(f"Voice verification error: {e}", exc_info=True)
+                # Voice verification failed - deny unlock
+                return {
+                    "success": False,
+                    "error": "voice_verification_error",
+                    "message": f"Voice verification system error: {str(e)}",
+                }
+        else:
+            logger.info("📝 No audio data - bypassing voice verification (text command)")
+
     # Get transport manager
     transport = await _get_transport_manager()
 
@@ -919,8 +1029,20 @@ async def _enhance_result_with_context(
 ) -> Dict[str, Any]:
     """Enhance result with dynamic response and contextual information."""
 
-    # Add dynamic response
-    result["response"] = response_text
+    # Add dynamic response with voice verification message if available
+    if action == "unlock_screen" and context.get("verification_message") and result.get("success"):
+        # Include voice verification transparency message
+        verified_speaker = context.get("verified_speaker_name", "Derek")
+        context.get("verification_confidence", 0)
+
+        # Build complete response with verification message
+        verification_msg = context["verification_message"]
+        full_message = f"{verification_msg} {response_text}"
+        result["response"] = full_message
+
+        logger.info(f"[RESPONSE] Including verification message for {verified_speaker}")
+    else:
+        result["response"] = response_text
 
     # CRITICAL: Add action field for fast path compatibility
     result["action"] = action
@@ -937,6 +1059,8 @@ async def _enhance_result_with_context(
         "user_state": context["user_state"],
         "time_context": context["time_context"],
         "execution_method": result.get("method", "unknown"),
+        "voice_verified": bool(context.get("verified_speaker_name")),
+        "verification_confidence": context.get("verification_confidence", 0),
     }
 
     # Add performance metrics

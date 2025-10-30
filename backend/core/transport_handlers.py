@@ -32,8 +32,14 @@ async def applescript_handler(action: str, context: Dict[str, Any], **kwargs) ->
             unlock_service = MacOSKeychainUnlock()
             verified_speaker = context.get("verified_speaker_name", "Derek")
 
+            logger.info(
+                f"[APPLESCRIPT] Calling MacOSKeychainUnlock.unlock_screen() for {verified_speaker}"
+            )
+
             # Perform actual screen unlock with Keychain password
             unlock_result = await unlock_service.unlock_screen(verified_speaker=verified_speaker)
+
+            logger.info(f"[APPLESCRIPT] Unlock result: {unlock_result}")
 
             if unlock_result["success"]:
                 logger.info(f"[APPLESCRIPT] ✅ {action} succeeded for {verified_speaker}")
