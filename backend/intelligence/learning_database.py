@@ -4867,10 +4867,16 @@ class JARVISLearningDatabase:
                 """
                 )
                 rows = await cursor.fetchall()
-                logger.debug(f"Got {len(rows) if rows else 0} speaker profile rows")
-                logger.debug(
+                logger.info(f"Got {len(rows) if rows else 0} speaker profile rows")
+                logger.info(
                     f"Type of rows: {type(rows)}, Type of first row: {type(rows[0]) if rows else 'empty'}"
                 )
+
+                if rows and len(rows) > 0:
+                    logger.info(f"First row content: {rows[0]}")
+                    logger.info(
+                        f"First row keys: {list(rows[0].keys()) if hasattr(rows[0], 'keys') else 'no keys'}"
+                    )
 
                 profiles = []
                 for row in rows:
@@ -4892,7 +4898,7 @@ class JARVISLearningDatabase:
                 return profiles
 
         except Exception as e:
-            logger.error(f"Failed to get speaker profiles: {e}")
+            logger.error(f"Failed to get speaker profiles: {e}", exc_info=True)
             return []
 
     async def update_speaker_embedding(
