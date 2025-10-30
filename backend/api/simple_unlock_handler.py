@@ -645,23 +645,51 @@ async def _try_unlock_methods(context: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _try_macos_controller_lock(context: Dict[str, Any]) -> Tuple[bool, str]:
-    """Try MacOS controller lock method."""
-    from system_control.macos_controller import MacOSController
+    """Try AppleScript Command+Control+Q lock method (fastest and most reliable)."""
+    try:
+        script = """
+        tell application "System Events"
+            keystroke "q" using {command down, control down}
+        end tell
+        """
 
-    controller = MacOSController()
-    return await controller.lock_screen()
+        process = await asyncio.create_subprocess_exec(
+            "osascript",
+            "-e",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        await process.communicate()
+
+        if process.returncode == 0:
+            logger.info("[LOCK] ✅ Screen locked via AppleScript Command+Control+Q")
+            return True, "Screen locked"
+        else:
+            return False, "AppleScript lock failed"
+
+    except Exception as e:
+        logger.error(f"[LOCK] AppleScript lock error: {e}")
+        return False, f"Lock error: {str(e)}"
 
 
 async def _try_screensaver_lock(context: Dict[str, Any]) -> Tuple[bool, str]:
-    """Try screensaver lock method."""
-    subprocess.run(["open", "-a", "ScreenSaverEngine"], check=True)
-    return True, "Screensaver started"
+    """Try screensaver lock method (fallback)."""
+    try:
+        subprocess.run(["open", "-a", "ScreenSaverEngine"], check=True)
+        return True, "Screensaver started"
+    except Exception as e:
+        return False, f"Screensaver failed: {str(e)}"
 
 
 async def _try_system_lock_command(context: Dict[str, Any]) -> Tuple[bool, str]:
-    """Try system command lock method."""
-    subprocess.run(["pmset", "displaysleepnow"], check=True)
-    return True, "Display sleep activated"
+    """Try system command lock method (fallback)."""
+    try:
+        subprocess.run(["pmset", "displaysleepnow"], check=True)
+        return True, "Display sleep activated"
+    except Exception as e:
+        return False, f"System lock failed: {str(e)}"
 
 
 async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
