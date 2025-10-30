@@ -650,14 +650,18 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             speaker_name = jarvis_instance.last_speaker_name
 
     if audio_data:
-        # Verify speaker using NEW speaker verification service (with 25 samples)
+        # Verify speaker using NEW speaker verification service (with pre-loaded profiles)
         try:
             from voice.speaker_verification_service import get_speaker_verification_service
 
             speaker_service = await get_speaker_verification_service()
+            logger.info(
+                f"🔐 Speaker service has {len(speaker_service.speaker_profiles)} profiles loaded"
+            )
 
             # Verify speaker using voice biometrics from database
             verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
+            logger.info(f"🎤 Verification result: {verification_result}")
 
             speaker_name = verification_result["speaker_name"]
             is_verified = verification_result["verified"]

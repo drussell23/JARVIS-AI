@@ -3562,17 +3562,28 @@ class AsyncSystemManager:
             speaker_service = SpeakerVerificationService(learning_db)
             await speaker_service.initialize()
 
-            if "Derek" in speaker_service.speaker_profiles:
+            # Check for Derek's profile (could be "Derek" or "Derek J. Russell")
+            derek_found = any("Derek" in name for name in speaker_service.speaker_profiles.keys())
+
+            if derek_found:
+                # Count total samples
+                total_samples = sum(
+                    profile.get("total_samples", 0)
+                    for name, profile in speaker_service.speaker_profiles.items()
+                    if "Derek" in name
+                )
+
                 print(
                     f"{Colors.GREEN}✅ Speaker verification ready with Derek's profile{Colors.ENDC}"
                 )
-                print(f"  - 59 voice samples loaded")
+                print(f"  - {total_samples} voice samples loaded")
                 print(f"  - Voice biometric authentication active")
 
                 # Store globally so backend can access it
                 import backend.voice.speaker_verification_service as sv
 
                 sv._global_speaker_service = speaker_service
+                print(f"  - Global speaker service injected for fast verification")
             else:
                 print(
                     f"{Colors.WARNING}⚠️ Derek's profile not found, will load on demand{Colors.ENDC}"
