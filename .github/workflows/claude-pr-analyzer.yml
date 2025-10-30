@@ -1,12 +1,20 @@
 name: Claude AI PR Analyzer
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  pull_request_review_comment:
-    types: [created]
-  issue_comment:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to analyze'
+        required: true
+        type: number
+  # Automatic triggers disabled to save API costs
+  # Uncomment below to re-enable automatic analysis:
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
+  # pull_request_review_comment:
+  #   types: [created]
+  # issue_comment:
+  #   types: [created]
 
 permissions:
   contents: write

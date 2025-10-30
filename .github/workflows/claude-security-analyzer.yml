@@ -1,13 +1,15 @@
 name: Claude AI Security Analyzer
 
 on:
-  pull_request:
-    types: [opened, synchronize]
-  push:
-    branches: [main, develop]
-  schedule:
-    - cron: '0 4 * * *'  # Daily at 4 AM UTC
   workflow_dispatch:
+  # Automatic triggers disabled to save API costs
+  # Uncomment below to re-enable:
+  # pull_request:
+  #   types: [opened, synchronize]
+  # push:
+  #   branches: [main, develop]
+  # schedule:
+  #   - cron: '0 4 * * *'  # Daily at 4 AM UTC
 
 permissions:
   contents: read

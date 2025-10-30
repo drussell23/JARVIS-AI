@@ -1,13 +1,20 @@
 name: Claude AI Documentation Generator
 
 on:
-  pull_request:
-    types: [opened, synchronize]
-  push:
-    branches: [main]
-  issue_comment:
-    types: [created]
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target to generate docs for (PR number or branch)'
+        required: false
+        type: string
+  # Automatic triggers disabled to save API costs
+  # Uncomment below to re-enable:
+  # pull_request:
+  #   types: [opened, synchronize]
+  # push:
+  #   branches: [main]
+  # issue_comment:
+  #   types: [created]
 
 permissions:
   contents: write
