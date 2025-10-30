@@ -24,13 +24,10 @@ Example:
 
 import asyncio
 import logging
-import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from functools import wraps
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -38,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 class PipelineStage(Enum):
     """Dynamic pipeline processing stages.
-    
+
     Represents the various stages a command goes through during processing,
     from initial receipt to final completion or failure.
     """
@@ -59,11 +56,11 @@ class PipelineStage(Enum):
 @dataclass
 class PipelineContext:
     """Context passed through the pipeline stages.
-    
+
     Contains all information needed to process a command, including metadata,
     metrics, and state information that accumulates as the command moves
     through different pipeline stages.
-    
+
     Attributes:
         command_id: Unique identifier for this command
         text: The original command text
@@ -100,7 +97,7 @@ class PipelineContext:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert context to dictionary for serialization.
-        
+
         Returns:
             Dictionary representation of the context, excluding binary audio data.
         """
@@ -123,11 +120,11 @@ class PipelineContext:
 
 class AdaptiveCircuitBreaker:
     """Advanced circuit breaker with adaptive thresholds and ML-based prediction.
-    
+
     Implements the circuit breaker pattern with adaptive learning capabilities.
     Automatically adjusts failure thresholds and timeouts based on historical
     performance patterns to optimize system resilience.
-    
+
     Attributes:
         failure_count: Current number of consecutive failures
         success_count: Current number of consecutive successes
@@ -147,7 +144,7 @@ class AdaptiveCircuitBreaker:
         adaptive: bool = True,
     ):
         """Initialize the adaptive circuit breaker.
-        
+
         Args:
             initial_threshold: Initial failure count threshold
             initial_timeout: Initial timeout in seconds
@@ -168,7 +165,7 @@ class AdaptiveCircuitBreaker:
     @property
     def success_rate(self) -> float:
         """Calculate current success rate.
-        
+
         Returns:
             Success rate as a float between 0.0 and 1.0
         """
@@ -178,15 +175,15 @@ class AdaptiveCircuitBreaker:
 
     async def call(self, func: Callable, *args, **kwargs):
         """Execute function with adaptive circuit breaker protection.
-        
+
         Args:
             func: Function to execute
             *args: Positional arguments for the function
             **kwargs: Keyword arguments for the function
-            
+
         Returns:
             Result of the function call
-            
+
         Raises:
             Exception: If circuit is open or function fails
         """
@@ -215,7 +212,7 @@ class AdaptiveCircuitBreaker:
 
     def on_success(self, duration: float):
         """Handle successful execution with adaptive learning.
-        
+
         Args:
             duration: Execution duration in seconds
         """
@@ -268,7 +265,7 @@ class AdaptiveCircuitBreaker:
 
     def _calculate_failure_interval(self) -> float:
         """Calculate average interval between failures.
-        
+
         Returns:
             Average interval in seconds, or 0 if insufficient data
         """
@@ -285,10 +282,10 @@ class AdaptiveCircuitBreaker:
 
 class AsyncEventBus:
     """Advanced event-driven message bus with filtering and priority.
-    
+
     Provides a publish-subscribe event system with priority handling,
     filtering capabilities, and comprehensive event history tracking.
-    
+
     Attributes:
         subscribers: Dictionary mapping event types to subscriber lists
         event_queue: Priority queue for event processing
@@ -315,7 +312,7 @@ class AsyncEventBus:
         filter_func: Optional[Callable] = None,
     ):
         """Subscribe to an event type with priority and filtering.
-        
+
         Args:
             event_type: Type of event to subscribe to
             handler: Function to call when event is emitted
@@ -329,7 +326,7 @@ class AsyncEventBus:
 
     async def emit(self, event_type: str, data: Any, priority: int = 0):
         """Emit an event to all subscribers with priority.
-        
+
         Args:
             event_type: Type of event being emitted
             data: Event data to pass to handlers
@@ -367,7 +364,7 @@ class AsyncEventBus:
 
     async def _safe_handle(self, handler: Callable, data: Any):
         """Safely execute handler with error handling.
-        
+
         Args:
             handler: Event handler function
             data: Event data to pass to handler
@@ -382,7 +379,7 @@ class AsyncEventBus:
 
     def get_event_stats(self) -> Dict[str, Any]:
         """Get event bus statistics.
-        
+
         Returns:
             Dictionary containing event statistics and metrics
         """
@@ -400,10 +397,10 @@ class AsyncEventBus:
 
 class PipelineMiddleware:
     """Middleware system for pipeline processing.
-    
+
     Provides a way to inject processing logic at various points in the
     pipeline execution without modifying the core pipeline stages.
-    
+
     Attributes:
         name: Middleware identifier
         handler: Function to execute for middleware processing
@@ -413,7 +410,7 @@ class PipelineMiddleware:
 
     def __init__(self, name: str, handler: Callable):
         """Initialize pipeline middleware.
-        
+
         Args:
             name: Unique name for this middleware
             handler: Function to execute for processing
@@ -425,10 +422,10 @@ class PipelineMiddleware:
 
     async def process(self, context: PipelineContext) -> PipelineContext:
         """Process context through middleware.
-        
+
         Args:
             context: Pipeline context to process
-            
+
         Returns:
             Modified pipeline context
         """
@@ -454,11 +451,11 @@ class PipelineMiddleware:
 
 class DynamicPipelineStage:
     """Dynamic pipeline stage with configurable behavior.
-    
+
     Represents a single stage in the processing pipeline with configurable
     timeout, retry logic, and requirement settings. Tracks performance
     metrics for monitoring and optimization.
-    
+
     Attributes:
         name: Stage identifier
         handler: Function to execute for this stage
@@ -477,7 +474,7 @@ class DynamicPipelineStage:
         required: bool = True,
     ):
         """Initialize dynamic pipeline stage.
-        
+
         Args:
             name: Unique name for this stage
             handler: Function to execute for stage processing
@@ -499,10 +496,10 @@ class DynamicPipelineStage:
 
     async def execute(self, context: PipelineContext) -> None:
         """Execute stage with retry logic.
-        
+
         Args:
             context: Pipeline context to process
-            
+
         Raises:
             Exception: If stage is required and all retries fail
         """
@@ -545,7 +542,7 @@ class DynamicPipelineStage:
 
     async def _run_handler(self, context: PipelineContext):
         """Run the stage handler.
-        
+
         Args:
             context: Pipeline context to process
         """
@@ -556,7 +553,7 @@ class DynamicPipelineStage:
 
     def _update_metrics(self, duration: float, success: bool):
         """Update stage performance metrics.
-        
+
         Args:
             duration: Execution duration in seconds
             success: Whether execution was successful
@@ -571,12 +568,12 @@ class DynamicPipelineStage:
 
 class AdvancedAsyncPipeline:
     """Ultra-advanced async pipeline with dynamic configuration.
-    
+
     Main pipeline class that orchestrates command processing through multiple
     stages with event-driven architecture, circuit breaker protection, and
     comprehensive error handling. Supports dynamic stage registration,
     middleware injection, and context-aware processing.
-    
+
     Attributes:
         jarvis: Reference to main JARVIS instance
         config: Pipeline configuration dictionary
@@ -594,7 +591,7 @@ class AdvancedAsyncPipeline:
 
     def __init__(self, jarvis_instance=None, config: Optional[Dict[str, Any]] = None):
         """Initialize the advanced async pipeline.
-        
+
         Args:
             jarvis_instance: Reference to main JARVIS instance
             config: Configuration dictionary for pipeline settings
@@ -677,10 +674,10 @@ class AdvancedAsyncPipeline:
 
     def _init_followup_system(self):
         """Initialize follow-up handling system components.
-        
+
         Sets up intent classification, context storage, and routing systems
         for handling follow-up questions and contextual conversations.
-        
+
         Raises:
             ImportError: If required follow-up system modules are not available
             Exception: If initialization fails
@@ -766,7 +763,7 @@ class AdvancedAsyncPipeline:
         required: bool = True,
     ):
         """Dynamically register a new pipeline stage.
-        
+
         Args:
             name: Unique name for the stage
             handler: Function to execute for this stage
@@ -788,7 +785,7 @@ class AdvancedAsyncPipeline:
 
     def register_middleware(self, name: str, handler: Callable):
         """Register middleware for pipeline processing.
-        
+
         Args:
             name: Unique name for the middleware
             handler: Function to execute for middleware processing
@@ -799,7 +796,7 @@ class AdvancedAsyncPipeline:
 
     def unregister_stage(self, name: str):
         """Remove a pipeline stage.
-        
+
         Args:
             name: Name of the stage to remove
         """
@@ -817,11 +814,11 @@ class AdvancedAsyncPipeline:
         speaker_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Process command through advanced async pipeline.
-        
+
         Main entry point for command processing. Handles the complete pipeline
         from command receipt through response generation, with comprehensive
         error handling and performance monitoring.
-        
+
         Args:
             text: Command text to process
             user_name: Name of the user issuing the command
@@ -829,10 +826,10 @@ class AdvancedAsyncPipeline:
             metadata: Additional metadata dictionary
             audio_data: Voice audio data for authentication
             speaker_name: Identified speaker name from voice recognition
-            
+
         Returns:
             Dictionary containing response, metadata, success status, and metrics
-            
+
         Example:
             >>> result = await pipeline.process_async("open safari")
             >>> print(result['response'])
@@ -903,7 +900,17 @@ class AdvancedAsyncPipeline:
                 pass
 
     async def _fast_lock_unlock(
-        self,
-        text: str,
-        user_name: str,
-        metadata: Optional[Dict
+        self, text: str, user_name: str, metadata: Optional[Dict] = None
+    ) -> Dict:
+        """Fast lock/unlock handler for voice commands.
+
+        Args:
+            text: Command text
+            user_name: User name
+            metadata: Optional metadata dict
+
+        Returns:
+            Result dict with success status
+        """
+        # TODO: Implement fast lock/unlock logic
+        return {"success": False, "error": "not_implemented"}
