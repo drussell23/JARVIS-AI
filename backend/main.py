@@ -2615,6 +2615,15 @@ def mount_routers():
             app.state.voice_unlock = voice_unlock
             logger.info("✅ Voice Unlock service ready")
 
+    # Screen Control API - HTTP REST endpoints for unlock/lock
+    try:
+        from api.screen_control_api import router as screen_control_router
+
+        app.include_router(screen_control_router)
+        logger.info("✅ Screen Control REST API mounted at /api/screen")
+    except Exception as e:
+        logger.warning(f"Screen Control API not available: {e}")
+
     # Wake Word API - Always mount (has stub functionality)
     try:
         from api.wake_word_api import router as wake_word_router

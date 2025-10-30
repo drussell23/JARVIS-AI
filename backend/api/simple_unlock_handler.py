@@ -15,17 +15,45 @@ import logging
 import subprocess
 from typing import Any, Dict, List, Tuple
 
-import websockets
-
 # Import async pipeline
 from core.async_pipeline import get_async_pipeline
+from core.transport_handlers import (
+    applescript_handler,
+    http_rest_handler,
+    system_api_handler,
+    unified_websocket_handler,
+)
+
+# Import transport layer
+from core.transport_manager import TransportMethod, get_transport_manager
 
 logger = logging.getLogger(__name__)
 
-VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
-
-# Global pipeline instance
+# Global instances
 _pipeline = None
+_transport_manager = None
+
+
+async def _get_transport_manager():
+    """Get or create and initialize the transport manager"""
+    global _transport_manager
+    if _transport_manager is None:
+        _transport_manager = get_transport_manager()
+
+        # Register all transport handlers
+        _transport_manager.register_handler(TransportMethod.APPLESCRIPT, applescript_handler)
+        _transport_manager.register_handler(TransportMethod.HTTP_REST, http_rest_handler)
+        _transport_manager.register_handler(
+            TransportMethod.UNIFIED_WEBSOCKET, unified_websocket_handler
+        )
+        _transport_manager.register_handler(TransportMethod.SYSTEM_API, system_api_handler)
+
+        # Initialize (starts health monitoring)
+        await _transport_manager.initialize()
+
+        logger.info("[TRANSPORT] ✅ Transport manager initialized with all handlers")
+
+    return _transport_manager
 
 
 def _get_pipeline():
@@ -458,28 +486,40 @@ def _generate_command_suggestions(command: str) -> List[str]:
 async def _execute_screen_action(
     action: str, context: Dict[str, Any], jarvis_instance=None
 ) -> Dict[str, Any]:
-    """Execute screen action with multiple fallback methods and intelligent routing."""
+    """
+    Execute screen action using advanced transport manager.
 
-    logger.info(f"[ENHANCED UNLOCK] Executing {action} with context: {context}")
+    Automatically selects the best transport method based on:
+    - Real-time health monitoring
+    - Success rate history
+    - Latency metrics
+    - Current availability
+    """
+
+    logger.info(f"[TRANSPORT-EXEC] Executing {action}")
+    logger.debug(f"[TRANSPORT-EXEC] Context: {context}")
 
     # Pass jarvis_instance to context for audio/speaker extraction
     if jarvis_instance:
         context["jarvis_instance"] = jarvis_instance
 
-    # Try primary method first (WebSocket daemon)
-    try:
-        result = await _try_websocket_method(action, context)
-        if result["success"]:
-            result["method"] = "websocket_daemon"
-            return result
-    except Exception as e:
-        logger.debug(f"WebSocket method failed: {e}")
+    # Get transport manager
+    transport = await _get_transport_manager()
 
-    # Try secondary methods based on action type
-    if action == "lock_screen":
-        result = await _try_lock_methods(context)
-    else:  # unlock_screen
-        result = await _try_unlock_methods(context)
+    # Execute using smart transport selection
+    result = await transport.execute(action, context)
+
+    # Log result with metrics
+    if result.get("success"):
+        logger.info(
+            f"[TRANSPORT-EXEC] ✅ {action} succeeded via {result.get('transport_method')} "
+            f"({result.get('latency_ms', 0):.1f}ms)"
+        )
+    else:
+        logger.warning(
+            f"[TRANSPORT-EXEC] ❌ {action} failed: {result.get('error')} "
+            f"(attempted: {result.get('attempted_methods', [])})"
+        )
 
     return result
 
