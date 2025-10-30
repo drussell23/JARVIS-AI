@@ -68,6 +68,7 @@ jobs:
           import json
           import sys
           import re
+          import time
           import asyncio
           from pathlib import Path
           from typing import List, Dict, Optional, Tuple
@@ -399,18 +400,35 @@ jobs:
 
           Format your response in clear Markdown with sections, code blocks, and emojis."""
 
-          message = claude_client.messages.create(
-              model="claude-sonnet-4-20250514",
-              max_tokens=8000,
-              temperature=0,
-              system=system_prompt,
-              messages=[
-                  {
-                      "role": "user",
-                      "content": context
-                  }
-              ]
-          )
+          # Call Claude API with exponential backoff retry for transient errors
+          max_retries = 3
+          retry_delay = 2
+
+          for attempt in range(max_retries):
+              try:
+                  message = claude_client.messages.create(
+                      model="claude-sonnet-4-20250514",
+                      max_tokens=8000,
+                      temperature=0,
+                      system=system_prompt,
+                      messages=[
+                          {
+                              "role": "user",
+                              "content": context
+                          }
+                      ]
+                  )
+                  break  # Success, exit retry loop
+              except Exception as e:
+                  error_type = type(e).__name__
+                  if attempt < max_retries - 1 and ('overloaded' in str(e).lower() or 'rate_limit' in str(e).lower() or '529' in str(e)):
+                      wait_time = retry_delay * (2 ** attempt)
+                      print(f"⚠️  API temporarily unavailable ({error_type}), retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                      time.sleep(wait_time)
+                  else:
+                      # Final attempt failed or non-retryable error
+                      print(f"❌ API call failed: {e}")
+                      raise
 
           analysis = message.content[0].text
 
