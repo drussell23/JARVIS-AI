@@ -97,6 +97,7 @@ class SpeakerVerificationService:
                     "confidence": profile.get("recognition_confidence", 0.0),
                     "is_primary_user": profile.get("is_primary_user", False),
                     "security_level": profile.get("security_level", "standard"),
+                    "total_samples": profile.get("total_samples", 0),
                 }
 
                 logger.debug(
