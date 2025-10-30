@@ -1,0 +1,96 @@
+name: Validate Configuration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'start_system.py'
+      - 'backend/**/*.py'
+      - '.github/workflows/validate-config.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'start_system.py'
+      - 'backend/**/*.py'
+
+jobs:
+  validate-env-vars:
+    runs-on: ubuntu-latest
+    name: Validate Environment Variables
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml
+
+    - name: Run Environment Variable Validation
+      run: |
+        python .github/scripts/validate_env_vars.py
+
+    - name: Check Cloud SQL Configuration
+      run: |
+        python .github/scripts/validate_cloud_sql_config.py
+
+    - name: Validate Voice Biometric Setup
+      run: |
+        python .github/scripts/validate_voice_setup.py
+
+  validate-startup-flow:
+    runs-on: ubuntu-latest
+    name: Validate Startup Flow
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Validate start_system.py env propagation
+      run: |
+        python .github/scripts/validate_startup_env.py
+
+    - name: Check for common configuration issues
+      run: |
+        python .github/scripts/check_config_issues.py
+
+  security-check:
+    runs-on: ubuntu-latest
+    name: Security Configuration Check
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Check for hardcoded credentials
+      run: |
+        # Check for hardcoded IPs (should use env vars)
+        if grep -r "34\.46\.152\.27" --include="*.py" backend/ start_system.py; then
+          echo "❌ ERROR: Found hardcoded Cloud SQL IP address!"
+          echo "Use JARVIS_DB_HOST environment variable instead"
+          exit 1
+        fi
+
+        # Check for hardcoded passwords
+        if grep -rE "password\s*=\s*['\"]" --include="*.py" backend/ | grep -v "env\|ENV\|getenv"; then
+          echo "⚠️  WARNING: Possible hardcoded password found"
+          echo "Please use environment variables for sensitive data"
+        fi
+
+        echo "✅ Security check passed"
+
+    - name: Validate proxy configuration
+      run: |
+        # Ensure Cloud SQL connections use localhost proxy
+        if grep -r "cloud.*sql.*connect" --include="*.py" backend/ | grep -v "127\.0\.0\.1\|localhost"; then
+          echo "⚠️  WARNING: Cloud SQL connection may not be using proxy"
+        fi
+        echo "✅ Proxy configuration validated"
