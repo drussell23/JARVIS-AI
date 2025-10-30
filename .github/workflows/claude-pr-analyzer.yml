@@ -413,14 +413,16 @@ jobs:
           Format your response in clear Markdown with sections, code blocks, and emojis."""
 
           # Call Claude API with exponential backoff retry for transient errors
-          max_retries = 3
-          retry_delay = 2
+          # Reduced max_tokens to 4000 to stay well under 8000/minute rate limit
+          max_tokens_limit = 4000 if is_doc_heavy else 3000
+          max_retries = 4  # Increased retries for rate limit handling
+          retry_delay = 10  # Longer initial delay for rate limits
 
           for attempt in range(max_retries):
               try:
                   message = claude_client.messages.create(
                       model="claude-sonnet-4-20250514",
-                      max_tokens=8000,
+                      max_tokens=max_tokens_limit,
                       temperature=0,
                       system=system_prompt,
                       messages=[
@@ -433,8 +435,13 @@ jobs:
                   break  # Success, exit retry loop
               except Exception as e:
                   error_type = type(e).__name__
-                  if attempt < max_retries - 1 and ('overloaded' in str(e).lower() or 'rate_limit' in str(e).lower() or '529' in str(e)):
-                      wait_time = retry_delay * (2 ** attempt)
+                  # Handle rate limits and transient errors with longer backoff
+                  if attempt < max_retries - 1 and ('overloaded' in str(e).lower() or 'rate_limit' in str(e).lower() or '529' in str(e) or '429' in str(e)):
+                      # For rate limits, use 60s+ delays to clear the minute window
+                      if 'rate_limit' in str(e).lower() or '429' in str(e):
+                          wait_time = 60 + (retry_delay * (2 ** attempt))
+                      else:
+                          wait_time = retry_delay * (2 ** attempt)
                       print(f"⚠️  API temporarily unavailable ({error_type}), retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
                       time.sleep(wait_time)
                   else:

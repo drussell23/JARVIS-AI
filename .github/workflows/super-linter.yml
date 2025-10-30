@@ -30,42 +30,12 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Python linting - Relaxed for dependencies PRs
-          VALIDATE_PYTHON_BLACK: false
+          # Linting configuration - Only enable specific linters
+          # Note: Must use either all-false (disabled) or all-true (enabled) approach
           VALIDATE_PYTHON_FLAKE8: true
-          VALIDATE_PYTHON_PYLINT: false
-          VALIDATE_PYTHON_ISORT: false
-          VALIDATE_PYTHON_MYPY: false
           PYTHON_FLAKE8_CONFIG_FILE: .flake8
-
-          # JavaScript/TypeScript (for frontend)
-          VALIDATE_JAVASCRIPT_ES: false
-          VALIDATE_JAVASCRIPT_STANDARD: false
-          VALIDATE_TYPESCRIPT_ES: false
-          VALIDATE_TYPESCRIPT_STANDARD: false
-
-          # Shell scripts
-          VALIDATE_BASH: false
-          VALIDATE_BASH_EXEC: false
-          VALIDATE_SHELL_SHFMT: false
-
-          # Config files
           VALIDATE_YAML: true
           VALIDATE_JSON: true
-          VALIDATE_XML: false
-
-          # Docker
-          VALIDATE_DOCKERFILE_HADOLINT: false
-
-          # Markdown
-          VALIDATE_MARKDOWN: false
-
-          # SQL
-          VALIDATE_SQL: false
-          VALIDATE_SQLFLUFF: false
-
-          # Security
-          VALIDATE_SECRETS: false
 
           # Performance
           LINTER_RULES_PATH: .github/linters
