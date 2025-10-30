@@ -3592,26 +3592,11 @@ class AsyncSystemManager:
         except Exception as e:
             print(f"{Colors.WARNING}⚠️ Speaker pre-loading failed: {e}{Colors.ENDC}")
 
-        # Step 3: Pre-load ML models
-        print(f"{Colors.CYAN}🧠 Pre-loading ML models for faster response...{Colors.ENDC}")
-        try:
-            from voice.engines.base_engine import create_stt_engine
-            from voice.stt_config import ModelConfig, STTEngine
-
-            # Pre-load Wav2Vec2 for voice verification
-            wav2vec_config = ModelConfig(
-                name="wav2vec2-base",
-                engine=STTEngine.WAV2VEC2,
-                model_path="facebook/wav2vec2-base",
-                expected_accuracy=0.95,
-            )
-
-            engine = create_stt_engine(wav2vec_config)
-            await engine.initialize()
-            print(f"{Colors.GREEN}✅ Voice recognition engine pre-loaded{Colors.ENDC}")
-
-        except Exception as e:
-            print(f"{Colors.WARNING}⚠️ ML model pre-loading failed: {e}{Colors.ENDC}")
+        # Step 3: ML models are pre-loaded by the speaker verification service
+        # (SpeechBrain models load during speaker service initialization above)
+        print(
+            f"{Colors.GREEN}✅ ML models ready (loaded by speaker verification service){Colors.ENDC}"
+        )
 
         # Check if reload manager is available
         reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
