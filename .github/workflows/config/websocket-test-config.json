@@ -1,0 +1,129 @@
+{
+  "test_suites": {
+    "connection-lifecycle": {
+      "name": "Connection Lifecycle",
+      "description": "Tests WebSocket connection establishment, maintenance, and graceful shutdown",
+      "timeout": 60,
+      "retry_attempts": 3,
+      "critical": true
+    },
+    "self-healing": {
+      "name": "Self-Healing & Recovery",
+      "description": "Tests automatic reconnection, circuit breaker, and recovery mechanisms",
+      "timeout": 120,
+      "retry_attempts": 5,
+      "critical": true,
+      "chaos_scenarios": [
+        "random_disconnect",
+        "network_delay",
+        "message_loss"
+      ]
+    },
+    "message-delivery": {
+      "name": "Message Delivery & Reliability",
+      "description": "Tests message delivery guarantees and error handling",
+      "timeout": 90,
+      "retry_attempts": 3,
+      "critical": true,
+      "message_types": [
+        "text",
+        "json",
+        "binary",
+        "large_payload"
+      ]
+    },
+    "heartbeat-monitoring": {
+      "name": "Heartbeat & Health Monitoring",
+      "description": "Tests ping/pong mechanisms and health check systems",
+      "timeout": 120,
+      "retry_attempts": 2,
+      "critical": true,
+      "ping_interval": 15,
+      "pong_timeout": 5
+    },
+    "concurrent-connections": {
+      "name": "Concurrent Connections",
+      "description": "Tests handling of multiple simultaneous connections",
+      "timeout": 180,
+      "retry_attempts": 2,
+      "critical": false,
+      "min_connections": 5,
+      "max_connections": 50
+    },
+    "latency-performance": {
+      "name": "Latency & Performance",
+      "description": "Tests response times and throughput under various loads",
+      "timeout": 120,
+      "retry_attempts": 2,
+      "critical": false,
+      "thresholds": {
+        "p50_ms": 100,
+        "p95_ms": 500,
+        "p99_ms": 1000
+      }
+    }
+  },
+  "environments": {
+    "ci": {
+      "connection_count": 5,
+      "test_duration": 60,
+      "stress_test": false,
+      "chaos_mode": false
+    },
+    "staging": {
+      "connection_count": 20,
+      "test_duration": 300,
+      "stress_test": true,
+      "chaos_mode": true
+    },
+    "production": {
+      "connection_count": 50,
+      "test_duration": 600,
+      "stress_test": true,
+      "chaos_mode": false
+    }
+  },
+  "thresholds": {
+    "connection_timeout_ms": 10000,
+    "message_timeout_ms": 30000,
+    "reconnection_timeout_ms": 10000,
+    "max_reconnect_attempts": 5,
+    "min_success_rate": 0.95,
+    "max_error_rate": 0.05,
+    "max_latency_p95_ms": 500,
+    "max_latency_p99_ms": 1000
+  },
+  "monitoring": {
+    "health_check_interval_s": 5,
+    "metrics_collection_interval_s": 10,
+    "alert_on_failure": true,
+    "create_issue_on_failure": true,
+    "notify_on_degradation": true
+  },
+  "chaos_engineering": {
+    "enabled": false,
+    "scenarios": {
+      "random_disconnect": {
+        "probability": 0.1,
+        "reconnect_delay_ms": 1000
+      },
+      "network_delay": {
+        "probability": 0.2,
+        "delay_ms_range": [100, 500]
+      },
+      "message_loss": {
+        "probability": 0.05
+      },
+      "slow_response": {
+        "probability": 0.15,
+        "delay_ms": 2000
+      }
+    }
+  },
+  "reporting": {
+    "generate_summary": true,
+    "generate_charts": true,
+    "upload_artifacts": true,
+    "retention_days": 30
+  }
+}
