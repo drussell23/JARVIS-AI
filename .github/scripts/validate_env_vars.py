@@ -19,7 +19,12 @@ def check_env_var_access(repo_root: Path) -> list:
     warnings = []
 
     backend_dir = repo_root / "backend"
-    python_files = list(backend_dir.glob("**/*.py"))
+    # Exclude virtual environment directories
+    python_files = [
+        f
+        for f in backend_dir.glob("**/*.py")
+        if "venv" not in f.parts and "site-packages" not in f.parts
+    ]
     python_files.append(repo_root / "start_system.py")
 
     # Pattern for unsafe env var access (os.environ["VAR"] without try/except)
