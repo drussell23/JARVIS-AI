@@ -1,0 +1,386 @@
+name: Claude AI Documentation Generator
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches: [main]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-docs:
+    name: AI Documentation Generation
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude generate docs') &&
+       github.event.issue.pull_request)
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install anthropic
+
+      - name: Generate Documentation with AI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          from pathlib import Path
+          import ast
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          docs_generated = []
+
+          # Find Python files without proper docstrings
+          for py_file in Path('backend').glob('**/*.py'):
+              if 'venv' in str(py_file) or '__pycache__' in str(py_file) or 'test' in str(py_file):
+                  continue
+
+              try:
+                  content = py_file.read_text()
+
+                  # Parse to check for missing docstrings
+                  tree = ast.parse(content)
+
+                  # Check if module, classes, or functions lack docstrings
+                  needs_docs = False
+
+                  if not ast.get_docstring(tree):
+                      needs_docs = True
+                  else:
+                      for node in ast.walk(tree):
+                          if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)):
+                              if not ast.get_docstring(node):
+                                  needs_docs = True
+                                  break
+
+                  if not needs_docs:
+                      continue
+
+                  print(f"\n📝 Generating docs for {py_file}...")
+
+                  # Generate documentation with Claude
+                  response = client.messages.create(
+                      model="claude-sonnet-4-20250514",
+                      max_tokens=8000,
+                      temperature=0.2,
+                      system="""You are an expert technical writer creating Python documentation.
+
+          Add comprehensive docstrings following Google style guide:
+          1. Module-level docstring at top
+          2. Class docstrings with attributes
+          3. Function/method docstrings with Args, Returns, Raises
+          4. Type hints where appropriate
+          5. Examples for complex functions
+          6. Clear, concise descriptions
+
+          Format:
+          \"\"\"Brief description.
+
+          Detailed explanation if needed.
+
+          Args:
+              param1: Description
+              param2: Description
+
+          Returns:
+              Description of return value
+
+          Raises:
+              ExceptionType: When this occurs
+
+          Example:
+              >>> function_call()
+              expected_result
+          \"\"\"
+
+          Return the COMPLETE file with docstrings added. Keep all existing code.""",
+                      messages=[
+                          {
+                              "role": "user",
+                              "content": f"""Add comprehensive docstrings to this Python file:
+
+          **File:** {py_file}
+
+          ```python
+          {content}
+          ```
+
+          Return the complete file with docstrings added."""
+                          }
+                      ]
+                  )
+
+                  documented_code = response.content[0].text.strip()
+
+                  # Clean markdown
+                  if documented_code.startswith('```python'):
+                      documented_code = documented_code.split('```python')[1].split('```')[0].strip()
+                  elif documented_code.startswith('```'):
+                      documented_code = documented_code.split('```')[1].split('```')[0].strip()
+
+                  # Write back
+                  if len(documented_code) > 100:
+                      py_file.write_text(documented_code)
+                      docs_generated.append(str(py_file))
+                      print(f"✅ Documented {py_file}")
+
+              except Exception as e:
+                  print(f"⚠️  Error processing {py_file}: {e}")
+                  continue
+
+          # Generate README updates
+          print("\n📚 Generating README updates...")
+
+          # Read existing README
+          readme_path = Path('README.md')
+          existing_readme = readme_path.read_text() if readme_path.exists() else ""
+
+          # Get project structure
+          project_structure = []
+          for item in Path('.').glob('**/*'):
+              if any(exclude in str(item) for exclude in ['venv', 'node_modules', '.git', '__pycache__']):
+                  continue
+              if item.is_file() and item.suffix in ['.py', '.md', '.yml', '.yaml']:
+                  project_structure.append(str(item))
+
+          # Generate README enhancements
+          response = client.messages.create(
+              model="claude-sonnet-4-20250514",
+              max_tokens=8000,
+              temperature=0.3,
+              system="""You are an expert technical writer creating project documentation.
+
+          Enhance the README with:
+          1. Clear project description
+          2. Installation instructions
+          3. Usage examples
+          4. API documentation
+          5. Architecture overview
+          6. Contributing guidelines
+          7. Troubleshooting section
+          8. Badge indicators
+
+          Keep existing content but enhance and organize it.""",
+              messages=[
+                  {
+                      "role": "user",
+                      "content": f"""Enhance this README for JARVIS AI Agent project:
+
+          **Current README:**
+          ```markdown
+          {existing_readme[:5000]}
+          ```
+
+          **Project Structure:**
+          {chr(10).join(project_structure[:50])}
+
+          Create an enhanced, well-organized README. Keep important existing content."""
+                  }
+              ]
+          )
+
+          enhanced_readme = response.content[0].text.strip()
+
+          # Clean markdown
+          if enhanced_readme.startswith('```markdown'):
+              enhanced_readme = enhanced_readme.split('```markdown')[1].split('```')[0].strip()
+          elif enhanced_readme.startswith('```'):
+              enhanced_readme = enhanced_readme.split('```')[1].split('```')[0].strip()
+
+          # Only update if significantly different and longer
+          if len(enhanced_readme) > len(existing_readme) * 0.8:
+              readme_path.write_text(enhanced_readme)
+              docs_generated.append('README.md')
+              print("✅ Enhanced README.md")
+
+          # Save summary
+          with open('/tmp/docs_summary.txt', 'w') as f:
+              if docs_generated:
+                  f.write('\n'.join(docs_generated))
+              else:
+                  f.write('No documentation updates needed')
+
+          print(f"\n✅ Documentation complete! Updated {len(docs_generated)} files")
+
+          PYTHON_SCRIPT
+
+      - name: Generate API Documentation
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          from pathlib import Path
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          # Find API files
+          api_files = list(Path('backend/api').glob('**/*.py')) if Path('backend/api').exists() else []
+
+          if not api_files:
+              print("No API files found")
+              exit(0)
+
+          print("📡 Generating API documentation...")
+
+          # Collect API endpoints
+          api_code = ""
+          for api_file in api_files:
+              if '__pycache__' not in str(api_file):
+                  try:
+                      api_code += f"\n\n### {api_file}\n```python\n{api_file.read_text()[:2000]}\n```\n"
+                  except:
+                      pass
+
+          # Generate API docs
+          response = client.messages.create(
+              model="claude-sonnet-4-20250514",
+              max_tokens=8000,
+              temperature=0,
+              system="""You are creating API documentation.
+
+          Generate comprehensive API docs with:
+          1. Endpoint listing
+          2. Request/response formats
+          3. Authentication requirements
+          4. Example requests with curl
+          5. Error codes and handling
+          6. Rate limiting info
+          7. Websocket documentation if applicable
+
+          Format in clear Markdown.""",
+              messages=[
+                  {
+                      "role": "user",
+                      "content": f"""Create API documentation for JARVIS AI Agent:
+
+          **API Code:**
+          {api_code}
+
+          Generate complete API documentation in Markdown."""
+                  }
+              ]
+          )
+
+          api_docs = response.content[0].text.strip()
+
+          # Write API docs
+          docs_path = Path('docs')
+          docs_path.mkdir(exist_ok=True)
+
+          api_doc_file = docs_path / 'API.md'
+          api_doc_file.write_text(api_docs)
+
+          print(f"✅ Generated docs/API.md")
+
+          # Append to summary
+          with open('/tmp/docs_summary.txt', 'a') as f:
+              f.write('\ndocs/API.md')
+
+          PYTHON_SCRIPT
+
+      - name: Commit Documentation
+        id: commit
+        run: |
+          git config user.name "claude-ai[bot]"
+          git config user.email "claude-ai[bot]@users.noreply.github.com"
+
+          if [[ -n $(git status --porcelain) ]]; then
+            git add -A
+
+            DOCS=$(cat /tmp/docs_summary.txt)
+
+            git commit -m "docs: AI-generated documentation updates
+
+          Claude AI has generated/updated documentation for:
+          $DOCS
+
+          Updates include:
+          - Comprehensive docstrings (Google style)
+          - Function/class documentation
+          - README enhancements
+          - API documentation
+          - Type hints and examples
+
+          🤖 Auto-generated by Claude AI"
+
+            git push
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        if: steps.commit.outputs.has_changes == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const docs = fs.readFileSync('/tmp/docs_summary.txt', 'utf8');
+
+            const pr = context.payload.pull_request;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: `## 📚 Claude AI Generated Documentation
+
+            I've automatically generated/updated documentation!
+
+            ### Updated Files:
+            ${docs.split('\n').map(f => `- \`${f}\``).join('\n')}
+
+            ### Documentation Includes:
+            - ✅ Comprehensive docstrings (Google style)
+            - ✅ Function and class documentation
+            - ✅ Type hints and examples
+            - ✅ Args, Returns, and Raises sections
+            - ✅ README enhancements
+            - ✅ API documentation
+
+            ---
+            <sub>Powered by Claude Sonnet 4 | Mention @claude generate docs to re-run</sub>`
+            });
+
+      - name: Summary
+        run: |
+          echo "## 📚 Claude AI Documentation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
+            echo "### ✅ Documentation Generated" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/docs_summary.txt | while read file; do
+              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "### ℹ️ Documentation Up to Date" >> $GITHUB_STEP_SUMMARY
+          fi

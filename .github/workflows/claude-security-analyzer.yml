@@ -1,0 +1,306 @@
+name: Claude AI Security Analyzer
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 4 * * *'  # Daily at 4 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  ai-security-scan:
+    name: AI Security Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install anthropic bandit safety
+
+      - name: Run Security Scanners
+        id: scanners
+        continue-on-error: true
+        run: |
+          # Run Bandit
+          bandit -r backend/ -f json -o /tmp/bandit_results.json || true
+
+          # Run Safety
+          safety check --json > /tmp/safety_results.json || true
+
+          # Check for secrets patterns
+          grep -r -n -E "(password|secret|api[_-]?key|token)\s*=\s*['\"][^'\"]+['\"]" backend/ > /tmp/secrets_scan.txt || true
+
+      - name: AI Security Analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          import json
+          from pathlib import Path
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          # Load scan results
+          try:
+              with open('/tmp/bandit_results.json', 'r') as f:
+                  bandit_results = json.load(f)
+          except:
+              bandit_results = {}
+
+          try:
+              with open('/tmp/safety_results.json', 'r') as f:
+                  safety_results = json.load(f)
+          except:
+              safety_results = []
+
+          try:
+              with open('/tmp/secrets_scan.txt', 'r') as f:
+                  secrets_scan = f.read()
+          except:
+              secrets_scan = "No secrets patterns found"
+
+          # Get recent code changes
+          changed_files = []
+          for py_file in Path('backend').glob('**/*.py'):
+              if 'venv' not in str(py_file) and '__pycache__' not in str(py_file):
+                  try:
+                      content = py_file.read_text()
+                      changed_files.append({
+                          'path': str(py_file),
+                          'content_preview': content[:2000]
+                      })
+                  except:
+                      pass
+
+          # Prepare context
+          context = f"""# Security Analysis Request
+
+          ## Bandit Results
+          ```json
+          {json.dumps(bandit_results, indent=2)[:3000]}
+          ```
+
+          ## Safety (Dependency Vulnerabilities)
+          ```json
+          {json.dumps(safety_results, indent=2)[:3000]}
+          ```
+
+          ## Secret Patterns Detected
+          ```
+          {secrets_scan[:2000]}
+          ```
+
+          ## Sample Code Files
+          """
+
+          for file in changed_files[:10]:
+              context += f"""
+          ### {file['path']}
+          ```python
+          {file['content_preview']}
+          ```
+          """
+
+          # Call Claude for analysis
+          print("🔒 Calling Claude AI for security analysis...")
+
+          message = client.messages.create(
+              model="claude-sonnet-4-20250514",
+              max_tokens=8000,
+              temperature=0,
+              system="""You are an expert security analyst specializing in Python and AI systems.
+
+          Analyze the security scan results and code for:
+          1. **Critical Vulnerabilities** - SQL injection, XSS, command injection, etc.
+          2. **Authentication Issues** - Weak auth, missing validation, etc.
+          3. **Data Exposure** - Hardcoded secrets, logging sensitive data, etc.
+          4. **Dependency Vulnerabilities** - Outdated packages with known CVEs
+          5. **Injection Attacks** - SQL, command, LDAP, etc.
+          6. **Cryptography Issues** - Weak algorithms, poor key management
+          7. **Access Control** - Missing authorization, privilege escalation
+          8. **API Security** - Rate limiting, input validation, etc.
+          9. **AI-Specific Risks** - Prompt injection, model poisoning, data leakage
+
+          For each finding:
+          - Severity: CRITICAL/HIGH/MEDIUM/LOW
+          - Location: File and line number
+          - Issue: Clear description
+          - Impact: What could happen
+          - Fix: Specific remediation steps with code examples
+          - CWE/CVE: Reference if applicable
+
+          Be thorough but practical. Focus on real security risks.""",
+              messages=[
+                  {
+                      "role": "user",
+                      "content": context
+                  }
+              ]
+          )
+
+          analysis = message.content[0].text
+
+          # Save analysis
+          with open('/tmp/security_analysis.md', 'w') as f:
+              f.write(analysis)
+
+          # Count critical/high issues
+          critical_count = analysis.lower().count('critical')
+          high_count = analysis.lower().count('high')
+
+          print(f"✅ Security analysis complete!")
+          print(f"Critical issues: {critical_count}")
+          print(f"High issues: {high_count}")
+
+          # Output for GitHub Actions
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"critical_count={critical_count}\n")
+              f.write(f"high_count={high_count}\n")
+              f.write(f"has_critical={str(critical_count > 0).lower()}\n")
+
+          PYTHON_SCRIPT
+
+      - name: Post Security Analysis
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const analysis = fs.readFileSync('/tmp/security_analysis.md', 'utf8');
+
+            const pr = context.payload.pull_request;
+
+            // Find existing security comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number
+            });
+
+            const securityComment = comments.data.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('🔒 Claude AI Security Analysis')
+            );
+
+            const commentBody = `## 🔒 Claude AI Security Analysis
+
+            ${analysis}
+
+            ---
+            <sub>Powered by Claude Sonnet 4 | Daily security scans enabled</sub>`;
+
+            if (securityComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: securityComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: commentBody
+              });
+            }
+
+      - name: Add Security Labels
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          CRITICAL_COUNT: ${{ steps.ai_analysis.outputs.critical_count }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const criticalCount = parseInt(process.env.CRITICAL_COUNT || '0');
+
+            const labels = ['security'];
+
+            if (criticalCount > 0) {
+              labels.push('security-critical');
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: labels
+            });
+
+      - name: Block Merge if Critical Issues
+        if: |
+          github.event_name == 'pull_request' &&
+          steps.ai_analysis.outputs.has_critical == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              event: 'REQUEST_CHANGES',
+              body: '🚨 **CRITICAL SECURITY ISSUES DETECTED**\n\nThis PR contains critical security vulnerabilities that must be fixed before merging. Please review the detailed security analysis above.'
+            });
+
+            core.setFailed('Critical security issues detected');
+
+      - name: Create Security Issue (Scheduled Scan)
+        if: |
+          github.event_name == 'schedule' &&
+          steps.ai_analysis.outputs.has_critical == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const analysis = fs.readFileSync('/tmp/security_analysis.md', 'utf8');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Critical Security Issues Detected - ${new Date().toISOString().split('T')[0]}`,
+              body: `## 🔒 Automated Security Scan Results
+
+            ${analysis}
+
+            ---
+            **Action Required:** Please review and address these security issues immediately.
+
+            <sub>Auto-generated by Claude AI Security Scanner</sub>`,
+              labels: ['security', 'security-critical', 'urgent']
+            });
+
+      - name: Summary
+        run: |
+          echo "## 🔒 Claude AI Security Analysis Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Critical Issues:** ${{ steps.ai_analysis.outputs.critical_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "**High Issues:** ${{ steps.ai_analysis.outputs.high_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.ai_analysis.outputs.has_critical }}" == "true" ]]; then
+            echo "🚨 **CRITICAL ISSUES DETECTED - REVIEW REQUIRED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No critical security issues detected" >> $GITHUB_STEP_SUMMARY
+          fi

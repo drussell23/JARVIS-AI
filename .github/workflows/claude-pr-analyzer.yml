@@ -1,0 +1,334 @@
+name: Claude AI PR Analyzer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  analyze-pr:
+    name: AI-Powered PR Analysis
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude') &&
+       github.event.issue.pull_request)
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Get PR Details
+        id: pr_details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request ||
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number
+                      })).data;
+
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+
+            return {
+              number: pr.number,
+              title: pr.title,
+              body: pr.body || '',
+              files: files.data,
+              author: pr.user.login,
+              base: pr.base.ref,
+              head: pr.head.ref
+            };
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install anthropic pygithub gitpython
+
+      - name: Run Claude AI Analysis
+        id: ai_analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_DATA: ${{ steps.pr_details.outputs.result }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          import json
+          import sys
+          from pathlib import Path
+
+          # Initialize Claude
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          # Load PR data
+          pr_data = json.loads(os.environ['PR_DATA'])
+
+          # Collect file changes
+          changed_files = []
+          total_additions = 0
+          total_deletions = 0
+
+          for file in pr_data['files']:
+              file_path = file['filename']
+
+              # Read file content if it exists
+              try:
+                  if Path(file_path).exists():
+                      content = Path(file_path).read_text()
+                  else:
+                      content = "[File deleted or not accessible]"
+              except Exception as e:
+                  content = f"[Error reading file: {e}]"
+
+              changed_files.append({
+                  'path': file_path,
+                  'status': file['status'],
+                  'additions': file.get('additions', 0),
+                  'deletions': file.get('deletions', 0),
+                  'patch': file.get('patch', ''),
+                  'content_preview': content[:2000] if len(content) > 2000 else content
+              })
+
+              total_additions += file.get('additions', 0)
+              total_deletions += file.get('deletions', 0)
+
+          # Prepare context for Claude
+          context = f"""# Pull Request Analysis Request
+
+          ## PR Information
+          - **Title:** {pr_data['title']}
+          - **Author:** {pr_data['author']}
+          - **Base Branch:** {pr_data['base']}
+          - **Head Branch:** {pr_data['head']}
+          - **Description:** {pr_data['body']}
+
+          ## Changes Summary
+          - **Files Changed:** {len(changed_files)}
+          - **Lines Added:** {total_additions}
+          - **Lines Deleted:** {total_deletions}
+
+          ## Files Changed
+          """
+
+          # Add file details
+          for file in changed_files[:20]:  # Limit to first 20 files
+              context += f"""
+          ### {file['path']}
+          - **Status:** {file['status']}
+          - **Changes:** +{file['additions']} -{file['deletions']}
+          - **Patch:**
+          ```diff
+          {file['patch'][:1000] if file['patch'] else 'No patch available'}
+          ```
+
+          - **Current Content Preview:**
+          ```python
+          {file['content_preview']}
+          ```
+          """
+
+          # Call Claude for analysis
+          print("🤖 Calling Claude AI for analysis...")
+
+          message = client.messages.create(
+              model="claude-sonnet-4-20250514",
+              max_tokens=8000,
+              temperature=0,
+              system="""You are an expert code reviewer and software architect analyzing a pull request for the JARVIS AI Agent project.
+
+          Your analysis should be:
+          - **Comprehensive:** Cover code quality, architecture, security, performance, and best practices
+          - **Actionable:** Provide specific suggestions with code examples
+          - **Constructive:** Focus on improvements while acknowledging good work
+          - **Context-aware:** Understand this is an AI agent system with hybrid architecture
+          - **Security-focused:** Identify any security vulnerabilities or credential exposure
+          - **Performance-conscious:** Highlight performance issues or optimizations
+
+          Analyze the PR and provide:
+          1. **Overall Assessment** (score 1-10 and summary)
+          2. **Code Quality Analysis** (style, readability, maintainability)
+          3. **Architecture Impact** (how it fits with existing system)
+          4. **Security Review** (vulnerabilities, best practices)
+          5. **Performance Analysis** (bottlenecks, optimizations)
+          6. **Test Coverage** (adequacy of tests)
+          7. **Specific Issues Found** (with severity: critical/major/minor)
+          8. **Recommendations** (prioritized action items)
+          9. **Merge Decision** (ready/needs-work/blocking-issues)
+
+          Format your response in clear Markdown with sections, code blocks, and emojis.""",
+              messages=[
+                  {
+                      "role": "user",
+                      "content": context
+                  }
+              ]
+          )
+
+          analysis = message.content[0].text
+
+          # Save analysis to file
+          with open('/tmp/claude_analysis.md', 'w') as f:
+              f.write(analysis)
+
+          # Extract merge decision
+          merge_ready = "ready" in analysis.lower() and "merge decision" in analysis.lower()
+
+          # Output for GitHub Actions
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"merge_ready={str(merge_ready).lower()}\n")
+              f.write(f"analysis_length={len(analysis)}\n")
+
+          print("✅ Claude AI analysis complete!")
+          print(f"Analysis length: {len(analysis)} characters")
+          print(f"Merge ready: {merge_ready}")
+
+          PYTHON_SCRIPT
+
+      - name: Post AI Analysis as Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const analysis = fs.readFileSync('/tmp/claude_analysis.md', 'utf8');
+
+            const pr = context.payload.pull_request ||
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number
+                      })).data;
+
+            // Find existing Claude comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number
+            });
+
+            const claudeComment = comments.data.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('🤖 Claude AI Code Review')
+            );
+
+            const commentBody = `## 🤖 Claude AI Code Review
+
+            ${analysis}
+
+            ---
+            <sub>Powered by Claude Sonnet 4 | Generated at ${new Date().toUTCString()}</sub>
+            <sub>Mention @claude in comments to re-trigger analysis</sub>`;
+
+            if (claudeComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: claudeComment.id,
+                body: commentBody
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: commentBody
+              });
+            }
+
+      - name: Add Labels Based on AI Analysis
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const analysis = fs.readFileSync('/tmp/claude_analysis.md', 'utf8').toLowerCase();
+
+            const pr = context.payload.pull_request ||
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number
+                      })).data;
+
+            const labels = [];
+
+            // Intelligent label detection
+            if (analysis.includes('security') || analysis.includes('vulnerability')) {
+              labels.push('security');
+            }
+            if (analysis.includes('performance') || analysis.includes('optimization')) {
+              labels.push('performance');
+            }
+            if (analysis.includes('breaking') || analysis.includes('breaking change')) {
+              labels.push('breaking-change');
+            }
+            if (analysis.includes('needs work') || analysis.includes('blocking')) {
+              labels.push('needs-work');
+            }
+            if (analysis.includes('ready') && analysis.includes('merge decision')) {
+              labels.push('ready-to-merge');
+            }
+            if (analysis.includes('test') && (analysis.includes('missing') || analysis.includes('inadequate'))) {
+              labels.push('needs-tests');
+            }
+            if (analysis.includes('documentation') || analysis.includes('docs')) {
+              labels.push('documentation');
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: labels
+              });
+            }
+
+      - name: Create Review with AI Feedback
+        if: steps.ai_analysis.outputs.merge_ready == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) return;
+
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              event: 'REQUEST_CHANGES',
+              body: '🤖 Claude AI has identified issues that need to be addressed before merging. Please review the detailed analysis above.'
+            });
+
+      - name: Summary
+        run: |
+          echo "## 🤖 Claude AI Analysis Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Analysis Length:** ${{ steps.ai_analysis.outputs.analysis_length }} characters" >> $GITHUB_STEP_SUMMARY
+          echo "**Merge Ready:** ${{ steps.ai_analysis.outputs.merge_ready }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full analysis posted as PR comment." >> $GITHUB_STEP_SUMMARY

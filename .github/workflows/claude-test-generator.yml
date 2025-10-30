@@ -1,0 +1,265 @@
+name: Claude AI Test Generator
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-tests:
+    name: AI Test Generation
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude generate tests') &&
+       github.event.issue.pull_request)
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.event.issue.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install anthropic pytest pytest-asyncio pytest-cov
+
+      - name: Get Changed Python Files
+        id: changed_files
+        run: |
+          git diff --name-only origin/${{ github.base_ref }} | grep '\.py$' | grep -v test_ | grep -v __pycache__ > /tmp/changed_files.txt || true
+          echo "count=$(wc -l < /tmp/changed_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Generate Tests with Claude AI
+        if: steps.changed_files.outputs.count > 0
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          from pathlib import Path
+          import re
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          # Read changed files
+          with open('/tmp/changed_files.txt', 'r') as f:
+              changed_files = [line.strip() for line in f if line.strip()]
+
+          tests_generated = []
+
+          for file_path in changed_files:
+              if not Path(file_path).exists():
+                  continue
+
+              print(f"\n🧪 Generating tests for {file_path}...")
+
+              # Read source code
+              source_code = Path(file_path).read_text()
+
+              # Determine test file path
+              if file_path.startswith('backend/'):
+                  # backend/services/voice.py -> backend/tests/test_services_voice.py
+                  relative_path = file_path.replace('backend/', '')
+                  test_file = f"backend/tests/test_{relative_path.replace('/', '_')}"
+              else:
+                  # Generic fallback
+                  test_file = f"tests/test_{Path(file_path).stem}.py"
+
+              # Check if tests already exist
+              existing_tests = ""
+              if Path(test_file).exists():
+                  existing_tests = Path(test_file).read_text()
+
+              # Generate tests with Claude
+              response = client.messages.create(
+                  model="claude-sonnet-4-20250514",
+                  max_tokens=8000,
+                  temperature=0.3,
+                  system="""You are an expert test engineer creating comprehensive pytest tests.
+
+          Generate tests that:
+          1. Cover all functions and classes
+          2. Test edge cases and error conditions
+          3. Use pytest fixtures appropriately
+          4. Include async tests where needed
+          5. Mock external dependencies
+          6. Test both success and failure paths
+          7. Are clear and well-documented
+          8. Follow pytest best practices
+          9. Achieve high coverage
+
+          Format:
+          - Use pytest conventions
+          - Include docstrings
+          - Group related tests in classes
+          - Use parametrize for multiple cases
+          - Include setup/teardown if needed""",
+                  messages=[
+                      {
+                          "role": "user",
+                          "content": f"""Generate comprehensive pytest tests for this code:
+
+          **Source File:** `{file_path}`
+
+          **Source Code:**
+          ```python
+          {source_code}
+          ```
+
+          **Existing Tests (if any):**
+          ```python
+          {existing_tests if existing_tests else "No existing tests"}
+          ```
+
+          Generate complete, runnable pytest tests. Return ONLY the Python test code, no explanations."""
+                      }
+                  ]
+              )
+
+              test_code = response.content[0].text.strip()
+
+              # Clean up markdown if present
+              if test_code.startswith('```python'):
+                  test_code = test_code.split('```python')[1].split('```')[0].strip()
+              elif test_code.startswith('```'):
+                  test_code = test_code.split('```')[1].split('```')[0].strip()
+
+              # Ensure test directory exists
+              Path(test_file).parent.mkdir(parents=True, exist_ok=True)
+
+              # Write test file
+              Path(test_file).write_text(test_code)
+              tests_generated.append(test_file)
+
+              print(f"✅ Generated {test_file}")
+
+          # Save summary
+          with open('/tmp/tests_summary.txt', 'w') as f:
+              if tests_generated:
+                  f.write('\n'.join(tests_generated))
+              else:
+                  f.write('No tests generated')
+
+          print(f"\n✅ Generated {len(tests_generated)} test files!")
+
+          PYTHON_SCRIPT
+
+      - name: Run Generated Tests
+        id: run_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          pytest tests/ -v --tb=short --maxfail=5 > /tmp/test_results.txt 2>&1 || true
+          cat /tmp/test_results.txt
+
+      - name: Commit Generated Tests
+        id: commit
+        run: |
+          git config user.name "claude-ai[bot]"
+          git config user.email "claude-ai[bot]@users.noreply.github.com"
+
+          if [[ -n $(git status --porcelain) ]]; then
+            git add backend/tests/ tests/
+
+            TESTS=$(cat /tmp/tests_summary.txt)
+
+            git commit -m "test: AI-generated tests for changed files
+
+          Claude AI has generated comprehensive tests for:
+          $TESTS
+
+          Generated tests include:
+          - Unit tests for all functions/classes
+          - Edge case coverage
+          - Error condition testing
+          - Async test support
+          - Mocking of external dependencies
+          - Parametrized test cases
+
+          🤖 Auto-generated by Claude AI"
+
+            git push
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        if: steps.commit.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tests = fs.readFileSync('/tmp/tests_summary.txt', 'utf8');
+            const results = fs.readFileSync('/tmp/test_results.txt', 'utf8');
+
+            const pr = context.payload.pull_request ||
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number
+                      })).data;
+
+            // Extract test summary
+            const passedMatch = results.match(/(\d+) passed/);
+            const failedMatch = results.match(/(\d+) failed/);
+            const passed = passedMatch ? passedMatch[1] : '0';
+            const failed = failedMatch ? failedMatch[1] : '0';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: `## 🧪 Claude AI Generated Tests
+
+            I've automatically generated comprehensive tests for your changes!
+
+            ### Generated Test Files:
+            ${tests.split('\n').map(f => `- \`${f}\``).join('\n')}
+
+            ### Test Results:
+            - ✅ **Passed:** ${passed}
+            - ${failed > 0 ? '❌' : '✅'} **Failed:** ${failed}
+
+            ### Coverage Includes:
+            - ✅ All functions and classes
+            - ✅ Edge cases and error conditions
+            - ✅ Async functionality (where applicable)
+            - ✅ Mocked external dependencies
+            - ✅ Parametrized test cases
+
+            ${failed > 0 ? '⚠️  Some tests failed. Please review and adjust as needed.' : ''}
+
+            ---
+            <sub>Powered by Claude Sonnet 4 | Mention @claude generate tests to re-run</sub>`
+            });
+
+      - name: Summary
+        run: |
+          echo "## 🧪 Claude AI Test Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
+            echo "### ✅ Tests Generated" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/tests_summary.txt | while read file; do
+              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "### ℹ️ No New Tests Generated" >> $GITHUB_STEP_SUMMARY
+          fi

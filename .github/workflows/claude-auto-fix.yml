@@ -1,0 +1,226 @@
+name: Claude AI Auto-Fix
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ai-auto-fix:
+    name: AI-Powered Auto-Fix
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude fix') &&
+       github.event.issue.pull_request)
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.event.issue.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install anthropic black isort autoflake
+
+      - name: Get Changed Files
+        id: changed_files
+        run: |
+          git diff --name-only origin/${{ github.base_ref }} > /tmp/changed_files.txt
+          echo "files=$(cat /tmp/changed_files.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: AI-Powered Code Fixes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHANGED_FILES: ${{ steps.changed_files.outputs.files }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import anthropic
+          import os
+          import subprocess
+          from pathlib import Path
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          changed_files = os.environ.get('CHANGED_FILES', '').split()
+          python_files = [f for f in changed_files if f.endswith('.py') and Path(f).exists()]
+
+          fixes_made = []
+
+          for file_path in python_files:
+              print(f"\n🔍 Analyzing {file_path}...")
+
+              # Read current content
+              content = Path(file_path).read_text()
+
+              # Ask Claude to fix the code
+              response = client.messages.create(
+                  model="claude-sonnet-4-20250514",
+                  max_tokens=8000,
+                  temperature=0,
+                  system="""You are an expert Python developer fixing code issues.
+
+          Your task:
+          1. Fix syntax errors
+          2. Improve code quality
+          3. Add missing imports
+          4. Fix type hints
+          5. Improve error handling
+          6. Optimize performance
+          7. Follow PEP 8 and best practices
+          8. Maintain backward compatibility
+          9. Keep the same functionality
+
+          IMPORTANT:
+          - Return ONLY the fixed code, no explanations
+          - Maintain the exact same functionality
+          - Don't add features, only fix issues
+          - Preserve all comments and docstrings
+          - Keep the same structure""",
+                  messages=[
+                      {
+                          "role": "user",
+                          "content": f"""Fix this Python code:
+
+          File: {file_path}
+
+          ```python
+          {content}
+          ```
+
+          Return only the fixed code, nothing else."""
+                      }
+                  ]
+              )
+
+              fixed_code = response.content[0].text.strip()
+
+              # Remove markdown code blocks if present
+              if fixed_code.startswith('```python'):
+                  fixed_code = fixed_code.split('```python')[1].split('```')[0].strip()
+              elif fixed_code.startswith('```'):
+                  fixed_code = fixed_code.split('```')[1].split('```')[0].strip()
+
+              # Only write if actually changed
+              if fixed_code != content and len(fixed_code) > 10:
+                  Path(file_path).write_text(fixed_code)
+                  fixes_made.append(file_path)
+                  print(f"✅ Fixed {file_path}")
+              else:
+                  print(f"⏭️  No changes needed for {file_path}")
+
+          # Run standard formatters
+          if fixes_made:
+              print("\n🎨 Running formatters...")
+              subprocess.run(['black'] + fixes_made, check=False)
+              subprocess.run(['isort'] + fixes_made, check=False)
+
+          print(f"\n✅ AI Auto-Fix complete! Fixed {len(fixes_made)} files")
+
+          # Save summary
+          with open('/tmp/fixes_summary.txt', 'w') as f:
+              f.write('\n'.join(fixes_made) if fixes_made else 'No fixes needed')
+
+          PYTHON_SCRIPT
+
+      - name: Commit AI Fixes
+        id: commit
+        run: |
+          git config user.name "claude-ai[bot]"
+          git config user.email "claude-ai[bot]@users.noreply.github.com"
+
+          if [[ -n $(git status --porcelain) ]]; then
+            git add -A
+
+            FIXES=$(cat /tmp/fixes_summary.txt)
+
+            git commit -m "fix: AI-powered code fixes
+
+          Claude AI has automatically fixed code issues in:
+          $FIXES
+
+          Fixes applied:
+          - Syntax improvements
+          - Code quality enhancements
+          - Import optimization
+          - Type hint corrections
+          - Error handling improvements
+          - Performance optimizations
+
+          🤖 Auto-generated by Claude AI"
+
+            git push
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        if: steps.commit.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const fixes = fs.readFileSync('/tmp/fixes_summary.txt', 'utf8');
+
+            const pr = context.payload.pull_request ||
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number
+                      })).data;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: `## 🤖 Claude AI Auto-Fix Applied
+
+            I've automatically fixed code issues in the following files:
+
+            ${fixes.split('\n').map(f => `- \`${f}\``).join('\n')}
+
+            ### Fixes Applied:
+            - ✅ Syntax improvements
+            - ✅ Code quality enhancements
+            - ✅ Import optimization
+            - ✅ Type hint corrections
+            - ✅ Error handling improvements
+            - ✅ Performance optimizations
+
+            Please review the changes and ensure they work as expected.
+
+            ---
+            <sub>Powered by Claude Sonnet 4 | Mention @claude fix to re-run</sub>`
+            });
+
+      - name: Summary
+        run: |
+          echo "## 🤖 Claude AI Auto-Fix Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
+            echo "### ✅ Fixes Applied" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/fixes_summary.txt | while read file; do
+              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "### ℹ️ No Fixes Needed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Code is already in good shape!" >> $GITHUB_STEP_SUMMARY
+          fi
