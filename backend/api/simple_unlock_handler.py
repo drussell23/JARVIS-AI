@@ -727,13 +727,24 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
         try:
             from voice.speaker_verification_service import get_speaker_verification_service
 
-            speaker_service = await get_speaker_verification_service()
-            logger.info(
-                f"🔐 Speaker service has {len(speaker_service.speaker_profiles)} profiles loaded"
-            )
-            logger.info(f"🔐 Available profiles: {list(speaker_service.speaker_profiles.keys())}")
+            # Step 1: Announce verification start
+            logger.info("🎤 Starting voice biometric verification...")
+            context["status_message"] = "Verifying your voice biometrics..."
 
-            # Verify speaker using voice biometrics from database
+            speaker_service = await get_speaker_verification_service()
+            sample_count = sum(
+                profile.get("total_samples", 0)
+                for profile in speaker_service.speaker_profiles.values()
+            )
+            logger.info(
+                f"🔐 Speaker service ready: {len(speaker_service.speaker_profiles)} profiles, "
+                f"{sample_count} voice samples loaded"
+            )
+
+            # Step 2: Verify speaker using voice biometrics from database
+            logger.info("🔐 Analyzing voice pattern against biometric database...")
+            context["status_message"] = "Analyzing voice pattern..."
+
             verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
             logger.info(f"🎤 Verification result: {verification_result}")
 
@@ -742,6 +753,7 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             confidence = verification_result["confidence"]
             is_owner = verification_result["is_owner"]
 
+            # Step 3: Announce verification result
             logger.info(
                 f"🔐 Speaker verification: {speaker_name} - "
                 f"{'✅ VERIFIED' if is_verified else '❌ FAILED'} "
@@ -750,29 +762,43 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
 
             if not is_verified:
                 logger.warning(f"🚫 Voice verification failed for {speaker_name} - unlock denied")
+                context["status_message"] = "Voice verification failed - access denied"
                 return (
                     False,
-                    f"I couldn't verify your identity. For security, unlock is denied.",
+                    f"I'm sorry, I couldn't verify your voice biometrics. "
+                    f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security.",
                 )
 
             # Check if speaker is the device owner
             if not is_owner:
                 logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
+                context["status_message"] = "Non-owner detected - access denied"
                 return (
                     False,
-                    f"Only the device owner can unlock the screen via voice.",
+                    f"Voice verified as {speaker_name}, but only the device owner Derek can unlock the screen.",
                 )
 
             # Store verified speaker name in context for personalized response
             context["verified_speaker_name"] = speaker_name
+            context["verification_confidence"] = confidence
 
-            logger.info(f"✅ Voice verification passed for owner: {speaker_name}")
+            logger.info(
+                f"✅ Voice verification passed for owner: {speaker_name} ({confidence:.1%})"
+            )
+            context["status_message"] = (
+                f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
+            )
 
         except Exception as e:
-            logger.error(f"Voice verification error: {e}")
+            logger.error(f"Voice verification error: {e}", exc_info=True)
             # No fallback - require proper voice verification
             context["verified_speaker_name"] = None
+            context["status_message"] = "Voice verification system error"
             logger.warning("⚠️ Voice verification failed - speaker not recognized")
+            return (
+                False,
+                f"Voice verification encountered an error: {str(e)}. Please try again.",
+            )
     else:
         # No audio data provided - use default owner name for now
         # TODO: Enforce voice verification once audio capture is confirmed working
@@ -786,21 +812,40 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
 
         unlock_service = MacOSKeychainUnlock()
         verified_speaker = context.get("verified_speaker_name", "Derek")
+        confidence = context.get("verification_confidence", 0.0)
+
+        # Announce unlock initiation
+        logger.info(f"🔓 Initiating screen unlock for {verified_speaker}...")
+        context["status_message"] = "Retrieving secure credentials..."
 
         # Perform actual screen unlock with Keychain password
         unlock_result = await unlock_service.unlock_screen(verified_speaker=verified_speaker)
 
         if unlock_result["success"]:
-            logger.info(f"🔓 Screen unlocked successfully for {verified_speaker}")
-            return True, f"Screen unlocked for {verified_speaker}"
+            confidence_msg = f" (verified at {confidence:.0%} confidence)" if confidence > 0 else ""
+            logger.info(f"🔓 Screen unlocked successfully for {verified_speaker}{confidence_msg}")
+            context["status_message"] = f"Screen unlocked for {verified_speaker}"
+            return (
+                True,
+                f"Welcome back, {verified_speaker}. Your screen is now unlocked{confidence_msg}.",
+            )
         else:
             # Check if setup is required
             if unlock_result.get("action") == "setup_required":
                 logger.warning("⚠️ Keychain password not configured")
-                return False, "Screen unlock password not configured. Please run setup."
+                context["status_message"] = "Setup required - keychain not configured"
+                return (
+                    False,
+                    "I couldn't find your screen unlock password in the keychain. "
+                    "Please run the setup script to configure secure unlock.",
+                )
             else:
                 logger.error(f"❌ Unlock failed: {unlock_result['message']}")
-                return False, unlock_result["message"]
+                context["status_message"] = f"Unlock failed: {unlock_result['message']}"
+                return (
+                    False,
+                    f"I verified your identity, but couldn't unlock the screen: {unlock_result['message']}",
+                )
 
     except ImportError:
         logger.error("MacOS Keychain integration not available")
