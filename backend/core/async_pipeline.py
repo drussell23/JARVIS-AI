@@ -27,7 +27,9 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -1107,25 +1109,27 @@ class AdvancedAsyncPipeline:
                     success, message = await controller.lock_screen()
                     action = "locked"
                 else:  # unlock
-                    # Try voice unlock service first
+                    # Use direct keychain-based unlock (most reliable)
+                    logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Using direct keychain unlock...")
                     try:
-                        logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Attempting voice unlock service...")
-                        from backend.voice_unlock.intelligent_voice_unlock_service import (
-                            get_intelligent_unlock_service,
-                        )
+                        from backend.macos_keychain_unlock import MacOSKeychainUnlock
 
-                        unlock_service = get_intelligent_unlock_service()
-                        result = await unlock_service.process_voice_unlock_command(
-                            text, audio_data=metadata.get("audio_data") if metadata else None
-                        )
+                        keychain_unlock = MacOSKeychainUnlock()
+                        result = await keychain_unlock.unlock_screen(verified_speaker=speaker_name or user_name)
 
                         success = result.get("success", False)
-                        message = result.get("message", "Unlock processing complete")
-                        action = "unlocked"
-                        logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Voice unlock service returned: {success}")
+                        message = result.get("message", "Screen unlock attempted")
+                        action = result.get("action", "unlocked")
+
+                        logger.info(
+                            f"🔓 [LOCK-UNLOCK-EXECUTE] Keychain unlock completed: success={success}, "
+                            f"action={action}, message={message}"
+                        )
 
                     except Exception as e:
-                        logger.warning(f"🔓 [LOCK-UNLOCK-FALLBACK] Voice unlock unavailable: {e}, using direct unlock")
+                        logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain unlock failed: {e}", exc_info=True)
+                        # Fallback to controller method
+                        logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Trying controller.unlock_screen()...")
                         success, message = await controller.unlock_screen()
                         action = "unlocked"
 
