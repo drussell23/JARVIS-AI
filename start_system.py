@@ -3533,12 +3533,23 @@ class AsyncSystemManager:
             if str(self.backend_dir) not in sys.path:
                 sys.path.insert(0, str(self.backend_dir))
 
-            # Set environment variables for Cloud SQL BEFORE importing
-            os.environ["JARVIS_DB_TYPE"] = "cloudsql"
-            os.environ["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
-            os.environ["JARVIS_DB_HOST"] = "127.0.0.1"
-            os.environ["JARVIS_DB_PORT"] = "5432"
-            os.environ["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+            # Load database config securely
+            import json
+            from pathlib import Path
+
+            config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+            if config_path.exists():
+                with open(config_path, "r") as f:
+                    db_config = json.load(f)
+
+                # Set environment variables for Cloud SQL BEFORE importing
+                os.environ["JARVIS_DB_TYPE"] = "cloudsql"
+                os.environ["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
+                os.environ["JARVIS_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
+                os.environ["JARVIS_DB_PORT"] = str(db_config["cloud_sql"]["port"])
+                os.environ["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
+            else:
+                logger.warning("⚠️ Database config not found, skipping Cloud SQL setup")
 
             from intelligence.learning_database import JARVISLearningDatabase
             from voice.speaker_verification_service import SpeakerVerificationService
@@ -3663,9 +3674,24 @@ class AsyncSystemManager:
         env["BACKEND_PORT"] = str(self.ports["main_api"])
 
         # Configure Cloud SQL for voice biometrics
-        env["JARVIS_DB_TYPE"] = "cloudsql"
-        env["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
-        env["JARVIS_DB_PASSWORD"] = "JarvisDB2024"
+        # Load database config securely
+        import json
+        from pathlib import Path
+
+        config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                db_config = json.load(f)
+
+            env["JARVIS_DB_TYPE"] = "cloudsql"
+            env["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
+            env["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
+        else:
+            # Fallback to environment variable if config not found
+            env["JARVIS_DB_TYPE"] = "cloudsql"
+            env["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
+            if "JARVIS_DB_PASSWORD" in os.environ:
+                env["JARVIS_DB_PASSWORD"] = os.environ["JARVIS_DB_PASSWORD"]
 
         # Enable all performance optimizations
         env["OPTIMIZE_STARTUP"] = "true"
