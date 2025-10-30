@@ -18,7 +18,8 @@ jobs:
     name: AI-Powered PR Analysis
     runs-on: ubuntu-latest
     if: |
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.changed_files < 50) ||
       (github.event_name == 'issue_comment' &&
        contains(github.event.comment.body, '@claude') &&
        github.event.issue.pull_request)
@@ -79,6 +80,7 @@ jobs:
           import os
           import json
           import sys
+          import re
           from pathlib import Path
 
           # Initialize Claude
@@ -87,34 +89,159 @@ jobs:
           # Load PR data
           pr_data = json.loads(os.environ['PR_DATA'])
 
-          # Collect file changes
+          # File filtering patterns - skip these
+          SKIP_PATTERNS = [
+              r'\.lock$',           # Lock files
+              r'\.min\.(js|css)$',  # Minified files
+              r'^dist/',            # Distribution builds
+              r'^build/',           # Build artifacts
+              r'node_modules/',     # Dependencies
+              r'__pycache__/',      # Python cache
+              r'\.pyc$',            # Compiled Python
+              r'^venv/',            # Virtual environments
+              r'\.(png|jpg|jpeg|gif|svg|ico)$',  # Images
+              r'\.(pdf|zip|tar|gz)$',             # Binaries
+          ]
+
+          # Documentation file patterns - analyze differently
+          DOC_PATTERNS = [
+              r'\.md$',
+              r'^docs/',
+              r'README',
+              r'CHANGELOG',
+              r'LICENSE',
+          ]
+
+          def should_skip_file(filename):
+              """Check if file should be skipped entirely."""
+              for pattern in SKIP_PATTERNS:
+                  if re.search(pattern, filename, re.IGNORECASE):
+                      return True
+              return False
+
+          def is_doc_file(filename):
+              """Check if file is documentation."""
+              for pattern in DOC_PATTERNS:
+                  if re.search(pattern, filename, re.IGNORECASE):
+                      return True
+              return False
+
+          def estimate_tokens(text):
+              """Rough token estimation (1 token ≈ 4 characters)."""
+              return len(text) // 4
+
+          def truncate_content(content, max_tokens=2000):
+              """Intelligently truncate content while preserving structure."""
+              if estimate_tokens(content) <= max_tokens:
+                  return content, False
+
+              lines = content.split('\n')
+              if len(lines) <= 100:
+                  # Small file, just truncate
+                  max_chars = max_tokens * 4
+                  return content[:max_chars] + '\n... [truncated]', True
+
+              # For large files, keep beginning and end
+              keep_lines = 50
+              truncated = '\n'.join([
+                  *lines[:keep_lines],
+                  f'\n... [{len(lines) - (keep_lines * 2)} lines truncated] ...\n',
+                  *lines[-keep_lines:]
+              ])
+              return truncated, True
+
+          def truncate_patch(patch, max_lines=30):
+              """Truncate diff patch to show most relevant changes."""
+              if not patch:
+                  return patch, False
+
+              lines = patch.split('\n')
+              if len(lines) <= max_lines:
+                  return patch, False
+
+              # Keep first and last portions of patch
+              keep = max_lines // 2
+              truncated = '\n'.join([
+                  *lines[:keep],
+                  f'... [{len(lines) - (keep * 2)} lines truncated] ...',
+                  *lines[-keep:]
+              ])
+              return truncated, True
+
+          # Collect and filter file changes
           changed_files = []
+          doc_files = []
+          skipped_files = []
           total_additions = 0
           total_deletions = 0
+          total_tokens = 0
+          MAX_TOTAL_TOKENS = 40000  # Reserve tokens for analysis
+
+          print(f"📊 Processing {len(pr_data['files'])} files...")
 
           for file in pr_data['files']:
               file_path = file['filename']
 
-              # Read file content if it exists
+              # Skip filtered files
+              if should_skip_file(file_path):
+                  skipped_files.append(file_path)
+                  print(f"⏭️  Skipping: {file_path} (filtered)")
+                  continue
+
+              total_additions += file.get('additions', 0)
+              total_deletions += file.get('deletions', 0)
+
+              # Handle documentation files separately
+              if is_doc_file(file_path):
+                  doc_files.append({
+                      'path': file_path,
+                      'status': file['status'],
+                      'additions': file.get('additions', 0),
+                      'deletions': file.get('deletions', 0),
+                  })
+                  print(f"📝 Doc file: {file_path}")
+                  continue
+
+              # Read and process code files
               try:
                   if Path(file_path).exists():
-                      content = Path(file_path).read_text()
+                      content = Path(file_path).read_text(encoding='utf-8', errors='ignore')
                   else:
                       content = "[File deleted or not accessible]"
               except Exception as e:
                   content = f"[Error reading file: {e}]"
+
+              # Truncate content if needed
+              content_truncated, was_truncated = truncate_content(content, max_tokens=2000)
+              patch_truncated, patch_was_truncated = truncate_patch(file.get('patch', ''), max_lines=30)
+
+              file_tokens = estimate_tokens(content_truncated) + estimate_tokens(patch_truncated)
+
+              # Check token budget
+              if total_tokens + file_tokens > MAX_TOTAL_TOKENS:
+                  print(f"⚠️  Token budget exceeded, skipping remaining files")
+                  skipped_files.append(file_path + " (token limit)")
+                  break
 
               changed_files.append({
                   'path': file_path,
                   'status': file['status'],
                   'additions': file.get('additions', 0),
                   'deletions': file.get('deletions', 0),
-                  'patch': file.get('patch', ''),
-                  'content_preview': content[:2000] if len(content) > 2000 else content
+                  'patch': patch_truncated,
+                  'content_preview': content_truncated,
+                  'was_truncated': was_truncated or patch_was_truncated,
+                  'tokens': file_tokens
               })
 
-              total_additions += file.get('additions', 0)
-              total_deletions += file.get('deletions', 0)
+              total_tokens += file_tokens
+              print(f"✅ Analyzed: {file_path} (~{file_tokens} tokens)")
+
+          print(f"\n📊 Summary:")
+          print(f"  - Code files analyzed: {len(changed_files)}")
+          print(f"  - Documentation files: {len(doc_files)}")
+          print(f"  - Skipped files: {len(skipped_files)}")
+          print(f"  - Total tokens: ~{total_tokens}")
 
           # Prepare context for Claude
           context = f"""# Pull Request Analysis Request
@@ -124,41 +251,85 @@ jobs:
           - **Author:** {pr_data['author']}
           - **Base Branch:** {pr_data['base']}
           - **Head Branch:** {pr_data['head']}
-          - **Description:** {pr_data['body']}
+          - **Description:** {pr_data['body'][:500]}{'...' if len(pr_data['body']) > 500 else ''}
 
           ## Changes Summary
-          - **Files Changed:** {len(changed_files)}
+          - **Total Files Changed:** {len(pr_data['files'])}
+          - **Code Files Analyzed:** {len(changed_files)}
+          - **Documentation Files:** {len(doc_files)} (summarized below)
+          - **Skipped Files:** {len(skipped_files)}
           - **Lines Added:** {total_additions}
           - **Lines Deleted:** {total_deletions}
 
-          ## Files Changed
           """
 
-          # Add file details
-          for file in changed_files[:20]:  # Limit to first 20 files
-              context += f"""
+          # Add documentation summary if present
+          if doc_files:
+              context += "\n## Documentation Changes\n"
+              context += f"This PR includes {len(doc_files)} documentation file(s):\n"
+              for doc in doc_files[:5]:  # Limit to 5
+                  context += f"- {doc['path']}: +{doc['additions']} -{doc['deletions']} lines\n"
+              if len(doc_files) > 5:
+                  context += f"- ... and {len(doc_files) - 5} more documentation files\n"
+              context += "\n**Note:** Focus analysis on code changes; documentation appears comprehensive.\n"
+
+          # Add code file details
+          if changed_files:
+              context += "\n## Code Files Changed\n"
+              for file in changed_files[:15]:  # Limit to 15 files for analysis
+                  context += f"""
           ### {file['path']}
           - **Status:** {file['status']}
           - **Changes:** +{file['additions']} -{file['deletions']}
-          - **Patch:**
+          {'- **Note:** Content truncated for analysis' if file['was_truncated'] else ''}
+
+          **Diff:**
           ```diff
-          {file['patch'][:1000] if file['patch'] else 'No patch available'}
+          {file['patch'] if file['patch'] else 'No diff available'}
           ```
 
-          - **Current Content Preview:**
-          ```python
+          **Current Content:**
+          ```
           {file['content_preview']}
           ```
           """
 
+              if len(changed_files) > 15:
+                  context += f"\n... and {len(changed_files) - 15} more code files not shown due to size limits.\n"
+
+          # Add skipped files note
+          if skipped_files:
+              context += f"\n## Files Not Analyzed\n"
+              context += f"Skipped {len(skipped_files)} file(s): {', '.join(skipped_files[:10])}"
+              if len(skipped_files) > 10:
+                  context += f" and {len(skipped_files) - 10} more"
+              context += "\n"
+
           # Call Claude for analysis
           print("🤖 Calling Claude AI for analysis...")
 
-          message = client.messages.create(
-              model="claude-sonnet-4-20250514",
-              max_tokens=8000,
-              temperature=0,
-              system="""You are an expert code reviewer and software architect analyzing a pull request for the JARVIS AI Agent project.
+          # Adjust analysis based on PR type
+          is_doc_heavy = len(doc_files) > len(changed_files) and len(doc_files) > 3
+
+          if is_doc_heavy:
+              system_prompt = """You are an expert documentation reviewer analyzing a documentation-heavy pull request.
+
+          This PR is primarily documentation changes. Focus your analysis on:
+          - **Documentation Quality:** Clarity, completeness, accuracy
+          - **Structure:** Organization, navigation, consistency
+          - **Code Examples:** Correctness of any code snippets in docs
+          - **Accessibility:** Readability for target audience
+
+          Provide a concise review with:
+          1. **Overall Assessment** (score 1-10)
+          2. **Documentation Quality** (clarity, completeness, accuracy)
+          3. **Suggestions** (improvements, corrections, additions)
+          4. **Merge Decision** (ready/needs-work)
+
+          Keep response concise since this is primarily documentation.
+          Format in clear Markdown with sections and emojis."""
+          else:
+              system_prompt = """You are an expert code reviewer and software architect analyzing a pull request for the JARVIS AI Agent project.
 
           Your analysis should be:
           - **Comprehensive:** Cover code quality, architecture, security, performance, and best practices
@@ -179,7 +350,13 @@ jobs:
           8. **Recommendations** (prioritized action items)
           9. **Merge Decision** (ready/needs-work/blocking-issues)
 
-          Format your response in clear Markdown with sections, code blocks, and emojis.""",
+          Format your response in clear Markdown with sections, code blocks, and emojis."""
+
+          message = client.messages.create(
+              model="claude-sonnet-4-20250514",
+              max_tokens=8000,
+              temperature=0,
+              system=system_prompt,
               messages=[
                   {
                       "role": "user",
@@ -197,14 +374,35 @@ jobs:
           # Extract merge decision
           merge_ready = "ready" in analysis.lower() and "merge decision" in analysis.lower()
 
+          # Calculate token usage
+          input_tokens = message.usage.input_tokens
+          output_tokens = message.usage.output_tokens
+          total_tokens = input_tokens + output_tokens
+          estimated_cost = (input_tokens * 0.003 / 1000) + (output_tokens * 0.015 / 1000)
+
           # Output for GitHub Actions
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"merge_ready={str(merge_ready).lower()}\n")
               f.write(f"analysis_length={len(analysis)}\n")
+              f.write(f"code_files={len(changed_files)}\n")
+              f.write(f"doc_files={len(doc_files)}\n")
+              f.write(f"skipped_files={len(skipped_files)}\n")
+              f.write(f"input_tokens={input_tokens}\n")
+              f.write(f"output_tokens={output_tokens}\n")
+              f.write(f"total_tokens={total_tokens}\n")
+              f.write(f"estimated_cost={estimated_cost:.4f}\n")
 
           print("✅ Claude AI analysis complete!")
-          print(f"Analysis length: {len(analysis)} characters")
-          print(f"Merge ready: {merge_ready}")
+          print(f"📊 Statistics:")
+          print(f"  - Analysis length: {len(analysis)} characters")
+          print(f"  - Code files analyzed: {len(changed_files)}")
+          print(f"  - Documentation files: {len(doc_files)}")
+          print(f"  - Skipped files: {len(skipped_files)}")
+          print(f"  - Input tokens: {input_tokens:,}")
+          print(f"  - Output tokens: {output_tokens:,}")
+          print(f"  - Total tokens: {total_tokens:,}")
+          print(f"  - Estimated cost: ${estimated_cost:.4f}")
+          print(f"  - Merge ready: {merge_ready}")
 
           PYTHON_SCRIPT
 
@@ -328,7 +526,23 @@ jobs:
         run: |
           echo "## 🤖 Claude AI Analysis Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Analysis Length:** ${{ steps.ai_analysis.outputs.analysis_length }} characters" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Analysis Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Files Analyzed | ${{ steps.ai_analysis.outputs.code_files }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation Files | ${{ steps.ai_analysis.outputs.doc_files }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Files Skipped | ${{ steps.ai_analysis.outputs.skipped_files }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Analysis Length | ${{ steps.ai_analysis.outputs.analysis_length }} chars |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 💰 Token Usage & Cost" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Input Tokens | ${{ steps.ai_analysis.outputs.input_tokens }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Output Tokens | ${{ steps.ai_analysis.outputs.output_tokens }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Tokens | ${{ steps.ai_analysis.outputs.total_tokens }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Estimated Cost | \$${{ steps.ai_analysis.outputs.estimated_cost }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Merge Decision" >> $GITHUB_STEP_SUMMARY
           echo "**Merge Ready:** ${{ steps.ai_analysis.outputs.merge_ready }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Full analysis posted as PR comment." >> $GITHUB_STEP_SUMMARY
