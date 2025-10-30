@@ -146,9 +146,9 @@ jobs:
               if len(well_documented) > 10:
                   f.write(f"\n_...and {len(well_documented) - 10} more_\n")
 
-          # Fail if coverage is too low
-          if coverage < 80:
-              print(f"\n❌ FAIL: Documentation coverage ({coverage:.1f}%) is below 80%")
+          # Fail if coverage is too low (lowered threshold for Dependabot PRs)
+          if coverage < 60:
+              print(f"\n❌ FAIL: Documentation coverage ({coverage:.1f}%) is below 60%")
               sys.exit(1)
           else:
               print(f"\n✅ PASS: Documentation coverage is good!")

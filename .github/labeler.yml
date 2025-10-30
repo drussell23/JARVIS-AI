@@ -1,121 +1,136 @@
-# Auto-labeler configuration for PR automation
+# Auto-labeler configuration for PR automation (v5 format)
 
-# Backend
 backend:
-  - backend/**/*
+  - changed-files:
+    - any-glob-to-any-file: 'backend/**/*'
 
-# Frontend
 frontend:
-  - frontend/**/*
+  - changed-files:
+    - any-glob-to-any-file: 'frontend/**/*'
 
-# API
 api:
-  - backend/api/**/*
-  - backend/**/*websocket*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/api/**/*'
+      - 'backend/**/*websocket*'
 
-# Database
 database:
-  - backend/**/*database*
-  - backend/**/*db*
-  - backend/**/models/*
-  - backend/**/migrations/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/**/*database*'
+      - 'backend/**/*db*'
+      - 'backend/**/models/*'
+      - 'backend/**/migrations/*'
 
-# Core
 core:
-  - backend/core/**/*
+  - changed-files:
+    - any-glob-to-any-file: 'backend/core/**/*'
 
-# Tests
 tests:
-  - backend/tests/**/*
-  - frontend/tests/**/*
-  - tests/**/*
-  - "**/*test*.py"
-  - "**/*.test.js"
-  - "**/*.test.ts"
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/tests/**/*'
+      - 'frontend/tests/**/*'
+      - 'tests/**/*'
+      - '**/*test*.py'
+      - '**/*.test.js'
+      - '**/*.test.ts'
 
-# Documentation
 documentation:
-  - "*.md"
-  - docs/**/*
-  - "**/*.md"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**/*'
+      - '**/*.md'
 
-# Configuration
 configuration:
-  - "*.yml"
-  - "*.yaml"
-  - "*.toml"
-  - "*.json"
-  - .env.example
-  - backend/core/hybrid_config.yaml
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.yml'
+      - '*.yaml'
+      - '*.toml'
+      - '*.json'
+      - '.env.example'
+      - 'backend/core/hybrid_config.yaml'
 
-# CI/CD
 ci/cd:
-  - .github/workflows/**/*
-  - .github/actions/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/workflows/**/*'
+      - '.github/actions/**/*'
 
-# Dependencies
 dependencies:
-  - "**/requirements*.txt"
-  - "**/package*.json"
-  - "**/Cargo.toml"
-  - "**/go.mod"
-  - Pipfile
-  - poetry.lock
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/requirements*.txt'
+      - '**/package*.json'
+      - '**/Cargo.toml'
+      - '**/go.mod'
+      - 'Pipfile'
+      - 'poetry.lock'
 
-# Infrastructure
 infrastructure:
-  - infrastructure/**/*
-  - terraform/**/*
-  - k8s/**/*
-  - kubernetes/**/*
-  - docker-compose*.yml
-  - Dockerfile*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'infrastructure/**/*'
+      - 'terraform/**/*'
+      - 'k8s/**/*'
+      - 'kubernetes/**/*'
+      - 'docker-compose*.yml'
+      - 'Dockerfile*'
 
-# Security
 security:
-  - "**/*security*"
-  - "**/*auth*"
-  - "**/*credential*"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*security*'
+      - '**/*auth*'
+      - '**/*credential*'
 
-# Performance
 performance:
-  - "**/*benchmark*"
-  - "**/*performance*"
-  - "**/*optimization*"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*benchmark*'
+      - '**/*performance*'
+      - '**/*optimization*'
 
-# GCP / Cloud
 cloud:
-  - "**/*gcp*"
-  - "**/*cloud*"
-  - "**/*cloudsql*"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*gcp*'
+      - '**/*cloud*'
+      - '**/*cloudsql*'
 
-# AI/ML
 ai-ml:
-  - "**/*model*"
-  - "**/*ml*"
-  - "**/*agent*"
-  - backend/agents/**/*
-  - ml_models/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*model*'
+      - '**/*ml*'
+      - '**/*agent*'
+      - 'backend/agents/**/*'
+      - 'ml_models/**/*'
 
-# Voice
 voice:
-  - "**/*voice*"
-  - "**/*audio*"
-  - "**/*speaker*"
-  - backend/services/voice_*
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*voice*'
+      - '**/*audio*'
+      - '**/*speaker*'
+      - 'backend/services/voice_*'
 
-# Vision
 vision:
-  - "**/*vision*"
-  - "**/*ocr*"
-  - "**/*screenshot*"
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*vision*'
+      - '**/*ocr*'
+      - '**/*screenshot*'
 
-# Scripts
 scripts:
-  - scripts/**/*
-  - "*.sh"
-  - "*.py" # root level scripts
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'scripts/**/*'
+      - '*.sh'
+      - '*.py'
 
-# GitHub specific
 github-actions:
-  - .github/**/*
+  - changed-files:
+    - any-glob-to-any-file: '.github/**/*'
