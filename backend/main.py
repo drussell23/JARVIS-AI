@@ -654,7 +654,7 @@ def import_goal_inference():
             "auto_optimize": True,
             "batch_insert_size": 100,
         }
-        learning_db = get_learning_database()
+        learning_db = get_learning_database
         goal_inference["learning_db"] = learning_db
         goal_inference["db_config"] = db_config
 

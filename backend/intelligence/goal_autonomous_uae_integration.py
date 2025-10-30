@@ -18,37 +18,34 @@ Version: 1.0.0
 """
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime
 from pathlib import Path
-import json
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
-# Import Goal Inference System
-from backend.vision.intelligence.goal_inference_system import (
-    GoalInferenceEngine, Goal, GoalLevel,
-    get_goal_inference_engine
-)
+# Import Advanced Autonomous Engine
+from backend.autonomy.advanced_autonomous_engine import get_advanced_autonomous_engine
 
 # Import Autonomous Decision Engine
 from backend.autonomy.autonomous_decision_engine import (
-    AutonomousDecisionEngine, AutonomousAction,
-    ActionPriority, ActionCategory
-)
-
-# Import Advanced Autonomous Engine
-from backend.autonomy.advanced_autonomous_engine import (
-    AdvancedAutonomousEngine,
-    get_advanced_autonomous_engine
+    ActionCategory,
+    ActionPriority,
+    AutonomousAction,
+    AutonomousDecisionEngine,
 )
 
 # Import UAE
-from backend.intelligence.unified_awareness_engine import (
-    UnifiedAwarenessEngine,
-    DecisionSource,
-    get_uae_engine
+from backend.intelligence.unified_awareness_engine import get_uae_engine
+
+# Import Goal Inference System
+from backend.vision.intelligence.goal_inference_system import (
+    Goal,
+    GoalLevel,
+    get_goal_inference_engine,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,7 +85,7 @@ class GoalAutonomousUAEIntegration:
 
         # Initialize learning database
         from backend.intelligence.learning_database import get_learning_database
-        self.learning_db = get_learning_database()
+        self.learning_db = get_learning_database
 
         # Configuration
         self.config = self._load_configuration()
@@ -416,7 +413,7 @@ class GoalAutonomousUAEIntegration:
         """Generate unique decision ID"""
         import hashlib
         timestamp = datetime.now().isoformat()
-        return hashlib.md5(timestamp.encode()).hexdigest()[:12]
+        return hashlib.md5(timestamp.encode(), usedforsecurity=False).hexdigest()[:12]
 
     async def _apply_learning(
         self,
@@ -671,5 +668,4 @@ async def test_integration():
 
 
 if __name__ == "__main__":
-    import numpy as np
     asyncio.run(test_integration())

@@ -346,7 +346,7 @@ async def load_learning_database():
     try:
         from intelligence.learning_database import get_learning_database
 
-        db = get_learning_database()
+        db = await get_learning_database()
         # Trigger initialization
         await asyncio.sleep(0.1)  # Let it connect
         return db

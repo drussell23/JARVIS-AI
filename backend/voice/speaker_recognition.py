@@ -476,7 +476,7 @@ class SpeakerRecognitionEngine:
             if not self.learning_db:
                 from intelligence.learning_database import get_learning_database
 
-                self.learning_db = get_learning_database()
+                self.learning_db = await get_learning_database()
 
             # Store embedding in database
             embedding_bytes = embedding.astype(np.float32).tobytes()

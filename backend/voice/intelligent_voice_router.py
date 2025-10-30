@@ -422,7 +422,7 @@ class IntelligentVoiceRouter:
         try:
             from intelligence.learning_database import get_learning_database
 
-            db = get_learning_database()
+            db = await get_learning_database()
 
             # Get all speaker profiles
             profiles = await db.get_all_speaker_profiles()

@@ -1,0 +1,593 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches-ignore:
+      - 'dependabot/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      severity:
+        description: 'Minimum severity level for checks'
+        required: false
+        default: 'medium'
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+      skip_checks:
+        description: 'Comma-separated checks to skip (e.g., isort,flake8)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  security-events: write
+
+env:
+  # Dynamic Python version detection
+  PYTHON_VERSION_FILE: '.python-version'
+  DEFAULT_PYTHON_VERSION: '3.10'
+
+  # Cache keys
+  CACHE_VERSION: v1
+
+  # Exclude patterns (DRY - defined once)
+  EXCLUDE_DIRS: 'node_modules,.git,venv,env,build,dist,__pycache__,.venv,*.egg-info'
+
+  # Check severity level
+  SEVERITY_LEVEL: ${{ github.event.inputs.severity || 'medium' }}
+
+jobs:
+  setup:
+    name: Setup & Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      python-version: ${{ steps.detect-python.outputs.version }}
+      source-dirs: ${{ steps.detect-sources.outputs.dirs }}
+      config-hash: ${{ steps.config-hash.outputs.hash }}
+      tool-versions: ${{ steps.tool-versions.outputs.versions }}
+      skip-checks: ${{ steps.parse-input.outputs.skip-checks }}
+      changed-files: ${{ steps.changed-files.outputs.files }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse Input Parameters
+        id: parse-input
+        run: |
+          SKIP="${{ github.event.inputs.skip_checks }}"
+          echo "skip-checks=${SKIP}" >> $GITHUB_OUTPUT
+
+      - name: Detect Python Version
+        id: detect-python
+        run: |
+          if [ -f "${{ env.PYTHON_VERSION_FILE }}" ]; then
+            VERSION=$(cat "${{ env.PYTHON_VERSION_FILE }}" | tr -d '[:space:]')
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "✅ Using Python version from ${{ env.PYTHON_VERSION_FILE }}: ${VERSION}"
+          elif [ -f "runtime.txt" ]; then
+            VERSION=$(grep -oP 'python-\K[0-9.]+' runtime.txt)
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "✅ Using Python version from runtime.txt: ${VERSION}"
+          else
+            echo "version=${{ env.DEFAULT_PYTHON_VERSION }}" >> $GITHUB_OUTPUT
+            echo "⚠️  No Python version file found, using default: ${{ env.DEFAULT_PYTHON_VERSION }}"
+          fi
+
+      - name: Detect Source Directories
+        id: detect-sources
+        run: |
+          # Find all Python package directories dynamically
+          DIRS=$(find . -type f -name "__init__.py" -not -path "*/${{ env.EXCLUDE_DIRS }}/*" | \
+                 xargs -I {} dirname {} | \
+                 cut -d'/' -f2 | \
+                 sort -u | \
+                 tr '\n' ' ')
+
+          if [ -z "$DIRS" ]; then
+            DIRS="."
+          fi
+
+          echo "dirs=${DIRS}" >> $GITHUB_OUTPUT
+          echo "📦 Detected source directories: ${DIRS}"
+
+      - name: Generate Config Hash
+        id: config-hash
+        run: |
+          # Hash all config files for cache invalidation
+          HASH=$(cat pyproject.toml .flake8 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-config")
+          echo "hash=${HASH}" >> $GITHUB_OUTPUT
+          echo "🔑 Configuration hash: ${HASH}"
+
+      - name: Extract Tool Versions
+        id: tool-versions
+        run: |
+          # Extract versions from pyproject.toml or use defaults
+          python3 << 'EOF'
+          import json
+          import re
+          from pathlib import Path
+
+          versions = {
+              "isort": "5.13.2",
+              "flake8": "7.1.1",
+              "bandit": "1.8.0",
+              "interrogate": "1.7.0",
+              "autoflake": "2.3.1",
+              "black": "24.4.2",
+              "pylint": "3.1.0",
+              "mypy": "1.14.1"
+          }
+
+          # Try to extract from requirements files
+          for req_file in Path('.').rglob('requirements*.txt'):
+              try:
+                  content = req_file.read_text()
+                  for tool in versions.keys():
+                      pattern = rf'{tool}[>=<]=*([0-9.]+)'
+                      match = re.search(pattern, content, re.IGNORECASE)
+                      if match:
+                          versions[tool] = match.group(1)
+              except:
+                  pass
+
+          print(json.dumps(versions))
+          EOF
+
+          VERSIONS=$(python3 -c "import json; print(json.dumps({'isort': '5.13.2', 'flake8': '7.1.1', 'bandit': '1.8.0', 'interrogate': '1.7.0', 'autoflake': '2.3.1', 'black': '24.4.2', 'pylint': '3.1.0', 'mypy': '1.14.1'}))")
+          echo "versions=${VERSIONS}" >> $GITHUB_OUTPUT
+          echo "🔧 Tool versions: ${VERSIONS}"
+
+      - name: Detect Changed Files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            FILES=$(git diff --name-only --diff-filter=ACMRT ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep '\.py$' || echo "")
+          else
+            FILES=$(git diff --name-only --diff-filter=ACMRT HEAD~1 HEAD | grep '\.py$' || echo "")
+          fi
+
+          if [ -z "$FILES" ]; then
+            FILES="all"
+          fi
+
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "📝 Changed files detected"
+
+  quality-checks:
+    name: Quality Checks
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - name: isort
+            display: Import Sorting
+            icon: 📦
+          - name: flake8
+            display: Linting
+            icon: 🔍
+          - name: bandit
+            display: Security
+            icon: 🔒
+          - name: interrogate
+            display: Docstring Coverage
+            icon: 📝
+          - name: autoflake
+            display: Unused Code
+            icon: 🧹
+          - name: black
+            display: Code Formatting
+            icon: 🎨
+          - name: pylint
+            display: Static Analysis
+            icon: 🔬
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if Skip
+        id: should-skip
+        run: |
+          SKIP_LIST="${{ needs.setup.outputs.skip-checks }}"
+          CHECK_NAME="${{ matrix.check.name }}"
+
+          if [[ ",$SKIP_LIST," == *",$CHECK_NAME,"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⏭️  Skipping $CHECK_NAME (user requested)"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.should-skip.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-version }}
+
+      - name: Cache Python Dependencies
+        if: steps.should-skip.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/pre-commit
+          key: ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-${{ hashFiles('**/requirements*.txt', 'pyproject.toml') }}-${{ needs.setup.outputs.config-hash }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-
+            ${{ runner.os }}-pip-
+
+      - name: Install Tool
+        if: steps.should-skip.outputs.skip != 'true'
+        run: |
+          pip install --upgrade pip setuptools wheel
+          VERSIONS='${{ needs.setup.outputs.tool-versions }}'
+          VERSION=$(echo $VERSIONS | python3 -c "import sys, json; v=json.load(sys.stdin); print(v.get('${{ matrix.check.name }}', 'latest'))")
+
+          if [ "${{ matrix.check.name }}" == "bandit" ]; then
+            pip install bandit[toml]==${VERSION}
+          else
+            pip install ${{ matrix.check.name }}==${VERSION}
+          fi
+
+      - name: Load Configurations
+        if: steps.should-skip.outputs.skip != 'true'
+        id: config
+        run: |
+          # Dynamically load configurations from pyproject.toml and .flake8
+          python3 << 'EOF'
+          import os
+          import json
+          import configparser
+          from pathlib import Path
+
+          configs = {}
+
+          # Load pyproject.toml
+          try:
+              import tomli
+          except ImportError:
+              import subprocess
+              subprocess.check_call(['pip', 'install', 'tomli'])
+              import tomli
+
+          pyproject = Path('pyproject.toml')
+          if pyproject.exists():
+              with open(pyproject, 'rb') as f:
+                  data = tomli.load(f)
+                  configs['pyproject'] = data
+
+          # Load .flake8
+          flake8_config = Path('.flake8')
+          if flake8_config.exists():
+              config = configparser.ConfigParser()
+              config.read('.flake8')
+              configs['flake8'] = {s: dict(config.items(s)) for s in config.sections()}
+
+          # Output for use in subsequent steps
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"config={json.dumps(configs)}\n")
+          EOF
+
+      - name: Run Check - ${{ matrix.check.display }}
+        if: steps.should-skip.outputs.skip != 'true'
+        id: check
+        continue-on-error: true
+        run: |
+          SOURCES="${{ needs.setup.outputs.source-dirs }}"
+          CHANGED_FILES="${{ needs.setup.outputs.changed-files }}"
+
+          # Determine target files
+          if [ "$CHANGED_FILES" != "all" ] && [ "${{ github.event_name }}" == "pull_request" ]; then
+            TARGET_FILES="$CHANGED_FILES"
+          else
+            TARGET_FILES="$SOURCES"
+          fi
+
+          echo "${{ matrix.check.icon }} Running ${{ matrix.check.display }} on: $TARGET_FILES"
+
+          case "${{ matrix.check.name }}" in
+            isort)
+              CONFIG=$(python3 -c "import json; c=json.loads('${{ steps.config.outputs.config }}'); print(' '.join([f'--{k.replace(\"_\", \"-\")}={v}' for k,v in c.get('pyproject', {}).get('tool', {}).get('isort', {}).items()]))" || echo "--profile black --line-length 100")
+              isort --check-only --diff $CONFIG $TARGET_FILES
+              ;;
+            flake8)
+              flake8 --config=.flake8 $TARGET_FILES --statistics --count --format='%(path)s:%(row)d:%(col)d: %(code)s %(text)s'
+              ;;
+            bandit)
+              bandit -c pyproject.toml -r $TARGET_FILES -f json -o bandit-report-${{ github.run_id }}.json
+              ;;
+            interrogate)
+              interrogate -v --fail-under=50 --ignore-init-module $TARGET_FILES --generate-badge interrogate-badge.svg
+              ;;
+            autoflake)
+              autoflake --check --remove-all-unused-imports --remove-unused-variables --remove-duplicate-keys --ignore-init-module-imports --recursive $TARGET_FILES
+              ;;
+            black)
+              CONFIG=$(python3 -c "import json; c=json.loads('${{ steps.config.outputs.config }}'); llen=c.get('pyproject', {}).get('tool', {}).get('black', {}).get('line-length', 100); print(f'--line-length {llen}')" || echo "--line-length 100")
+              black --check --diff $CONFIG $TARGET_FILES
+              ;;
+            pylint)
+              pylint $TARGET_FILES --output-format=json:pylint-report-${{ github.run_id }}.json,colorized --fail-under=7.0 || true
+              ;;
+          esac
+
+      - name: Generate Report
+        if: always() && steps.should-skip.outputs.skip != 'true'
+        run: |
+          echo "## ${{ matrix.check.icon }} ${{ matrix.check.display }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check.outcome }}" == "success" ]; then
+            echo "✅ All checks passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Issues detected - review required" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Artifacts
+        if: always() && steps.should-skip.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.check.name }}-report-${{ github.run_id }}
+          path: |
+            *-report-${{ github.run_id }}.json
+            *-badge.svg
+          retention-days: 30
+          if-no-files-found: ignore
+
+  validation-checks:
+    name: File Validation
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        validation:
+          - name: yaml
+            extensions: "yml yaml"
+            icon: 📄
+          - name: json
+            extensions: "json"
+            icon: 📄
+          - name: toml
+            extensions: "toml"
+            icon: 📄
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-version }}
+
+      - name: Install Validators
+        run: |
+          pip install pyyaml tomli
+
+      - name: Validate ${{ matrix.validation.name }} Files
+        id: validate
+        continue-on-error: true
+        run: |
+          python3 << 'EOF'
+          import sys
+          import json
+          from pathlib import Path
+
+          EXCLUDE_PATTERNS = "${{ env.EXCLUDE_DIRS }}".split(',')
+          EXTENSIONS = "${{ matrix.validation.extensions }}".split()
+          VALIDATOR_TYPE = "${{ matrix.validation.name }}"
+
+          def should_exclude(path):
+              return any(pattern in str(path) for pattern in EXCLUDE_PATTERNS)
+
+          def validate_yaml(file_path):
+              import yaml
+              with open(file_path) as f:
+                  yaml.safe_load(f)
+
+          def validate_json(file_path):
+              import json
+              with open(file_path) as f:
+                  json.load(f)
+
+          def validate_toml(file_path):
+              try:
+                  import tomli
+              except ImportError:
+                  import tomllib as tomli
+              with open(file_path, 'rb') as f:
+                  tomli.load(f)
+
+          validators = {
+              'yaml': validate_yaml,
+              'json': validate_json,
+              'toml': validate_toml
+          }
+
+          errors = []
+          checked = 0
+
+          for ext in EXTENSIONS:
+              for file_path in Path('.').rglob(f'*.{ext}'):
+                  if should_exclude(file_path):
+                      continue
+
+                  checked += 1
+                  try:
+                      validators[VALIDATOR_TYPE](file_path)
+                  except Exception as e:
+                      errors.append({
+                          'file': str(file_path),
+                          'error': str(e)
+                      })
+
+          print(f"Checked {checked} files")
+
+          if errors:
+              print(f"\nErrors found in {len(errors)} file(s):")
+              for err in errors:
+                  print(f"  {err['file']}: {err['error']}")
+              sys.exit(1)
+          else:
+              print(f"✅ All {VALIDATOR_TYPE.upper()} files are valid")
+          EOF
+
+      - name: Report Results
+        if: always()
+        run: |
+          echo "## ${{ matrix.validation.icon }} ${{ matrix.validation.name }} Validation" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "✅ All files valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Validation errors found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  security-checks:
+    name: Security & Compliance
+    needs: setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Secrets
+        id: secrets
+        continue-on-error: true
+        run: |
+          echo "## 🔐 Secret Detection" >> $GITHUB_STEP_SUMMARY
+
+          # Check for common secret patterns
+          python3 << 'EOF'
+          import re
+          import sys
+          from pathlib import Path
+
+          PATTERNS = {
+              'AWS Key': r'AKIA[0-9A-Z]{16}',
+              'Private Key': r'BEGIN.*PRIVATE KEY',
+              'Generic Secret': r'(password|secret|token|api[_-]?key)\s*[:=]\s*["\']?[\w\-]{8,}',
+              'JWT Token': r'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'
+          }
+
+          EXCLUDE = ['${{ env.EXCLUDE_DIRS }}']
+          findings = []
+
+          for file_path in Path('.').rglob('*'):
+              if not file_path.is_file() or any(ex in str(file_path) for ex in EXCLUDE):
+                  continue
+
+              try:
+                  content = file_path.read_text()
+                  for name, pattern in PATTERNS.items():
+                      matches = re.finditer(pattern, content, re.IGNORECASE)
+                      for match in matches:
+                          findings.append(f"{file_path}:{name}")
+              except:
+                  pass
+
+          if findings:
+              print("⚠️  Potential secrets found:")
+              for f in findings:
+                  print(f"  - {f}")
+              sys.exit(1)
+          else:
+              print("✅ No secrets detected")
+          EOF
+
+      - name: Check File Sizes
+        id: file-sizes
+        continue-on-error: true
+        run: |
+          echo "## 📦 Large File Detection" >> $GITHUB_STEP_SUMMARY
+
+          EXCLUDE_OPTS=$(echo "${{ env.EXCLUDE_DIRS }}" | sed 's/,/ -o -path "*\//g' | sed 's/^/-path "*\//' | sed 's/$\/*"/')
+
+          LARGE_FILES=$(find . -type f -size +1000k $EXCLUDE_OPTS -prune -o -type f -size +1000k -print)
+
+          if [ -n "$LARGE_FILES" ]; then
+            echo "⚠️  Large files detected:" >> $GITHUB_STEP_SUMMARY
+            echo "$LARGE_FILES" | while read file; do
+              SIZE=$(du -h "$file" | cut -f1)
+              echo "  - $file ($SIZE)" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "✅ No large files" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check for Merge Conflicts
+        id: merge-conflicts
+        continue-on-error: true
+        run: |
+          echo "## 🔀 Merge Conflict Check" >> $GITHUB_STEP_SUMMARY
+          if git diff --check; then
+            echo "✅ No merge conflicts" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Merge conflicts detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+  summary:
+    name: Generate Summary
+    needs: [setup, quality-checks, validation-checks, security-checks]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+
+      - name: Generate Comprehensive Summary
+        run: |
+          echo "# 📊 Code Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Python Version:** \`${{ needs.setup.outputs.python-version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Source Directories:** \`${{ needs.setup.outputs.source-dirs }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Analyze all job results
+          QUALITY_RESULT="${{ needs.quality-checks.result }}"
+          VALIDATION_RESULT="${{ needs.validation-checks.result }}"
+          SECURITY_RESULT="${{ needs.security-checks.result }}"
+
+          echo "## Results by Category" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          [ "$QUALITY_RESULT" == "success" ] && echo "- ✅ Quality Checks" >> $GITHUB_STEP_SUMMARY || echo "- ❌ Quality Checks" >> $GITHUB_STEP_SUMMARY
+          [ "$VALIDATION_RESULT" == "success" ] && echo "- ✅ File Validation" >> $GITHUB_STEP_SUMMARY || echo "- ❌ File Validation" >> $GITHUB_STEP_SUMMARY
+          [ "$SECURITY_RESULT" == "success" ] && echo "- ✅ Security Checks" >> $GITHUB_STEP_SUMMARY || echo "- ❌ Security Checks" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$QUALITY_RESULT" == "success" ] && [ "$VALIDATION_RESULT" == "success" ] && [ "$SECURITY_RESULT" == "success" ]; then
+            echo "### 🎉 All checks passed!" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "### ⚠️  Some checks require attention" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
