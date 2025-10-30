@@ -17,6 +17,10 @@ jobs:
   analyze-pr:
     name: AI-Powered PR Analysis
     runs-on: ubuntu-latest
+    # Concurrency control - only one Claude analysis at a time to prevent rate limiting
+    concurrency:
+      group: claude-pr-analysis
+      cancel-in-progress: false
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.changed_files < 50) ||
@@ -44,6 +48,14 @@ jobs:
                       })).data;
 
             return pr.number;
+
+      - name: Rate Limit Protection
+        run: |
+          echo "🕐 Applying rate limit protection to prevent API throttling..."
+          echo "⏳ Waiting 75 seconds to ensure rate limit window is clear..."
+          echo "   (Anthropic API: 8,000 output tokens/minute limit)"
+          sleep 75
+          echo "✅ Rate limit window clear - proceeding with analysis"
 
       - name: Set up Python
         uses: actions/setup-python@v5
