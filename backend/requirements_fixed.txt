@@ -22,7 +22,7 @@ numpy>=1.24.0
 scipy>=1.11.0
 
 # Audio processing dependencies
-noisereduce==3.0.0
+noisereduce==3.0.3
 librosa==0.10.1
 numba>=0.58.0
 audioread==3.0.1
