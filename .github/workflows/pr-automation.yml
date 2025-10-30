@@ -1,0 +1,416 @@
+name: PR Automation & Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+
+jobs:
+  # ============================================================================
+  # Auto-Label PRs
+  # ============================================================================
+  auto-label:
+    name: Auto-Label PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Label Based on Files Changed
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+      - name: Intelligent Auto-Labeling
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const labels = new Set();
+
+            // Analyze files and add appropriate labels
+            for (const file of files) {
+              const path = file.filename;
+
+              // Backend changes
+              if (path.startsWith('backend/')) {
+                labels.add('backend');
+
+                if (path.includes('database') || path.includes('db')) {
+                  labels.add('database');
+                }
+                if (path.includes('api/') || path.includes('websocket')) {
+                  labels.add('api');
+                }
+                if (path.includes('core/')) {
+                  labels.add('core');
+                }
+                if (path.includes('test')) {
+                  labels.add('tests');
+                }
+                if (path.includes('security') || path.includes('auth')) {
+                  labels.add('security');
+                }
+              }
+
+              // Frontend changes
+              if (path.startsWith('frontend/')) {
+                labels.add('frontend');
+                if (path.endsWith('.css') || path.endsWith('.scss')) {
+                  labels.add('styling');
+                }
+              }
+
+              // Configuration changes
+              if (path.includes('.yml') || path.includes('.yaml') || path.includes('config')) {
+                labels.add('configuration');
+              }
+
+              // GitHub Actions
+              if (path.startsWith('.github/workflows/')) {
+                labels.add('ci/cd');
+              }
+
+              // Documentation
+              if (path.endsWith('.md') || path.includes('docs/')) {
+                labels.add('documentation');
+              }
+
+              // Dependencies
+              if (path.includes('requirements') || path.includes('package.json') || path.includes('Cargo.toml')) {
+                labels.add('dependencies');
+              }
+
+              // Infrastructure
+              if (path.includes('infrastructure') || path.includes('terraform') || path.includes('docker')) {
+                labels.add('infrastructure');
+              }
+
+              // Size labels
+              if (file.additions + file.deletions > 500) {
+                labels.add('size/large');
+              } else if (file.additions + file.deletions > 100) {
+                labels.add('size/medium');
+              } else {
+                labels.add('size/small');
+              }
+            }
+
+            // Add all labels
+            if (labels.size > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels: Array.from(labels)
+              });
+            }
+
+  # ============================================================================
+  # PR Size Check
+  # ============================================================================
+  pr-size-check:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check PR Size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const additions = pr.additions;
+            const deletions = pr.deletions;
+            const totalChanges = additions + deletions;
+            const filesChanged = pr.changed_files;
+
+            let size = 'XS';
+            let warning = '';
+
+            if (totalChanges > 1000 || filesChanged > 20) {
+              size = 'XL';
+              warning = '⚠️  **This PR is very large.** Consider breaking it into smaller PRs for easier review.';
+            } else if (totalChanges > 500 || filesChanged > 10) {
+              size = 'L';
+              warning = '💡 **This PR is large.** Ensure it focuses on a single feature or fix.';
+            } else if (totalChanges > 200 || filesChanged > 5) {
+              size = 'M';
+            } else if (totalChanges > 50) {
+              size = 'S';
+            }
+
+            const comment = `## 📊 PR Size Analysis
+
+            **Size:** \`${size}\`
+            **Files Changed:** ${filesChanged}
+            **Lines Added:** +${additions}
+            **Lines Deleted:** -${deletions}
+            **Total Changes:** ${totalChanges}
+
+            ${warning}
+
+            ### Review Checklist
+            - [ ] All tests passing
+            - [ ] Code follows project style guidelines
+            - [ ] Documentation updated if needed
+            - [ ] No sensitive data exposed
+            - [ ] Breaking changes documented
+            `;
+
+            // Find existing bot comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('PR Size Analysis')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: comment
+              });
+            }
+
+  # ============================================================================
+  # PR Title Validation
+  # ============================================================================
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Validate Conventional Commits
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^[A-Z].+$
+          subjectPatternError: |
+            The PR title must start with a capital letter.
+
+            Examples:
+            - feat: Add new voice recognition feature
+            - fix: Resolve database connection timeout
+            - docs: Update README with setup instructions
+
+  # ============================================================================
+  # PR Description Check
+  # ============================================================================
+  check-pr-description:
+    name: Check PR Description
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Verify PR Description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+
+            if (body.length < 50) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `## ⚠️  PR Description Too Short
+
+                Please provide a detailed description of your changes including:
+                - What changes were made
+                - Why these changes were necessary
+                - How to test these changes
+                - Any breaking changes or important notes
+
+                A good PR description helps reviewers understand your changes better! 🚀`
+              });
+            }
+
+            // Check for common sections
+            const hasSummary = /## Summary|## Description|## Changes/i.test(body);
+            const hasTestPlan = /## Test|## Testing|## Test Plan/i.test(body);
+            const hasIssueLink = /#\d+|closes|fixes|resolves/i.test(body);
+
+            if (!hasSummary || !hasTestPlan) {
+              const suggestions = [];
+              if (!hasSummary) suggestions.push('- Add a summary section');
+              if (!hasTestPlan) suggestions.push('- Add a testing section');
+              if (!hasIssueLink) suggestions.push('- Link related issues');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `## 💡 PR Description Suggestions
+
+                Consider improving your PR description:
+                ${suggestions.join('\n')}
+
+                **Template:**
+                \`\`\`
+                ## Summary
+                Brief description of changes
+
+                ## Changes Made
+                - Change 1
+                - Change 2
+
+                ## Test Plan
+                How to verify these changes
+
+                ## Related Issues
+                Closes #123
+                \`\`\`
+                `
+              });
+            }
+
+  # ============================================================================
+  # PR Review Reminder
+  # ============================================================================
+  review-reminder:
+    name: Review Reminder
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+
+    steps:
+      - name: Request Reviews
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // Auto-request review from team
+            const reviewers = ['derekjrussell'];  // Add team members here
+
+            // Don't request review from PR author
+            const filteredReviewers = reviewers.filter(r => r !== pr.user.login);
+
+            if (filteredReviewers.length > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                reviewers: filteredReviewers
+              });
+            }
+
+  # ============================================================================
+  # Conflict Detection
+  # ============================================================================
+  conflict-check:
+    name: Check for Conflicts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check Merge Conflicts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            if (pr.mergeable_state === 'dirty') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `## ⚠️  Merge Conflicts Detected
+
+                This PR has merge conflicts that must be resolved before it can be merged.
+
+                **To resolve:**
+                \`\`\`bash
+                git checkout ${pr.head.ref}
+                git pull origin ${pr.base.ref}
+                # Resolve conflicts
+                git push
+                \`\`\`
+                `
+              });
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['needs-rebase']
+              });
+            }
+
+  # ============================================================================
+  # Generate PR Summary
+  # ============================================================================
+  pr-summary:
+    name: Generate PR Summary
+    runs-on: ubuntu-latest
+    needs: [auto-label, pr-size-check, validate-pr-title]
+    if: always() && github.event_name == 'pull_request'
+
+    steps:
+      - name: Create Summary
+        run: |
+          echo "# 🚀 PR Automation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Title:** ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Author:** @${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Automation Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-Label: ${{ needs.auto-label.result == 'success' && '✅' || '❌' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Size Check: ${{ needs.pr-size-check.result == 'success' && '✅' || '❌' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Title Validation: ${{ needs.validate-pr-title.result == 'success' && '✅' || '❌' }}" >> $GITHUB_STEP_SUMMARY

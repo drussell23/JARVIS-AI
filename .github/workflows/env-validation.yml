@@ -1,0 +1,286 @@
+name: Environment Variable Validation
+
+on:
+  push:
+    branches: [main, develop, feature/**]
+    paths:
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.ts'
+      - '.env.example'
+      - '.github/workflows/env-validation.yml'
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  validate-env-vars:
+    name: Validate Environment Variables
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Validation Tools
+        run: |
+          pip install python-dotenv pyyaml
+
+      - name: Run Comprehensive Env Var Validation
+        run: |
+          python .github/scripts/validate_env_vars.py
+
+      - name: Check for Environment Variable Usage
+        run: |
+          python3 << 'EOF'
+          import re
+          import sys
+          from pathlib import Path
+          from collections import defaultdict
+
+          print("## 🔍 Environment Variable Usage Analysis")
+          print("=" * 70)
+
+          # Track all env vars used across the codebase
+          env_vars_used = defaultdict(list)
+          env_vars_documented = set()
+
+          # Read .env.example to see what's documented
+          if Path(".env.example").exists():
+              with open(".env.example") as f:
+                  for line in f:
+                      line = line.strip()
+                      if line and not line.startswith("#") and "=" in line:
+                          var_name = line.split("=")[0].strip()
+                          env_vars_documented.add(var_name)
+
+          print(f"\n✅ Documented env vars in .env.example: {len(env_vars_documented)}")
+
+          # Scan Python files
+          patterns = [
+              r'os\.getenv\(["\']([^"\']+)["\']',
+              r'os\.environ\[["\']([^"\']+)["\']\]',
+              r'os\.environ\.get\(["\']([^"\']+)["\']',
+              r'env\[["\']([^"\']+)["\']\]',
+              r'getenv\(["\']([^"\']+)["\']',
+          ]
+
+          py_files = list(Path(".").glob("**/*.py"))
+          py_files = [f for f in py_files if "venv" not in str(f) and "site-packages" not in str(f)]
+
+          print(f"📝 Scanning {len(py_files)} Python files...")
+
+          for file_path in py_files:
+              try:
+                  content = file_path.read_text()
+                  for pattern in patterns:
+                      matches = re.findall(pattern, content)
+                      for var_name in matches:
+                          env_vars_used[var_name].append(str(file_path))
+              except Exception as e:
+                  pass
+
+          print(f"\n📊 Found {len(env_vars_used)} unique environment variables in use\n")
+
+          # Check for undocumented vars
+          undocumented = set(env_vars_used.keys()) - env_vars_documented
+          documented_but_unused = env_vars_documented - set(env_vars_used.keys())
+
+          if undocumented:
+              print(f"⚠️  UNDOCUMENTED environment variables ({len(undocumented)}):")
+              for var in sorted(undocumented):
+                  files = env_vars_used[var][:3]  # Show first 3 files
+                  print(f"   • {var}")
+                  for f in files:
+                      print(f"     - {f}")
+                  if len(env_vars_used[var]) > 3:
+                      print(f"     ... and {len(env_vars_used[var]) - 3} more files")
+              print()
+
+          if documented_but_unused:
+              print(f"💡 DOCUMENTED but seemingly UNUSED ({len(documented_but_unused)}):")
+              for var in sorted(documented_but_unused):
+                  print(f"   • {var}")
+              print()
+
+          # Summary
+          print("=" * 70)
+          print("📈 SUMMARY")
+          print(f"   • Total env vars documented: {len(env_vars_documented)}")
+          print(f"   • Total env vars in use: {len(env_vars_used)}")
+          print(f"   • Undocumented vars: {len(undocumented)}")
+          print(f"   • Documented but unused: {len(documented_but_unused)}")
+
+          coverage = (len(env_vars_used) - len(undocumented)) / max(len(env_vars_used), 1) * 100
+          print(f"   • Documentation coverage: {coverage:.1f}%")
+          print("=" * 70)
+
+          # Write to GitHub summary
+          with open("/tmp/env_summary.txt", "w") as f:
+              f.write("## 📊 Environment Variable Analysis\n\n")
+              f.write(f"**Documented:** {len(env_vars_documented)} | ")
+              f.write(f"**In Use:** {len(env_vars_used)} | ")
+              f.write(f"**Coverage:** {coverage:.1f}%\n\n")
+
+              if undocumented:
+                  f.write(f"### ⚠️  Undocumented Variables ({len(undocumented)})\n\n")
+                  for var in sorted(undocumented):
+                      f.write(f"- `{var}` (used in {len(env_vars_used[var])} file(s))\n")
+                  f.write("\n")
+
+              if documented_but_unused:
+                  f.write(f"### 💡 Documented but Unused ({len(documented_but_unused)})\n\n")
+                  for var in sorted(documented_but_unused):
+                      f.write(f"- `{var}`\n")
+                  f.write("\n")
+
+              f.write("### ✅ Well-Documented Variables\n\n")
+              well_documented = set(env_vars_used.keys()) & env_vars_documented
+              for var in sorted(list(well_documented)[:10]):  # Show first 10
+                  f.write(f"- `{var}` (used in {len(env_vars_used[var])} file(s))\n")
+              if len(well_documented) > 10:
+                  f.write(f"\n_...and {len(well_documented) - 10} more_\n")
+
+          # Fail if coverage is too low
+          if coverage < 80:
+              print(f"\n❌ FAIL: Documentation coverage ({coverage:.1f}%) is below 80%")
+              sys.exit(1)
+          else:
+              print(f"\n✅ PASS: Documentation coverage is good!")
+          EOF
+
+      - name: Check for Sensitive Data Exposure
+        run: |
+          python3 << 'EOF'
+          import re
+          import sys
+          from pathlib import Path
+
+          print("\n🔐 Checking for sensitive data exposure...")
+
+          sensitive_patterns = {
+              'API Keys': r'api[_-]?key\s*=\s*["\'][^"\']{20,}["\']',
+              'Passwords': r'password\s*=\s*["\'][^"\']+["\']',
+              'Tokens': r'token\s*=\s*["\'][^"\']{20,}["\']',
+              'Secrets': r'secret\s*=\s*["\'][^"\']{20,}["\']',
+              'Private Keys': r'-----BEGIN (RSA |)PRIVATE KEY-----',
+              'AWS Keys': r'AKIA[0-9A-Z]{16}',
+              'GCP Keys': r'AIza[0-9A-Za-z-_]{35}',
+          }
+
+          issues = []
+          files_to_check = []
+
+          # Check Python files
+          files_to_check.extend(Path(".").glob("**/*.py"))
+          files_to_check.extend(Path(".").glob("**/*.js"))
+          files_to_check.extend(Path(".").glob("**/*.ts"))
+          files_to_check.extend(Path(".").glob("**/*.env*"))
+
+          # Filter out venv and node_modules
+          files_to_check = [
+              f for f in files_to_check
+              if "venv" not in str(f)
+              and "node_modules" not in str(f)
+              and "site-packages" not in str(f)
+              and str(f) != ".env.example"  # .env.example is allowed
+          ]
+
+          for file_path in files_to_check:
+              try:
+                  content = file_path.read_text()
+
+                  for issue_type, pattern in sensitive_patterns.items():
+                      matches = re.finditer(pattern, content, re.IGNORECASE)
+                      for match in matches:
+                          # Skip if it's using environment variables
+                          line = content[max(0, match.start() - 50):match.end() + 50]
+                          if "os.getenv" in line or "process.env" in line or "ENV[" in line:
+                              continue
+
+                          issues.append({
+                              'file': str(file_path),
+                              'type': issue_type,
+                              'line': content[:match.start()].count('\n') + 1
+                          })
+
+              except Exception:
+                  pass
+
+          if issues:
+              print(f"\n⚠️  POTENTIAL SENSITIVE DATA EXPOSURE DETECTED!\n")
+              for issue in issues:
+                  print(f"   ❌ {issue['type']} in {issue['file']}:{issue['line']}")
+
+              print(f"\n❌ Found {len(issues)} potential issue(s)")
+              print("   Please ensure these are using environment variables!")
+              sys.exit(1)
+          else:
+              print("✅ No hardcoded sensitive data detected!")
+          EOF
+
+      - name: Validate Required Environment Variables
+        run: |
+          python3 << 'EOF'
+          import sys
+          from pathlib import Path
+
+          print("\n🎯 Validating required environment variables...")
+
+          # Critical env vars that MUST be documented
+          CRITICAL_VARS = [
+              "JARVIS_DB_TYPE",
+              "JARVIS_DB_CONNECTION_NAME",
+              "JARVIS_DB_HOST",
+              "JARVIS_DB_PORT",
+              "JARVIS_DB_PASSWORD",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "GCP_PROJECT_ID",
+              "ANTHROPIC_API_KEY",
+              "PICOVOICE_ACCESS_KEY",
+          ]
+
+          if not Path(".env.example").exists():
+              print("❌ .env.example file not found!")
+              sys.exit(1)
+
+          with open(".env.example") as f:
+              content = f.read()
+
+          missing = []
+          for var in CRITICAL_VARS:
+              if var not in content:
+                  missing.append(var)
+
+          if missing:
+              print(f"❌ Missing critical environment variables in .env.example:")
+              for var in missing:
+                  print(f"   • {var}")
+              sys.exit(1)
+          else:
+              print(f"✅ All {len(CRITICAL_VARS)} critical environment variables are documented!")
+          EOF
+
+      - name: Add Results to Summary
+        if: always()
+        run: |
+          if [ -f /tmp/env_summary.txt ]; then
+            cat /tmp/env_summary.txt >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "**Validation completed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-validation-report
+          path: /tmp/env_summary.txt
+          retention-days: 30

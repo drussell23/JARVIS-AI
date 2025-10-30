@@ -1,0 +1,121 @@
+# Auto-labeler configuration for PR automation
+
+# Backend
+backend:
+  - backend/**/*
+
+# Frontend
+frontend:
+  - frontend/**/*
+
+# API
+api:
+  - backend/api/**/*
+  - backend/**/*websocket*
+
+# Database
+database:
+  - backend/**/*database*
+  - backend/**/*db*
+  - backend/**/models/*
+  - backend/**/migrations/*
+
+# Core
+core:
+  - backend/core/**/*
+
+# Tests
+tests:
+  - backend/tests/**/*
+  - frontend/tests/**/*
+  - tests/**/*
+  - "**/*test*.py"
+  - "**/*.test.js"
+  - "**/*.test.ts"
+
+# Documentation
+documentation:
+  - "*.md"
+  - docs/**/*
+  - "**/*.md"
+
+# Configuration
+configuration:
+  - "*.yml"
+  - "*.yaml"
+  - "*.toml"
+  - "*.json"
+  - .env.example
+  - backend/core/hybrid_config.yaml
+
+# CI/CD
+ci/cd:
+  - .github/workflows/**/*
+  - .github/actions/**/*
+
+# Dependencies
+dependencies:
+  - "**/requirements*.txt"
+  - "**/package*.json"
+  - "**/Cargo.toml"
+  - "**/go.mod"
+  - Pipfile
+  - poetry.lock
+
+# Infrastructure
+infrastructure:
+  - infrastructure/**/*
+  - terraform/**/*
+  - k8s/**/*
+  - kubernetes/**/*
+  - docker-compose*.yml
+  - Dockerfile*
+
+# Security
+security:
+  - "**/*security*"
+  - "**/*auth*"
+  - "**/*credential*"
+
+# Performance
+performance:
+  - "**/*benchmark*"
+  - "**/*performance*"
+  - "**/*optimization*"
+
+# GCP / Cloud
+cloud:
+  - "**/*gcp*"
+  - "**/*cloud*"
+  - "**/*cloudsql*"
+
+# AI/ML
+ai-ml:
+  - "**/*model*"
+  - "**/*ml*"
+  - "**/*agent*"
+  - backend/agents/**/*
+  - ml_models/**/*
+
+# Voice
+voice:
+  - "**/*voice*"
+  - "**/*audio*"
+  - "**/*speaker*"
+  - backend/services/voice_*
+
+# Vision
+vision:
+  - "**/*vision*"
+  - "**/*ocr*"
+  - "**/*screenshot*"
+
+# Scripts
+scripts:
+  - scripts/**/*
+  - "*.sh"
+  - "*.py" # root level scripts
+
+# GitHub specific
+github-actions:
+  - .github/**/*

@@ -1,0 +1,147 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+        # Add more languages as needed: java, cpp, csharp, go, ruby, swift
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+          config: |
+            paths-ignore:
+              - venv
+              - node_modules
+              - build
+              - dist
+              - .git
+              - "**/*.min.js"
+              - "**/*.bundle.js"
+
+      - name: Setup Python for Analysis
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        if: matrix.language == 'python'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f backend/requirements.txt ]; then
+            pip install -r backend/requirements.txt || true
+          fi
+          if [ -f backend/requirements-cloud.txt ]; then
+            pip install -r backend/requirements-cloud.txt || true
+          fi
+
+      - name: Setup Node for Analysis
+        if: matrix.language == 'javascript-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install JavaScript Dependencies
+        if: matrix.language == 'javascript-typescript'
+        run: |
+          if [ -f frontend/package.json ]; then
+            cd frontend
+            npm ci || npm install
+          fi
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: true
+
+      - name: Generate Security Report
+        if: always()
+        run: |
+          echo "## 🔐 CodeQL Security Analysis - ${{ matrix.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Language:** \`${{ matrix.language }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Security analysis completed. Check the Security tab for detailed results." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Queries run:** security-extended, security-and-quality" >> $GITHUB_STEP_SUMMARY
+
+  security-scoreboard:
+    name: Security Scoreboard
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Security Checks
+        run: |
+          echo "## 🛡️ Security Scoreboard" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for common security issues
+          echo "### Security Checklist" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for .env in gitignore
+          if grep -q "^\.env$" .gitignore; then
+            echo "- ✅ .env is in .gitignore" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️  .env may not be in .gitignore" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for credentials files
+          if grep -q "credentials" .gitignore; then
+            echo "- ✅ Credentials files are gitignored" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️  Credentials handling unclear" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for security dependencies
+          if [ -f backend/requirements.txt ]; then
+            if grep -q "cryptography\|pycryptodome" backend/requirements.txt; then
+              echo "- ✅ Cryptography libraries present" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          # Check for GitHub Actions security
+          if [ -d .github/workflows ]; then
+            WORKFLOW_COUNT=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | wc -l)
+            echo "- ✅ $WORKFLOW_COUNT GitHub Actions workflows configured" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**CodeQL Analysis:** Complete" >> $GITHUB_STEP_SUMMARY
+          echo "**Last Scan:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,124 @@
+version: 2
+updates:
+  # Python dependencies - Backend
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "derekjrussell"
+    assignees:
+      - "derekjrussell"
+    labels:
+      - "dependencies"
+      - "python"
+      - "backend"
+    commit-message:
+      prefix: "deps(backend)"
+      include: "scope"
+    versioning-strategy: increase
+    ignore:
+      # Ignore major version updates for critical packages
+      - dependency-name: "anthropic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "google-cloud-*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      google-cloud:
+        patterns:
+          - "google-cloud-*"
+          - "google-auth*"
+      anthropic:
+        patterns:
+          - "anthropic*"
+      testing:
+        patterns:
+          - "pytest*"
+          - "coverage"
+      security:
+        patterns:
+          - "cryptography"
+          - "pycryptodome"
+
+  # NPM dependencies - Frontend
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "derekjrussell"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "frontend"
+    commit-message:
+      prefix: "deps(frontend)"
+      include: "scope"
+    versioning-strategy: increase
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-*"
+      build-tools:
+        patterns:
+          - "webpack*"
+          - "babel*"
+          - "typescript"
+          - "vite*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci/cd"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "actions/*"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Terraform/Infrastructure (if applicable)
+  - package-ecosystem: "terraform"
+    directory: "/infrastructure"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "infrastructure"
+      - "terraform"
+    commit-message:
+      prefix: "infra"

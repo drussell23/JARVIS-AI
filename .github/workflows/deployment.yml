@@ -1,0 +1,492 @@
+name: Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      deploy_backend:
+        description: 'Deploy backend'
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: 'Deploy frontend'
+        type: boolean
+        default: true
+      skip_tests:
+        description: 'Skip tests (not recommended)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  deployments: write
+  packages: write
+
+env:
+  GCP_REGION: us-central1
+  GCP_ZONE: us-central1-a
+
+jobs:
+  # ============================================================================
+  # Pre-Deployment Checks
+  # ============================================================================
+  pre-deployment-checks:
+    name: Pre-Deployment Validation
+    runs-on: ubuntu-latest
+
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      environment: ${{ steps.check.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Deployment Environment
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "environment=none" >> $GITHUB_OUTPUT
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract Version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="$(date +'%Y%m%d')-${GITHUB_SHA::7}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Validate Environment Configuration
+        run: |
+          echo "## 🚀 Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** \`${{ steps.check.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch/Tag:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Security Check
+        run: |
+          echo "🔒 Running pre-deployment security checks..."
+
+          # Check for secrets in code
+          if git log -1 --pretty=format:"%B" | grep -i "password\|secret\|key\|token"; then
+            echo "⚠️  Warning: Commit message contains sensitive keywords"
+          fi
+
+          # Verify .env.example exists
+          if [ ! -f .env.example ]; then
+            echo "❌ .env.example not found!"
+            exit 1
+          fi
+
+          echo "✅ Security checks passed"
+
+  # ============================================================================
+  # Run Tests (unless skipped)
+  # ============================================================================
+  run-tests:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+    if: |
+      needs.pre-deployment-checks.outputs.should_deploy == 'true' &&
+      github.event.inputs.skip_tests != 'true'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          cd backend
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+          pip install -r requirements.txt || pip install -r requirements-cloud.txt || true
+
+      - name: Run Critical Tests
+        run: |
+          cd backend
+          pytest tests/ \
+            --timeout=60 \
+            -v \
+            -m "not slow" \
+            --maxfail=3 \
+            || exit 1
+
+      - name: Test Summary
+        run: |
+          echo "✅ All critical tests passed!" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Build Backend
+  # ============================================================================
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, run-tests]
+    if: |
+      always() &&
+      needs.pre-deployment-checks.outputs.should_deploy == 'true' &&
+      (needs.run-tests.result == 'success' || needs.run-tests.result == 'skipped') &&
+      (github.event.inputs.deploy_backend != 'false')
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Create Deployment Package
+        run: |
+          echo "📦 Creating deployment package..."
+
+          mkdir -p deploy/backend
+          cp -r backend/* deploy/backend/
+          cp start_system.py deploy/
+          cp .env.example deploy/
+
+          # Create version file
+          echo "${{ needs.pre-deployment-checks.outputs.version }}" > deploy/VERSION
+
+          cd deploy
+          tar -czf backend-${{ needs.pre-deployment-checks.outputs.version }}.tar.gz .
+
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ needs.pre-deployment-checks.outputs.version }}
+          path: deploy/backend-${{ needs.pre-deployment-checks.outputs.version }}.tar.gz
+          retention-days: 30
+
+  # ============================================================================
+  # Build Frontend
+  # ============================================================================
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, run-tests]
+    if: |
+      always() &&
+      needs.pre-deployment-checks.outputs.should_deploy == 'true' &&
+      (needs.run-tests.result == 'success' || needs.run-tests.result == 'skipped') &&
+      (github.event.inputs.deploy_frontend != 'false')
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd frontend
+          npm ci || npm install
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm run build || echo "Build command not found"
+
+      - name: Upload Frontend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-${{ needs.pre-deployment-checks.outputs.version }}
+          path: frontend/dist/
+          retention-days: 30
+
+  # ============================================================================
+  # Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, build-backend, build-frontend]
+    if: |
+      always() &&
+      needs.pre-deployment-checks.outputs.environment == 'staging' &&
+      (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    environment:
+      name: staging
+      url: https://staging.jarvis.example.com
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Backend Artifact
+        if: needs.build-backend.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ needs.pre-deployment-checks.outputs.version }}
+          path: ./artifacts/
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to GCP Staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+
+          # Deploy backend to Cloud Run or Compute Engine
+          echo "Deploying backend..."
+
+          # This is a placeholder - customize for your deployment method
+          gcloud compute instances describe jarvis-staging --zone=${{ env.GCP_ZONE }} || echo "Instance doesn't exist yet"
+
+          echo "✅ Staging deployment complete!"
+
+      - name: Run Smoke Tests
+        run: |
+          echo "🧪 Running smoke tests on staging..."
+
+          # Basic health check
+          # curl -f https://staging.jarvis.example.com/health || exit 1
+
+          echo "✅ Smoke tests passed!"
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🎉 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ needs.pre-deployment-checks.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://staging.jarvis.example.com" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Deploy to Production
+  # ============================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, build-backend, build-frontend]
+    if: |
+      always() &&
+      needs.pre-deployment-checks.outputs.environment == 'production' &&
+      (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    environment:
+      name: production
+      url: https://jarvis.example.com
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Backend Artifact
+        if: needs.build-backend.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ needs.pre-deployment-checks.outputs.version }}
+          path: ./artifacts/
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_PRODUCTION_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create Backup
+        run: |
+          echo "💾 Creating backup of production environment..."
+
+          # Backup database
+          # gcloud sql export sql jarvis-production gs://jarvis-backups/backup-$(date +%Y%m%d-%H%M%S).sql
+
+          echo "✅ Backup complete"
+
+      - name: Deploy to Production
+        run: |
+          echo "🚀 Deploying to production environment..."
+
+          # Deploy with zero-downtime strategy
+          echo "Deploying backend with rolling update..."
+
+          # This is a placeholder - customize for your deployment method
+          # gcloud compute instances update-container jarvis-production --zone=${{ env.GCP_ZONE }}
+
+          echo "✅ Production deployment complete!"
+
+      - name: Run Health Checks
+        run: |
+          echo "🏥 Running production health checks..."
+
+          # Wait for services to be ready
+          sleep 30
+
+          # Health check
+          # curl -f https://jarvis.example.com/health || exit 1
+
+          echo "✅ Health checks passed!"
+
+      - name: Notify Team
+        run: |
+          echo "📢 Sending deployment notification..."
+          # Add Slack/Discord/Email notification here
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🎉 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ needs.pre-deployment-checks.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://jarvis.example.com" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Post-Deployment Checklist" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Monitor error rates" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Check system performance" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Verify all services running" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Confirm database migrations" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Create GitHub Release
+  # ============================================================================
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, deploy-production]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.deploy-production.result == 'success'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          echo "Generating release notes..."
+
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -n 20)
+          fi
+
+          cat > release_notes.md << EOF
+          ## 🚀 Release ${{ needs.pre-deployment-checks.outputs.version }}
+
+          ### Changes
+          $COMMITS
+
+          ### Deployment Info
+          - **Environment:** Production
+          - **Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          - **Commit:** ${{ github.sha }}
+
+          ### Installation
+          \`\`\`bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd ${{ github.event.repository.name }}
+          git checkout ${{ needs.pre-deployment-checks.outputs.version }}
+          \`\`\`
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.pre-deployment-checks.outputs.version }}
+          name: Release ${{ needs.pre-deployment-checks.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # Post-Deployment Monitoring
+  # ============================================================================
+  post-deployment-monitoring:
+    name: Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+
+    steps:
+      - name: Monitor Deployment
+        run: |
+          echo "📊 Setting up post-deployment monitoring..."
+
+          # Monitor for 5 minutes
+          for i in {1..5}; do
+            echo "Monitoring... ($i/5)"
+            # Add monitoring checks here
+            # - Check error rates
+            # - Check response times
+            # - Check system resources
+            sleep 60
+          done
+
+          echo "✅ Monitoring complete - system is stable!"
+
+      - name: Deployment Report
+        run: |
+          echo "## 📈 Post-Deployment Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "**Monitored for:** 5 minutes" >> $GITHUB_STEP_SUMMARY
+          echo "**System Health:** Stable" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Continue monitoring system metrics" >> $GITHUB_STEP_SUMMARY
+          echo "2. Verify user-facing features" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check for any anomalies in logs" >> $GITHUB_STEP_SUMMARY

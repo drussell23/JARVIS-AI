@@ -1,0 +1,106 @@
+name: Super-Linter
+
+on:
+  push:
+    branches: [main, develop, feature/**]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  packages: read
+  statuses: write
+
+jobs:
+  super-lint:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full git history for accurate linting
+
+      - name: Super-Linter
+        uses: super-linter/super-linter@v6
+        env:
+          # Core settings
+          VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Python linting
+          VALIDATE_PYTHON_BLACK: true
+          VALIDATE_PYTHON_FLAKE8: true
+          VALIDATE_PYTHON_PYLINT: true
+          VALIDATE_PYTHON_ISORT: true
+          VALIDATE_PYTHON_MYPY: true
+          PYTHON_BLACK_CONFIG_FILE: .github/linters/.python-black
+          PYTHON_FLAKE8_CONFIG_FILE: .flake8
+          PYTHON_ISORT_CONFIG_FILE: .github/linters/.isort.cfg
+          PYTHON_MYPY_CONFIG_FILE: pyrightconfig.json
+
+          # JavaScript/TypeScript (for frontend)
+          VALIDATE_JAVASCRIPT_ES: true
+          VALIDATE_JAVASCRIPT_STANDARD: true
+          VALIDATE_TYPESCRIPT_ES: true
+          VALIDATE_TYPESCRIPT_STANDARD: true
+
+          # Shell scripts
+          VALIDATE_BASH: true
+          VALIDATE_BASH_EXEC: true
+          VALIDATE_SHELL_SHFMT: true
+
+          # Config files
+          VALIDATE_YAML: true
+          VALIDATE_JSON: true
+          VALIDATE_XML: true
+
+          # Docker
+          VALIDATE_DOCKERFILE_HADOLINT: true
+
+          # Markdown
+          VALIDATE_MARKDOWN: true
+
+          # SQL
+          VALIDATE_SQL: true
+          VALIDATE_SQLFLUFF: true
+
+          # Security
+          VALIDATE_SECRETS: true
+
+          # Performance
+          LINTER_RULES_PATH: .github/linters
+          LOG_LEVEL: WARN
+          FILTER_REGEX_EXCLUDE: '.*/(venv|node_modules|build|dist|\.git)/.*'
+
+      - name: Generate Linting Report
+        if: always()
+        run: |
+          echo "## 🔍 Super-Linter Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f super-linter.log ]; then
+            echo "### Linting Summary" >> $GITHUB_STEP_SUMMARY
+            grep -c "ERROR" super-linter.log > errors.txt || echo "0" > errors.txt
+            grep -c "WARNING" super-linter.log > warnings.txt || echo "0" > warnings.txt
+
+            echo "- **Errors:** $(cat errors.txt)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Warnings:** $(cat warnings.txt)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No linting issues found!" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Linting Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: super-linter-results
+          path: |
+            super-linter.log
+            super-linter.report
+          retention-days: 30
