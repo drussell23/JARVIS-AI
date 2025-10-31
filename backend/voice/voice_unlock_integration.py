@@ -115,9 +115,14 @@ class VoiceUnlockIntegration:
 
             # Step 2: Verify speaker identity
             logger.info(f"🎤 Verifying speaker: {speaker_name}")
-            is_verified, confidence, speaker_id = await self.speaker_verification.verify_speaker(
+            result = await self.speaker_verification.verify_speaker(
                 audio_data, speaker_name
             )
+
+            # Extract values from result dict
+            is_verified = result["verified"]
+            confidence = result["confidence"]
+            speaker_id = result.get("speaker_id")
 
             logger.info(
                 f"🔐 Verification result: {speaker_name}, "
