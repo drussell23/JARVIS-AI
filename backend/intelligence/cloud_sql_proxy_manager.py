@@ -273,8 +273,8 @@ class CloudSQLProxyManager:
             logger.info(f"   Port: {port}")
             logger.info(f"   Log: {self.log_path}")
 
-            # Start proxy process
-            log_file = open(self.log_path, "a")
+            # Start proxy process (truncate log file for fresh start)
+            log_file = open(self.log_path, "w")  # Use "w" to truncate old logs
             self.process = subprocess.Popen(
                 cmd,
                 stdout=log_file,

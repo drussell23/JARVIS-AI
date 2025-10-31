@@ -129,9 +129,13 @@ class CloudDatabaseAdapter:
 
             # Use direct connection via Cloud SQL Proxy (simpler and no event loop issues)
             # Cloud SQL Proxy must be running locally: ~/.local/bin/cloud-sql-proxy <connection-name>
+            # Debug: Log what host we're actually using
             logger.info(
                 f"Connecting to Cloud SQL via proxy at {self.config.db_host}:{self.config.db_port}"
             )
+            logger.info(f"   Database: {self.config.db_name}, User: {self.config.db_user}")
+            logger.info(f"   Connection name: {self.config.connection_name}")
+
             self.pool = await asyncpg.create_pool(
                 host=self.config.db_host,
                 port=self.config.db_port,
