@@ -1138,6 +1138,9 @@ class JARVISLearningDatabase:
         self.pending_actions: deque = deque(maxlen=self.batch_size)
         self.pending_patterns: deque = deque(maxlen=self.batch_size)
 
+        # Initialization flag to prevent multiple initializations
+        self._initialized = False
+
         # Performance metrics
         self.metrics = LearningMetrics(
             total_patterns=0,
@@ -1160,6 +1163,11 @@ class JARVISLearningDatabase:
 
     async def initialize(self):
         """Async initialization - call this after creating instance"""
+        # Prevent multiple initializations
+        if self._initialized:
+            logger.debug("Database already initialized, skipping re-initialization")
+            return
+
         # Initialize async SQLite
         await self._init_sqlite()
 
@@ -1174,6 +1182,7 @@ class JARVISLearningDatabase:
         asyncio.create_task(self._auto_flush_batches())
         asyncio.create_task(self._auto_optimize_task())
 
+        self._initialized = True
         logger.info(f"✅ Advanced Learning Database initialized")
         logger.info(f"   Cache: {self.cache_size} entries, {self.cache_ttl}s TTL")
         logger.info(f"   ML Features: {self.enable_ml}")

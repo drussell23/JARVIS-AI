@@ -61,10 +61,10 @@ class SpeakerVerificationService:
 
         logger.info("🔐 Initializing Speaker Verification Service (fast mode)...")
 
-        # Initialize learning database if not provided
+        # Initialize learning database if not provided - use singleton
         if self.learning_db is None:
-            self.learning_db = JARVISLearningDatabase()
-            await self.learning_db.initialize()
+            from intelligence.learning_database import get_learning_database
+            self.learning_db = await get_learning_database()
 
         # Initialize SpeechBrain engine for embeddings
         model_config = ModelConfig(
@@ -134,10 +134,10 @@ class SpeakerVerificationService:
 
         logger.info("🔐 Initializing Speaker Verification Service...")
 
-        # Initialize learning database if not provided
+        # Initialize learning database if not provided - use singleton
         if self.learning_db is None:
-            self.learning_db = JARVISLearningDatabase()
-            await self.learning_db.initialize()
+            from intelligence.learning_database import get_learning_database
+            self.learning_db = await get_learning_database()
 
         # Initialize SpeechBrain engine for embeddings
         model_config = ModelConfig(
