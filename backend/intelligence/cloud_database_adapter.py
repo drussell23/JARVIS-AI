@@ -9,7 +9,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Database drivers
 import aiosqlite  # For local SQLite
@@ -220,6 +220,25 @@ class SQLiteConnection:
         """Commit transaction"""
         await self.conn.commit()
 
+    async def upsert(
+        self, table: str, unique_cols: List[str], data: Dict[str, Any]
+    ) -> None:
+        """
+        Database-agnostic UPSERT (INSERT OR REPLACE for SQLite)
+
+        Args:
+            table: Table name
+            unique_cols: List of columns that form the unique constraint
+            data: Dictionary of column_name: value to insert/update
+        """
+        cols = list(data.keys())
+        placeholders = ",".join(["?" for _ in cols])
+        col_names = ",".join(cols)
+        values = tuple(data.values())
+
+        query = f"INSERT OR REPLACE INTO {table} ({col_names}) VALUES ({placeholders})"
+        await self.execute(query, *values)
+
 
 class CloudSQLConnection:
     """Wrapper for Cloud SQL (PostgreSQL) connection with unified interface"""
@@ -251,6 +270,44 @@ class CloudSQLConnection:
 
     async def commit(self):
         """No-op for PostgreSQL (auto-commit)"""
+
+    async def upsert(
+        self, table: str, unique_cols: List[str], data: Dict[str, Any]
+    ) -> None:
+        """
+        Database-agnostic UPSERT (INSERT...ON CONFLICT for PostgreSQL)
+
+        Args:
+            table: Table name
+            unique_cols: List of columns that form the unique constraint
+            data: Dictionary of column_name: value to insert/update
+        """
+        cols = list(data.keys())
+        placeholders = ",".join([f"${i+1}" for i in range(len(cols))])
+        col_names = ",".join(cols)
+        values = tuple(data.values())
+
+        # PostgreSQL ON CONFLICT syntax
+        conflict_target = ",".join(unique_cols)
+        update_cols = [col for col in cols if col not in unique_cols]
+        update_set = ",".join([f"{col} = EXCLUDED.{col}" for col in update_cols])
+
+        if update_set:
+            query = f"""
+                INSERT INTO {table} ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT ({conflict_target})
+                DO UPDATE SET {update_set}
+            """
+        else:
+            # No non-unique columns to update, just ignore conflicts
+            query = f"""
+                INSERT INTO {table} ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT ({conflict_target}) DO NOTHING
+            """
+
+        await self.conn.execute(query, *values)
 
     def _convert_placeholders(self, query: str) -> str:
         """Convert SQLite ? placeholders to PostgreSQL $1, $2, etc"""

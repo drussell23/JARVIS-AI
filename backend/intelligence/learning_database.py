@@ -3018,25 +3018,21 @@ class JARVISLearningDatabase:
         # Store new pattern
         async with self._db_lock:
             async with self.db.cursor() as cursor:
-                await cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO patterns
-                    (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
-                     success_rate, occurrence_count, first_seen, last_seen, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        pattern_id,
-                        pattern["pattern_type"],
-                        pattern_hash,
-                        json.dumps(pattern.get("pattern_data", {})),
-                        pattern.get("confidence", 0.5),
-                        pattern.get("success_rate", 0.5),
-                        1,
-                        datetime.now(),
-                        datetime.now(),
-                        json.dumps(pattern.get("metadata", {})),
-                    ),
+                await cursor.upsert(
+                    table="patterns",
+                    unique_cols=["pattern_id"],
+                    data={
+                        "pattern_id": pattern_id,
+                        "pattern_type": pattern["pattern_type"],
+                        "pattern_hash": pattern_hash,
+                        "pattern_data": json.dumps(pattern.get("pattern_data", {})),
+                        "confidence": pattern.get("confidence", 0.5),
+                        "success_rate": pattern.get("success_rate", 0.5),
+                        "occurrence_count": 1,
+                        "first_seen": datetime.now(),
+                        "last_seen": datetime.now(),
+                        "metadata": json.dumps(pattern.get("metadata", {})),
+                    },
                 )
 
             await self.db.commit()

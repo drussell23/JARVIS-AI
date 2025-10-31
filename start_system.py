@@ -2643,7 +2643,7 @@ class SAIHybridIntegration:
                 # Check if we have learned thresholds
                 await cursor.execute(
                     """
-                    SELECT description, metadata
+                    SELECT metadata
                     FROM patterns
                     WHERE pattern_type = 'hybrid_threshold'
                     ORDER BY last_seen DESC
@@ -2655,7 +2655,7 @@ class SAIHybridIntegration:
                 if result:
                     import json
 
-                    metadata = json.loads(result[1]) if result[1] else {}
+                    metadata = json.loads(result[0]) if result[0] else {}
 
                     if "thresholds" in metadata:
                         # Apply learned thresholds
