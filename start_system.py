@@ -6495,6 +6495,37 @@ async def main():
             else:
                 print(f"{Colors.GREEN}✓ No VM creation lock file found{Colors.ENDC}")
 
+            # Step 1.55: Kill any running cloud-sql-proxy processes (fresh start)
+            print(f"\n{Colors.YELLOW}🔐 Checking for cloud-sql-proxy processes...{Colors.ENDC}")
+            try:
+                # Find all cloud-sql-proxy processes
+                proxy_pids = []
+                for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                    try:
+                        cmdline = proc.info.get("cmdline")
+                        if cmdline and any("cloud-sql-proxy" in str(arg) for arg in cmdline):
+                            proxy_pids.append(proc.info["pid"])
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+
+                if proxy_pids:
+                    print(f"{Colors.YELLOW}Found {len(proxy_pids)} cloud-sql-proxy process(es){Colors.ENDC}")
+                    for pid in proxy_pids:
+                        try:
+                            print(f"  → Terminating cloud-sql-proxy PID {pid}...", end="", flush=True)
+                            os.kill(pid, signal.SIGTERM)
+                            time.sleep(0.5)
+                            if psutil.pid_exists(pid):
+                                os.kill(pid, signal.SIGKILL)
+                            print(f" {Colors.GREEN}✓{Colors.ENDC}")
+                        except Exception as e:
+                            print(f" {Colors.WARNING}⚠️  {e}{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ Cloud SQL proxy processes terminated{Colors.ENDC}")
+                else:
+                    print(f"{Colors.GREEN}✓ No cloud-sql-proxy processes found{Colors.ENDC}")
+            except Exception as e:
+                print(f"{Colors.WARNING}⚠️  Failed to check proxy processes: {e}{Colors.ENDC}")
+
             # Step 1.6: Clean up any GCP VMs (CRITICAL for cost control)
             print(f"\n{Colors.YELLOW}🌐 Checking for orphaned GCP VMs...{Colors.ENDC}")
             try:
