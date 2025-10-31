@@ -145,7 +145,8 @@ class CloudDatabaseAdapter:
             logger.info("✅ Cloud SQL connection pool created")
 
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Cloud SQL: {e}")
+            logger.error(f"❌ Failed to connect to Cloud SQL: {e}", exc_info=True)
+            logger.error(f"   Connection details: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}, user={self.config.db_user}")
             logger.info("📂 Falling back to local SQLite")
             self.pool = None
             await self._init_sqlite()

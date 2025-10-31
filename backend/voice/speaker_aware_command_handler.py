@@ -111,10 +111,9 @@ class SpeakerAwareCommandHandler:
 
         try:
             # Initialize SAI (Scenario-Aware Intelligence)
-            from intelligence.learning_database import JARVISLearningDatabase
+            from intelligence.learning_database import get_learning_database
 
-            self.sai_database = JARVISLearningDatabase()
-            await self.sai_database.initialize()
+            self.sai_database = await get_learning_database()
             logger.info("✅ Scenario-Aware Intelligence (SAI) loaded")
 
         except Exception as e:

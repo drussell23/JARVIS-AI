@@ -75,9 +75,9 @@ class VoiceUnlockIntegration:
             self.keychain_service = KeychainService()
             logger.info("✅ Keychain service initialized")
 
-            # Initialize learning database
-            self.learning_db = JARVISLearningDatabase()
-            await self.learning_db.initialize()
+            # Initialize learning database using singleton
+            from intelligence.learning_database import get_learning_database
+            self.learning_db = await get_learning_database()
             logger.info("✅ Learning database initialized")
 
             self.initialized = True

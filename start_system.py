@@ -2689,13 +2689,13 @@ class SAIHybridIntegration:
             }
 
             # Save as pattern
-            await self.db.record_pattern(
-                pattern_type="hybrid_threshold",
-                description="Learned hybrid routing thresholds",  # noqa: F541
-                trigger_conditions={"observation_count": len(self.learning_model.ram_observations)},
-                success_rate=self.learning_model.prediction_accuracy,
-                metadata=metadata,
-            )
+            await self.db.store_pattern({
+                "pattern_type": "hybrid_threshold",
+                "description": "Learned hybrid routing thresholds",
+                "trigger_conditions": {"observation_count": len(self.learning_model.ram_observations)},
+                "success_rate": self.learning_model.prediction_accuracy,
+                "metadata": metadata,
+            })
 
             self.last_model_save = time.time()
             logger.info("💾 Saved learned parameters to database")  # noqa: F541
