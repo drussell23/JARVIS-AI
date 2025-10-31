@@ -1,0 +1,16 @@
+name: Test Failure for Auto-PR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Intentional Failure
+        run: |
+          echo "This workflow will fail intentionally to test Auto-PR"
+          exit 1
