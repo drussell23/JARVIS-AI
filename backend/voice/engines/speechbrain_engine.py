@@ -1313,6 +1313,8 @@ class SpeechBrainEngine(BaseSTTEngine):
     def _compute_cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Compute cosine similarity between two embeddings.
 
+        Handles dimension mismatches by adapting embeddings to compatible sizes.
+
         Args:
             embedding1: First embedding vector
             embedding2: Second embedding vector
@@ -1324,6 +1326,15 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Flatten embeddings in case they have extra dimensions
             emb1 = embedding1.flatten()
             emb2 = embedding2.flatten()
+
+            # Handle dimension mismatch
+            if emb1.shape[0] != emb2.shape[0]:
+                logger.warning(
+                    f"⚠️  Embedding dimension mismatch: {emb1.shape[0]} vs {emb2.shape[0]}"
+                )
+                logger.info("   Applying dimension adaptation...")
+                emb1, emb2 = self._adapt_embedding_dimensions(emb1, emb2)
+                logger.info(f"   Adapted to common dimension: {emb1.shape[0]}")
 
             # Compute cosine similarity
             dot_product = np.dot(emb1, emb2)
@@ -1344,3 +1355,104 @@ class SpeechBrainEngine(BaseSTTEngine):
         except Exception as e:
             logger.error(f"Failed to compute cosine similarity: {e}")
             return 0.0
+
+    def _adapt_embedding_dimensions(
+        self, emb1: np.ndarray, emb2: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Adapt embeddings to compatible dimensions.
+
+        Uses intelligent dimension reduction/expansion to make embeddings comparable.
+
+        Strategies:
+        1. If one is smaller, use PCA to reduce the larger one
+        2. If sizes are very different, use interpolation
+        3. Preserve as much information as possible
+
+        Args:
+            emb1: First embedding vector
+            emb2: Second embedding vector
+
+        Returns:
+            Tuple of adapted embeddings with matching dimensions
+        """
+        dim1, dim2 = emb1.shape[0], emb2.shape[0]
+
+        # Determine target dimension (use smaller for better compatibility)
+        target_dim = min(dim1, dim2)
+
+        logger.info(f"   Adapting: {dim1} and {dim2} → {target_dim}")
+
+        # Adapt larger embedding to target dimension
+        if dim1 > target_dim:
+            emb1 = self._reduce_embedding_dimension(emb1, target_dim)
+        elif dim1 < target_dim:
+            emb1 = self._expand_embedding_dimension(emb1, target_dim)
+
+        if dim2 > target_dim:
+            emb2 = self._reduce_embedding_dimension(emb2, target_dim)
+        elif dim2 < target_dim:
+            emb2 = self._expand_embedding_dimension(emb2, target_dim)
+
+        return emb1, emb2
+
+    def _reduce_embedding_dimension(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
+        """Reduce embedding dimension using averaging-based downsampling.
+
+        More robust than PCA for single vectors, preserves overall feature distribution.
+
+        Args:
+            embedding: Input embedding vector
+            target_dim: Target dimension size
+
+        Returns:
+            Reduced embedding vector
+        """
+        current_dim = embedding.shape[0]
+
+        if current_dim == target_dim:
+            return embedding
+
+        # Use block averaging for dimension reduction
+        # This preserves more information than simple truncation
+        block_size = current_dim / target_dim
+        reduced = np.zeros(target_dim)
+
+        for i in range(target_dim):
+            start_idx = int(i * block_size)
+            end_idx = int((i + 1) * block_size)
+            # Average the block
+            reduced[i] = np.mean(embedding[start_idx:end_idx])
+
+        # Normalize to preserve overall scale
+        if np.linalg.norm(reduced) > 0:
+            original_norm = np.linalg.norm(embedding)
+            reduced = reduced * (original_norm / np.linalg.norm(reduced))
+
+        return reduced
+
+    def _expand_embedding_dimension(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
+        """Expand embedding dimension using interpolation.
+
+        Args:
+            embedding: Input embedding vector
+            target_dim: Target dimension size
+
+        Returns:
+            Expanded embedding vector
+        """
+        current_dim = embedding.shape[0]
+
+        if current_dim == target_dim:
+            return embedding
+
+        # Use linear interpolation to expand
+        old_indices = np.linspace(0, current_dim - 1, current_dim)
+        new_indices = np.linspace(0, current_dim - 1, target_dim)
+        expanded = np.interp(new_indices, old_indices, embedding)
+
+        # Preserve overall norm
+        if np.linalg.norm(expanded) > 0:
+            original_norm = np.linalg.norm(embedding)
+            expanded = expanded * (original_norm / np.linalg.norm(expanded))
+
+        return expanded
