@@ -269,7 +269,7 @@ try:
     # Clear sys.modules of any cached backend modules
     modules_to_remove = []
     for module_name in list(sys.modules.keys()):
-        if any(x in module_name for x in ["backend.", "api.", "vision.", "unified", "command"]):
+        if any(x in module_name for x in ["backend.", "api.", "vision.", "unified", "command", "intelligence.", "voice."]):
             modules_to_remove.append(module_name)
 
     for module_name in modules_to_remove:
