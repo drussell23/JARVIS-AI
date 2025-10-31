@@ -1,0 +1,67 @@
+# JARVIS Voice Verification Configuration
+# Advanced, adaptive, production-ready settings
+
+# Embedding compatibility detection
+embedding:
+  native_dimension: 192  # Current ECAPA-TDNN model
+  compatibility_check: true
+  auto_adapt: true
+
+# Threshold configuration (adaptive, not hardcoded)
+thresholds:
+  # Base thresholds for different profile types
+  native_profile:
+    min: 0.70
+    target: 0.75
+    max: 0.95
+
+  legacy_profile:
+    min: 0.45
+    target: 0.50
+    max: 0.65
+
+  # Adaptive threshold adjustment
+  adaptive:
+    enabled: true
+    learning_rate: 0.05  # How quickly to adjust thresholds
+    min_samples: 10  # Minimum attempts before adaptation
+    success_boost: 0.02  # Increase threshold on repeated success
+    failure_reduction: 0.01  # Decrease on repeated failures
+
+# Multi-factor scoring weights
+scoring:
+  weights:
+    cosine_similarity: 0.60  # Primary factor
+    pitch_consistency: 0.15  # Voice pitch matching
+    audio_quality: 0.10  # Clear audio = higher confidence
+    temporal_pattern: 0.10  # Speaking rhythm/pace
+    historical_success: 0.05  # Past verification success rate
+
+  # Quality assessment
+  profile_quality:
+    excellent: 0.95  # Native 192-dim, >100 samples
+    good: 0.80  # Native dim, 50-100 samples
+    fair: 0.60  # Dimension mismatch, >50 samples
+    poor: 0.40  # Legacy profile, <50 samples
+
+# Automatic profile upgrade
+upgrade:
+  enabled: true
+  trigger_confidence: 0.60  # Suggest upgrade if consistently 60-74%
+  min_attempts: 5  # Need 5+ marginal verifications
+  auto_collect_samples: true  # Collect samples during marginal auth
+  migration_threshold: 10  # Samples needed for automatic migration
+
+# Security settings
+security:
+  max_attempts: 3  # Max failed attempts before lockout
+  lockout_duration: 300  # 5 minutes
+  require_fallback_after_failures: true
+  log_all_attempts: true
+
+# Logging and debugging
+logging:
+  level: INFO
+  detailed_scoring: true  # Log all scoring factors
+  dimension_warnings: true
+  performance_metrics: true

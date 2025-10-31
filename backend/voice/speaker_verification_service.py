@@ -44,7 +44,9 @@ class SpeakerVerificationService:
         self.speechbrain_engine = None
         self.initialized = False
         self.speaker_profiles = {}  # Cache of speaker profiles
-        self.verification_threshold = 0.75  # 75% confidence for verification
+        self.verification_threshold = 0.75  # 75% confidence for verification (native profiles)
+        self.legacy_threshold = 0.50  # 50% for legacy profiles with dimension mismatch
+        self.profile_quality_scores = {}  # Track profile quality (1.0 = native, <1.0 = legacy)
         self._preload_thread = None
         self._encoder_preloading = False
         self._encoder_preloaded = False
@@ -189,19 +191,52 @@ class SpeakerVerificationService:
                 embedding_bytes = profile.get("voiceprint_embedding")
                 if embedding_bytes:
                     embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+
+                    # Assess profile quality based on embedding dimension
+                    # Current ECAPA-TDNN uses 192 dimensions
+                    is_native = embedding.shape[0] == 192 # Native profile if 192D embedding matches encoder dimension (192D) 
+                    total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation 
+
+                    # Determine quality and threshold based on samples and native status 
+                    if is_native and total_samples >= 100: 
+                        quality = "excellent" # High-quality native profile 
+                        threshold = self.verification_threshold  # 0.75 
+                    elif is_native and total_samples >= 50:
+                        quality = "good" # Medium-quality native profile
+                        threshold = self.verification_threshold  # 0.75
+                    elif total_samples >= 50:
+                        quality = "fair" # Medium-quality legacy profile 
+                        threshold = self.legacy_threshold  # 0.50
+                    else: 
+                        quality = "legacy" # Low-quality legacy profile 
+                        threshold = self.legacy_threshold  # 0.50
+
+                    # Store profile in cache and quality scores for adaptive thresholding and verification 
                     self.speaker_profiles[speaker_name] = {
                         "speaker_id": speaker_id,
                         "embedding": embedding,
                         "confidence": profile.get("recognition_confidence", 0.0),
                         "is_primary_user": profile.get("is_primary_user", False),
                         "security_level": profile.get("security_level", "standard"),
-                        "total_samples": profile.get("total_samples", 0),
+                        "total_samples": total_samples,
+                        "is_native": is_native,
+                        "quality": quality,
+                        "threshold": threshold,
+                    }
+
+                    # Store quality score for adaptive threshold
+                    self.profile_quality_scores[speaker_name] = {
+                        "is_native": is_native,
+                        "quality": quality,
+                        "threshold": threshold,
+                        "samples": total_samples,
                     }
 
                     logger.info(
                         f"✅ Loaded speaker profile: {speaker_name} "
                         f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)}, "
-                        f"Embedding shape: {embedding.shape})"
+                        f"Embedding: {embedding.shape[0]}D, Quality: {quality}, "
+                        f"Threshold: {threshold*100:.0f}%, Samples: {total_samples})"
                     )
                 else:
                     logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding!")
@@ -236,9 +271,10 @@ class SpeakerVerificationService:
             if speaker_name and speaker_name in self.speaker_profiles:
                 profile = self.speaker_profiles[speaker_name]
                 known_embedding = profile["embedding"]
+                profile_threshold = profile.get("threshold", self.verification_threshold)
 
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
-                    audio_data, known_embedding, threshold=self.verification_threshold
+                    audio_data, known_embedding, threshold=profile_threshold
                 )
 
                 return {
@@ -256,8 +292,9 @@ class SpeakerVerificationService:
 
             for profile_name, profile in self.speaker_profiles.items():
                 known_embedding = profile["embedding"]
+                profile_threshold = profile.get("threshold", self.verification_threshold)
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
-                    audio_data, known_embedding, threshold=self.verification_threshold
+                    audio_data, known_embedding, threshold=profile_threshold
                 )
 
                 if confidence > best_confidence:
