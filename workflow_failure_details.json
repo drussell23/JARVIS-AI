@@ -1,0 +1,53 @@
+{
+  "workflow_name": "\ud83c\udfa8 Advanced Auto-Diagram Generator",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18985813910",
+  "branch": "main",
+  "commit_sha": "dcbb97e",
+  "run_number": 5,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/advanced-auto-diagram-generator-run5-20251031-213629",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: \ud83c\udfa8 Advanced Auto-Diagram Generator (Run #5)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 80,
+              "content": "2025-10-31T21:35:39.7953353Z ##[error]Unable to process file command 'output' successfully.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 81,
+              "content": "2025-10-31T21:35:39.7961852Z ##[error]Invalid format '  \"docs/Voice-Biometric-Authentication-Debugging-Guide.md\"'",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 66,
+              "content": "2025-10-31T21:35:39.1138710Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-10-31T21:36:29.948986"
+}
