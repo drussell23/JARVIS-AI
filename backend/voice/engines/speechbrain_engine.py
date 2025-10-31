@@ -563,12 +563,18 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info("Loading speaker encoder (ECAPA-TDNN)...")
             loop = asyncio.get_event_loop()
 
+            # IMPORTANT: Force CPU for speaker encoder
+            # MPS (Apple Silicon) doesn't support FFT operations needed for ECAPA-TDNN
+            # This ensures embeddings can be extracted successfully
+            encoder_device = "cpu"
+            logger.info(f"   Using device: {encoder_device} (FFT operations required)")
+
             self.speaker_encoder = await loop.run_in_executor(
                 None,
                 lambda: EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
                     savedir=str(self.cache_dir / "speaker_encoder"),
-                    run_opts={"device": self.device},
+                    run_opts={"device": encoder_device},
                 ),
             )
 
@@ -1052,8 +1058,8 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Normalize audio
             audio_tensor = self._normalize_audio(audio_tensor)
 
-            # Move to device
-            audio_tensor = audio_tensor.to(self.device)
+            # Move to CPU for speaker encoder (MPS doesn't support FFT)
+            audio_tensor = audio_tensor.to("cpu")
 
             # Extract embedding
             with torch.no_grad():
