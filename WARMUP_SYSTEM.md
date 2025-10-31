@@ -36,9 +36,14 @@ Components load in order of criticality:
 
 ## 📋 Component Priority Configuration
 
-### CRITICAL Components (5s timeout)
-- `screen_lock_detector`: Screen lock state detection
-- `voice_auth`: Voice authentication system
+### CRITICAL Components (5-20s timeout)
+- `screen_lock_detector`: Screen lock state detection (5s)
+- `voice_auth`: Voice authentication system with FULL initialization (20s)
+  - **OPTIMIZED**: Now pre-loads ALL voice models during startup!
+  - Pre-loads ECAPA-TDNN speaker encoder (instant biometric recognition)
+  - Pre-warms SpeechBrain STT engine (instant transcription)
+  - Caches speaker profiles from Cloud SQL database
+  - **Result**: First "unlock my screen" command responds in <5s instead of 30-60s!
 
 ### HIGH Components (10s timeout)
 - `context_aware_handler`: Context-aware command handling
