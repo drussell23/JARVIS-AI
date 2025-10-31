@@ -377,6 +377,11 @@ class HybridSTTRouter:
         6. Record to database for learning
         7. Return best result
         """
+        logger.warning("🎤 DEBUG: transcribe() called")
+        logger.warning(f"   Audio data size: {len(audio_data)} bytes")
+        logger.warning(f"   Strategy: {strategy}")
+        logger.warning(f"   Speaker: {speaker_name}")
+
         self.total_requests += 1
         start_time = time.time()
 
@@ -399,7 +404,9 @@ class HybridSTTRouter:
 
         # Select primary model
         primary_model = self._select_optimal_model(resources, strategy, speaker_name)
-        logger.info(f"🎯 Primary model selected: {primary_model.name}")
+        logger.warning(f"🎯 DEBUG: Primary model selected: {primary_model.name}")
+        logger.warning(f"   Engine: {primary_model.engine}")
+        logger.warning(f"   Model path: {primary_model.model_path}")
 
         # Try primary model
         primary_result = await self._transcribe_with_engine(
