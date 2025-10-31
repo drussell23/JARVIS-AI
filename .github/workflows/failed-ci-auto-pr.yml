@@ -227,7 +227,8 @@ jobs:
           echo "📄 PR Body length: ${#PR_BODY} characters"
 
           # Load config for labels and assignees
-          LABELS="ci-failure,automated-pr,needs-review"
+          # Using only the ci-failure label since others may not exist
+          LABELS="ci-failure"
 
           # Create PR
           PR_OUTPUT=$(gh pr create \
