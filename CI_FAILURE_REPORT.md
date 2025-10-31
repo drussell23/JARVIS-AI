@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: 🎨 Advanced Auto-Diagram Generator
-- **Run Number**: #7
-- **Branch**: `main`
-- **Commit**: `81f9385c993f81b96128f19ca10ac7171b0fbc51`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #213
+- **Branch**: `fix/ci/advanced-auto-diagram-generator-run7-20251031-215012`
+- **Commit**: `d61a8d8c88ca614dd28a4a4e8da96336eb688053`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-10-31T21:49:08Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/18986037728)
+- **Timestamp**: 2025-10-31T21:50:44Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/18986064348)
 
 ## Failure Overview
 
@@ -17,23 +17,23 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | 🔍 Discover & Analyze Diagrams | test_failure | high | 7s |
+| 1 | Validate PR Title | timeout | high | 3s |
 
 ## Detailed Analysis
 
-### 1. 🔍 Discover & Analyze Diagrams
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Test Failure
+**Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-10-31T21:49:12Z
-**Completed**: 2025-10-31T21:49:19Z
-**Duration**: 7 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/18986037728/job/54229790095)
+**Started**: 2025-10-31T21:50:49Z
+**Completed**: 2025-10-31T21:50:52Z
+**Duration**: 3 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/18986064348/job/54229875506)
 
 #### Failed Steps
 
-- **Step 3**: 🔍 Discover diagram files
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
@@ -42,17 +42,18 @@ Total Failed Jobs: **1**
 - Pattern: `ERROR|Error|error`
   - Occurrences: 2
   - Sample matches:
-    - Line 80: `2025-10-31T21:49:17.5631076Z ##[error]Unable to process file command 'output' successfully.`
-    - Line 81: `2025-10-31T21:49:17.5639525Z ##[error]Invalid format '  "README.md"'`
+    - Line 25: `2025-10-31T21:50:50.6318895Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-10-31T21:50:51.1459349Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: 🎨 Ad`
 
-- Pattern: `FAIL|Failed|failed`
+- Pattern: `timeout|timed out`
   - Occurrences: 1
   - Sample matches:
-    - Line 66: `2025-10-31T21:49:16.8691054Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
-1. Review the logs above for specific error messages
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -72,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-10-31T21:50:12.113815*
+📊 *Report generated on 2025-10-31T21:51:35.364171*
 🤖 *JARVIS CI/CD Auto-PR Manager*
