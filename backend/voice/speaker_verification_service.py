@@ -232,9 +232,6 @@ class SpeakerVerificationService:
             await self.initialize()
 
         try:
-            # Extract embedding from audio
-            await self.speechbrain_engine.extract_speaker_embedding(audio_data)
-
             # If speaker name provided, verify against that profile
             if speaker_name and speaker_name in self.speaker_profiles:
                 profile = self.speaker_profiles[speaker_name]

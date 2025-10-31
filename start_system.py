@@ -2826,6 +2826,10 @@ class AsyncSystemManager:
                 logger.warning(f"Hybrid coordinator initialization failed: {e}")
                 self.hybrid_enabled = False
 
+        # Cloud SQL Proxy Manager - manages proxy lifecycle tied to JARVIS
+        self.cloud_sql_proxy_manager = None
+        self.cloud_sql_proxy_enabled = Path.home().joinpath(".jarvis/gcp/database_config.json").exists()
+
     def print_header(self):
         """Print system header with resource optimization info"""
         print(f"\n{Colors.HEADER}{'='*70}")
@@ -5035,6 +5039,17 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         else:
             print(f"{Colors.CYAN}🌐 [1/6] Hybrid Cloud Intelligence not active{Colors.ENDC}")
 
+        # Stop Cloud SQL proxy (CRITICAL: Must happen before database connections close)
+        if self.cloud_sql_proxy_manager:
+            try:
+                print(f"\n{Colors.CYAN}🔐 [1.2/6] Stopping Cloud SQL Proxy...{Colors.ENDC}")
+                print(f"   ├─ Terminating proxy process (PID: {self.cloud_sql_proxy_manager.pid_path.read_text().strip() if self.cloud_sql_proxy_manager.pid_path.exists() else 'unknown'})...")
+                self.cloud_sql_proxy_manager.stop()
+                print(f"   └─ {Colors.GREEN}✓ Cloud SQL proxy stopped{Colors.ENDC}")
+            except Exception as e:
+                print(f"   └─ {Colors.YELLOW}⚠ Proxy cleanup warning: {e}{Colors.ENDC}")
+                logger.warning(f"Cloud SQL proxy cleanup failed: {e}")
+
         # Show GCP VM cost summary
         gcp_vm_enabled = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
         if gcp_vm_enabled:
@@ -5375,6 +5390,31 @@ except Exception as e:
     async def run(self):
         """Main run method with self-healing"""
         self.print_header()
+
+        # Start Cloud SQL proxy FIRST (before any database connections)
+        if self.cloud_sql_proxy_enabled:
+            print(f"\n{Colors.CYAN}🔐 Starting Cloud SQL Proxy...{Colors.ENDC}")
+            try:
+                # Import from backend/intelligence
+                backend_dir = Path(__file__).parent / "backend"
+                if str(backend_dir) not in sys.path:
+                    sys.path.insert(0, str(backend_dir))
+
+                from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
+
+                self.cloud_sql_proxy_manager = CloudSQLProxyManager()
+                proxy_started = self.cloud_sql_proxy_manager.start(force_restart=True)
+
+                if proxy_started:
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Proxy started on port {self.cloud_sql_proxy_manager.config['cloud_sql']['port']}")
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Connection: {self.cloud_sql_proxy_manager.config['cloud_sql']['connection_name']}")
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Log: {self.cloud_sql_proxy_manager.log_path}")
+                else:
+                    logger.warning("⚠️  Cloud SQL proxy failed to start - falling back to SQLite")
+                    self.cloud_sql_proxy_enabled = False
+            except Exception as e:
+                logger.warning(f"Cloud SQL proxy initialization failed: {e}")
+                self.cloud_sql_proxy_enabled = False
 
         # Start hybrid cloud intelligence coordinator
         if self.hybrid_enabled and self.hybrid_coordinator:
