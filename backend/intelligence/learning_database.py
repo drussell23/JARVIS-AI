@@ -469,6 +469,24 @@ class DatabaseCursorWrapper:
             except (ValueError, TypeError, StopIteration) as e:
                 logger.debug(f"Could not extract lastrowid from single column: {e}")
 
+    async def upsert(
+        self, table: str, unique_cols: List[str], data: Dict[str, Any]
+    ) -> "DatabaseCursorWrapper":
+        """
+        Database-agnostic UPSERT - delegates to adapter connection's upsert method.
+
+        Args:
+            table: Table name
+            unique_cols: List of columns that form the unique constraint
+            data: Dictionary of column_name: value to insert/update
+
+        Returns:
+            Self for method chaining
+        """
+        await self.adapter_conn.upsert(table, unique_cols, data)
+        self._row_count = 1  # UPSERT affects 1 row
+        return self
+
     async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DatabaseCursorWrapper":
         """
         Execute SQL with multiple parameter sets.
