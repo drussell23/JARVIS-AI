@@ -202,25 +202,70 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Debug: Check if files exist
+          echo "📁 Checking for required files..."
+          if [ ! -f "workflow_failure_details.json" ]; then
+            echo "❌ workflow_failure_details.json not found!"
+            echo "Current directory contents:"
+            ls -la
+            exit 1
+          fi
+          if [ ! -f "pr_body.md" ]; then
+            echo "❌ pr_body.md not found!"
+            echo "Current directory contents:"
+            ls -la
+            exit 1
+          fi
+
           PR_TITLE=$(jq -r '.pr_title' workflow_failure_details.json)
           SOURCE_BRANCH=$(jq -r '.branch' workflow_failure_details.json)
           PR_BODY=$(cat pr_body.md)
+
+          # Debug: Validate extracted values
+          echo "📝 PR Title: $PR_TITLE"
+          echo "🌳 Source Branch: $SOURCE_BRANCH"
+          echo "📄 PR Body length: ${#PR_BODY} characters"
 
           # Load config for labels and assignees
           LABELS="ci-failure,automated-pr,needs-review"
 
           # Create PR
-          PR_URL=$(gh pr create \
+          PR_OUTPUT=$(gh pr create \
             --title "$PR_TITLE" \
             --body "$PR_BODY" \
             --base "$SOURCE_BRANCH" \
             --head "${{ steps.branch.outputs.fix_branch }}" \
             --label "$LABELS" \
-            --assignee "${{ github.event.workflow_run.actor.login }}" 2>&1 | grep -oP 'https://[^ ]+' || echo "")
+            --assignee "${{ github.event.workflow_run.actor.login }}" 2>&1 || echo "ERROR: $?")
+
+          # Check if PR creation was successful
+          if [[ "$PR_OUTPUT" == "ERROR:"* ]]; then
+            echo "❌ Failed to create PR with error code: ${PR_OUTPUT#ERROR: }"
+            echo "Attempting to create PR again with verbose output for debugging:"
+            gh pr create \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --base "$SOURCE_BRANCH" \
+              --head "${{ steps.branch.outputs.fix_branch }}" \
+              --label "$LABELS" \
+              --assignee "${{ github.event.workflow_run.actor.login }}" || true
+            exit 1
+          fi
+
+          # Extract PR URL from output
+          PR_URL=$(echo "$PR_OUTPUT" | grep -oP 'https://[^ ]+' || echo "")
 
           if [ -z "$PR_URL" ]; then
-            echo "❌ Failed to create PR"
-            exit 1
+            echo "⚠️ PR may have been created but couldn't extract URL"
+            echo "Output was: $PR_OUTPUT"
+            # Try to find the PR
+            PR_URL=$(gh pr list --head "${{ steps.branch.outputs.fix_branch }}" --json url --jq '.[0].url' || echo "")
+            if [ -n "$PR_URL" ]; then
+              echo "✅ Found PR: $PR_URL"
+            else
+              echo "❌ Failed to create or find PR"
+              exit 1
+            fi
           fi
 
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT

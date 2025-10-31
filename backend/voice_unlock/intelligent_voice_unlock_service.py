@@ -518,16 +518,14 @@ class IntelligentVoiceUnlockService:
             return False, 0.0
 
         try:
-            # New SpeakerVerificationService - returns dict
+            # New SpeakerVerificationService - returns dict with adaptive thresholds
             if hasattr(self.speaker_engine, "get_speaker_name"):
                 result = await self.speaker_engine.verify_speaker(audio_data, speaker_name)
                 is_verified = result.get("verified", False)
                 confidence = result.get("confidence", 0.0)
 
-                # High threshold check (0.85) for unlock
-                if confidence < 0.85:
-                    is_verified = False
-
+                # Trust the speaker verification service's adaptive threshold decision
+                # (Uses 50% for legacy profiles, 75% for native profiles)
                 return is_verified, confidence
 
             # Legacy: Use verify_speaker with high threshold (0.85)
