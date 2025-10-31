@@ -1030,6 +1030,8 @@ class SpeechBrainEngine(BaseSTTEngine):
         Raises:
             Exception: If speaker encoder is not loaded or extraction fails
         """
+        logger.info(f"📊 Extracting speaker embedding from {len(audio_data)} bytes of audio...")
+
         # Ensure speaker encoder is loaded
         await self._load_speaker_encoder()
 
@@ -1040,14 +1042,17 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Check embedding cache first
             audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
             if audio_hash in self.embedding_cache:
-                logger.debug("Returning cached speaker embedding")
+                logger.info("   Using cached speaker embedding")
                 return self.embedding_cache[audio_hash]
 
             # Convert audio to tensor
+            logger.info("   Converting audio to tensor...")
             audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
+            logger.info(f"   Audio tensor: shape={audio_tensor.shape}, sample_rate={sample_rate}")
 
             # Resample to 16kHz if needed
             if sample_rate != 16000:
+                logger.info(f"   Resampling from {sample_rate}Hz to 16000Hz...")
                 if self.resampler is None:
                     self.resampler = torchaudio.transforms.Resample(
                         orig_freq=sample_rate,
@@ -1056,12 +1061,16 @@ class SpeechBrainEngine(BaseSTTEngine):
                 audio_tensor = self.resampler(audio_tensor)
 
             # Normalize audio
+            logger.info("   Normalizing audio...")
             audio_tensor = self._normalize_audio(audio_tensor)
+            logger.info(f"   Normalized audio: min={audio_tensor.min():.4f}, max={audio_tensor.max():.4f}")
 
             # Move to CPU for speaker encoder (MPS doesn't support FFT)
+            logger.info("   Moving audio to CPU (MPS doesn't support FFT)...")
             audio_tensor = audio_tensor.to("cpu")
 
             # Extract embedding
+            logger.info("   Encoding speaker embedding with ECAPA-TDNN...")
             with torch.no_grad():
                 # Encode the waveform
                 embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
@@ -1069,14 +1078,17 @@ class SpeechBrainEngine(BaseSTTEngine):
                 # Convert to numpy
                 embedding = embeddings[0].cpu().numpy()
 
+            logger.info(f"   Embedding extracted: shape={embedding.shape}, dtype={embedding.dtype}")
+            logger.info(f"   Embedding stats: min={embedding.min():.4f}, max={embedding.max():.4f}, norm={np.linalg.norm(embedding):.4f}")
+
             # Cache the embedding
             self.embedding_cache[audio_hash] = embedding
 
-            logger.debug(f"Extracted speaker embedding: shape={embedding.shape}")
+            logger.info(f"✅ Speaker embedding extraction complete")
             return embedding
 
         except Exception as e:
-            logger.error(f"Failed to extract speaker embedding: {e}", exc_info=True)
+            logger.error(f"❌ Failed to extract speaker embedding: {e}", exc_info=True)
             raise
 
     async def _audio_bytes_to_tensor(self, audio_data: bytes) -> tuple:
@@ -1268,24 +1280,34 @@ class SpeechBrainEngine(BaseSTTEngine):
             Tuple of (is_verified: bool, confidence: float)
         """
         try:
+            logger.info(f"🔍 Starting speaker verification...")
+            logger.info(f"   Audio data size: {len(audio_data)} bytes")
+            logger.info(f"   Known embedding shape: {known_embedding.shape}")
+
             # Extract embedding from test audio
+            logger.info("   Extracting test embedding...")
             test_embedding = await self.extract_speaker_embedding(audio_data)
+            logger.info(f"   Test embedding extracted: shape={test_embedding.shape}")
+            logger.info(f"   Test embedding range: [{test_embedding.min():.4f}, {test_embedding.max():.4f}]")
+            logger.info(f"   Test embedding norm: {np.linalg.norm(test_embedding):.4f}")
 
             # Compute cosine similarity
+            logger.info("   Computing cosine similarity...")
             similarity = self._compute_cosine_similarity(test_embedding, known_embedding)
+            logger.info(f"   Similarity computed: {similarity:.4f} ({similarity*100:.2f}%)")
 
             # Verify if similarity exceeds threshold
             is_verified = similarity >= threshold
 
-            logger.debug(
-                f"Speaker verification: similarity={similarity:.3f}, "
-                f"threshold={threshold:.3f}, verified={is_verified}"
+            logger.info(
+                f"✅ Speaker verification complete: similarity={similarity:.3f} ({similarity*100:.1f}%), "
+                f"threshold={threshold:.3f} ({threshold*100:.1f}%), verified={is_verified}"
             )
 
             return is_verified, float(similarity)
 
         except Exception as e:
-            logger.error(f"Speaker verification failed: {e}")
+            logger.error(f"❌ Speaker verification failed: {e}", exc_info=True)
             return False, 0.0
 
     def _compute_cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
