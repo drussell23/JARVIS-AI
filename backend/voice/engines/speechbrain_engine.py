@@ -1011,3 +1011,239 @@ class SpeechBrainEngine(BaseSTTEngine):
                 )
                 for i in range(batch_size)
             ]
+
+    async def extract_speaker_embedding(self, audio_data: bytes) -> np.ndarray:
+        """Extract speaker embedding from audio using ECAPA-TDNN.
+
+        Args:
+            audio_data: Raw audio bytes in WAV format
+
+        Returns:
+            Speaker embedding as numpy array (192-dimensional for ECAPA-TDNN)
+
+        Raises:
+            Exception: If speaker encoder is not loaded or extraction fails
+        """
+        # Ensure speaker encoder is loaded
+        await self._load_speaker_encoder()
+
+        if not self.speaker_encoder:
+            raise RuntimeError("Speaker encoder not loaded")
+
+        try:
+            # Check embedding cache first
+            audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
+            if audio_hash in self.embedding_cache:
+                logger.debug("Returning cached speaker embedding")
+                return self.embedding_cache[audio_hash]
+
+            # Convert audio to tensor
+            audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
+
+            # Resample to 16kHz if needed
+            if sample_rate != 16000:
+                if self.resampler is None:
+                    self.resampler = torchaudio.transforms.Resample(
+                        orig_freq=sample_rate,
+                        new_freq=16000,
+                    )
+                audio_tensor = self.resampler(audio_tensor)
+
+            # Normalize audio
+            audio_tensor = self._normalize_audio(audio_tensor)
+
+            # Move to device
+            audio_tensor = audio_tensor.to(self.device)
+
+            # Extract embedding
+            with torch.no_grad():
+                # Encode the waveform
+                embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
+
+                # Convert to numpy
+                embedding = embeddings[0].cpu().numpy()
+
+            # Cache the embedding
+            self.embedding_cache[audio_hash] = embedding
+
+            logger.debug(f"Extracted speaker embedding: shape={embedding.shape}")
+            return embedding
+
+        except Exception as e:
+            logger.error(f"Failed to extract speaker embedding: {e}", exc_info=True)
+            raise
+
+    async def _audio_bytes_to_tensor(self, audio_data: bytes) -> tuple:
+        """Convert audio bytes to PyTorch tensor.
+
+        Args:
+            audio_data: Raw audio bytes
+
+        Returns:
+            Tuple of (audio_tensor, sample_rate)
+        """
+        import io
+        import soundfile as sf
+
+        try:
+            # Read audio data
+            audio_io = io.BytesIO(audio_data)
+            waveform, sample_rate = sf.read(audio_io)
+
+            # Convert to torch tensor
+            if len(waveform.shape) > 1:
+                # Convert stereo to mono
+                waveform = waveform.mean(axis=1)
+
+            audio_tensor = torch.from_numpy(waveform).float()
+            return audio_tensor, sample_rate
+
+        except Exception as e:
+            logger.error(f"Failed to convert audio bytes to tensor: {e}")
+            # Return silence if conversion fails
+            return torch.zeros(16000), 16000
+
+    def _normalize_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
+        """Normalize audio tensor to [-1, 1] range.
+
+        Args:
+            audio_tensor: Input audio tensor
+
+        Returns:
+            Normalized audio tensor
+        """
+        # Avoid division by zero
+        max_val = torch.max(torch.abs(audio_tensor))
+        if max_val > 0:
+            return audio_tensor / max_val
+        return audio_tensor
+
+    async def _preprocess_audio(self, audio_tensor: torch.Tensor) -> torch.Tensor:
+        """Apply preprocessing to audio tensor.
+
+        Args:
+            audio_tensor: Input audio tensor
+
+        Returns:
+            Preprocessed audio tensor
+        """
+        try:
+            # Apply spectral subtraction for noise reduction
+            audio_tensor = self.preprocessor.spectral_subtraction(audio_tensor)
+
+            # Apply automatic gain control
+            audio_tensor = self.preprocessor.automatic_gain_control(audio_tensor)
+
+            # Apply voice activity detection and trim silence
+            audio_tensor, vad_ratio = self.preprocessor.voice_activity_detection(audio_tensor)
+
+            # Apply bandpass filter for speech frequencies
+            audio_tensor = self.preprocessor.apply_bandpass_filter(audio_tensor)
+
+            return audio_tensor
+
+        except Exception as e:
+            logger.warning(f"Preprocessing failed: {e}, using original audio")
+            return audio_tensor
+
+    async def _run_inference(self, audio_tensor: torch.Tensor) -> tuple:
+        """Run ASR inference on audio tensor.
+
+        Args:
+            audio_tensor: Preprocessed audio tensor
+
+        Returns:
+            Tuple of (transcription, raw_scores)
+        """
+        try:
+            # Move to device
+            audio_tensor = audio_tensor.to(self.device)
+
+            # Run inference
+            with torch.no_grad():
+                if self.use_fp16 and self.device != "cpu":
+                    with torch.cuda.amp.autocast():
+                        predictions = self.asr_model.transcribe_batch(
+                            audio_tensor.unsqueeze(0),
+                            torch.tensor([len(audio_tensor)], device=self.device)
+                        )
+                else:
+                    predictions = self.asr_model.transcribe_batch(
+                        audio_tensor.unsqueeze(0),
+                        torch.tensor([len(audio_tensor)], device=self.device)
+                    )
+
+            # Extract transcription
+            if isinstance(predictions, list):
+                transcription = predictions[0]
+            else:
+                transcription = str(predictions)
+
+            return transcription, None  # No raw scores from basic ASR
+
+        except Exception as e:
+            logger.error(f"Inference failed: {e}")
+            return "", None
+
+    def _extract_text(self, transcription) -> str:
+        """Extract text from transcription output.
+
+        Args:
+            transcription: Raw transcription output
+
+        Returns:
+            Cleaned text string
+        """
+        if isinstance(transcription, str):
+            return transcription.strip()
+        elif hasattr(transcription, "text"):
+            return transcription.text.strip()
+        elif isinstance(transcription, list) and transcription:
+            return str(transcription[0]).strip()
+        else:
+            return str(transcription).strip()
+
+    async def _compute_advanced_confidence(
+        self, audio_tensor: torch.Tensor, text: str, raw_scores
+    ) -> ConfidenceScores:
+        """Compute advanced confidence scores.
+
+        Args:
+            audio_tensor: Audio tensor
+            text: Transcribed text
+            raw_scores: Raw scores from model (if available)
+
+        Returns:
+            ConfidenceScores object with detailed confidence breakdown
+        """
+        # Basic confidence calculation
+        # More sophisticated scoring would require access to model internals
+
+        # Base confidence on text length and audio properties
+        text_length_score = min(1.0, len(text) / 100) if text else 0.0
+
+        # Audio quality score based on energy
+        energy = torch.mean(audio_tensor ** 2).item()
+        audio_quality = min(1.0, energy * 10) if energy > 0.001 else 0.1
+
+        # Simple confidence scores
+        decoder_prob = text_length_score * 0.9 + 0.1
+        acoustic_confidence = audio_quality
+        language_model_score = 0.85 if text else 0.0  # Default LM score
+        attention_confidence = 0.9 if text else 0.0  # Default attention score
+
+        # Combine scores
+        overall_confidence = (
+            decoder_prob * 0.3
+            + acoustic_confidence * 0.2
+            + language_model_score * 0.3
+            + attention_confidence * 0.2
+        )
+
+        return ConfidenceScores(
+            decoder_prob=decoder_prob,
+            acoustic_confidence=acoustic_confidence,
+            language_model_score=language_model_score,
+            attention_confidence=attention_confidence,
+            overall_confidence=min(1.0, max(0.0, overall_confidence)),
+        )

@@ -161,20 +161,34 @@ class WhisperLocalEngine(BaseSTTEngine):
             logger.error(f"Expected bytes, got {type(audio_data)}")
             audio_data = bytes(audio_data)
 
+        logger.info(f"Converting audio bytes: {len(audio_data)} bytes")
+
         try:
-            # Try with librosa
-            import io
+            # Check if audio data is empty
+            if len(audio_data) == 0:
+                logger.error("Audio data is empty!")
+                # Return 1 second of silence instead of empty
+                return np.zeros(16000, dtype=np.float32)
 
-            import librosa
+            # Check if bytes length is compatible with int16
+            if len(audio_data) % 2 != 0:
+                logger.warning(f"Audio data length {len(audio_data)} is odd, padding with zero")
+                audio_data = audio_data + b'\x00'
 
-            # Load and resample to 16kHz mono
-            audio_array, sr = await asyncio.to_thread(
-                librosa.load,
-                io.BytesIO(audio_data),
-                sr=16000,
-                mono=True,
-            )
+            # Convert bytes to numpy array directly
+            # Assume 16-bit PCM audio
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
+            # Check if audio is silent
+            if np.max(np.abs(audio_array)) < 0.001:
+                logger.warning(f"Audio appears to be silent (max amplitude: {np.max(np.abs(audio_array))})")
+
+            # If the array is too short, pad it
+            if len(audio_array) < 16000:  # Less than 1 second
+                logger.warning(f"Audio too short: {len(audio_array)} samples, padding...")
+                audio_array = np.pad(audio_array, (0, 16000 - len(audio_array)))
+
+            logger.info(f"Audio array created: {len(audio_array)} samples, max amplitude: {np.max(np.abs(audio_array)):.4f}")
             return audio_array
 
         except ImportError:
