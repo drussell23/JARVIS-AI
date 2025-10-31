@@ -144,6 +144,15 @@ class HybridSTTRouter:
         """
         available_ram = resources.available_ram_gb
 
+        # WHISPER PRIORITY: Always try Whisper first if available
+        # This ensures proper transcription instead of [transcription failed]
+        whisper_models = ["whisper-base", "whisper-small", "whisper-tiny"]
+        for whisper_name in whisper_models:
+            whisper_model = self.config.models.get(whisper_name)
+            if whisper_model and whisper_model.ram_required_gb <= available_ram:
+                logger.info(f"🎯 Whisper priority: selected {whisper_name} for reliable transcription")
+                return whisper_model
+
         if strategy == RoutingStrategy.SPEED:
             # Fastest model that fits
             model = self.config.get_fastest_model(available_ram)
