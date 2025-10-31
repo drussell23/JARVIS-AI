@@ -166,20 +166,48 @@ class MacOSKeychainUnlock:
             }
 
         try:
-            # Use secure password typer (Core Graphics, no AppleScript)
-            from voice_unlock.secure_password_typer import type_password_securely
+            # Use advanced secure password typer (Core Graphics, no AppleScript)
+            from voice_unlock.secure_password_typer import (
+                get_secure_typer,
+                TypingConfig
+            )
 
-            logger.info("🔐 Using secure password typer (Core Graphics)")
+            logger.info("🔐 Using advanced secure password typer (Core Graphics)")
 
-            # Type password securely with randomized timing
-            success = await type_password_securely(
+            # Get typer instance
+            typer = get_secure_typer()
+
+            # Configure for unlock (adaptive timing, auto-submit)
+            config = TypingConfig(
+                wake_screen=True,
+                submit_after_typing=True,
+                randomize_timing=True,
+                adaptive_timing=True,
+                detect_system_load=True,
+                clear_memory_after=True,
+                enable_applescript_fallback=True,
+                max_retries=3
+            )
+
+            # Type password securely and get metrics
+            success, metrics = await typer.type_password_secure(
                 password=password,
-                submit=True,  # Press Enter after typing
-                randomize_timing=True  # Human-like timing
+                submit=True,
+                config_override=config
+            )
+
+            # Log metrics
+            logger.info(
+                f"🔐 [METRICS] Typing: {metrics.typing_time_ms:.0f}ms, "
+                f"Wake: {metrics.wake_time_ms:.0f}ms, "
+                f"Submit: {metrics.submit_time_ms:.0f}ms, "
+                f"Total: {metrics.total_duration_ms:.0f}ms, "
+                f"Retries: {metrics.retries}, "
+                f"Fallback: {metrics.fallback_used}"
             )
 
             if not success:
-                logger.warning("⚠️ Secure typer failed, trying AppleScript fallback")
+                logger.warning(f"⚠️ Secure typer failed: {metrics.error_message}")
 
                 # Fallback to AppleScript if Core Graphics fails
                 wake_script = """

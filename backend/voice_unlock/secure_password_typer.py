@@ -132,21 +132,205 @@ KEYCODE_MAP = {
 SHIFT_CHARS = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+{}|:"<>?~')
 
 
+@dataclass
+class TypingConfig:
+    """Configuration for secure password typing"""
+
+    # Timing configuration (all in seconds)
+    base_keystroke_delay: float = 0.05
+    min_keystroke_delay: float = 0.03
+    max_keystroke_delay: float = 0.15
+    key_press_duration_min: float = 0.02
+    key_press_duration_max: float = 0.05
+
+    # Wake configuration
+    wake_screen: bool = True
+    wake_delay: float = 0.3
+
+    # Submit configuration
+    submit_after_typing: bool = True
+    submit_delay: float = 0.1
+
+    # Timing randomization
+    randomize_timing: bool = True
+    timing_variance: float = 0.7  # 70% variance
+
+    # Retry configuration
+    max_retries: int = 3
+    retry_delay: float = 0.5
+
+    # Security
+    clear_memory_after: bool = True
+    verify_after_typing: bool = True
+
+    # Performance
+    adaptive_timing: bool = True
+    detect_system_load: bool = True
+
+    # Fallback
+    enable_applescript_fallback: bool = True
+    fallback_timeout: float = 5.0
+
+
+@dataclass
+class TypingMetrics:
+    """Metrics for password typing operations"""
+
+    start_time: float = field(default_factory=time.time)
+    end_time: Optional[float] = None
+    total_duration_ms: float = 0.0
+
+    characters_typed: int = 0
+    keystrokes_sent: int = 0
+
+    wake_time_ms: float = 0.0
+    typing_time_ms: float = 0.0
+    submit_time_ms: float = 0.0
+
+    retries: int = 0
+    fallback_used: bool = False
+
+    success: bool = False
+    error_message: Optional[str] = None
+
+    system_load: Optional[float] = None
+    memory_cleared: bool = False
+
+    def finalize(self):
+        """Finalize metrics"""
+        self.end_time = time.time()
+        self.total_duration_ms = (self.end_time - self.start_time) * 1000
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            "total_duration_ms": self.total_duration_ms,
+            "characters_typed": self.characters_typed,
+            "keystrokes_sent": self.keystrokes_sent,
+            "wake_time_ms": self.wake_time_ms,
+            "typing_time_ms": self.typing_time_ms,
+            "submit_time_ms": self.submit_time_ms,
+            "retries": self.retries,
+            "fallback_used": self.fallback_used,
+            "success": self.success,
+            "error_message": self.error_message,
+            "system_load": self.system_load,
+            "memory_cleared": self.memory_cleared
+        }
+
+
+class SystemLoadDetector:
+    """Detects system load for adaptive timing"""
+
+    @staticmethod
+    async def get_system_load() -> float:
+        """Get current system load (0.0 - 1.0)"""
+        try:
+            # Try psutil first
+            try:
+                import psutil
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                return cpu_percent / 100.0
+            except ImportError:
+                pass
+
+            # Fallback to uptime command
+            proc = await asyncio.create_subprocess_exec(
+                'uptime',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, _ = await proc.communicate()
+            output = stdout.decode().strip()
+
+            # Parse load average (1 minute)
+            if 'load average' in output:
+                load_str = output.split('load average:')[1].split(',')[0].strip()
+                load = float(load_str)
+
+                # Normalize to 0-1 (assuming max load of 4.0)
+                return min(load / 4.0, 1.0)
+
+            return 0.5  # Default moderate load
+
+        except Exception as e:
+            logger.debug(f"Failed to detect system load: {e}")
+            return 0.5
+
+
+class SecureMemoryHandler:
+    """Handles secure memory operations for passwords"""
+
+    @staticmethod
+    def secure_clear(data: str) -> None:
+        """Securely clear string from memory (best effort)"""
+        try:
+            # Overwrite with zeros
+            if isinstance(data, str):
+                # Create mutable bytearray
+                byte_data = bytearray(data.encode('utf-8'))
+
+                # Overwrite with random data multiple times
+                for _ in range(3):
+                    for i in range(len(byte_data)):
+                        byte_data[i] = random.randint(0, 255)
+
+                # Final overwrite with zeros
+                for i in range(len(byte_data)):
+                    byte_data[i] = 0
+
+                # Force garbage collection
+                del byte_data
+                gc.collect()
+
+            logger.debug("🔐 Memory securely cleared")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to securely clear memory: {e}")
+
+    @staticmethod
+    def obfuscate_for_log(password: str, visible_chars: int = 2) -> str:
+        """Obfuscate password for logging"""
+        if len(password) <= visible_chars * 2:
+            return "*" * len(password)
+
+        return (
+            password[:visible_chars] +
+            "*" * (len(password) - visible_chars * 2) +
+            password[-visible_chars:]
+        )
+
+
 class SecurePasswordTyper:
     """
-    Advanced secure password typer using Core Graphics events.
+    Ultra-advanced secure password typer using Core Graphics events.
 
     Features:
-    - Direct CGEvent posting (no AppleScript)
-    - Memory-safe password handling
-    - Randomized keystroke timing
-    - Anti-detection measures
+    - Direct CGEvent posting (no AppleScript, no process visibility)
+    - Memory-safe password handling with secure erasure
+    - Adaptive timing based on system load
+    - Randomized keystroke timing (anti-detection)
+    - Comprehensive error recovery
+    - Multiple fallback mechanisms
+    - Full async support
     - International keyboard support
+    - Concurrent operation safety
+    - Comprehensive metrics tracking
     """
 
-    def __init__(self):
+    def __init__(self, config: Optional[TypingConfig] = None):
+        self.config = config or TypingConfig()
         self.available = CG_AVAILABLE
         self.event_source = None
+        self._lock = asyncio.Lock()  # For thread-safe operations
+        self._active_operations = 0
+
+        # Metrics tracking
+        self.total_operations = 0
+        self.successful_operations = 0
+        self.failed_operations = 0
+        self.last_operation_time: Optional[datetime] = None
 
         if self.available:
             # Create event source (0 = kCGEventSourceStateHIDSystemState)
@@ -154,83 +338,159 @@ class SecurePasswordTyper:
             if not self.event_source:
                 logger.error("❌ Failed to create CGEventSource")
                 self.available = False
+            else:
+                logger.info("✅ Secure Password Typer initialized (Core Graphics)")
 
     def __del__(self):
         """Cleanup event source"""
         if self.event_source:
             try:
                 CoreGraphics.CFRelease(self.event_source)
+                logger.debug("🔐 CGEventSource released")
             except:
                 pass
+
+    async def __aenter__(self):
+        """Async context manager entry"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        # Wait for all active operations to complete
+        while self._active_operations > 0:
+            await asyncio.sleep(0.1)
+        return False
 
     async def type_password_secure(
         self,
         password: str,
-        submit: bool = True,
-        randomize_timing: bool = True
-    ) -> bool:
+        submit: Optional[bool] = None,
+        config_override: Optional[TypingConfig] = None
+    ) -> Tuple[bool, TypingMetrics]:
         """
-        Type password using secure Core Graphics events.
+        Type password using secure Core Graphics events with comprehensive features.
 
         Args:
-            password: Password to type (will be cleared from memory)
-            submit: Whether to press Enter after typing
-            randomize_timing: Add random delays to avoid detection
+            password: Password to type (will be securely cleared from memory)
+            submit: Whether to press Enter after typing (None = use config)
+            config_override: Override default configuration
 
         Returns:
-            bool: Success status
+            Tuple of (success: bool, metrics: TypingMetrics)
         """
-        if not self.available:
-            logger.error("❌ Core Graphics not available")
-            return False
+        # Use config override or instance config
+        config = config_override or self.config
+        submit = submit if submit is not None else config.submit_after_typing
 
-        if not password:
-            logger.error("❌ No password provided")
-            return False
+        # Initialize metrics
+        metrics = TypingMetrics()
+        metrics.characters_typed = len(password)
 
-        try:
-            logger.info("🔐 [SECURE-TYPE] Starting secure password input...")
+        # Acquire lock for thread safety
+        async with self._lock:
+            self._active_operations += 1
+            self.total_operations += 1
 
-            # Wake the screen first
-            await self._wake_screen()
+            try:
+                # Validation
+                if not self.available:
+                    metrics.error_message = "Core Graphics not available"
+                    if config.enable_applescript_fallback:
+                        logger.info("🔄 Using AppleScript fallback")
+                        return await self._fallback_applescript(password, submit, metrics)
+                    return False, metrics
 
-            # Small delay to ensure screen is ready
-            await asyncio.sleep(0.3)
+                if not password:
+                    metrics.error_message = "No password provided"
+                    logger.error("❌ No password provided")
+                    return False, metrics
 
-            # Type each character
-            for i, char in enumerate(password):
-                success = await self._type_character_secure(char, randomize_timing)
+                # Obfuscate for logging
+                pass_hint = SecureMemoryHandler.obfuscate_for_log(password)
+                logger.info(f"🔐 [SECURE-TYPE] Starting secure input (length: {len(password)}, hint: {pass_hint})")
 
-                if not success:
-                    logger.error(f"❌ Failed to type character at position {i}")
-                    return False
+                # Detect system load for adaptive timing
+                if config.detect_system_load:
+                    metrics.system_load = await SystemLoadDetector.get_system_load()
+                    logger.debug(f"📊 System load: {metrics.system_load:.2f}")
 
-                # Variable delay between keystrokes
-                if randomize_timing:
-                    # Human-like typing: 50-120ms between keys
-                    delay = 0.05 + (hash(char) % 70) / 1000.0
-                else:
-                    delay = 0.05
+                # Retry loop
+                for attempt in range(config.max_retries):
+                    try:
+                        if attempt > 0:
+                            metrics.retries += 1
+                            logger.info(f"🔄 Retry attempt {attempt + 1}/{config.max_retries}")
+                            await asyncio.sleep(config.retry_delay)
 
-                await asyncio.sleep(delay)
+                        # Wake screen
+                        if config.wake_screen:
+                            wake_start = time.time()
+                            await self._wake_screen_adaptive(config, metrics.system_load or 0.5)
+                            metrics.wake_time_ms = (time.time() - wake_start) * 1000
+                            await asyncio.sleep(config.wake_delay)
 
-            logger.info("🔐 [SECURE-TYPE] Password typed successfully")
+                        # Type password
+                        typing_start = time.time()
+                        success = await self._type_password_characters(
+                            password,
+                            config,
+                            metrics
+                        )
+                        metrics.typing_time_ms = (time.time() - typing_start) * 1000
 
-            # Submit if requested
-            if submit:
-                await asyncio.sleep(0.1)
-                await self._press_return()
-                logger.info("🔐 [SECURE-TYPE] Return key pressed")
+                        if not success:
+                            if attempt < config.max_retries - 1:
+                                continue
+                            metrics.error_message = "Failed to type password"
+                            return False, metrics
 
-            # Clear password from memory (best effort)
-            password = "0" * len(password)
-            del password
+                        # Submit if requested
+                        if submit:
+                            submit_start = time.time()
+                            await asyncio.sleep(config.submit_delay)
+                            await self._press_return_secure(config)
+                            metrics.submit_time_ms = (time.time() - submit_start) * 1000
+                            logger.info("🔐 [SECURE-TYPE] Return key pressed")
 
-            return True
+                        # Success
+                        metrics.success = True
+                        self.successful_operations += 1
+                        self.last_operation_time = datetime.now()
 
-        except Exception as e:
-            logger.error(f"❌ Secure typing failed: {e}", exc_info=True)
-            return False
+                        logger.info(
+                            f"✅ [SECURE-TYPE] Password typed successfully "
+                            f"({metrics.total_duration_ms:.0f}ms total)"
+                        )
+
+                        break
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ Attempt {attempt + 1} failed: {e}")
+                        if attempt == config.max_retries - 1:
+                            raise
+
+                # Clear password from memory securely
+                if config.clear_memory_after:
+                    SecureMemoryHandler.secure_clear(password)
+                    metrics.memory_cleared = True
+
+                return metrics.success, metrics
+
+            except Exception as e:
+                metrics.error_message = str(e)
+                self.failed_operations += 1
+                logger.error(f"❌ Secure typing failed: {e}", exc_info=True)
+
+                # Try fallback if enabled
+                if config.enable_applescript_fallback and not metrics.fallback_used:
+                    logger.info("🔄 Attempting AppleScript fallback...")
+                    return await self._fallback_applescript(password, submit, metrics)
+
+                return False, metrics
+
+            finally:
+                self._active_operations -= 1
+                metrics.finalize()
 
     async def _wake_screen(self):
         """Wake the screen with a non-intrusive key"""

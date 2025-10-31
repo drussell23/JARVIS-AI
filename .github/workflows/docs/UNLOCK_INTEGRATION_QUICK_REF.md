@@ -54,8 +54,12 @@ gh run rerun <run-id> --failed
 
 - ✅ Keychain Retrieval (30s timeout)
 - ✅ Unlock Logic (45s timeout)
-- ✅ AppleScript Typing (20s timeout)
-- ✅ Screen Detection (30s timeout)
+- ✅ Secure Password Typer (60s timeout) - **NEW**
+- ✅ Intelligent Voice Service (90s timeout) - **NEW**
+- ✅ Screen Detector Integration (30s timeout) - **NEW**
+- ✅ Adaptive Timing (45s timeout) - **NEW**
+- ✅ Memory Security (30s timeout) - **NEW**
+- ✅ Fallback Mechanisms (60s timeout) - **NEW**
 - ✅ Error Handling (40s timeout)
 - ✅ Performance (120s timeout)
 - ✅ Security Checks (60s timeout)

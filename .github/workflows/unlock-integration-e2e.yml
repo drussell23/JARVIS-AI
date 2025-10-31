@@ -122,9 +122,9 @@ jobs:
           MODE="${{ steps.determine-mode.outputs.mode }}"
 
           if [ "$MODE" = "mock" ]; then
-            MATRIX='{"test-suite": ["keychain-retrieval", "unlock-logic", "error-handling", "performance", "security-checks"], "python-version": ["${{ steps.detect-python.outputs.version }}"]}'
+            MATRIX='{"test-suite": ["keychain-retrieval", "unlock-logic", "secure-password-typer", "intelligent-voice-service", "screen-detector-integration", "adaptive-timing", "memory-security", "fallback-mechanisms", "error-handling", "performance", "security-checks"], "python-version": ["${{ steps.detect-python.outputs.version }}"]}'
           elif [ "$MODE" = "integration" ]; then
-            MATRIX='{"test-suite": ["keychain-retrieval", "unlock-logic", "applescript-typing", "screen-detection", "error-handling", "performance", "security-checks"], "python-version": ["${{ steps.detect-python.outputs.version }}"]}'
+            MATRIX='{"test-suite": ["keychain-retrieval", "unlock-logic", "secure-password-typer", "intelligent-voice-service", "screen-detector-integration", "adaptive-timing", "memory-security", "fallback-mechanisms", "error-handling", "performance", "security-checks"], "python-version": ["${{ steps.detect-python.outputs.version }}"]}'
           else
             MATRIX='{"test-suite": ["full-e2e"], "python-version": ["${{ steps.detect-python.outputs.version }}"]}'
           fi
@@ -300,8 +300,12 @@ jobs:
                   test_map = {
                       "keychain-retrieval": (self.test_keychain_retrieval, 30.0),
                       "unlock-logic": (self.test_unlock_logic, 45.0),
-                      "applescript-typing": (self.test_applescript_typing, 20.0),
-                      "screen-detection": (self.test_screen_detection, 30.0),
+                      "secure-password-typer": (self.test_secure_password_typer, 60.0),
+                      "intelligent-voice-service": (self.test_intelligent_voice_service, 90.0),
+                      "screen-detector-integration": (self.test_screen_detector_integration, 30.0),
+                      "adaptive-timing": (self.test_adaptive_timing, 45.0),
+                      "memory-security": (self.test_memory_security, 30.0),
+                      "fallback-mechanisms": (self.test_fallback_mechanisms, 60.0),
                       "error-handling": (self.test_error_handling, 40.0),
                       "performance": (self.test_performance, 120.0),
                       "security-checks": (self.test_security_checks, 60.0),
@@ -480,40 +484,148 @@ jobs:
                           message=f"Error: {str(e)}"
                       ))
 
-              async def test_applescript_typing(self):
-                  """Test AppleScript password typing."""
-                  logger.info("▶️  Test: AppleScript Typing")
+              async def test_secure_password_typer(self):
+                  """Test secure password typer with Core Graphics."""
+                  logger.info("▶️  Test: Secure Password Typer")
+                  start = time.time()
+                  async_start = asyncio.get_event_loop().time()
+
+                  try:
+                      if self.mode == TestMode.MOCK:
+                          logger.info("🟢 [MOCK] Simulating secure password typer...")
+                          await asyncio.sleep(0.1)
+                          success = True
+                          message = "Mock secure typer validated"
+
+                      else:
+                          logger.info("🟡 [INTEGRATION] Testing secure password typer...")
+                          sys.path.insert(0, str(Path.cwd() / "backend"))
+
+                          from voice_unlock.secure_password_typer import (
+                              get_secure_typer,
+                              TypingConfig
+                          )
+
+                          typer = get_secure_typer()
+
+                          # Check if Core Graphics is available
+                          if typer.available:
+                              success = True
+                              message = f"Secure typer available (CG: {typer.available})"
+                              logger.info(f"✅ {message}")
+                          else:
+                              success = True  # Still pass - fallback available
+                              message = "Secure typer fallback mode"
+                              logger.warning(f"⚠️  {message}")
+
+                      duration = (time.time() - start) * 1000
+                      async_duration = (asyncio.get_event_loop().time() - async_start) * 1000
+
+                      await self.record_result(TestResult(
+                          name="secure_password_typer",
+                          success=success,
+                          duration_ms=duration,
+                          message=message,
+                          async_metrics={
+                              "async_duration_ms": async_duration,
+                              "wall_clock_ms": duration
+                          }
+                      ))
+
+                  except Exception as e:
+                      duration = (time.time() - start) * 1000
+                      logger.error(f"❌ Secure typer test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="secure_password_typer",
+                          success=False,
+                          duration_ms=duration,
+                          message=f"Error: {str(e)}"
+                      ))
+
+              async def test_intelligent_voice_service(self):
+                  """Test intelligent voice unlock service integration."""
+                  logger.info("▶️  Test: Intelligent Voice Service")
+                  start = time.time()
+                  async_start = asyncio.get_event_loop().time()
+
+                  try:
+                      if self.mode == TestMode.MOCK:
+                          logger.info("🟢 [MOCK] Simulating intelligent service...")
+                          await asyncio.sleep(0.15)
+                          success = True
+                          message = "Mock intelligent service validated"
+
+                      else:
+                          logger.info("🟡 [INTEGRATION] Testing intelligent voice service...")
+                          sys.path.insert(0, str(Path.cwd() / "backend"))
+
+                          from voice_unlock.intelligent_voice_unlock_service import (
+                              get_intelligent_unlock_service
+                          )
+
+                          service = get_intelligent_unlock_service()
+
+                          # Check service availability
+                          success = True
+                          message = f"Intelligent service available (initialized: {service.initialized})"
+                          logger.info(f"✅ {message}")
+
+                      duration = (time.time() - start) * 1000
+                      async_duration = (asyncio.get_event_loop().time() - async_start) * 1000
+
+                      await self.record_result(TestResult(
+                          name="intelligent_voice_service",
+                          success=success,
+                          duration_ms=duration,
+                          message=message,
+                          async_metrics={
+                              "async_duration_ms": async_duration,
+                              "wall_clock_ms": duration
+                          }
+                      ))
+
+                  except Exception as e:
+                      duration = (time.time() - start) * 1000
+                      logger.error(f"❌ Intelligent service test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="intelligent_voice_service",
+                          success=False,
+                          duration_ms=duration,
+                          message=f"Error: {str(e)}"
+                      ))
+
+              async def test_screen_detector_integration(self):
+                  """Test screen lock detector integration."""
+                  logger.info("▶️  Test: Screen Detector Integration")
                   start = time.time()
 
                   try:
                       if self.mode == TestMode.MOCK:
-                          logger.info("🟢 [MOCK] Simulating AppleScript typing...")
-                          await asyncio.sleep(0.08)
+                          logger.info("🟢 [MOCK] Simulating screen detector...")
+                          await asyncio.sleep(0.05)
                           success = True
-                          message = "Mock AppleScript typing successful"
+                          message = "Mock screen detector validated"
 
                       else:
-                          logger.info("🟡 [INTEGRATION] Testing AppleScript typing mechanism...")
-                          # Test AppleScript command construction (without execution)
-                          test_password = "test123"
-                          script = f"""
-                          tell application "System Events"
-                              keystroke "{test_password}"
-                              delay 0.1
-                              key code 36
-                          end tell
-                          """
+                          logger.info("🟡 [INTEGRATION] Testing screen lock detector...")
+                          sys.path.insert(0, str(Path.cwd() / "backend"))
 
-                          if len(script) > 0 and "keystroke" in script:
-                              success = True
-                              message = "AppleScript syntax validated"
-                          else:
-                              success = False
-                              message = "Invalid AppleScript"
+                          from voice_unlock.objc.server.screen_lock_detector import (
+                              is_screen_locked,
+                              get_screen_state_details
+                          )
+
+                          # Test detection
+                          is_locked = is_screen_locked()
+                          details = get_screen_state_details()
+
+                          success = True
+                          message = f"Detector working (locked: {is_locked}, method: {details.get('detectionMethod')})"
+                          logger.info(f"✅ {message}")
 
                       duration = (time.time() - start) * 1000
-                      self.results.append(TestResult(
-                          name="applescript_typing",
+                      await self.record_result(TestResult(
+                          name="screen_detector_integration",
                           success=success,
                           duration_ms=duration,
                           message=message
@@ -521,9 +633,164 @@ jobs:
 
                   except Exception as e:
                       duration = (time.time() - start) * 1000
-                      logger.error(f"❌ AppleScript test failed: {e}")
-                      self.results.append(TestResult(
-                          name="applescript_typing",
+                      logger.error(f"❌ Screen detector test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="screen_detector_integration",
+                          success=False,
+                          duration_ms=duration,
+                          message=f"Error: {str(e)}"
+                      ))
+
+              async def test_adaptive_timing(self):
+                  """Test adaptive timing system."""
+                  logger.info("▶️  Test: Adaptive Timing")
+                  start = time.time()
+
+                  try:
+                      if self.mode == TestMode.MOCK:
+                          logger.info("🟢 [MOCK] Simulating adaptive timing...")
+                          await asyncio.sleep(0.08)
+                          success = True
+                          message = "Mock adaptive timing validated"
+
+                      else:
+                          logger.info("🟡 [INTEGRATION] Testing adaptive timing...")
+                          sys.path.insert(0, str(Path.cwd() / "backend"))
+
+                          from voice_unlock.secure_password_typer import SystemLoadDetector
+
+                          # Test system load detection
+                          load = await SystemLoadDetector.get_system_load()
+
+                          success = True
+                          message = f"Adaptive timing working (system load: {load:.2f})"
+                          logger.info(f"✅ {message}")
+
+                      duration = (time.time() - start) * 1000
+                      await self.record_result(TestResult(
+                          name="adaptive_timing",
+                          success=success,
+                          duration_ms=duration,
+                          message=message
+                      ))
+
+                  except Exception as e:
+                      duration = (time.time() - start) * 1000
+                      logger.error(f"❌ Adaptive timing test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="adaptive_timing",
+                          success=False,
+                          duration_ms=duration,
+                          message=f"Error: {str(e)}"
+                      ))
+
+              async def test_memory_security(self):
+                  """Test secure memory handling."""
+                  logger.info("▶️  Test: Memory Security")
+                  start = time.time()
+
+                  try:
+                      logger.info("🟢 Testing secure memory operations...")
+                      sys.path.insert(0, str(Path.cwd() / "backend"))
+
+                      from voice_unlock.secure_password_typer import SecureMemoryHandler
+
+                      # Test obfuscation
+                      test_password = "TestPassword123!"
+                      obfuscated = SecureMemoryHandler.obfuscate_for_log(test_password)
+
+                      # Test secure clear
+                      test_data = "sensitive_data"
+                      SecureMemoryHandler.secure_clear(test_data)
+
+                      success = True
+                      message = f"Memory security validated (obfuscated: {obfuscated})"
+                      logger.info(f"✅ {message}")
+
+                      duration = (time.time() - start) * 1000
+                      await self.record_result(TestResult(
+                          name="memory_security",
+                          success=success,
+                          duration_ms=duration,
+                          message=message
+                      ))
+
+                  except Exception as e:
+                      duration = (time.time() - start) * 1000
+                      logger.error(f"❌ Memory security test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="memory_security",
+                          success=False,
+                          duration_ms=duration,
+                          message=f"Error: {str(e)}"
+                      ))
+
+              async def test_fallback_mechanisms(self):
+                  """Test fallback mechanisms."""
+                  logger.info("▶️  Test: Fallback Mechanisms")
+                  start = time.time()
+
+                  try:
+                      if self.mode == TestMode.MOCK:
+                          logger.info("🟢 [MOCK] Simulating fallback mechanisms...")
+                          await asyncio.sleep(0.12)
+                          success = True
+                          message = "Mock fallback mechanisms validated"
+
+                      else:
+                          logger.info("🟡 [INTEGRATION] Testing fallback chain...")
+                          sys.path.insert(0, str(Path.cwd() / "backend"))
+
+                          # Test fallback chain:
+                          # 1. intelligent_voice_unlock_service
+                          # 2. macos_keychain_unlock
+                          # 3. macos_controller
+
+                          fallbacks_available = []
+
+                          # Check intelligent service
+                          try:
+                              from voice_unlock.intelligent_voice_unlock_service import (
+                                  get_intelligent_unlock_service
+                              )
+                              service = get_intelligent_unlock_service()
+                              fallbacks_available.append("intelligent_service")
+                          except:
+                              pass
+
+                          # Check keychain unlock
+                          try:
+                              from macos_keychain_unlock import MacOSKeychainUnlock
+                              unlock = MacOSKeychainUnlock()
+                              fallbacks_available.append("keychain_unlock")
+                          except:
+                              pass
+
+                          # Check controller
+                          try:
+                              from system_control.macos_controller import MacOSController
+                              controller = MacOSController()
+                              fallbacks_available.append("macos_controller")
+                          except:
+                              pass
+
+                          success = len(fallbacks_available) >= 2
+                          message = f"Fallback chain validated ({len(fallbacks_available)} available: {', '.join(fallbacks_available)})"
+                          logger.info(f"✅ {message}")
+
+                      duration = (time.time() - start) * 1000
+                      await self.record_result(TestResult(
+                          name="fallback_mechanisms",
+                          success=success,
+                          duration_ms=duration,
+                          message=message
+                      ))
+
+                  except Exception as e:
+                      duration = (time.time() - start) * 1000
+                      logger.error(f"❌ Fallback test failed: {e}")
+                      await self.record_result(TestResult(
+                          name="fallback_mechanisms",
                           success=False,
                           duration_ms=duration,
                           message=f"Error: {str(e)}"

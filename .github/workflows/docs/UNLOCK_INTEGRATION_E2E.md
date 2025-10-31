@@ -65,22 +65,70 @@ await asyncio.wait_for(
 **Timeout:** 45s
 **Async:** ✅ Concurrent execution enabled
 
-### 3. AppleScript Typing
-**What:** Tests password typing mechanism
-**Timeout:** 20s
-**Async:** ✅ Script validation async
+### 3. Secure Password Typer
+**What:** Tests Core Graphics secure password typing
+**Timeout:** 60s
+**Async:** ✅ Full async with metrics tracking
+**Tests:**
+- Core Graphics availability
+- Typing configuration
+- Memory security
+- Fallback mechanisms
 
-### 4. Screen Detection
-**What:** Tests screen lock state detection
+### 4. Intelligent Voice Service
+**What:** Tests intelligent voice unlock service integration
+**Timeout:** 90s
+**Async:** ✅ Service initialization and availability
+**Tests:**
+- Service availability
+- Initialization status
+- Component integration
+
+### 5. Screen Detector Integration
+**What:** Tests screen lock detector from voice_unlock
 **Timeout:** 30s
-**Async:** ✅ Async screen state checks
+**Async:** ✅ Multi-method detection
+**Tests:**
+- CGSession detection
+- Screensaver detection
+- LoginWindow detection
+- Detailed state retrieval
 
-### 5. Error Handling
+### 6. Adaptive Timing
+**What:** Tests adaptive timing system
+**Timeout:** 45s
+**Async:** ✅ System load detection
+**Tests:**
+- System load detection (psutil/uptime)
+- Timing adjustment logic
+- Performance under load
+
+### 7. Memory Security
+**What:** Tests secure memory handling
+**Timeout:** 30s
+**Async:** ✅ Memory operations
+**Tests:**
+- Password obfuscation
+- Secure memory clearing
+- 3-pass overwrite
+- Garbage collection
+
+### 8. Fallback Mechanisms
+**What:** Tests 3-tier fallback chain
+**Timeout:** 60s
+**Async:** ✅ Chain validation
+**Tests:**
+- intelligent_voice_unlock_service availability
+- macos_keychain_unlock availability
+- macos_controller availability
+- Fallback priority order
+
+### 9. Error Handling
 **What:** Tests error scenarios and recovery
 **Timeout:** 40s
 **Async:** ✅ Concurrent error simulation
 
-### 6. Performance
+### 10. Performance
 **What:** Tests unlock performance across multiple cycles
 **Timeout:** 120s
 **Async:** ✅ Parallel performance testing
@@ -88,18 +136,21 @@ await asyncio.wait_for(
 - Average unlock time
 - Min/max unlock time
 - Performance vs baseline
+- System load impact
 
-### 7. Security Checks
+### 11. Security Checks
 **What:** Comprehensive security validation
 **Timeout:** 60s
 **Async:** ⚠️  Sequential (must run after others)
 **Checks:**
 - No hardcoded passwords
 - Keychain usage verified
+- Core Graphics usage
+- Secure memory handling
 - Log sanitization
 - Secure communication
 
-### 8. Full E2E
+### 12. Full E2E
 **What:** Complete unlock cycle (real mode only)
 **Timeout:** 180s
 **Async:** ⚠️  Sequential (safety)
