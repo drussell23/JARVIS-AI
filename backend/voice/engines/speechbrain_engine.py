@@ -1247,3 +1247,72 @@ class SpeechBrainEngine(BaseSTTEngine):
             attention_confidence=attention_confidence,
             overall_confidence=min(1.0, max(0.0, overall_confidence)),
         )
+
+    async def verify_speaker(
+        self, audio_data: bytes, known_embedding: np.ndarray, threshold: float = 0.25
+    ) -> tuple:
+        """Verify if audio matches known speaker embedding.
+
+        Args:
+            audio_data: Raw audio bytes
+            known_embedding: Known speaker embedding to compare against
+            threshold: Similarity threshold for verification (0.0-1.0)
+
+        Returns:
+            Tuple of (is_verified: bool, confidence: float)
+        """
+        try:
+            # Extract embedding from test audio
+            test_embedding = await self.extract_speaker_embedding(audio_data)
+
+            # Compute cosine similarity
+            similarity = self._compute_cosine_similarity(test_embedding, known_embedding)
+
+            # Verify if similarity exceeds threshold
+            is_verified = similarity >= threshold
+
+            logger.debug(
+                f"Speaker verification: similarity={similarity:.3f}, "
+                f"threshold={threshold:.3f}, verified={is_verified}"
+            )
+
+            return is_verified, float(similarity)
+
+        except Exception as e:
+            logger.error(f"Speaker verification failed: {e}")
+            return False, 0.0
+
+    def _compute_cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """Compute cosine similarity between two embeddings.
+
+        Args:
+            embedding1: First embedding vector
+            embedding2: Second embedding vector
+
+        Returns:
+            Cosine similarity score (0.0-1.0, higher is more similar)
+        """
+        try:
+            # Flatten embeddings in case they have extra dimensions
+            emb1 = embedding1.flatten()
+            emb2 = embedding2.flatten()
+
+            # Compute cosine similarity
+            dot_product = np.dot(emb1, emb2)
+            norm1 = np.linalg.norm(emb1)
+            norm2 = np.linalg.norm(emb2)
+
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+
+            similarity = dot_product / (norm1 * norm2)
+
+            # Ensure result is in [0, 1] range
+            # Cosine similarity is in [-1, 1], we map to [0, 1]
+            similarity = (similarity + 1) / 2
+
+            return float(similarity)
+
+        except Exception as e:
+            logger.error(f"Failed to compute cosine similarity: {e}")
+            return 0.0
