@@ -463,16 +463,49 @@ class HybridSTTRouter:
                     audio_data, fallback_model, timeout_sec=5.0
                 )
 
-        # Still no result? Create error result
+        # Still no result? Try Whisper directly as last resort
         if final_result is None:
-            final_result = STTResult(
-                text="[transcription failed]",
-                confidence=0.0,
-                engine=STTEngine.VOSK,
-                model_name="fallback",
-                latency_ms=(time.time() - start_time) * 1000,
-                audio_duration_ms=len(audio_data) / 32,
-            )
+            logger.warning("⚠️  All engines failed, attempting direct Whisper transcription...")
+            try:
+                # Try to use Whisper directly without going through engine system
+                import whisper
+                import tempfile
+                import numpy as np
+
+                # Load Whisper model if not already loaded
+                if not hasattr(self, '_whisper_fallback_model'):
+                    logger.info("Loading Whisper base model for fallback...")
+                    self._whisper_fallback_model = whisper.load_model("base")
+
+                # Convert audio bytes to numpy array
+                audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+                # Save to temp file and transcribe
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=True) as tmp:
+                    import soundfile as sf
+                    sf.write(tmp.name, audio_array, 16000)
+                    result = self._whisper_fallback_model.transcribe(tmp.name)
+
+                final_result = STTResult(
+                    text=result["text"].strip(),
+                    confidence=0.85,  # Whisper doesn't provide confidence
+                    engine=STTEngine.WHISPER_LOCAL,
+                    model_name="whisper-base-fallback",
+                    latency_ms=(time.time() - start_time) * 1000,
+                    audio_duration_ms=len(audio_data) / 32,
+                )
+                logger.info(f"✅ Whisper fallback succeeded: '{final_result.text}'")
+            except Exception as e:
+                logger.error(f"Whisper fallback failed: {e}")
+                # Last resort error result
+                final_result = STTResult(
+                    text="[transcription failed]",
+                    confidence=0.0,
+                    engine=STTEngine.VOSK,
+                    model_name="fallback",
+                    latency_ms=(time.time() - start_time) * 1000,
+                    audio_duration_ms=len(audio_data) / 32,
+                )
 
         # Calculate total latency
         total_latency_ms = (time.time() - start_time) * 1000
