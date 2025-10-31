@@ -1,0 +1,241 @@
+# CI/CD Auto-PR Configuration
+# This file controls the behavior of the automated PR creation for failed CI/CD runs
+
+# Workflow monitoring settings
+monitoring:
+  # Auto-discover all workflows (true) or use explicit list (false)
+  auto_discover_workflows: true
+
+  # Explicit workflow list (only used if auto_discover_workflows is false)
+  explicit_workflows: []
+
+  # Workflow patterns to exclude from monitoring
+  exclude_patterns:
+    - ".*dependabot.*"
+    - ".*auto-merge.*"
+    - ".*cleanup.*"
+
+  # Trigger conditions
+  triggers:
+    on_failure: true
+    on_cancelled: false
+    on_timed_out: true
+
+# PR creation settings
+pr_settings:
+  # Branch naming convention: {prefix}/{type}-{workflow}-{timestamp}
+  branch_prefix: "fix/ci"
+
+  # PR title template (supports: {workflow_name}, {run_number}, {branch}, {commit_sha})
+  title_template: "🚨 Fix CI/CD: {workflow_name} (Run #{run_number})"
+
+  # Labels to apply to PRs
+  labels:
+    - "ci-failure"
+    - "automated-pr"
+    - "needs-review"
+
+  # Auto-assign settings
+  auto_assign:
+    enabled: true
+    # assign to: actor, author, team, or specific users
+    assign_to: "actor"
+    team: ""  # GitHub team slug (e.g., "platform-team")
+    specific_users: []  # List of GitHub usernames
+
+  # Reviewers
+  reviewers:
+    enabled: false
+    users: []
+    teams: []
+
+  # Draft PR option
+  draft: false
+
+  # Auto-close PR if workflow succeeds on retry
+  auto_close_on_success: true
+
+# Failure analysis settings
+analysis:
+  # Fetch and parse job logs
+  fetch_logs: true
+
+  # Maximum log lines to include per failed step
+  max_log_lines: 100
+
+  # Parse logs for common errors
+  parse_errors: true
+
+  # Error patterns to highlight
+  error_patterns:
+    - pattern: "ERROR|Error|error"
+      severity: "high"
+      emoji: "❌"
+    - pattern: "FAIL|Failed|failed"
+      severity: "high"
+      emoji: "💥"
+    - pattern: "WARN|Warning|warning"
+      severity: "medium"
+      emoji: "⚠️"
+    - pattern: "AssertionError|Exception"
+      severity: "high"
+      emoji: "🔴"
+    - pattern: "timeout|timed out"
+      severity: "medium"
+      emoji: "⏱️"
+    - pattern: "permission denied|forbidden"
+      severity: "high"
+      emoji: "🔒"
+
+  # AI-powered suggestions (requires OpenAI/Anthropic API key)
+  ai_suggestions:
+    enabled: false
+    provider: "anthropic"  # "openai" or "anthropic"
+    api_key_secret: "ANTHROPIC_API_KEY"
+    model: "claude-3-sonnet-20240229"
+    max_tokens: 1000
+
+# Issue creation settings
+issue_settings:
+  # Create issue for critical failures
+  enabled: true
+
+  # Threshold for "critical" failures
+  critical_threshold:
+    failed_jobs: 3
+    failed_workflows_in_24h: 5
+
+  # Issue labels
+  labels:
+    - "ci-failure"
+    - "critical"
+    - "needs-triage"
+
+  # Auto-close issue when PR is merged
+  auto_close_on_pr_merge: true
+
+# Notification settings
+notifications:
+  # Commit comments
+  commit_comments:
+    enabled: true
+
+  # PR comments on original PR (if failure is from PR)
+  original_pr_comments:
+    enabled: true
+
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_secret: "SLACK_WEBHOOK_URL"
+    channel: "#ci-alerts"
+
+  # Discord notifications
+  discord:
+    enabled: false
+    webhook_secret: "DISCORD_WEBHOOK_URL"
+
+  # Email notifications
+  email:
+    enabled: false
+    recipients: []
+
+# Retry and recovery settings
+recovery:
+  # Attempt to auto-fix common issues
+  auto_fix_enabled: true
+
+  # Common fixes to attempt
+  auto_fixes:
+    # Retry flaky tests
+    - type: "retry_flaky_tests"
+      enabled: true
+      max_retries: 2
+
+    # Update dependencies
+    - type: "update_dependencies"
+      enabled: false
+
+    # Clear cache
+    - type: "clear_cache"
+      enabled: true
+
+    # Rebase on base branch
+    - type: "rebase"
+      enabled: false
+
+# Reporting settings
+reporting:
+  # Generate detailed failure report
+  detailed_report: true
+
+  # Include in report
+  include:
+    - workflow_info
+    - failed_jobs
+    - failed_steps
+    - error_logs
+    - suggested_fixes
+    - historical_data
+    - related_issues
+
+  # Report format
+  format: "markdown"
+
+  # Upload artifacts
+  upload_artifacts:
+    enabled: true
+    retention_days: 30
+
+# Rate limiting and safety
+safety:
+  # Maximum PRs to create per day per workflow
+  max_prs_per_workflow_per_day: 5
+
+  # Maximum PRs to create per day total
+  max_prs_per_day: 20
+
+  # Minimum time between PRs for same workflow (minutes)
+  min_time_between_prs: 30
+
+  # Skip PR creation if similar open PR exists
+  skip_if_similar_pr_exists: true
+
+  # Similarity threshold (0-100)
+  similarity_threshold: 80
+
+# Database/cache settings for tracking
+tracking:
+  # Use GitHub Actions cache for tracking
+  use_cache: true
+
+  # Cache key prefix
+  cache_prefix: "ci-auto-pr"
+
+  # Track failure history
+  track_history: true
+
+  # History retention days
+  history_retention_days: 90
+
+# Advanced features
+advanced:
+  # Parallel processing of multiple failures
+  parallel_processing: true
+
+  # Maximum concurrent jobs
+  max_concurrent_jobs: 5
+
+  # Retry failed API calls
+  retry_api_calls: true
+  max_api_retries: 3
+
+  # Timeout settings (seconds)
+  timeouts:
+    workflow_fetch: 30
+    log_fetch: 60
+    pr_creation: 45
+    total: 600
+
+  # Debug mode
+  debug_mode: false

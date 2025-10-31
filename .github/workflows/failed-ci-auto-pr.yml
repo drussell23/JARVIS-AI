@@ -1,0 +1,403 @@
+name: Advanced CI/CD Auto-PR
+
+on:
+  workflow_run:
+    workflows: ["*"]  # Monitor ALL workflows dynamically
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  checks: read
+
+env:
+  PYTHON_VERSION: "3.10"
+  CONFIG_PATH: ".github/workflows/config/ci-auto-pr-config.yml"
+
+jobs:
+  # ============================================================================
+  # Pre-flight checks
+  # ============================================================================
+  pre-flight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out' }}
+    outputs:
+      should_process: ${{ steps.check.outputs.should_process }}
+      workflow_name: ${{ steps.check.outputs.workflow_name }}
+      config_valid: ${{ steps.validate-config.outputs.valid }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 1
+
+      - name: Load Configuration
+        id: load-config
+        run: |
+          if [ -f "${{ env.CONFIG_PATH }}" ]; then
+            echo "✅ Configuration file found"
+            echo "config_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Configuration file not found, will use defaults"
+            echo "config_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate Configuration
+        id: validate-config
+        if: steps.load-config.outputs.config_exists == 'true'
+        run: |
+          pip install pyyaml > /dev/null 2>&1
+
+          python3 << 'EOF'
+          import yaml
+          import sys
+
+          try:
+              with open("${{ env.CONFIG_PATH }}", 'r') as f:
+                  config = yaml.safe_load(f)
+                  print("✅ Configuration is valid YAML")
+                  print(f"config={config}")
+                  sys.exit(0)
+          except Exception as e:
+              print(f"❌ Configuration validation failed: {e}")
+              sys.exit(1)
+          EOF
+
+          echo "valid=true" >> $GITHUB_OUTPUT
+
+      - name: Check Workflow Filters
+        id: check
+        env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          # Default: process all failures
+          SHOULD_PROCESS="true"
+
+          # Check if workflow should be excluded
+          if [[ "$WORKFLOW_NAME" =~ dependabot|auto-merge|cleanup|"Advanced CI/CD Auto-PR" ]]; then
+            echo "⏭️ Workflow excluded by pattern: $WORKFLOW_NAME"
+            SHOULD_PROCESS="false"
+          fi
+
+          # Check conclusion
+          if [[ "$CONCLUSION" != "failure" ]] && [[ "$CONCLUSION" != "timed_out" ]]; then
+            echo "⏭️ Conclusion not actionable: $CONCLUSION"
+            SHOULD_PROCESS="false"
+          fi
+
+          echo "should_process=$SHOULD_PROCESS" >> $GITHUB_OUTPUT
+          echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        run: |
+          echo "## 🔍 Pre-flight Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow**: ${{ github.event.workflow_run.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Conclusion**: ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Should Process**: ${{ steps.check.outputs.should_process }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Config Valid**: ${{ steps.validate-config.outputs.valid || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Analyze and create PR
+  # ============================================================================
+  analyze-and-create-pr:
+    name: Analyze & Create PR
+    runs-on: ubuntu-latest
+    needs: pre-flight
+    if: needs.pre-flight.outputs.should_process == 'true'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install aiohttp PyGithub requests pyyaml
+
+      - name: Make Script Executable
+        run: |
+          chmod +x .github/workflows/scripts/ci_auto_pr_manager.py
+
+      - name: Run Failure Analysis
+        id: analyze
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "🔍 Starting failure analysis..."
+          python3 .github/workflows/scripts/ci_auto_pr_manager.py
+
+      - name: Create Fix Branch
+        id: branch
+        if: success()
+        run: |
+          # Load branch name from output
+          FIX_BRANCH=$(jq -r '.fix_branch' workflow_failure_details.json)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create and checkout new branch
+          git checkout -b "$FIX_BRANCH"
+
+          echo "fix_branch=$FIX_BRANCH" >> $GITHUB_OUTPUT
+          echo "✅ Created branch: $FIX_BRANCH"
+
+      - name: Commit Failure Report
+        if: success()
+        run: |
+          WORKFLOW_NAME=$(jq -r '.workflow_name' workflow_failure_details.json)
+          RUN_NUMBER=$(jq -r '.run_number' workflow_failure_details.json)
+          FAILED_COUNT=$(jq -r '.failed_count' workflow_failure_details.json)
+
+          # Add failure report
+          git add CI_FAILURE_REPORT.md workflow_failure_details.json
+
+          # Create commit
+          git commit -m "🚨 CI/CD Failure Report: ${WORKFLOW_NAME}
+
+          Automated failure analysis for workflow run #${RUN_NUMBER}
+
+          Summary:
+          - Workflow: ${WORKFLOW_NAME}
+          - Failed Jobs: ${FAILED_COUNT}
+          - Run: #${RUN_NUMBER}
+          - Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          This commit contains:
+          - Detailed failure analysis report (CI_FAILURE_REPORT.md)
+          - Machine-readable failure data (workflow_failure_details.json)
+
+          🤖 Auto-generated by JARVIS CI/CD Auto-PR Manager"
+
+      - name: Push Fix Branch
+        if: success()
+        run: |
+          git push origin ${{ steps.branch.outputs.fix_branch }}
+          echo "✅ Pushed branch: ${{ steps.branch.outputs.fix_branch }}"
+
+      - name: Create Pull Request
+        id: create-pr
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_TITLE=$(jq -r '.pr_title' workflow_failure_details.json)
+          SOURCE_BRANCH=$(jq -r '.branch' workflow_failure_details.json)
+          PR_BODY=$(cat pr_body.md)
+
+          # Load config for labels and assignees
+          LABELS="ci-failure,automated-pr,needs-review"
+
+          # Create PR
+          PR_URL=$(gh pr create \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --base "$SOURCE_BRANCH" \
+            --head "${{ steps.branch.outputs.fix_branch }}" \
+            --label "$LABELS" \
+            --assignee "${{ github.event.workflow_run.actor.login }}" 2>&1 | grep -oP 'https://[^ ]+' || echo "")
+
+          if [ -z "$PR_URL" ]; then
+            echo "❌ Failed to create PR"
+            exit 1
+          fi
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "✅ Created PR: $PR_URL"
+
+      - name: Upload Analysis Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-analysis-${{ github.event.workflow_run.id }}
+          path: |
+            CI_FAILURE_REPORT.md
+            workflow_failure_details.json
+            pr_body.md
+          retention-days: 30
+
+      - name: Add PR Comment
+        if: success() && github.event.workflow_run.event == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ steps.create-pr.outputs.pr_url }}"
+          WORKFLOW_NAME=$(jq -r '.workflow_name' workflow_failure_details.json)
+          WORKFLOW_URL=$(jq -r '.workflow_url' workflow_failure_details.json)
+
+          # Find original PR number
+          ORIGINAL_PR=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --state all --json number --jq '.[0].number')
+
+          if [ -n "$ORIGINAL_PR" ]; then
+            gh pr comment "$ORIGINAL_PR" --body "## 🚨 CI/CD Failure Detected
+
+          The **${WORKFLOW_NAME}** workflow failed for this PR.
+
+          ### Action Required
+          A tracking PR has been automatically created to help resolve this issue:
+          🔗 ${PR_URL}
+
+          ### Quick Links
+          - [Failed Workflow Run](${WORKFLOW_URL})
+          - [Failure Analysis](${PR_URL}/files)
+
+          Please review the analysis and implement the suggested fixes.
+
+          ---
+          🤖 *Auto-generated by JARVIS CI/CD Manager*"
+
+            echo "✅ Added comment to original PR #$ORIGINAL_PR"
+          fi
+
+      - name: Add Commit Comment
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ steps.create-pr.outputs.pr_url }}"
+          WORKFLOW_NAME=$(jq -r '.workflow_name' workflow_failure_details.json)
+          WORKFLOW_URL=$(jq -r '.workflow_url' workflow_failure_details.json)
+          FAILED_COUNT=$(jq -r '.failed_count' workflow_failure_details.json)
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            /repos/${{ github.repository }}/commits/${{ github.event.workflow_run.head_sha }}/comments \
+            -f body="## 🚨 CI/CD Failure Notification
+
+          The **${WORKFLOW_NAME}** workflow failed for this commit.
+
+          **Failed Jobs**: ${FAILED_COUNT}
+          **Tracking PR**: ${PR_URL}
+          **Workflow Run**: ${WORKFLOW_URL}
+
+          Review the tracking PR for detailed failure analysis and suggested fixes.
+
+          ---
+          🤖 *JARVIS CI/CD Auto-PR Manager*" || echo "⚠️ Could not add commit comment"
+
+  # ============================================================================
+  # Create issue for critical failures
+  # ============================================================================
+  create-issue:
+    name: Create Critical Failure Issue
+    runs-on: ubuntu-latest
+    needs: [pre-flight, analyze-and-create-pr]
+    if: always() && needs.analyze-and-create-pr.result == 'success'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download Analysis
+        uses: actions/download-artifact@v4
+        with:
+          name: failure-analysis-${{ github.event.workflow_run.id }}
+
+      - name: Check if Critical
+        id: check-critical
+        run: |
+          FAILED_COUNT=$(jq -r '.failed_count' workflow_failure_details.json 2>/dev/null || echo "0")
+
+          if [ "$FAILED_COUNT" -ge 3 ]; then
+            echo "is_critical=true" >> $GITHUB_OUTPUT
+            echo "failed_count=$FAILED_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "is_critical=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Critical Failure Issue
+        if: steps.check-critical.outputs.is_critical == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WORKFLOW_NAME=$(jq -r '.workflow_name' workflow_failure_details.json)
+          WORKFLOW_URL=$(jq -r '.workflow_url' workflow_failure_details.json)
+          BRANCH=$(jq -r '.branch' workflow_failure_details.json)
+          FAILED_COUNT=$(jq -r '.failed_count' workflow_failure_details.json)
+
+          gh issue create \
+            --title "🚨 Critical: ${FAILED_COUNT} Jobs Failed in ${WORKFLOW_NAME}" \
+            --body "## ⚠️ Critical CI/CD Failure
+
+          The **${WORKFLOW_NAME}** workflow has **${FAILED_COUNT} failed jobs**, indicating a potentially serious issue.
+
+          ### Details
+          - **Branch**: \`${BRANCH}\`
+          - **Failed Jobs**: ${FAILED_COUNT}
+          - **Workflow Run**: [View Details](${WORKFLOW_URL})
+
+          ### Recommendations
+          1. 🔍 Review the workflow logs immediately
+          2. 🛑 Consider pausing deployments until resolved
+          3. 📊 Check for infrastructure or dependency issues
+          4. 🔄 Review recent changes for potential causes
+
+          ### Analysis
+          Detailed failure analysis is available in the tracking PR.
+
+          ---
+          🤖 *Auto-generated critical failure alert*" \
+            --label "ci-failure,critical,needs-immediate-attention" \
+            --assignee "${{ github.event.workflow_run.actor.login }}"
+
+          echo "✅ Created critical failure issue"
+
+  # ============================================================================
+  # Summary and notifications
+  # ============================================================================
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [pre-flight, analyze-and-create-pr, create-issue]
+    if: always()
+
+    steps:
+      - name: Generate Workflow Summary
+        run: |
+          echo "# 🤖 CI/CD Auto-PR Manager Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow**: ${{ needs.pre-flight.outputs.workflow_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Conclusion**: ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: \`${{ github.event.workflow_run.head_branch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: \`${{ github.event.workflow_run.head_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.pre-flight.outputs.should_process }}" != "true" ]; then
+            echo "⏭️ **Skipped**: Workflow excluded by filters" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.analyze-and-create-pr.result }}" == "success" ]; then
+            echo "✅ **Success**: Auto-PR created successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.analyze-and-create-pr.result }}" == "failure" ]; then
+            echo "❌ **Failed**: Could not create auto-PR" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **Skipped**: No action taken" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Completed at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')*" >> $GITHUB_STEP_SUMMARY
