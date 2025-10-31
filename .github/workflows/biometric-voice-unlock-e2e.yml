@@ -12,7 +12,6 @@ on:
           - mock
           - integration
           - real
-          - real-time
       test_duration:
         description: 'Maximum test duration (seconds)'
         required: false
@@ -48,16 +47,6 @@ on:
         required: false
         default: true
         type: boolean
-      max_first_verification_time:
-        description: 'Max first verification time (seconds)'
-        required: false
-        default: '10'
-        type: number
-      max_subsequent_verification_time:
-        description: 'Max subsequent verification time (seconds)'
-        required: false
-        default: '1'
-        type: number
       test_cloud_sql:
         description: 'Test Cloud SQL integration'
         required: false
@@ -68,15 +57,6 @@ on:
         required: false
         default: true
         type: boolean
-      real_time_voice_file:
-        description: 'Path to voice file for real-time testing'
-        required: false
-        type: string
-      real_time_expected_speaker:
-        description: 'Expected speaker name for real-time test'
-        required: false
-        default: 'Derek'
-        type: string
 
   # Auto-run on biometric/voice changes
   push:
@@ -141,16 +121,11 @@ on:
         required: false
         default: true
         type: boolean
-      max_first_verification_time:
-        description: 'Max first verification time (seconds)'
+      test_cloud_sql:
+        description: 'Test Cloud SQL integration'
         required: false
-        default: 10
-        type: number
-      max_subsequent_verification_time:
-        description: 'Max subsequent verification time (seconds)'
-        required: false
-        default: 1
-        type: number
+        default: false
+        type: boolean
       test_anti_spoofing:
         description: 'Test anti-spoofing'
         required: false
@@ -280,8 +255,8 @@ jobs:
           VOICE_SAMPLES_COUNT: ${{ inputs.voice_samples_count || '59' }}
           EMBEDDING_DIMENSION: ${{ inputs.embedding_dimension || '768' }}
           VERIFICATION_THRESHOLD: ${{ inputs.verification_threshold || '0.75' }}
-          MAX_FIRST_VERIFICATION_TIME: ${{ inputs.max_first_verification_time || '10' }}
-          MAX_SUBSEQUENT_VERIFICATION_TIME: ${{ inputs.max_subsequent_verification_time || '1' }}
+          MAX_FIRST_VERIFICATION_TIME: 10
+          MAX_SUBSEQUENT_VERIFICATION_TIME: 1
           TEST_SUITE: ${{ matrix.test-suite }}
           RESULTS_DIR: ${{ env.RESULTS_DIR }}
         run: |
@@ -329,8 +304,8 @@ jobs:
           VOICE_SAMPLES_COUNT: ${{ inputs.voice_samples_count || '59' }}
           EMBEDDING_DIMENSION: ${{ inputs.embedding_dimension || '768' }}
           VERIFICATION_THRESHOLD: ${{ inputs.verification_threshold || '0.75' }}
-          MAX_FIRST_VERIFICATION_TIME: ${{ inputs.max_first_verification_time || '10' }}
-          MAX_SUBSEQUENT_VERIFICATION_TIME: ${{ inputs.max_subsequent_verification_time || '1' }}
+          MAX_FIRST_VERIFICATION_TIME: 10
+          MAX_SUBSEQUENT_VERIFICATION_TIME: 1
           RESULTS_DIR: ${{ env.RESULTS_DIR }}
         run: |
           echo "🟡 Running biometric voice tests (integration mode)..."
