@@ -2368,6 +2368,725 @@ async def detect_liveness(audio_data: bytes) -> bool:
 
 ---
 
+## Development Roadmap & Security Assessment
+
+### Roadmap Overview
+
+This section provides an honest assessment of current limitations, security vulnerabilities, and a phased development plan to address them.
+
+**Current System Maturity**: **BETA** (70% production-ready)
+
+**Security Rating**: **MEDIUM** (suitable for convenience, NOT high-security scenarios)
+
+---
+
+### Phase 1: Security Hardening (CRITICAL - Q1 2026)
+
+**Priority**: 🔴 **CRITICAL** - Addresses major security vulnerabilities
+
+#### 1.1 Anti-Spoofing / Liveness Detection
+
+**Current Status**: ❌ **NOT IMPLEMENTED**
+
+**Risk Level**: 🔴 **HIGH RISK**
+
+**Vulnerability**:
+```python
+# Current system accepts ANY audio that matches embedding
+# Attacker can:
+1. Record user's voice → replay recording → ✅ UNLOCKED
+2. Use voice synthesis (ElevenLabs, VALL-E) → ✅ UNLOCKED
+3. Use voice conversion AI → ✅ UNLOCKED
+```
+
+**Impact Assessment**:
+- **Likelihood**: Medium (requires access to voice sample)
+- **Severity**: High (unauthorized access to system)
+- **Detection**: None (no logging of spoofing attempts)
+- **Real-World Scenario**: Attacker records Zoom call audio, plays back to unlock
+
+**Roadmap**:
+
+**Milestone 1.1.1: Basic Replay Attack Detection** (2 weeks)
+```python
+# Implementation plan
+async def detect_replay_attack(audio_data):
+    """Detect if audio is played from speaker vs live microphone"""
+
+    # Method 1: Speaker playback artifacts
+    # Speakers introduce specific frequency distortions
+    freq_spectrum = compute_fft(audio_data)
+    speaker_artifact_score = detect_speaker_artifacts(freq_spectrum)
+
+    if speaker_artifact_score > 0.7:
+        logger.warning("⚠️ Possible replay attack detected (speaker artifacts)")
+        return False
+
+    # Method 2: Background noise consistency
+    # Live audio has consistent environmental noise
+    # Replayed audio has double-encoded noise
+    noise_consistency = analyze_background_noise_consistency(audio_data)
+
+    if noise_consistency < 0.3:
+        logger.warning("⚠️ Possible replay attack detected (noise inconsistency)")
+        return False
+
+    return True  # Likely live
+```
+
+**Success Metrics**:
+- Detect 85%+ of replay attacks
+- False positive rate < 5%
+- Latency impact < 50ms
+
+---
+
+**Milestone 1.1.2: Challenge-Response System** (3 weeks)
+```python
+# Dynamic passphrase verification
+async def challenge_response_verification(speaker_id):
+    """Require user to speak random phrase"""
+
+    # Generate random challenge
+    challenge_phrase = generate_random_phrase()
+    # Examples: "blue elephant 7482", "mountain sunset 3", "coffee table nine"
+
+    # Display to user
+    await display_challenge(challenge_phrase)
+
+    # Capture response
+    response_audio = await capture_audio(duration=3.0)
+
+    # Verify two things:
+    # 1. Voice matches speaker profile (existing verification)
+    # 2. Spoken content matches challenge phrase (speech-to-text)
+
+    voice_verified = await verify_speaker(response_audio, speaker_id)
+    content_verified = await verify_phrase_content(response_audio, challenge_phrase)
+
+    return voice_verified and content_verified
+```
+
+**Success Metrics**:
+- 100% prevention of replay attacks
+- User experience acceptable (3-5 second delay)
+- Speech recognition accuracy > 95%
+
+**Trade-offs**:
+- ✅ Eliminates replay attacks completely
+- ❌ Adds user friction (must read phrase)
+- ❌ Requires speech-to-text model (100MB+)
+- **Decision**: Optional, enable for high-security mode only
+
+---
+
+**Milestone 1.1.3: AI-Generated Voice Detection** (8 weeks - RESEARCH)
+```python
+# Detect synthesized/converted voices
+async def detect_synthetic_voice(audio_data):
+    """Detect if voice is AI-generated vs human"""
+
+    # Load ASVspoof model (state-of-the-art anti-spoofing)
+    # Model: RawNet2 or AASIST (trained on ASVspoof 2021 dataset)
+
+    # Extract features
+    features = extract_lfcc_features(audio_data)  # Linear Frequency Cepstral Coefficients
+
+    # Classify: genuine vs spoofed
+    spoof_score = asvspoof_model.predict(features)
+
+    if spoof_score > 0.5:
+        logger.warning(f"⚠️ Synthetic voice detected (score: {spoof_score:.2f})")
+        return False
+
+    return True  # Likely genuine human voice
+```
+
+**Challenges**:
+- ASVspoof models are large (200MB+)
+- Arms race: Synthesis models improving rapidly
+- False positives with poor audio quality
+
+**Success Metrics**:
+- Detect 90%+ of TTS-generated voices
+- Detect 75%+ of voice-converted voices
+- False positive rate < 2%
+
+**Long-term Strategy**:
+- Regular model updates as synthesis tech evolves
+- Ensemble of detection methods (no single silver bullet)
+- Combine with behavioral biometrics
+
+---
+
+#### 1.2 Multi-Factor Authentication
+
+**Current Status**: ❌ **Single-factor only** (voice)
+
+**Risk Level**: 🟡 **MEDIUM RISK**
+
+**Vulnerability**: Voice alone insufficient for high-security scenarios
+
+**Roadmap**:
+
+**Milestone 1.2.1: Confidence-Based Factor Requirements** (1 week)
+```python
+async def adaptive_multi_factor_unlock(voice_audio):
+    """Require additional factors based on voice confidence"""
+
+    voice_result = await verify_speaker(voice_audio)
+
+    if voice_result["confidence"] > 0.90:
+        # Very high confidence - voice alone sufficient
+        return unlock_screen()
+
+    elif voice_result["confidence"] > 0.70:
+        # Medium confidence - require PIN
+        pin = await prompt_for_pin()
+        if verify_pin(pin):
+            return unlock_screen()
+        else:
+            return deny_unlock("Incorrect PIN")
+
+    elif voice_result["confidence"] > 0.50:
+        # Low confidence - require PIN + device fingerprint
+        pin = await prompt_for_pin()
+        device_trusted = check_device_fingerprint()
+
+        if verify_pin(pin) and device_trusted:
+            return unlock_screen()
+        else:
+            return deny_unlock("Additional verification failed")
+
+    else:
+        # Very low confidence - deny entirely
+        return deny_unlock("Voice verification failed")
+```
+
+**Success Metrics**:
+- Zero false accepts with confidence < 50%
+- PIN fallback works 100% of the time
+- User friction acceptable
+
+---
+
+**Milestone 1.2.2: Behavioral Biometrics** (6 weeks)
+```python
+# Add behavioral analysis to voice verification
+async def enhanced_verification_with_behavior(audio_data, speaker_id):
+    """Combine voice biometrics with behavioral patterns"""
+
+    # Factor 1: Voice embedding (existing)
+    voice_score = await verify_voice_embedding(audio_data, speaker_id)
+
+    # Factor 2: Speaking rate (temporal pattern)
+    speaking_rate = calculate_speaking_rate(audio_data)
+    user_typical_rate = get_user_speaking_rate(speaker_id)
+    rate_score = compare_speaking_rates(speaking_rate, user_typical_rate)
+
+    # Factor 3: Prosody (intonation patterns)
+    prosody_features = extract_prosody(audio_data)
+    user_prosody_profile = get_user_prosody_profile(speaker_id)
+    prosody_score = compare_prosody(prosody_features, user_prosody_profile)
+
+    # Factor 4: Vocabulary/phrasing (if using challenge-response)
+    vocabulary_score = analyze_word_choice(audio_data, speaker_id)
+
+    # Weighted combination
+    final_score = (
+        0.60 * voice_score +
+        0.15 * rate_score +
+        0.15 * prosody_score +
+        0.10 * vocabulary_score
+    )
+
+    return final_score
+```
+
+**Benefits**:
+- Harder to spoof (must match voice + behavior)
+- Continuous learning (behavior adapts over time)
+- Higher confidence scores
+
+**Trade-offs**:
+- Requires more training data (50+ samples instead of 5)
+- More complex implementation
+- Slower verification (150ms → 250ms)
+
+---
+
+### Phase 2: Robustness & Reliability (HIGH - Q2 2026)
+
+**Priority**: 🟠 **HIGH** - Improves user experience and system reliability
+
+#### 2.1 Continuous Profile Learning
+
+**Current Status**: ⚠️ **Static profiles** (voice drift causes degradation over time)
+
+**Problem**:
+```
+Month 1: 85% confidence ✅
+Month 6: 78% confidence ✅
+Month 12: 65% confidence ❌ (voice changed due to aging, health, stress)
+```
+
+**Solution**:
+```python
+async def continuous_profile_update(speaker_id, audio_data, verification_result):
+    """Update profile after successful verifications"""
+
+    if not verification_result["verified"]:
+        return  # Only learn from successful attempts
+
+    # Generate embedding from current audio
+    current_embedding = await generate_embedding(audio_data)
+
+    # Get existing profile
+    profile = await get_speaker_profile(speaker_id)
+    old_embedding = profile["embedding"]
+
+    # Exponential moving average (EMA)
+    learning_rate = 0.05  # 5% weight to new sample
+    updated_embedding = (1 - learning_rate) * old_embedding + learning_rate * current_embedding
+
+    # Update database
+    await update_speaker_embedding(speaker_id, updated_embedding)
+
+    logger.info(f"✅ Profile updated for {speaker_id} (learning rate: {learning_rate})")
+```
+
+**Success Metrics**:
+- Maintain 75%+ confidence over 12+ months
+- Adapt to gradual voice changes (aging, health)
+- No sudden profile corruption (malicious updates)
+
+**Safeguards**:
+```python
+# Prevent malicious profile poisoning
+if confidence_score < 0.80:
+    # Don't learn from low-confidence verifications
+    return
+
+if cosine_similarity(new_embedding, old_embedding) < 0.70:
+    # New embedding too different - possible attack
+    logger.warning("⚠️ Profile update rejected (too different from existing)")
+    return
+
+# Proceed with update
+```
+
+---
+
+#### 2.2 Automatic Legacy Profile Upgrade
+
+**Current Status**: ⚠️ **Manual re-enrollment required** for legacy profiles
+
+**Problem**: 96D/768D profiles stuck at 50% threshold (lower security)
+
+**Solution**:
+```python
+async def background_profile_upgrade(speaker_id):
+    """Gradually upgrade legacy profile to native 192D"""
+
+    profile = await get_speaker_profile(speaker_id)
+
+    if profile["is_native"]:
+        return  # Already native, no upgrade needed
+
+    # Collect new samples over time (non-intrusive)
+    # Ask user once per day: "Say 'upgrade my voice profile' to improve accuracy"
+
+    new_samples = await collect_new_samples(speaker_id, target_count=10)
+
+    if len(new_samples) < 10:
+        return  # Not enough samples yet
+
+    # Generate native 192D embeddings
+    native_embeddings = [
+        await speechbrain_engine.generate_embedding(sample)
+        for sample in new_samples
+    ]
+
+    # Average new embeddings
+    averaged_native = np.mean(native_embeddings, axis=0)
+
+    # Optionally: Blend with adapted legacy embedding
+    legacy_adapted = adapt_dimension(profile["embedding"], target_dim=192)
+    blended = 0.7 * averaged_native + 0.3 * legacy_adapted
+
+    # Update profile
+    await update_speaker_profile(
+        speaker_id=speaker_id,
+        embedding=blended,
+        dimension=192,
+        quality="excellent",
+        threshold=0.75  # Upgrade to higher security threshold
+    )
+
+    logger.info(f"✅ Profile upgraded: {speaker_id} → native 192D (threshold: 75%)")
+```
+
+**Timeline**: Passive upgrade over 1-2 weeks
+
+**Success Metrics**:
+- 90%+ of legacy profiles upgraded within 30 days
+- No degradation in verification accuracy during transition
+- User friction minimal (1 sample per day)
+
+---
+
+#### 2.3 Noise Robustness Improvements
+
+**Current Status**: ⚠️ **Moderate noise handling** (degrades in loud environments)
+
+**Performance**:
+```
+Quiet room: 85% confidence ✅
+Normal room: 75% confidence ✅
+Noisy environment (coffee shop): 48% confidence ❌
+Very noisy (street traffic): 25% confidence ❌
+```
+
+**Solution**:
+```python
+# Enhanced noise reduction pipeline
+def advanced_audio_preprocessing(audio_data):
+    """Multi-stage noise reduction"""
+
+    # Stage 1: Spectral subtraction (remove stationary noise)
+    audio_clean = spectral_subtraction(audio_data)
+
+    # Stage 2: Wiener filtering (adaptive noise reduction)
+    audio_wiener = wiener_filter(audio_clean)
+
+    # Stage 3: Deep learning denoising (Neural network trained on clean/noisy pairs)
+    # Model: FullSubNet or DTLN (real-time speech enhancement)
+    audio_denoised = denoising_model.enhance(audio_wiener)
+
+    # Stage 4: Voice activity detection (remove non-speech segments)
+    speech_segments = detect_speech_activity(audio_denoised)
+    audio_vad = extract_speech_only(speech_segments)
+
+    return audio_vad
+```
+
+**Trade-offs**:
+- ✅ Works in 20+ dB SNR environments
+- ❌ Adds 100-200ms latency
+- ❌ Requires 50MB denoising model
+
+**Success Metrics**:
+- 70%+ confidence in moderate noise (coffee shop)
+- 60%+ confidence in high noise (street)
+- Latency < 500ms total
+
+---
+
+### Phase 3: Advanced Features (MEDIUM - Q3 2026)
+
+**Priority**: 🟡 **MEDIUM** - Nice-to-have enhancements
+
+#### 3.1 Multi-Language Support
+
+**Current Limitation**: ECAPA-TDNN trained primarily on English (80% of training data)
+
+**Impact**:
+```
+English speakers: 1.5% EER ✅
+Spanish speakers: 3.0% EER ⚠️
+Mandarin speakers: 4.5% EER ❌
+Arabic speakers: 5.2% EER ❌
+```
+
+**Solution**:
+```python
+# Fine-tune model on multilingual dataset
+async def fine_tune_for_language(language_code):
+    """Fine-tune ECAPA-TDNN on specific language"""
+
+    # Load pre-trained ECAPA-TDNN
+    base_model = load_ecapa_tdnn()
+
+    # Load language-specific dataset
+    # Options: VoxCeleb (multilingual), VoxLingua107 (107 languages)
+    dataset = load_language_dataset(language_code)
+
+    # Fine-tune last layers only (transfer learning)
+    # Freeze convolutional layers, train only FC layers
+    model_finetuned = fine_tune(base_model, dataset, epochs=10)
+
+    # Save language-specific model
+    save_model(model_finetuned, f"ecapa_tdnn_{language_code}.pt")
+```
+
+**Languages to Support** (priority order):
+1. English (already supported)
+2. Spanish (2nd most common)
+3. Mandarin
+4. French
+5. German
+6. Arabic
+
+**Success Metrics**:
+- < 2.5% EER for all supported languages
+- Model size < 700MB per language
+- Language auto-detection or user selection
+
+---
+
+#### 3.2 Multi-Device Profile Sync
+
+**Current Limitation**: Profiles tied to single device
+
+**Problem**:
+```
+Device A (MacBook): Profile enrolled ✅
+Device B (iPad): No profile ❌ (must re-enroll)
+```
+
+**Solution**:
+```python
+# Cloud-based profile sync via Cloud SQL
+async def sync_profile_across_devices(speaker_id):
+    """Sync speaker profile to all user's devices"""
+
+    # Profiles already in Cloud SQL, just need device registration
+
+    # Device A enrolls profile → saves to Cloud SQL
+    await save_profile_to_cloud(speaker_id, embedding, metadata)
+
+    # Device B downloads profile on first launch
+    profile = await download_profile_from_cloud(speaker_id)
+
+    # Device-specific calibration (microphone differences)
+    calibrated_profile = calibrate_for_device(profile, device_id)
+
+    # Save locally for offline use
+    await save_profile_locally(calibrated_profile)
+```
+
+**Security Considerations**:
+- End-to-end encryption for profile sync
+- Device authentication (only user's devices can download)
+- Revocation mechanism (remove compromised devices)
+
+**Success Metrics**:
+- Profile available on all devices within 30 seconds of enrollment
+- Accuracy maintained across devices (> 75% confidence)
+- Works offline after initial sync
+
+---
+
+### Phase 4: Enterprise & Compliance (LOW - Q4 2026)
+
+**Priority**: 🟢 **LOW** - Enterprise/regulatory requirements
+
+#### 4.1 GDPR/CCPA Compliance
+
+**Current Gaps**:
+1. ❌ No explicit consent mechanism for biometric data collection
+2. ❌ No data export functionality (user can't download their embedding)
+3. ❌ No data deletion guarantee (Cloud SQL soft delete)
+4. ❌ No audit logging (who accessed embedding, when)
+
+**Required Features**:
+```python
+# GDPR Article 17: Right to Erasure
+async def gdpr_delete_user_data(speaker_id):
+    """Permanently delete all user biometric data"""
+
+    # 1. Delete speaker profile
+    await db.execute("DELETE FROM speaker_profiles WHERE speaker_id = $1", speaker_id)
+
+    # 2. Delete verification history
+    await db.execute("DELETE FROM verification_history WHERE speaker_id = $1", speaker_id)
+
+    # 3. Delete from backups (Cloud SQL point-in-time recovery)
+    # Note: Google Cloud SQL retains backups for 7 days - document this
+
+    # 4. Audit log the deletion
+    await audit_log.record({
+        "action": "biometric_data_deletion",
+        "speaker_id": speaker_id,
+        "timestamp": datetime.utcnow(),
+        "requestor": "user_gdpr_request"
+    })
+
+    logger.info(f"✅ GDPR deletion complete for speaker_id: {speaker_id}")
+```
+
+```python
+# GDPR Article 20: Data Portability
+async def export_user_data(speaker_id):
+    """Export user's biometric data in machine-readable format"""
+
+    profile = await get_speaker_profile(speaker_id)
+
+    export_data = {
+        "speaker_id": speaker_id,
+        "speaker_name": profile["speaker_name"],
+        "enrollment_date": profile["created_at"].isoformat(),
+        "embedding_dimension": profile["embedding"].shape[0],
+        "embedding_data": profile["embedding"].tolist(),  # JSON-serializable
+        "total_verifications": profile["total_samples"],
+        "last_verification": profile["updated_at"].isoformat(),
+        "model_version": "ECAPA-TDNN v2.0",
+        "data_format": "numpy_float64_array"
+    }
+
+    return json.dumps(export_data, indent=2)
+```
+
+**Timeline**: 3 weeks for full compliance
+
+---
+
+#### 4.2 Audit Logging & Monitoring
+
+**Current Gaps**:
+- ❌ No centralized audit log
+- ❌ No anomaly detection (multiple failed attempts)
+- ❌ No alerting for security events
+
+**Solution**:
+```python
+# Comprehensive audit logging
+async def log_verification_attempt(speaker_id, result, metadata):
+    """Log all verification attempts for security audit"""
+
+    await audit_log.record({
+        "event_type": "voice_verification_attempt",
+        "speaker_id": speaker_id,
+        "timestamp": datetime.utcnow(),
+        "result": "success" if result["verified"] else "failed",
+        "confidence": result["confidence"],
+        "device_id": metadata["device_id"],
+        "ip_address": metadata["ip_address"],
+        "audio_duration": metadata["audio_duration"],
+        "model_version": "ECAPA-TDNN-192D",
+        "threshold_used": result["threshold"],
+        "profile_quality": result["profile_quality"]
+    })
+
+    # Anomaly detection
+    recent_failures = await count_recent_failures(speaker_id, window_minutes=10)
+
+    if recent_failures > 5:
+        await send_security_alert(
+            speaker_id=speaker_id,
+            alert_type="multiple_failed_attempts",
+            details=f"{recent_failures} failed attempts in 10 minutes"
+        )
+
+        # Lock account temporarily
+        await lock_account(speaker_id, duration_minutes=15)
+```
+
+**Dashboard Features**:
+- Real-time verification attempts graph
+- Failed attempt rate by user
+- Average confidence scores over time
+- Device usage patterns
+- Alert history
+
+---
+
+### Security Vulnerability Summary
+
+| Vulnerability | Severity | Current Mitigation | Planned Fix | Timeline |
+|---------------|----------|-------------------|-------------|----------|
+| **Replay Attack** | 🔴 **CRITICAL** | None | Liveness detection | Q1 2026 |
+| **Voice Synthesis (TTS)** | 🔴 **CRITICAL** | None | ASVspoof detector | Q1 2026 |
+| **Voice Conversion** | 🔴 **CRITICAL** | None | ASVspoof detector | Q1 2026 |
+| **Single-Factor Auth** | 🟡 **MEDIUM** | None | Multi-factor optional | Q1 2026 |
+| **Profile Poisoning** | 🟡 **MEDIUM** | None | Similarity threshold | Q2 2026 |
+| **Voice Drift** | 🟢 **LOW** | Manual re-enroll | Continuous learning | Q2 2026 |
+| **Database Breach** | 🟡 **MEDIUM** | Encryption at rest | E2E encryption | Q3 2026 |
+| **GDPR Non-Compliance** | 🟡 **MEDIUM** | None | Full compliance | Q4 2026 |
+| **No Audit Trail** | 🟢 **LOW** | Basic logging | Comprehensive audit | Q4 2026 |
+
+---
+
+### Honest Assessment & Recommendations
+
+#### Current System Strengths ✅
+
+1. **Dimension Adaptation**: Robust handling of legacy profiles
+2. **Adaptive Thresholds**: Profile-specific security levels
+3. **Database Abstraction**: Easy migration between SQLite/PostgreSQL
+4. **Privacy-Preserving**: Local ML processing, no third-party APIs
+5. **Performance**: Fast inference (85ms on MPS, 280ms on CPU)
+
+#### Current System Weaknesses ❌
+
+1. **No Anti-Spoofing**: Vulnerable to replay and synthesis attacks
+2. **Single-Factor Only**: Voice alone insufficient for high security
+3. **Static Profiles**: Voice drift degrades accuracy over time
+4. **Limited Language Support**: Primarily English
+5. **No Audit Trail**: Difficult to detect security incidents
+
+#### Recommended Use Cases
+
+**✅ SUITABLE FOR**:
+- Personal convenience (home automation, screen unlock)
+- Low-security scenarios (media playback control)
+- Trusted environments (home, private office)
+- Augmenting other authentication (voice + PIN)
+
+**❌ NOT SUITABLE FOR**:
+- Financial transactions (bank transfers, payments)
+- Medical records access
+- Government/military systems
+- Public/untrusted environments
+- Sole authentication for sensitive data
+
+#### Risk Mitigation Strategy
+
+**Short-term** (until Phase 1 complete):
+1. **Combine with other authentication**: Require PIN for sensitive operations
+2. **Environment checks**: Disable voice unlock in public places
+3. **Rate limiting**: Lock account after 5 failed attempts
+4. **Monitoring**: Alert on unusual access patterns
+5. **User education**: Warn users about replay attack risk
+
+**Long-term**:
+1. Implement full Phase 1 (security hardening)
+2. Continuous security audits
+3. Stay current with anti-spoofing research
+4. Regular model updates
+5. Bug bounty program for security researchers
+
+---
+
+### Development Milestones
+
+#### 2026 Q1 (Security Hardening)
+- [ ] Week 1-2: Basic replay attack detection
+- [ ] Week 3-5: Challenge-response system
+- [ ] Week 6-13: AI-generated voice detection (research + implementation)
+- [ ] Week 14: Multi-factor authentication framework
+
+#### 2026 Q2 (Robustness)
+- [ ] Week 1-2: Continuous profile learning
+- [ ] Week 3-5: Automatic legacy profile upgrade
+- [ ] Week 6-10: Enhanced noise robustness
+- [ ] Week 11-13: Testing & validation
+
+#### 2026 Q3 (Advanced Features)
+- [ ] Week 1-4: Multi-language support (Spanish, Mandarin)
+- [ ] Week 5-8: Multi-device profile sync
+- [ ] Week 9-13: Additional languages + testing
+
+#### 2026 Q4 (Enterprise/Compliance)
+- [ ] Week 1-3: GDPR/CCPA compliance implementation
+- [ ] Week 4-6: Comprehensive audit logging
+- [ ] Week 7-9: Security dashboard
+- [ ] Week 10-13: Documentation & certification
+
+**Total Estimated Effort**: ~9 months (1 full-time engineer)
+
+---
+
 ## Configuration Reference
 
 ### verification_config.yaml
