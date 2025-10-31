@@ -171,29 +171,47 @@ class SpeakerVerificationService:
 
     async def _load_speaker_profiles(self):
         """Load speaker profiles from learning database"""
-        profiles = await self.learning_db.get_all_speaker_profiles()
+        try:
+            logger.info("🔄 Loading speaker profiles from database...")
 
-        for profile in profiles:
-            speaker_id = profile["speaker_id"]
-            speaker_name = profile["speaker_name"]
+            # Ensure database is initialized
+            if not hasattr(self.learning_db, 'db') or self.learning_db.db is None:
+                logger.warning("⚠️ Database not fully initialized, attempting to initialize...")
+                await self.learning_db.initialize()
 
-            # Deserialize embedding
-            embedding_bytes = profile.get("voiceprint_embedding")
-            if embedding_bytes:
-                embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
-                self.speaker_profiles[speaker_name] = {
-                    "speaker_id": speaker_id,
-                    "embedding": embedding,
-                    "confidence": profile.get("recognition_confidence", 0.0),
-                    "is_primary_user": profile.get("is_primary_user", False),
-                    "security_level": profile.get("security_level", "standard"),
-                    "total_samples": profile.get("total_samples", 0),
-                }
+            profiles = await self.learning_db.get_all_speaker_profiles()
+            logger.info(f"📊 Found {len(profiles)} speaker profiles in database")
 
-                logger.debug(
-                    f"Loaded speaker profile: {speaker_name} "
-                    f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)})"
-                )
+            for profile in profiles:
+                speaker_id = profile["speaker_id"]
+                speaker_name = profile["speaker_name"]
+
+                # Deserialize embedding
+                embedding_bytes = profile.get("voiceprint_embedding")
+                if embedding_bytes:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                    self.speaker_profiles[speaker_name] = {
+                        "speaker_id": speaker_id,
+                        "embedding": embedding,
+                        "confidence": profile.get("recognition_confidence", 0.0),
+                        "is_primary_user": profile.get("is_primary_user", False),
+                        "security_level": profile.get("security_level", "standard"),
+                        "total_samples": profile.get("total_samples", 0),
+                    }
+
+                    logger.info(
+                        f"✅ Loaded speaker profile: {speaker_name} "
+                        f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)}, "
+                        f"Embedding shape: {embedding.shape})"
+                    )
+                else:
+                    logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding!")
+
+            logger.info(f"✅ Successfully loaded {len(self.speaker_profiles)} speaker profiles")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load speaker profiles: {e}", exc_info=True)
+            logger.warning("⚠️ Continuing with 0 profiles - voice verification will fail until profiles are loaded")
 
     async def verify_speaker(self, audio_data: bytes, speaker_name: Optional[str] = None) -> dict:
         """
