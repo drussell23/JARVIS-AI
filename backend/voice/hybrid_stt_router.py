@@ -484,7 +484,16 @@ class HybridSTTRouter:
                     logger.info("Loading Whisper base model for fallback...")
                     self._whisper_fallback_model = whisper.load_model("base")
 
-                # Convert audio bytes to numpy array
+                # Convert audio to numpy array, handling both string and bytes
+                if isinstance(audio_data, str):
+                    # If it's a base64 string, decode it
+                    import base64
+                    try:
+                        audio_data = base64.b64decode(audio_data)
+                    except:
+                        # If not base64, try to encode to bytes
+                        audio_data = audio_data.encode('latin-1')
+
                 audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
                 # Save to temp file and transcribe

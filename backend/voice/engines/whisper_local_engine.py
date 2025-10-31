@@ -146,12 +146,22 @@ class WhisperLocalEngine(BaseSTTEngine):
             logger.error(f"Whisper Local transcription failed: {e}")
             raise
 
-    async def _bytes_to_audio_array(self, audio_data: bytes) -> np.ndarray:
+    async def _bytes_to_audio_array(self, audio_data) -> np.ndarray:
         """
         Convert audio bytes to numpy array suitable for Whisper.
 
         Whisper expects 16kHz mono float32.
         """
+        # Handle both string and bytes input
+        if isinstance(audio_data, str):
+            # If it's a base64 string, decode it
+            import base64
+            try:
+                audio_data = base64.b64decode(audio_data)
+            except:
+                # If not base64, try to encode to bytes
+                audio_data = audio_data.encode('latin-1')
+
         try:
             # Try with librosa
             import io
