@@ -5044,7 +5044,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             try:
                 print(f"\n{Colors.CYAN}🔐 [1.2/6] Stopping Cloud SQL Proxy...{Colors.ENDC}")
                 print(f"   ├─ Terminating proxy process (PID: {self.cloud_sql_proxy_manager.pid_path.read_text().strip() if self.cloud_sql_proxy_manager.pid_path.exists() else 'unknown'})...")
-                self.cloud_sql_proxy_manager.stop()
+                await self.cloud_sql_proxy_manager.stop()
                 print(f"   └─ {Colors.GREEN}✓ Cloud SQL proxy stopped{Colors.ENDC}")
             except Exception as e:
                 print(f"   └─ {Colors.YELLOW}⚠ Proxy cleanup warning: {e}{Colors.ENDC}")
@@ -5403,7 +5403,8 @@ except Exception as e:
                 from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
 
                 self.cloud_sql_proxy_manager = CloudSQLProxyManager()
-                proxy_started = self.cloud_sql_proxy_manager.start(force_restart=True)
+                # Start proxy asynchronously (non-blocking)
+                proxy_started = await self.cloud_sql_proxy_manager.start(force_restart=True)
 
                 if proxy_started:
                     print(f"   • {Colors.GREEN}✓{Colors.ENDC} Proxy started on port {self.cloud_sql_proxy_manager.config['cloud_sql']['port']}")

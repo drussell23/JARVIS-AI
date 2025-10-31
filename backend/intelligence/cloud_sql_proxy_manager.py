@@ -231,7 +231,7 @@ class CloudSQLProxyManager:
         else:
             logger.error(f"❌ Failed to free port {port}")
 
-    def start(self, force_restart: bool = False) -> bool:
+    async def start(self, force_restart: bool = False) -> bool:
         """
         Start Cloud SQL proxy with health monitoring.
 
@@ -286,10 +286,10 @@ class CloudSQLProxyManager:
             with open(self.pid_path, "w") as f:
                 f.write(str(self.process.pid))
 
-            # Wait for proxy to be ready (max 10 seconds)
+            # Wait for proxy to be ready (max 10 seconds) - ASYNC!
             logger.info(f"⏳ Waiting for proxy to be ready...")
             for i in range(20):
-                time.sleep(0.5)
+                await asyncio.sleep(0.5)  # Non-blocking async sleep
                 if self._is_port_in_use(port):
                     logger.info(f"✅ Cloud SQL proxy ready on port {port}")
                     return True
@@ -301,7 +301,7 @@ class CloudSQLProxyManager:
             logger.error(f"❌ Failed to start Cloud SQL proxy: {e}", exc_info=True)
             return False
 
-    def stop(self) -> bool:
+    async def stop(self) -> bool:
         """Stop Cloud SQL proxy gracefully."""
         try:
             if not self.is_running():
@@ -332,12 +332,12 @@ class CloudSQLProxyManager:
             logger.error(f"Error stopping proxy: {e}", exc_info=True)
             return False
 
-    def restart(self) -> bool:
+    async def restart(self) -> bool:
         """Restart Cloud SQL proxy."""
         logger.info("🔄 Restarting Cloud SQL proxy...")
-        self.stop()
-        time.sleep(1)
-        return self.start(force_restart=True)
+        await self.stop()
+        await asyncio.sleep(1)
+        return await self.start(force_restart=True)
 
     async def monitor(self, check_interval: int = 30):
         """
