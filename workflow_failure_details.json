@@ -1,0 +1,59 @@
+{
+  "workflow_name": "Database Connection Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18964369605",
+  "branch": "main",
+  "commit_sha": "2f80d94",
+  "run_number": 57,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/database-connection-validation-run57-20251031-061228",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Database Connection Validation (Run #57)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 61,
+              "content": "2025-10-31T06:11:21.8993970Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 26,
+              "content": "2025-10-31T06:11:21.6409288Z \u001b[36;1m    # Only fail on critical issues\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 17,
+              "content": "2025-10-31T06:11:21.6406653Z \u001b[36;1m    except Exception as e:\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-10-31T06:12:28.030497"
+}
