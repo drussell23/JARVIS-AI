@@ -230,13 +230,13 @@ class IntelligentVoiceUnlockService:
             logger.error(f"Failed to load owner password: {e}")
 
     async def process_voice_unlock_command(
-        self, audio_data: bytes, context: Optional[Dict[str, Any]] = None
+        self, audio_data, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Process voice unlock command with full intelligence stack.
 
         Args:
-            audio_data: Raw audio bytes from microphone
+            audio_data: Audio data in any format (bytes, string, base64, etc.)
             context: Optional context (screen state, time, location, etc.)
 
         Returns:
@@ -249,6 +249,11 @@ class IntelligentVoiceUnlockService:
         self.stats["total_unlock_attempts"] += 1
 
         logger.info("🎤 Processing voice unlock command...")
+
+        # Convert audio to proper format
+        from voice.audio_format_converter import prepare_audio_for_stt
+        audio_data = prepare_audio_for_stt(audio_data)
+        logger.info(f"📊 Audio prepared: {len(audio_data)} bytes")
 
         # Step 1: Transcribe audio using Hybrid STT
         transcription_result = await self._transcribe_audio(audio_data)

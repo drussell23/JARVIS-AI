@@ -85,12 +85,12 @@ class WhisperLocalEngine(BaseSTTEngine):
         logger.info("   💻 Using CPU")
         return "cpu"
 
-    async def transcribe(self, audio_data: bytes) -> STTResult:
+    async def transcribe(self, audio_data) -> STTResult:
         """
         Transcribe audio using Whisper.
 
         Args:
-            audio_data: Raw audio bytes (any format)
+            audio_data: Audio data in any format
 
         Returns:
             STTResult with transcription and confidence
@@ -101,6 +101,10 @@ class WhisperLocalEngine(BaseSTTEngine):
         start_time = time.time()
 
         try:
+            # Ensure audio is in proper format
+            from voice.audio_format_converter import prepare_audio_for_stt
+            audio_data = prepare_audio_for_stt(audio_data)
+
             # Convert audio bytes to numpy array
             audio_array = await self._bytes_to_audio_array(audio_data)
             audio_duration_ms = len(audio_array) / 16000 * 1000
@@ -146,21 +150,16 @@ class WhisperLocalEngine(BaseSTTEngine):
             logger.error(f"Whisper Local transcription failed: {e}")
             raise
 
-    async def _bytes_to_audio_array(self, audio_data) -> np.ndarray:
+    async def _bytes_to_audio_array(self, audio_data: bytes) -> np.ndarray:
         """
         Convert audio bytes to numpy array suitable for Whisper.
 
         Whisper expects 16kHz mono float32.
         """
-        # Handle both string and bytes input
-        if isinstance(audio_data, str):
-            # If it's a base64 string, decode it
-            import base64
-            try:
-                audio_data = base64.b64decode(audio_data)
-            except:
-                # If not base64, try to encode to bytes
-                audio_data = audio_data.encode('latin-1')
+        # Audio should already be bytes from prepare_audio_for_stt
+        if not isinstance(audio_data, bytes):
+            logger.error(f"Expected bytes, got {type(audio_data)}")
+            audio_data = bytes(audio_data)
 
         try:
             # Try with librosa
