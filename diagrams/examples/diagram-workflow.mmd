@@ -1,0 +1,53 @@
+flowchart TB
+    subgraph "Developer Workflow"
+        Create["👨‍💻 Create Diagram<br/>(Mermaid code)"]
+        Commit["📝 Git Commit"]
+        Push["⬆️ Git Push"]
+    end
+
+    subgraph "Automated Pipeline"
+        Trigger["🚀 Workflow Triggered"]
+        Discover["🔍 Discover Diagrams<br/>(Dynamic scan)"]
+        Detect["🎯 Detect Changes<br/>(SHA-256 hash)"]
+        Matrix["📊 Build Matrix<br/>(Parallel jobs)"]
+    end
+
+    subgraph "Parallel Generation"
+        Gen1["🎨 Generate SVG"]
+        Gen2["🎨 Generate PNG"]
+        Gen3["🎨 Generate PDF"]
+        Meta["📋 Create Metadata"]
+    end
+
+    subgraph "Finalization"
+        Index["📚 Build Index"]
+        CommitBack["💾 Commit Results"]
+        Notify["📢 Notify Complete"]
+    end
+
+    Create --> Commit
+    Commit --> Push
+    Push --> Trigger
+    Trigger --> Discover
+    Discover --> Detect
+    Detect --> Matrix
+
+    Matrix --> Gen1
+    Matrix --> Gen2
+    Matrix --> Gen3
+    Matrix --> Meta
+
+    Gen1 --> Index
+    Gen2 --> Index
+    Gen3 --> Index
+    Meta --> Index
+
+    Index --> CommitBack
+    CommitBack --> Notify
+
+    style Create fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style Discover fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Gen1 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Gen2 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Gen3 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style CommitBack fill:#f3e5f5,stroke:#4a148c,stroke-width:2px

@@ -1,0 +1,550 @@
+name: 🎨 Advanced Auto-Diagram Generator
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.mmd'
+      - '**.md'
+      - 'diagrams/**'
+      - 'wiki/**'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - '**.mmd'
+      - '**.md'
+      - 'diagrams/**'
+      - 'wiki/**'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      force_regenerate:
+        description: 'Force regenerate all diagrams'
+        required: false
+        type: boolean
+        default: false
+      output_format:
+        description: 'Output format for diagrams'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - 'all'
+          - 'svg'
+          - 'png'
+          - 'pdf'
+
+env:
+  CACHE_VERSION: v1
+  NODE_VERSION: '20'
+  MERMAID_CLI_VERSION: '10.9.0'
+
+jobs:
+  discover-diagrams:
+    name: 🔍 Discover & Analyze Diagrams
+    runs-on: ubuntu-latest
+    outputs:
+      diagram_matrix: ${{ steps.discover.outputs.diagram_matrix }}
+      has_changes: ${{ steps.discover.outputs.has_changes }}
+      changed_files: ${{ steps.discover.outputs.changed_files }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for change detection
+
+      - name: 🔍 Discover diagram files
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "🔍 Discovering diagram files..."
+
+          # Create output directory
+          mkdir -p .github/workflow-outputs
+
+          # Function to extract mermaid diagrams from markdown
+          extract_mermaid_from_md() {
+            local file="$1"
+            local output_base="$2"
+            local counter=0
+
+            # Use awk to extract mermaid code blocks
+            awk '/```mermaid/,/```/ {
+              if ($0 ~ /```mermaid/) {
+                in_block=1
+                next
+              }
+              if ($0 ~ /```/ && in_block) {
+                in_block=0
+                counter++
+                close(output_file)
+                next
+              }
+              if (in_block) {
+                if (!output_file) {
+                  output_file = sprintf("%s_%02d.mmd", output_base, counter)
+                }
+                print $0 > output_file
+              }
+            }' "$file"
+
+            return $counter
+          }
+
+          # Find all mermaid files and markdown files with mermaid diagrams
+          declare -A diagram_files
+          declare -A file_metadata
+
+          # Discover standalone .mmd files
+          while IFS= read -r -d '' mmd_file; do
+            if [[ -f "$mmd_file" ]]; then
+              rel_path="${mmd_file#./}"
+              diagram_files["$rel_path"]="standalone"
+
+              # Calculate file hash for change detection
+              file_hash=$(sha256sum "$mmd_file" | cut -d' ' -f1)
+              file_metadata["$rel_path"]="$file_hash"
+
+              echo "  📄 Found standalone: $rel_path (hash: ${file_hash:0:8})"
+            fi
+          done < <(find . -type f -name "*.mmd" -not -path "*/node_modules/*" -not -path "*/.git/*" -print0)
+
+          # Discover mermaid diagrams embedded in markdown files
+          while IFS= read -r -d '' md_file; do
+            if [[ -f "$md_file" ]]; then
+              # Check if file contains mermaid diagrams
+              if grep -q '```mermaid' "$md_file"; then
+                rel_path="${md_file#./}"
+                base_name="${rel_path%.md}"
+
+                # Create temp directory for extracted diagrams
+                temp_dir=".github/workflow-outputs/extracted/$(dirname "$base_name")"
+                mkdir -p "$temp_dir"
+
+                # Extract mermaid diagrams
+                extract_mermaid_from_md "$md_file" "$temp_dir/$(basename "$base_name")"
+
+                # Find all extracted diagrams
+                while IFS= read -r -d '' extracted; do
+                  extracted_rel="${extracted#./}"
+                  diagram_files["$extracted_rel"]="embedded:$rel_path"
+
+                  file_hash=$(sha256sum "$extracted" | cut -d' ' -f1)
+                  file_metadata["$extracted_rel"]="$file_hash"
+
+                  echo "  📊 Found embedded: $extracted_rel from $rel_path (hash: ${file_hash:0:8})"
+                done < <(find "$temp_dir" -name "*.mmd" -print0 2>/dev/null || true)
+              fi
+            fi
+          done < <(find . -type f -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*" -print0)
+
+          # Detect changes since last commit
+          changed_files=()
+          if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "🔄 Detecting changes..."
+
+            # Get list of changed files
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              base_ref="${{ github.event.pull_request.base.sha }}"
+            else
+              base_ref="HEAD^"
+            fi
+
+            while IFS= read -r changed_file; do
+              if [[ -n "$changed_file" ]]; then
+                changed_files+=("$changed_file")
+                echo "  ✏️  Changed: $changed_file"
+              fi
+            done < <(git diff --name-only "$base_ref" HEAD -- '*.mmd' '*.md' || true)
+          fi
+
+          # Build diagram matrix for parallel processing
+          diagram_matrix='{"include":['
+          first=true
+
+          force_regen="${{ inputs.force_regenerate }}"
+
+          for diagram_path in "${!diagram_files[@]}"; do
+            source_type="${diagram_files[$diagram_path]}"
+            file_hash="${file_metadata[$diagram_path]}"
+
+            # Determine if this diagram needs regeneration
+            needs_regen=false
+
+            if [[ "$force_regen" == "true" ]]; then
+              needs_regen=true
+              reason="force"
+            else
+              # Check if file or its source has changed
+              for changed in "${changed_files[@]:-}"; do
+                if [[ "$diagram_path" == "$changed" ]] || [[ "$source_type" == embedded:* && "${source_type#embedded:}" == "$changed" ]]; then
+                  needs_regen=true
+                  reason="modified"
+                  break
+                fi
+              done
+
+              # Check if output file doesn't exist
+              output_dir="diagrams/generated/$(dirname "$diagram_path")"
+              output_base="$output_dir/$(basename "${diagram_path%.mmd}")"
+              if [[ ! -f "${output_base}.svg" ]] && [[ ! -f "${output_base}.png" ]]; then
+                needs_regen=true
+                reason="missing"
+              fi
+            fi
+
+            if [[ "$needs_regen" == "true" ]]; then
+              if [[ "$first" != "true" ]]; then
+                diagram_matrix+=','
+              fi
+              first=false
+
+              # Escape paths for JSON
+              diagram_path_escaped=$(echo "$diagram_path" | sed 's/"/\\"/g')
+              source_type_escaped=$(echo "$source_type" | sed 's/"/\\"/g')
+
+              diagram_matrix+="{\"path\":\"$diagram_path_escaped\",\"source\":\"$source_type_escaped\",\"hash\":\"$file_hash\",\"reason\":\"$reason\"}"
+            fi
+          done
+
+          diagram_matrix+=']}'
+
+          # Output results
+          echo "diagram_matrix=$diagram_matrix" >> "$GITHUB_OUTPUT"
+
+          has_changes="false"
+          if [[ "${#changed_files[@]}" -gt 0 ]] || [[ "$force_regen" == "true" ]]; then
+            has_changes="true"
+          fi
+          echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
+
+          changed_files_json=$(printf '%s\n' "${changed_files[@]}" | jq -R . | jq -s .)
+          echo "changed_files=$changed_files_json" >> "$GITHUB_OUTPUT"
+
+          # Summary
+          total_diagrams=${#diagram_files[@]}
+          diagrams_to_generate=$(echo "$diagram_matrix" | jq '.include | length')
+
+          echo "📊 Summary:"
+          echo "  Total diagrams discovered: $total_diagrams"
+          echo "  Diagrams to generate: $diagrams_to_generate"
+          echo "  Has changes: $has_changes"
+
+  generate-diagrams:
+    name: 🎨 Generate Diagrams
+    needs: discover-diagrams
+    if: needs.discover-diagrams.outputs.has_changes == 'true' && fromJson(needs.discover-diagrams.outputs.diagram_matrix).include[0] != null
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.discover-diagrams.outputs.diagram_matrix) }}
+      max-parallel: 10  # Async parallel processing
+      fail-fast: false
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: '.github/workflows/package-lock.json'
+
+      - name: 📦 Cache mermaid-cli
+        id: cache-mmdc
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: mermaid-cli-${{ env.MERMAID_CLI_VERSION }}-${{ runner.os }}
+          restore-keys: |
+            mermaid-cli-${{ env.MERMAID_CLI_VERSION }}-
+            mermaid-cli-
+
+      - name: 📥 Install mermaid-cli
+        if: steps.cache-mmdc.outputs.cache-hit != 'true'
+        run: |
+          npm install -g @mermaid-js/mermaid-cli@${{ env.MERMAID_CLI_VERSION }}
+
+      - name: 🎨 Generate diagram images
+        id: generate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "🎨 Generating diagrams for: ${{ matrix.path }}"
+          echo "  Source: ${{ matrix.source }}"
+          echo "  Hash: ${{ matrix.hash }}"
+          echo "  Reason: ${{ matrix.reason }}"
+
+          # Create output directory
+          output_dir="diagrams/generated/$(dirname "${{ matrix.path }}")"
+          mkdir -p "$output_dir"
+
+          # Determine output formats
+          formats=()
+          output_format="${{ inputs.output_format }}"
+          if [[ -z "$output_format" ]] || [[ "$output_format" == "all" ]]; then
+            formats=("svg" "png" "pdf")
+          else
+            formats=("$output_format")
+          fi
+
+          output_base="$output_dir/$(basename "${{ matrix.path }}" .mmd)"
+
+          # Configure mermaid options
+          config_file=".github/workflows/config/mermaid-config.json"
+          if [[ ! -f "$config_file" ]]; then
+            mkdir -p "$(dirname "$config_file")"
+            cat > "$config_file" <<EOF
+          {
+            "theme": "default",
+            "themeVariables": {
+              "primaryColor": "#e1f5ff",
+              "primaryTextColor": "#01579b",
+              "primaryBorderColor": "#01579b",
+              "lineColor": "#0277bd",
+              "secondaryColor": "#fff3e0",
+              "tertiaryColor": "#f3e5f5"
+            },
+            "flowchart": {
+              "curve": "basis",
+              "padding": 20
+            },
+            "sequence": {
+              "actorMargin": 50,
+              "boxMargin": 10,
+              "boxTextMargin": 5,
+              "noteMargin": 10,
+              "messageMargin": 35
+            }
+          }
+          EOF
+          fi
+
+          # Generate diagrams in each format
+          for format in "${formats[@]}"; do
+            echo "  📝 Generating ${format} format..."
+
+            output_file="${output_base}.${format}"
+
+            # Set format-specific options
+            case "$format" in
+              svg)
+                extra_args="--backgroundColor transparent"
+                ;;
+              png)
+                extra_args="--backgroundColor white --width 2048 --height 1536"
+                ;;
+              pdf)
+                extra_args="--pdfFit"
+                ;;
+            esac
+
+            # Generate diagram
+            if mmdc -i "${{ matrix.path }}" \
+                    -o "$output_file" \
+                    -c "$config_file" \
+                    $extra_args; then
+
+              # Verify output
+              if [[ -f "$output_file" ]]; then
+                file_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file")
+                echo "  ✅ Generated: $output_file (${file_size} bytes)"
+
+                # Create metadata file
+                metadata_file="${output_file}.meta.json"
+                cat > "$metadata_file" <<EOF
+          {
+            "source": "${{ matrix.path }}",
+            "source_type": "${{ matrix.source }}",
+            "source_hash": "${{ matrix.hash }}",
+            "format": "$format",
+            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "generator": "mermaid-cli@${{ env.MERMAID_CLI_VERSION }}",
+            "file_size": $file_size,
+            "workflow_run": "${{ github.run_id }}",
+            "commit_sha": "${{ github.sha }}"
+          }
+          EOF
+                echo "  📋 Metadata: $metadata_file"
+              else
+                echo "  ❌ Failed to generate: $output_file"
+                exit 1
+              fi
+            else
+              echo "  ❌ Error generating $format diagram"
+              exit 1
+            fi
+          done
+
+          echo "generation_status=success" >> "$GITHUB_OUTPUT"
+
+      - name: 📤 Upload generated diagrams
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagrams-${{ hashFiles(matrix.path) }}
+          path: |
+            diagrams/generated/**/*.svg
+            diagrams/generated/**/*.png
+            diagrams/generated/**/*.pdf
+            diagrams/generated/**/*.meta.json
+          retention-days: 90
+          if-no-files-found: error
+
+  commit-diagrams:
+    name: 💾 Commit Generated Diagrams
+    needs: [discover-diagrams, generate-diagrams]
+    if: needs.generate-diagrams.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📥 Download all diagram artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: diagrams/generated
+          pattern: diagrams-*
+          merge-multiple: true
+
+      - name: 📊 Generate diagram index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "📊 Generating diagram index..."
+
+          index_file="diagrams/generated/INDEX.md"
+
+          cat > "$index_file" <<'EOF'
+          # 🎨 Auto-Generated Diagram Index
+
+          This directory contains auto-generated diagrams from Mermaid source files.
+
+          **Auto-generated by:** [Auto-Diagram Generator Workflow](../.github/workflows/auto-diagram-generator.yml)
+          **Last updated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Workflow run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ---
+
+          ## 📋 Available Diagrams
+
+          EOF
+
+          # Find all generated diagrams and create index
+          find diagrams/generated -type f \( -name "*.svg" -o -name "*.png" -o -name "*.pdf" \) | sort | while read -r diagram; do
+            rel_path="${diagram#diagrams/generated/}"
+            dir_name=$(dirname "$rel_path")
+            base_name=$(basename "$rel_path")
+
+            # Read metadata if available
+            meta_file="${diagram}.meta.json"
+            if [[ -f "$meta_file" ]]; then
+              source_path=$(jq -r '.source' "$meta_file")
+              source_hash=$(jq -r '.source_hash' "$meta_file" | cut -c1-8)
+              generated_at=$(jq -r '.generated_at' "$meta_file")
+
+              echo "### 📊 $base_name" >> "$index_file"
+              echo "" >> "$index_file"
+              echo "- **Source:** \`$source_path\`" >> "$index_file"
+              echo "- **Hash:** \`$source_hash\`" >> "$index_file"
+              echo "- **Generated:** $generated_at" >> "$index_file"
+              echo "- **Path:** [\`$rel_path\`]($rel_path)" >> "$index_file"
+              echo "" >> "$index_file"
+
+              # Include preview for SVG files
+              if [[ "$diagram" == *.svg ]]; then
+                echo "![Preview]($rel_path)" >> "$index_file"
+                echo "" >> "$index_file"
+              fi
+            else
+              echo "- [\`$rel_path\`]($rel_path)" >> "$index_file"
+            fi
+          done
+
+          echo "" >> "$index_file"
+          echo "---" >> "$index_file"
+          echo "" >> "$index_file"
+          echo "**Total diagrams:** $(find diagrams/generated -type f \( -name "*.svg" -o -name "*.png" -o -name "*.pdf" \) | wc -l)" >> "$index_file"
+
+          echo "✅ Diagram index generated: $index_file"
+
+      - name: 🔍 Check for changes
+        id: check_changes
+        run: |
+          if [[ -n "$(git status --porcelain diagrams/generated)" ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 💾 Commit and push diagrams
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add diagrams/generated
+
+          git commit -m "$(cat <<'EOF'
+          🎨 Auto-generate diagrams from Mermaid sources
+
+          - Generated diagrams from Mermaid source files
+          - Updated diagram index
+          - Formats: SVG, PNG, PDF
+
+          🤖 Generated with [Auto-Diagram Generator](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          Co-Authored-By: GitHub Actions <noreply@github.com>
+          EOF
+          )"
+
+          git push
+
+      - name: 📝 Create PR comment (if PR)
+        if: github.event_name == 'pull_request' && steps.check_changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const indexContent = fs.readFileSync('diagrams/generated/INDEX.md', 'utf8');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🎨 Diagrams Auto-Generated\n\n${indexContent}\n\n---\n\n✅ All diagrams have been regenerated and committed.`
+            });
+
+  notify-completion:
+    name: 📢 Notify Completion
+    needs: [discover-diagrams, generate-diagrams, commit-diagrams]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🎨 Diagram Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Discovery:** ${{ needs.discover-diagrams.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Generation:** ${{ needs.generate-diagrams.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ needs.commit-diagrams.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.commit-diagrams.result }}" == "success" ]]; then
+            echo "✅ All diagrams generated and committed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Diagram generation completed with warnings or errors." >> $GITHUB_STEP_SUMMARY
+          fi

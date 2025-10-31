@@ -38,41 +38,28 @@ JARVIS features a **state-of-the-art hybrid architecture** with intelligent comp
 
 ### Infrastructure Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS HYBRID ARCHITECTURE                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌──────────────────────────────┐    ┌──────────────────────────────┐  │
-│  │   LOCAL MAC (16GB RAM)       │◄──►│  GCP SPOT VMs (32GB RAM)     │  │
-│  ├──────────────────────────────┤    ├──────────────────────────────┤  │
-│  │ ALWAYS-ON (~730MB):          │    │ AUTO-CREATED WHEN NEEDED:    │  │
-│  │ • Wake word (CoreML 50MB)    │    │ • Heavy ML/AI (2-4GB)        │  │
-│  │ • Voice unlock (80MB)        │    │ • Claude Vision API (2-4GB)  │  │
-│  │ • Display monitor (100MB)    │    │ • NLP processing (3-5GB)     │  │
-│  │ • SQLite database (50MB)     │    │ • PostgreSQL Cloud SQL       │  │
-│  │                              │    │ • Goal inference (1-2GB)     │  │
-│  │ ON-DEMAND (2-4GB):           │    │ • Chatbots (2-3GB)           │  │
-│  │ • Voice commands (200MB)     │    │ • Full ML models (4-6GB)     │  │
-│  │ • Vision capture (150MB)     │    │                              │  │
-│  │ • UAE light (150MB)          │    │ INTELLIGENCE (Full Power):   │  │
-│  │ • CAI light (100MB)          │    │ • UAE Full (800MB)           │  │
-│  │                              │    │ • SAI Full (600MB)           │  │
-│  └──────────────────────────────┘    │ • CAI Full (500MB)           │  │
-│           ▲                           └──────────────────────────────┘  │
-│           │                                    ▲                         │
-│           └────────────────┬───────────────────┘                         │
-│                            ▼                                             │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │              BIDIRECTIONAL RAM-AWARE NEGOTIATION                   │ │
-│  ├────────────────────────────────────────────────────────────────────┤ │
-│  │ • WebSocket heartbeats (every 30s)                                 │ │
-│  │ • RAM pressure monitoring (continuous)                             │ │
-│  │ • Component negotiation (offload/reclaim)                          │ │
-│  │ • Automatic VM creation (>85% memory)                              │ │
-│  │ • Automatic VM termination (<60% memory for >10min)                │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "JARVIS HYBRID ARCHITECTURE"
+        subgraph Local["LOCAL MAC (16GB RAM)"]
+            AlwaysOn["ALWAYS-ON (~730MB)<br/>• Wake word (CoreML 50MB)<br/>• Voice unlock (80MB)<br/>• Display monitor (100MB)<br/>• SQLite database (50MB)"]
+            OnDemand["ON-DEMAND (2-4GB)<br/>• Voice commands (200MB)<br/>• Vision capture (150MB)<br/>• UAE light (150MB)<br/>• CAI light (100MB)"]
+        end
+
+        subgraph Cloud["GCP SPOT VMs (32GB RAM)"]
+            AutoCreated["AUTO-CREATED WHEN NEEDED<br/>• Heavy ML/AI (2-4GB)<br/>• Claude Vision API (2-4GB)<br/>• NLP processing (3-5GB)<br/>• PostgreSQL Cloud SQL<br/>• Goal inference (1-2GB)<br/>• Chatbots (2-3GB)<br/>• Full ML models (4-6GB)"]
+            Intelligence["INTELLIGENCE (Full Power)<br/>• UAE Full (800MB)<br/>• SAI Full (600MB)<br/>• CAI Full (500MB)"]
+        end
+
+        Negotiation["BIDIRECTIONAL RAM-AWARE NEGOTIATION<br/>• WebSocket heartbeats (every 30s)<br/>• RAM pressure monitoring (continuous)<br/>• Component negotiation (offload/reclaim)<br/>• Automatic VM creation (>85% memory)<br/>• Automatic VM termination (<60% memory for >10min)"]
+
+        Local <--> Negotiation
+        Cloud <--> Negotiation
+    end
+
+    style Local fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style Cloud fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Negotiation fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
 ```
 
 ### Local Mac (16GB RAM)
@@ -343,136 +330,53 @@ Components are prioritized for resource allocation:
 
 ### Voice Command Flow
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                    VOICE COMMAND PROCESSING FLOW                    │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Start["User speaks: 'Hey JARVIS, unlock my screen'"] --> WakeWord["Wake Word Detection<br/>(Local, CoreML, 50MB)<br/>Picovoice - Confidence: HIGH"]
+    WakeWord -->|Detected| AudioCapture["Audio Capture<br/>(Local, 3.2s recording)<br/>+ Preprocessing<br/>SNR: 18.5 dB"]
+    AudioCapture --> STT["Speech-to-Text<br/>(Local or Cloud based on RAM)<br/>SpeechBrain<br/>RTF: 0.08, Latency: 156ms"]
+    STT -->|Text: 'unlock my screen'| Speaker["Speaker Recognition<br/>(Cloud SQL lookup)<br/>ECAPA-TDNN<br/>Confidence: 95%"]
+    Speaker -->|Speaker: Derek (OWNER)| Intent["CAI Intent Predict<br/>(Local if RAM allows)<br/>Intent: unlock<br/>Auth required: TRUE"]
+    Intent --> Orchestrator["Hybrid Orchestrator<br/>(Routing decision)<br/>Route: Local<br/>(Screen unlock = LOCAL only)"]
+    Orchestrator --> TTS1["TTS Response<br/>(Unified engine, cached)<br/>'Of course, Derek'<br/>Playback: pygame"]
+    TTS1 --> Execute["Execute Unlock<br/>(Local, macOS keychain)<br/>Password typer<br/>Success: TRUE"]
+    Execute --> Verify["Verify + Confirm<br/>(Screen unlocked)<br/>TTS: 'Success'<br/>Total time: 2.8s"]
 
-User speaks: "Hey JARVIS, unlock my screen"
-         │
-         ▼
-┌─────────────────────┐
-│ Wake Word Detection │ (Local, CoreML, 50MB)
-│   Picovoice         │ Confidence: HIGH
-└──────────┬──────────┘
-           │ Detected
-           ▼
-┌─────────────────────┐
-│ Audio Capture       │ (Local, 3.2s recording)
-│   + Preprocessing   │ SNR: 18.5 dB
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Speech-to-Text      │ (Local or Cloud based on RAM)
-│   SpeechBrain       │ RTF: 0.08, Latency: 156ms
-└──────────┬──────────┘
-           │ Text: "unlock my screen"
-           ▼
-┌─────────────────────┐
-│ Speaker Recognition │ (Cloud SQL lookup)
-│   ECAPA-TDNN        │ Confidence: 95%
-└──────────┬──────────┘
-           │ Speaker: Derek (OWNER)
-           ▼
-┌─────────────────────┐
-│ CAI Intent Predict  │ (Local if RAM allows)
-│   Intent: unlock    │ Auth required: TRUE
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Hybrid Orchestrator │ (Routing decision)
-│   Route: Local      │ (Screen unlock = LOCAL only)
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ TTS Response        │ (Unified engine, cached)
-│ "Of course, Derek"  │ Playback: pygame
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Execute Unlock      │ (Local, macOS keychain)
-│   Password typer    │ Success: TRUE
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Verify + Confirm    │ (Screen unlocked)
-│ TTS: "Success"      │ Total time: 2.8s
-└─────────────────────┘
+    style Start fill:#e3f2fd,stroke:#1976d2
+    style WakeWord fill:#fff3e0,stroke:#f57c00
+    style STT fill:#f3e5f5,stroke:#7b1fa2
+    style Speaker fill:#e8f5e9,stroke:#388e3c
+    style Execute fill:#fce4ec,stroke:#c2185b
+    style Verify fill:#e0f2f1,stroke:#00796b
 ```
 
 ### Vision Analysis Flow
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                    VISION ANALYSIS PROCESSING FLOW                  │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant User
+    participant CAI as CAI<br/>(Intent Predict)
+    participant Memory as Memory Check
+    participant GCP as GCP VM Manager
+    participant VM as Cloud VM
+    participant Capture as Screen Capture
+    participant Claude as Claude Vision API
+    participant UAE as UAE Context Enrich
+    participant TTS
 
-User: "What's on my screen?"
-         │
-         ▼
-┌─────────────────────┐
-│ CAI Intent Predict  │ (Local, quick)
-│ Intent: vision      │ Complexity: HIGH
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Memory Check        │ (Platform memory monitor)
-│ Local RAM: 78%      │ Decision: SHIFT TO CLOUD
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ GCP VM Manager      │ (Check/create VM)
-│ VM exists: NO       │ Action: CREATE
-└──────────┬──────────┘
-           │ Creating VM (e2-highmem-4, 32GB)
-           ▼
-┌─────────────────────┐
-│ VM Startup          │ (90-120s first time)
-│ Status: RUNNING     │ IP: 34.xxx.xxx.xxx
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Screen Capture      │ (Local, macOS only)
-│ Displays: 2         │ Active space: 3
-└──────────┬──────────┘
-           │ Image data
-           ▼
-┌─────────────────────┐
-│ Send to Cloud       │ (WebSocket transfer)
-│ Transfer: 2.3 MB    │ Time: 0.5s
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Claude Vision API   │ (GCP VM, 32GB RAM)
-│ Analysis: Complex   │ Context: Full
-└──────────┬──────────┘
-           │ Analysis complete
-           ▼
-┌─────────────────────┐
-│ UAE Context Enrich  │ (Cloud, full power)
-│ + Pattern learning  │ Historical comparison
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Return to Local     │ (WebSocket response)
-│ Cache result        │ Total time: 1.8s
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ TTS Response        │ (Local playback)
-│ "I can see..."      │ User hears result
-└─────────────────────┘
+    User->>CAI: "What's on my screen?"
+    CAI->>Memory: Intent: vision<br/>Complexity: HIGH
+    Memory->>GCP: Local RAM: 78%<br/>Decision: SHIFT TO CLOUD
+    GCP->>VM: VM exists: NO<br/>Action: CREATE<br/>(e2-highmem-4, 32GB)
+    VM-->>GCP: Status: RUNNING<br/>IP: 34.xxx.xxx.xxx<br/>(90-120s first time)
+    GCP->>Capture: VM Ready
+    Capture->>VM: Image data<br/>Displays: 2<br/>Active space: 3<br/>(Transfer: 2.3 MB, 0.5s)
+    VM->>Claude: Analyze screen
+    Claude->>UAE: Analysis: Complex<br/>Context: Full
+    UAE->>VM: + Pattern learning<br/>Historical comparison
+    VM->>Capture: Cache result<br/>Total time: 1.8s
+    Capture->>TTS: Analysis complete
+    TTS->>User: "I can see..."
 ```
 
 ### Component Negotiation Flow

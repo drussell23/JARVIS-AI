@@ -13,6 +13,7 @@ Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, 
 
 ### Core Documentation
 - [Architecture & Design](Architecture-&-Design.md) - Complete system architecture
+- [Diagram System](Diagram-System.md) - Mermaid integration and auto-generation
 - [API Documentation](API-Documentation.md) - REST, WebSocket, and Voice APIs
 - [CI/CD Workflows](CI-CD-Workflows.md) - GitHub Actions automation
 - [Troubleshooting Guide](Troubleshooting-Guide.md) - Common issues and solutions
@@ -71,31 +72,28 @@ Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, 
 
 ## System Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    JARVIS HYBRID ARCHITECTURE                    │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌────────────────────────┐    ┌──────────────────────────┐    │
-│  │   LOCAL MAC (16GB)     │◄──►│  GCP SPOT VMs (32GB)     │    │
-│  ├────────────────────────┤    ├──────────────────────────┤    │
-│  │ • Voice wake word      │    │ • Heavy ML/AI models     │    │
-│  │ • Screen unlock        │    │ • Claude Vision API      │    │
-│  │ • Display monitoring   │    │ • NLP processing         │    │
-│  │ • SQLite database      │    │ • PostgreSQL Cloud SQL   │    │
-│  │ • Low-latency ops      │    │ • Batch processing       │    │
-│  └────────────────────────┘    └──────────────────────────┘    │
-│           ▲                              ▲                      │
-│           │                              │                      │
-│           └──────────────┬───────────────┘                      │
-│                          ▼                                      │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │        UNIFIED INTELLIGENCE SYSTEMS                       │  │
-│  ├──────────────────────────────────────────────────────────┤  │
-│  │  UAE • SAI • CAI • learning_database                      │  │
-│  │  60+ Specialized Agents • Continuous Learning             │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "JARVIS HYBRID ARCHITECTURE"
+        subgraph Local["LOCAL MAC (16GB)"]
+            LocalServices["• Voice wake word<br/>• Screen unlock<br/>• Display monitoring<br/>• SQLite database<br/>• Low-latency ops"]
+        end
+
+        subgraph Cloud["GCP SPOT VMs (32GB)"]
+            CloudServices["• Heavy ML/AI models<br/>• Claude Vision API<br/>• NLP processing<br/>• PostgreSQL Cloud SQL<br/>• Batch processing"]
+        end
+
+        subgraph Intelligence["UNIFIED INTELLIGENCE SYSTEMS"]
+            Agents["UAE • SAI • CAI • learning_database<br/>60+ Specialized Agents • Continuous Learning"]
+        end
+
+        Local <--> Intelligence
+        Cloud <--> Intelligence
+    end
+
+    style Local fill:#e1f5ff,stroke:#01579b,stroke-width:3px
+    style Cloud fill:#fff3e0,stroke:#e65100,stroke-width:3px
+    style Intelligence fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
 ```
 
 ---
