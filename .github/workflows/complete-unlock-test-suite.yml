@@ -98,15 +98,6 @@ jobs:
     uses: ./.github/workflows/biometric-voice-unlock-e2e.yml
     with:
       test_mode: ${{ needs.determine-mode.outputs.test-mode }}
-      voice_samples_count: 59
-      embedding_dimension: 192
-      verification_threshold: 0.75
-      max_first_verification_time: 10
-      max_subsequent_verification_time: 1
-      test_legacy_threshold: true
-      test_dimension_adaptation: true
-      test_edge_cases: true
-      test_anti_spoofing: true
     secrets: inherit
 
   combined-summary:
