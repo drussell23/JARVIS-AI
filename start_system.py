@@ -3515,29 +3515,10 @@ class AsyncSystemManager:
         print(f"{Colors.BOLD}{Colors.CYAN}🎤 Voice Biometric System Initialization{Colors.ENDC}")
         print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
 
-        print(f"{Colors.CYAN}🔍 Checking Cloud SQL proxy status...{Colors.ENDC}")
-        # Check if Cloud SQL proxy is already running
-        cloud_sql_check = await asyncio.create_subprocess_exec(
-            "lsof", "-i", ":5432", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await cloud_sql_check.communicate()
-
-        if cloud_sql_check.returncode != 0:
-            # Start Cloud SQL proxy for voice biometric database
-            print(f"{Colors.YELLOW}   ℹ️  Proxy not running, starting now...{Colors.ENDC}")
-            cloud_sql_process = await asyncio.create_subprocess_exec(
-                "cloud-sql-proxy",
-                "jarvis-473803:us-central1:jarvis-learning-db",
-                "--port",
-                "5432",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            self.processes.append(cloud_sql_process)
-            await asyncio.sleep(2)  # Wait for proxy to initialize
-            print(f"{Colors.GREEN}   ✓ Cloud SQL proxy started on port 5432{Colors.ENDC}")
-        else:
-            print(f"{Colors.GREEN}   ✓ Cloud SQL proxy already running on port 5432{Colors.ENDC}")
+        # LEGACY PROXY STARTUP REMOVED - Now handled by CloudSQLProxyManager in run()
+        # The proxy is now managed properly with lifecycle tied to JARVIS startup/shutdown
+        print(f"{Colors.CYAN}🔍 Cloud SQL proxy managed by CloudSQLProxyManager{Colors.ENDC}")
+        print(f"{Colors.GREEN}   ✓ Proxy lifecycle handled automatically{Colors.ENDC}")
 
         # Step 2: Pre-initialize speaker verification service with Derek's profile
         print(f"\n{Colors.CYAN}🔐 Loading speaker verification system...{Colors.ENDC}")
