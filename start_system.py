@@ -2617,11 +2617,10 @@ class SAIHybridIntegration:
         try:
             # Import learning database
             sys.path.insert(0, str(Path(__file__).parent / "backend"))
-            from intelligence.learning_database import LearningDatabase
+            from intelligence.learning_database import get_learning_database
 
-            # Initialize database
-            self.db = LearningDatabase()
-            await self.db.initialize()
+            # Initialize database using singleton
+            self.db = await get_learning_database()
 
             # Load existing learned parameters
             await self._load_learned_parameters()
