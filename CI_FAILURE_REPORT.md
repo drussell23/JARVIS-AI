@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: Test Failure for Auto-PR
-- **Run Number**: #1
-- **Branch**: `main`
-- **Commit**: `8a47c5770d08b017435053ae85bcb6baaca8fe2f`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #212
+- **Branch**: `fix/ci/test-failure-for-auto-pr-run1-20251031-214719`
+- **Commit**: `e293aa49949476070e9760a73161f7f15fb89d40`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-10-31T21:46:32Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/18985995183)
+- **Timestamp**: 2025-10-31T21:47:43Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/18986014013)
 
 ## Failure Overview
 
@@ -17,48 +17,48 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | test-failure | test_failure | high | 4s |
+| 1 | Validate PR Title | test_failure | high | 3s |
 
 ## Detailed Analysis
 
-### 1. test-failure
+### 1. Validate PR Title
 
 **Status**: ❌ failure
 **Category**: Test Failure
 **Severity**: HIGH
-**Started**: 2025-10-31T21:46:35Z
-**Completed**: 2025-10-31T21:46:39Z
-**Duration**: 4 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/18985995183/job/54229652771)
+**Started**: 2025-10-31T21:47:46Z
+**Completed**: 2025-10-31T21:47:49Z
+**Duration**: 3 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/18986014013/job/54229714280)
 
 #### Failed Steps
 
-- **Step 3**: Intentional Failure
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
 **Detected Error Patterns:**
 
 - Pattern: `ERROR|Error|error`
-  - Occurrences: 1
+  - Occurrences: 2
   - Sample matches:
-    - Line 85: `2025-10-31T21:46:37.9618184Z ##[error]Process completed with exit code 1.`
+    - Line 25: `2025-10-31T21:47:47.8194083Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-10-31T21:47:48.2586488Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Test`
 
 - Pattern: `FAIL|Failed|failed`
-  - Occurrences: 4
-  - Sample matches:
-    - Line 9: `2025-10-31T21:46:36.4556268Z Complete job name: test-failure`
-    - Line 79: `2025-10-31T21:46:37.9494148Z ##[group]Run echo "This workflow will fail intentionally to test Auto-P`
-    - Line 80: `2025-10-31T21:46:37.9494750Z [36;1mecho "This workflow will fail intentionally to test Auto-PR"[0m`
-
-- Pattern: `WARN|Warning|warning`
   - Occurrences: 1
   - Sample matches:
-    - Line 40: `2025-10-31T21:46:36.6720980Z hint: of your new repositories, which will suppress this warning, call:`
+    - Line 37: `2025-10-31T21:47:48.2586488Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Test`
+
+- Pattern: `timeout|timed out`
+  - Occurrences: 1
+  - Sample matches:
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
-1. Review the logs above for specific error messages
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -78,5 +78,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-10-31T21:47:19.276070*
+📊 *Report generated on 2025-10-31T21:48:46.828955*
 🤖 *JARVIS CI/CD Auto-PR Manager*
