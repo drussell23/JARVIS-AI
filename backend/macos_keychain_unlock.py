@@ -2,6 +2,10 @@
 """
 macOS Keychain Integration for Screen Unlock
 Securely retrieves password from Keychain and performs actual screen unlock
+
+NOTE: This is a lightweight fallback. For advanced features use:
+- backend/voice_unlock/intelligent_voice_unlock_service.py (primary)
+- backend/voice_unlock/objc/server/screen_lock_detector.py (detection)
 """
 
 import asyncio
@@ -90,39 +94,48 @@ class MacOSKeychainUnlock:
             return None
 
     async def check_screen_locked(self) -> bool:
-        """Check if screen is currently locked"""
-        script = """
-        tell application "System Events"
-            set isLocked to false
+        """Check if screen is currently locked using voice_unlock detector"""
+        try:
+            # Use the advanced screen lock detector from voice_unlock
+            from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
 
-            -- Check for screensaver
-            if (exists process "ScreenSaverEngine") then
-                set isLocked to true
-            end if
+            return is_screen_locked()
 
-            -- Check if at login window
-            try
-                set frontApp to name of first application process whose frontmost is true
-                if frontApp is "loginwindow" then
+        except ImportError:
+            # Fallback to AppleScript if detector not available
+            logger.debug("Using fallback AppleScript for screen detection")
+            script = """
+            tell application "System Events"
+                set isLocked to false
+
+                -- Check for screensaver
+                if (exists process "ScreenSaverEngine") then
                     set isLocked to true
                 end if
-            end try
 
-            return isLocked
-        end tell
-        """
+                -- Check if at login window
+                try
+                    set frontApp to name of first application process whose frontmost is true
+                    if frontApp is "loginwindow" then
+                        set isLocked to true
+                    end if
+                end try
 
-        try:
-            result = await asyncio.create_subprocess_exec(
-                "osascript", "-e", script, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+                return isLocked
+            end tell
+            """
 
-            stdout, _ = await result.communicate()
-            return stdout.decode().strip() == "true"
+            try:
+                result = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", script, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
 
-        except Exception as e:
-            logger.error(f"Failed to check screen status: {e}")
-            return False
+                stdout, _ = await result.communicate()
+                return stdout.decode().strip() == "true"
+
+            except Exception as e:
+                logger.error(f"Failed to check screen status: {e}")
+                return False
 
     async def unlock_screen(self, verified_speaker: Optional[str] = None) -> Dict[str, Any]:
         """Perform actual screen unlock using Keychain password"""

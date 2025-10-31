@@ -1109,25 +1109,76 @@ class AdvancedAsyncPipeline:
                     success, message = await controller.lock_screen()
                     action = "locked"
                 else:  # unlock
-                    # Use direct keychain-based unlock (most reliable)
-                    logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Using direct keychain unlock...")
+                    # Use intelligent voice unlock service (most advanced)
+                    logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Using intelligent voice unlock service...")
                     try:
-                        from backend.macos_keychain_unlock import MacOSKeychainUnlock
+                        from backend.voice_unlock.intelligent_voice_unlock_service import (
+                            get_intelligent_unlock_service,
+                        )
 
-                        keychain_unlock = MacOSKeychainUnlock()
-                        result = await keychain_unlock.unlock_screen(verified_speaker=speaker_name or user_name)
+                        unlock_service = get_intelligent_unlock_service()
+
+                        # Initialize if needed
+                        if not unlock_service.initialized:
+                            logger.info("🔓 [LOCK-UNLOCK-INIT] Initializing unlock service...")
+                            await unlock_service.initialize()
+
+                        # Process unlock with audio data and context
+                        context = {
+                            "text": text,
+                            "user_name": user_name,
+                            "speaker_name": speaker_name,
+                            "metadata": metadata or {}
+                        }
+
+                        # If we have audio data, use it; otherwise create a text-only request
+                        if audio_data:
+                            result = await unlock_service.process_voice_unlock_command(
+                                audio_data=audio_data,
+                                context=context
+                            )
+                        else:
+                            # Text-only unlock (no audio available)
+                            logger.info(f"🔓 [LOCK-UNLOCK-TEXT] Text-only unlock request: '{text}'")
+                            # Direct unlock using internal method
+                            result = await unlock_service._perform_unlock(
+                                speaker_name=speaker_name or user_name,
+                                verification_score=0.95,  # High confidence for text commands
+                                unlock_reason="text_command"
+                            )
 
                         success = result.get("success", False)
                         message = result.get("message", "Screen unlock attempted")
                         action = result.get("action", "unlocked")
 
                         logger.info(
-                            f"🔓 [LOCK-UNLOCK-EXECUTE] Keychain unlock completed: success={success}, "
-                            f"action={action}, message={message}"
+                            f"🔓 [LOCK-UNLOCK-EXECUTE] Intelligent unlock completed: success={success}, "
+                            f"action={action}, speaker={speaker_name or user_name}"
                         )
 
+                    except ImportError as e:
+                        logger.warning(f"🔓 [LOCK-UNLOCK-FALLBACK] Intelligent service unavailable: {e}")
+                        # Fallback to keychain unlock
+                        try:
+                            from backend.macos_keychain_unlock import MacOSKeychainUnlock
+
+                            keychain_unlock = MacOSKeychainUnlock()
+                            result = await keychain_unlock.unlock_screen(verified_speaker=speaker_name or user_name)
+
+                            success = result.get("success", False)
+                            message = result.get("message", "Screen unlock attempted")
+                            action = result.get("action", "unlocked")
+
+                            logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Keychain unlock used: success={success}")
+
+                        except Exception as e2:
+                            logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain fallback failed: {e2}")
+                            # Final fallback to controller
+                            success, message = await controller.unlock_screen()
+                            action = "unlocked"
+
                     except Exception as e:
-                        logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain unlock failed: {e}", exc_info=True)
+                        logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Unlock failed: {e}", exc_info=True)
                         # Fallback to controller method
                         logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Trying controller.unlock_screen()...")
                         success, message = await controller.unlock_screen()
