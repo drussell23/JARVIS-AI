@@ -1,0 +1,53 @@
+{
+  "workflow_name": "\ud83c\udfa8 Advanced Auto-Diagram Generator",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18986037728",
+  "branch": "main",
+  "commit_sha": "81f9385",
+  "run_number": 7,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/advanced-auto-diagram-generator-run7-20251031-215012",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: \ud83c\udfa8 Advanced Auto-Diagram Generator (Run #7)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 80,
+              "content": "2025-10-31T21:49:17.5631076Z ##[error]Unable to process file command 'output' successfully.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 81,
+              "content": "2025-10-31T21:49:17.5639525Z ##[error]Invalid format '  \"README.md\"'",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 66,
+              "content": "2025-10-31T21:49:16.8691054Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-10-31T21:50:12.113924"
+}
