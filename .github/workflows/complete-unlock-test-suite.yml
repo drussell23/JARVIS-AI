@@ -1,0 +1,194 @@
+name: Complete Unlock Test Suite (Master)
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test execution mode'
+        required: false
+        default: 'mock'
+        type: choice
+        options:
+          - mock
+          - integration
+          - real
+      run_parallel:
+        description: 'Run both workflows in parallel'
+        required: false
+        default: true
+        type: boolean
+
+  # Auto-run on ANY unlock-related changes
+  push:
+    branches: [main]
+    paths:
+      # Unlock integration files
+      - 'backend/core/async_pipeline.py'
+      - 'backend/macos_keychain_unlock.py'
+      - 'backend/system_control/macos_controller.py'
+      - 'backend/voice_unlock/secure_password_typer.py'
+      - 'backend/voice_unlock/intelligent_voice_unlock_service.py'
+      - 'backend/voice_unlock/objc/server/screen_lock_detector.py'
+      # Voice biometric files
+      - 'backend/voice/speaker_verification_service.py'
+      - 'backend/voice/speaker_recognition.py'
+      - 'backend/voice_unlock/**'
+      - 'backend/intelligence/cloud_database_adapter.py'
+      - 'backend/intelligence/cloud_sql_proxy_manager.py'
+      # Workflow files
+      - '.github/workflows/unlock-integration-e2e.yml'
+      - '.github/workflows/biometric-voice-unlock-e2e.yml'
+      - '.github/workflows/complete-unlock-test-suite.yml'
+
+  # Daily comprehensive testing (both workflows)
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM daily - Run complete test suite
+
+  # PR testing for any unlock changes
+  pull_request:
+    paths:
+      - 'backend/core/async_pipeline.py'
+      - 'backend/macos_keychain_unlock.py'
+      - 'backend/system_control/macos_controller.py'
+      - 'backend/voice_unlock/**'
+      - 'backend/voice/**'
+      - 'backend/intelligence/**'
+
+jobs:
+  determine-mode:
+    name: Determine Test Mode
+    runs-on: ubuntu-latest
+    outputs:
+      test-mode: ${{ steps.mode.outputs.mode }}
+      run-parallel: ${{ steps.config.outputs.parallel }}
+    steps:
+      - name: Determine Mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MODE="mock"
+            echo "🔒 PR detected - using mock mode for safety"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            MODE="integration"
+            echo "⏰ Scheduled run - using integration mode"
+          else
+            MODE="${{ inputs.test_mode || 'mock' }}"
+            echo "🎯 Using requested mode: ${MODE}"
+          fi
+          echo "mode=${MODE}" >> $GITHUB_OUTPUT
+
+      - name: Determine Parallel Execution
+        id: config
+        run: |
+          PARALLEL="${{ inputs.run_parallel || 'true' }}"
+          echo "parallel=${PARALLEL}" >> $GITHUB_OUTPUT
+          echo "📊 Parallel execution: ${PARALLEL}"
+
+  run-unlock-integration:
+    name: Run Unlock Integration E2E
+    needs: determine-mode
+    uses: ./.github/workflows/unlock-integration-e2e.yml
+    with:
+      test_mode: ${{ needs.determine-mode.outputs.test-mode }}
+    secrets: inherit
+
+  run-biometric-voice:
+    name: Run Biometric Voice E2E
+    needs: determine-mode
+    uses: ./.github/workflows/biometric-voice-unlock-e2e.yml
+    with:
+      test_mode: ${{ needs.determine-mode.outputs.test-mode }}
+      voice_samples_count: 59
+      embedding_dimension: 768
+      verification_threshold: 0.75
+      max_first_verification_time: 10
+      max_subsequent_verification_time: 1
+      test_anti_spoofing: true
+    secrets: inherit
+
+  combined-summary:
+    name: Generate Combined Test Summary
+    runs-on: ubuntu-latest
+    needs: [determine-mode, run-unlock-integration, run-biometric-voice]
+    if: always()
+    steps:
+      - name: Generate Combined Summary
+        run: |
+          echo "# 🔓 Complete Unlock Test Suite Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** ${{ needs.determine-mode.outputs.test-mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Workflows Executed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check unlock integration status
+          if [ "${{ needs.run-unlock-integration.result }}" = "success" ]; then
+            echo "- ✅ **Unlock Integration E2E:** Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **Unlock Integration E2E:** ${{ needs.run-unlock-integration.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check biometric voice status
+          if [ "${{ needs.run-biometric-voice.result }}" = "success" ]; then
+            echo "- ✅ **Biometric Voice E2E:** Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **Biometric Voice E2E:** ${{ needs.run-biometric-voice.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [ "${{ needs.run-unlock-integration.result }}" = "success" ] && [ "${{ needs.run-biometric-voice.result }}" = "success" ]; then
+            echo "## ✅ Overall Status: ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **'unlock my screen' is fully functional**" >> $GITHUB_STEP_SUMMARY
+            FAIL=0
+          else
+            echo "## ❌ Overall Status: TESTS FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **'unlock my screen' may be broken!**" >> $GITHUB_STEP_SUMMARY
+            FAIL=1
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "📊 View individual workflow results for detailed reports" >> $GITHUB_STEP_SUMMARY
+
+          # Exit with appropriate code
+          exit $FAIL
+
+      - name: Create Issue on Failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Critical: Unlock Test Suite Failed',
+              body: `## Critical Test Failure\n\n**Date:** ${new Date().toISOString()}\n**Workflow:** Complete Unlock Test Suite\n**Mode:** ${{ needs.determine-mode.outputs.test-mode }}\n\n### Status\n\n- Unlock Integration: ${{ needs.run-unlock-integration.result }}\n- Biometric Voice: ${{ needs.run-biometric-voice.result }}\n\n### Action Required\n\n⚠️ **The "unlock my screen" functionality may be broken!**\n\nPlease review the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) immediately.\n\n### Quick Diagnosis\n\n1. Check individual workflow results\n2. Review failed test logs\n3. Test "unlock my screen" manually\n4. Fix and re-run tests\n\n---\n🤖 Auto-generated by Complete Unlock Test Suite`,
+              labels: ['critical', 'unlock', 'automated-test', 'bug']
+            });
+
+            console.log(`Created issue #${issue.data.number}`);
+
+  notify-status:
+    name: Notify Test Status
+    runs-on: ubuntu-latest
+    needs: [combined-summary]
+    if: always()
+    steps:
+      - name: Success Notification
+        if: needs.combined-summary.result == 'success'
+        run: |
+          echo "✅ All unlock tests passed - 'unlock my screen' is fully functional"
+
+      - name: Failure Notification
+        if: needs.combined-summary.result == 'failure'
+        run: |
+          echo "❌ Unlock tests failed - 'unlock my screen' may be broken!"
+          echo "⚠️  Please investigate immediately"
+          exit 1

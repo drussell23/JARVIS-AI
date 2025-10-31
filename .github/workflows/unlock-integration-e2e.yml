@@ -45,6 +45,9 @@ on:
       - 'backend/core/async_pipeline.py'
       - 'backend/macos_keychain_unlock.py'
       - 'backend/system_control/macos_controller.py'
+      - 'backend/voice_unlock/secure_password_typer.py'
+      - 'backend/voice_unlock/intelligent_voice_unlock_service.py'
+      - 'backend/voice_unlock/objc/server/screen_lock_detector.py'
       - '.github/workflows/unlock-integration-e2e.yml'
 
   # Daily testing
@@ -57,6 +60,16 @@ on:
       - 'backend/core/async_pipeline.py'
       - 'backend/macos_keychain_unlock.py'
       - 'backend/system_control/macos_controller.py'
+      - 'backend/voice_unlock/**'
+
+  # Can be called by other workflows
+  workflow_call:
+    inputs:
+      test_mode:
+        description: 'Test execution mode'
+        required: false
+        default: 'mock'
+        type: string
 
 env:
   PYTHON_VERSION_FILE: '.python-version'
