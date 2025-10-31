@@ -1,0 +1,16 @@
+{
+  "stt": {
+    "engine": "whisper",
+    "model": "base",
+    "language": "en",
+    "sample_rate": 16000,
+    "chunk_duration": 3,
+    "energy_threshold": 1000,
+    "pause_threshold": 0.8
+  },
+  "voice_recognition": {
+    "enabled": true,
+    "speaker": "Derek J. Russell",
+    "confidence_threshold": 75
+  }
+}
