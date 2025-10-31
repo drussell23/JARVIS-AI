@@ -575,10 +575,9 @@ class JARVISVoiceAPI:
         """Get or create learning database instance"""
         if not self._learning_db:
             try:
-                from intelligence.learning_database import LearningDatabase
+                from intelligence.learning_database import get_learning_database
 
-                self._learning_db = LearningDatabase()
-                await self._learning_db.initialize()
+                self._learning_db = await get_learning_database()
                 logger.info("📚 Learning database connected for conversation tracking")
             except Exception as e:
                 logger.error(f"Failed to initialize learning database: {e}")

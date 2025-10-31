@@ -2377,10 +2377,9 @@ async def hybrid_status():
             from pathlib import Path
 
             sys.path.insert(0, str(Path(__file__).parent))
-            from intelligence.learning_database import LearningDatabase
+            from intelligence.learning_database import get_learning_database
 
-            db = LearningDatabase()
-            await db.initialize()
+            db = await get_learning_database()
 
             # Query for latest hybrid learning stats
             async with db.db.cursor() as cursor:

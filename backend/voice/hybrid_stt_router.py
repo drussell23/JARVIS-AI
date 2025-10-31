@@ -82,10 +82,9 @@ class HybridSTTRouter:
         """Lazy-load learning database"""
         if self.learning_db is None:
             try:
-                from intelligence.learning_database import LearningDatabase
+                from intelligence.learning_database import get_learning_database
 
-                self.learning_db = LearningDatabase()
-                await self.learning_db.initialize()
+                self.learning_db = await get_learning_database()
                 logger.info("📚 Learning database connected to STT router")
             except Exception as e:
                 logger.error(f"Failed to connect learning database: {e}")
