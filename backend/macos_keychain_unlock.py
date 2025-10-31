@@ -10,6 +10,7 @@ NOTE: This is a lightweight fallback. For advanced features use:
 
 import asyncio
 import logging
+import os
 import subprocess
 from typing import Any, Dict, Optional
 
@@ -165,35 +166,59 @@ class MacOSKeychainUnlock:
             }
 
         try:
-            # Wake the screen first
-            wake_script = """
-            tell application "System Events"
-                key code 49  -- Space key to wake
-            end tell
-            """
+            # Use secure password typer (Core Graphics, no AppleScript)
+            from voice_unlock.secure_password_typer import type_password_securely
 
-            await asyncio.create_subprocess_exec(
-                "osascript", "-e", wake_script, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            logger.info("🔐 Using secure password typer (Core Graphics)")
+
+            # Type password securely with randomized timing
+            success = await type_password_securely(
+                password=password,
+                submit=True,  # Press Enter after typing
+                randomize_timing=True  # Human-like timing
             )
 
-            await asyncio.sleep(0.5)
+            if not success:
+                logger.warning("⚠️ Secure typer failed, trying AppleScript fallback")
 
-            # Type the password
-            # Note: This uses AppleScript to simulate typing
-            # In production, consider using a more secure method
-            type_script = f"""
-            tell application "System Events"
-                keystroke "{password}"
-                delay 0.1
-                key code 36  -- Return key
-            end tell
-            """
+                # Fallback to AppleScript if Core Graphics fails
+                wake_script = """
+                tell application "System Events"
+                    key code 49  -- Space key to wake
+                end tell
+                """
 
-            result = await asyncio.create_subprocess_exec(
-                "osascript", "-e", type_script, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+                await asyncio.create_subprocess_exec(
+                    "osascript", "-e", wake_script, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
 
-            await result.communicate()
+                await asyncio.sleep(0.5)
+
+                # Secure AppleScript: Use stdin to avoid password in process list
+                type_script = """
+                tell application "System Events"
+                    keystroke (system attribute "JARVIS_UNLOCK_PASS")
+                    delay 0.1
+                    key code 36
+                end tell
+                """
+
+                # Set password in environment temporarily
+                env = os.environ.copy()
+                env["JARVIS_UNLOCK_PASS"] = password
+
+                result = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", type_script,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env
+                )
+
+                await result.communicate()
+
+                # Clear from environment
+                if "JARVIS_UNLOCK_PASS" in env:
+                    del env["JARVIS_UNLOCK_PASS"]
 
             # Wait for unlock
             await asyncio.sleep(1.5)
