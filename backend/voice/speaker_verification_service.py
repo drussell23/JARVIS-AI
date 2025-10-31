@@ -174,10 +174,9 @@ class SpeakerVerificationService:
         try:
             logger.info("🔄 Loading speaker profiles from database...")
 
-            # Ensure database is initialized
-            if not hasattr(self.learning_db, 'db') or self.learning_db.db is None:
-                logger.warning("⚠️ Database not fully initialized, attempting to initialize...")
-                await self.learning_db.initialize()
+            # Use singleton to get the shared database instance
+            from intelligence.learning_database import get_learning_database
+            self.learning_db = await get_learning_database()
 
             profiles = await self.learning_db.get_all_speaker_profiles()
             logger.info(f"📊 Found {len(profiles)} speaker profiles in database")

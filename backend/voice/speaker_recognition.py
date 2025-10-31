@@ -130,10 +130,9 @@ class SpeakerRecognitionEngine:
     async def _load_profiles_from_database(self):
         """Load speaker profiles from learning database"""
         try:
-            from intelligence.learning_database import LearningDatabase
+            from intelligence.learning_database import get_learning_database
 
-            self.learning_db = LearningDatabase()
-            await self.learning_db.initialize()
+            self.learning_db = await get_learning_database()
 
             # Get all speaker profiles
             profiles_data = await self.learning_db.get_all_speaker_profiles()
