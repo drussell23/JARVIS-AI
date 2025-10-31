@@ -8780,6 +8780,15 @@ class ContextStoreStateMachine(RuleBasedStateMachine):
   - CI/CD integration
   - Best practices
 
+**Voice Biometric Authentication:**
+- [docs/Voice-Biometric-Authentication-Debugging-Guide.md](docs/Voice-Biometric-Authentication-Debugging-Guide.md) - Comprehensive voice authentication guide
+  - Complete debugging journey and solutions
+  - Architecture overview and technology stack
+  - ECAPA-TDNN speaker recognition implementation
+  - Edge cases, limitations, and security assessment
+  - Development roadmap for anti-spoofing and advanced features
+  - Best practices and production considerations
+
 **Configuration Files:**
 - `backend/core/hybrid_config.yaml` - Hybrid system configuration
 - `backend/pytest.ini` - pytest configuration
