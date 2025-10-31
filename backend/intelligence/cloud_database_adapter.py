@@ -63,6 +63,11 @@ class DatabaseConfig:
         self.db_user = os.getenv("JARVIS_DB_USER", self.db_user)
         self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
 
+        # CRITICAL: Always use localhost for Cloud SQL proxy connections
+        # The proxy running locally handles the actual connection to Cloud SQL
+        if self.db_type == "cloudsql" and self.connection_name:
+            self.db_host = "127.0.0.1"
+
     def _load_from_config(self):
         """Load config from JSON file"""
         config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
@@ -72,9 +77,7 @@ class DatabaseConfig:
                     config = json.load(f)
                     cloud_sql = config.get("cloud_sql", {})
                     self.connection_name = cloud_sql.get("connection_name", self.connection_name)
-                    # ALWAYS use localhost for proxy connections
-                    # The proxy handles the actual connection to the Cloud SQL instance
-                    self.db_host = "127.0.0.1"  # Force localhost for proxy
+                    self.db_host = cloud_sql.get("host", self.db_host)
                     self.db_port = cloud_sql.get("port", self.db_port)
                     self.db_name = cloud_sql.get("database", self.db_name)
                     self.db_user = cloud_sql.get("user", self.db_user)
