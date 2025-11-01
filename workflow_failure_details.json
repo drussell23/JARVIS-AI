@@ -1,12 +1,12 @@
 {
-  "workflow_name": "WebSocket Self-Healing Validation",
-  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18990387147",
-  "branch": "main",
-  "commit_sha": "2f4cdae",
-  "run_number": 3,
-  "failed_count": 6,
-  "fix_branch": "fix/ci/websocket-self-healing-validation-run3-20251101-030602",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: WebSocket Self-Healing Validation (Run #3)",
+  "workflow_name": "PR Automation & Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18990414391",
+  "branch": "fix/ci/websocket-self-healing-validation-run3-20251101-030602",
+  "commit_sha": "debbb38",
+  "run_number": 224,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/pr-automation-validation-run224-20251101-030731",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #224)",
   "analyses": [
     {
       "error_patterns": [
@@ -14,34 +14,28 @@
           "pattern": "ERROR|Error|error",
           "matches": [
             {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:08.9810849Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
+              "line_number": 25,
+              "content": "2025-11-01T03:06:44.0498546Z   subjectPatternError: The PR title must start with a capital letter.",
               "severity": "high",
               "emoji": "\u274c"
             },
             {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:08.9825713Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:09.4084529Z ##[error]Process completed with exit code 1.",
+              "line_number": 37,
+              "content": "2025-11-01T03:06:44.4617584Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: WebSocket Self-Healing Validation (Run #3)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
               "severity": "high",
               "emoji": "\u274c"
             }
           ],
-          "count": 3
+          "count": 2
         },
         {
-          "pattern": "FAIL|Failed|failed",
+          "pattern": "timeout|timed out",
           "matches": [
             {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:09.4148771Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
+              "line_number": 29,
+              "content": "- fix: Resolve database connection timeout",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
             }
           ],
           "count": 1
@@ -49,247 +43,12 @@
       ],
       "suggested_fixes": [
         "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
+        "Check service availability and network connectivity"
       ],
       "severity": "high",
-      "category": "test_failure",
-      "similar_failures": []
-    },
-    {
-      "error_patterns": [
-        {
-          "pattern": "ERROR|Error|error",
-          "matches": [
-            {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:10.1482393Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:10.1499577Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:10.7123145Z ##[error]Process completed with exit code 1.",
-              "severity": "high",
-              "emoji": "\u274c"
-            }
-          ],
-          "count": 3
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:10.7191408Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 1
-        }
-      ],
-      "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
-      ],
-      "severity": "high",
-      "category": "test_failure",
-      "similar_failures": []
-    },
-    {
-      "error_patterns": [
-        {
-          "pattern": "ERROR|Error|error",
-          "matches": [
-            {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:15.2213263Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:15.2228222Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:15.6511342Z ##[error]Process completed with exit code 1.",
-              "severity": "high",
-              "emoji": "\u274c"
-            }
-          ],
-          "count": 3
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:15.6584369Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 1
-        }
-      ],
-      "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
-      ],
-      "severity": "high",
-      "category": "test_failure",
-      "similar_failures": []
-    },
-    {
-      "error_patterns": [
-        {
-          "pattern": "ERROR|Error|error",
-          "matches": [
-            {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:11.4390036Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:11.4407158Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:11.9574288Z ##[error]Process completed with exit code 1.",
-              "severity": "high",
-              "emoji": "\u274c"
-            }
-          ],
-          "count": 3
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:11.9640335Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 1
-        }
-      ],
-      "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
-      ],
-      "severity": "high",
-      "category": "test_failure",
-      "similar_failures": []
-    },
-    {
-      "error_patterns": [
-        {
-          "pattern": "ERROR|Error|error",
-          "matches": [
-            {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:15.5085657Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:15.5104399Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:16.0957537Z ##[error]Process completed with exit code 1.",
-              "severity": "high",
-              "emoji": "\u274c"
-            }
-          ],
-          "count": 3
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:16.1027794Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 1
-        }
-      ],
-      "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
-      ],
-      "severity": "high",
-      "category": "test_failure",
-      "similar_failures": []
-    },
-    {
-      "error_patterns": [
-        {
-          "pattern": "ERROR|Error|error",
-          "matches": [
-            {
-              "line_number": 43,
-              "content": "2025-11-01T03:05:13.2735464Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these package versions have conflicting dependencies.",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 56,
-              "content": "2025-11-01T03:05:13.2751973Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts",
-              "severity": "high",
-              "emoji": "\u274c"
-            },
-            {
-              "line_number": 57,
-              "content": "2025-11-01T03:05:13.7205307Z ##[error]Process completed with exit code 1.",
-              "severity": "high",
-              "emoji": "\u274c"
-            }
-          ],
-          "count": 3
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-01T03:05:13.7274040Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 1
-        }
-      ],
-      "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations",
-        "Review test cases and ensure code changes haven't broken existing functionality"
-      ],
-      "severity": "high",
-      "category": "test_failure",
+      "category": "timeout",
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-01T03:06:02.796909"
+  "timestamp": "2025-11-01T03:07:31.426625"
 }
