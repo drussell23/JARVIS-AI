@@ -1,0 +1,1053 @@
+{
+  "workflow_name": "Unlock Integration E2E Testing",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/18986682109",
+  "branch": "main",
+  "commit_sha": "4453521",
+  "run_number": 52,
+  "failed_count": 11,
+  "fix_branch": "fix/ci/unlock-integration-e2e-testing-run52-20251031-222833",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Unlock Integration E2E Testing (Run #52)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:17.5629654Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:17.5706461Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:17.7905977Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:15.4707737Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:15.6971449Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:17.2240042Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:15.3803596Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:15.4058939Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:15.6971449Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:17.2240042Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:24.1753886Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:24.1821043Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:24.3836964Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:22.5480446Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:22.7300108Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:23.9944335Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:22.4884280Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:22.5055797Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:22.7300108Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:23.9944335Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:21.9262925Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:21.9345632Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:22.1539636Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:19.8684649Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:20.0408013Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.5726745Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:19.8334700Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:19.8453949Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:20.0408013Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.5726745Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:21.4434937Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:21.4509172Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:21.6650134Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:19.5078403Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:19.6510945Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.1705172Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:19.4702193Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:19.4821981Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:19.6510945Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.1705172Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:39.1295398Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:39.1375596Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:39.3605277Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:36.9262628Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:37.0767863Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:38.7638242Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:36.8898381Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:36.9021199Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:37.0767863Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:38.7638242Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:36.2091953Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:36.2167441Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:36.4384470Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:34.1852976Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:34.3385369Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:35.9161278Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:34.1408647Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:34.1526711Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:34.3385369Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:35.9161278Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:18.6834322Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:18.6911249Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:18.9095325Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:16.6254297Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:16.8339048Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:18.3802208Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:16.5437183Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:16.5677002Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:16.8339048Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:18.3802208Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:38.7460512Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:38.7536980Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:38.9681268Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:36.7529253Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:36.8824325Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:38.4712070Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:36.7157735Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:36.7264531Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:36.8824325Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:38.4712070Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:21.2274092Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:21.2344830Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:21.4450518Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:19.3418858Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:19.5163562Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.0128910Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:19.2893678Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:19.3059617Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:19.5163562Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:21.0128910Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:17.2369424Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 67,
+              "content": "2025-10-31T22:27:17.2443192Z   name: test-results-mock-error-handling",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:17.2443914Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:17.4580100Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:15.3053663Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:15.4867521Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:17.0105896Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:15.2411274Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:15.2596474Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:15.4867521Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:17.0105896Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2025-10-31T22:27:20.8052697Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 70,
+              "content": "2025-10-31T22:27:20.8125129Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 85,
+              "content": "2025-10-31T22:27:21.0390510Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 28,
+              "content": "2025-10-31T22:27:18.6966177Z Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:18.8367612Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:20.4483224Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 16,
+              "content": "2025-10-31T22:27:18.6627022Z Downloading pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 19,
+              "content": "2025-10-31T22:27:18.6741336Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 42,
+              "content": "2025-10-31T22:27:18.8367612Z Installing collected packages: typing-extensions, tomli, pygments, pycparser, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, aiofiles, multidict, exceptiongroup, cffi, aiosignal, yarl, pytest, pycares, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp, aiodns",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 44,
+              "content": "2025-10-31T22:27:20.4483224Z Successfully installed aiodns-3.5.0 aiofiles-25.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.2 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 cffi-2.0.0 exceptiongroup-1.3.0 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.0 packaging-25.0 pluggy-1.6.0 propcache-0.4.1 pycares-4.11.0 pycparser-2.23 pygments-2.19.2 pytest-8.4.2 pytest-asyncio-1.2.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 tomli-2.3.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-10-31T22:28:33.730319"
+}
