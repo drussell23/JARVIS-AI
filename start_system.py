@@ -3605,9 +3605,41 @@ class AsyncSystemManager:
                 sv._global_speaker_service = speaker_service
                 print(f"{Colors.GREEN}   ✓ Global speaker service injected{Colors.ENDC}")
             else:
-                print(
-                    f"{Colors.YELLOW}   ⚠️  Derek's profile not found, will load on demand{Colors.ENDC}"
-                )
+                # Enhanced diagnostics when Derek's profile is not found
+                total_profiles = len(speaker_service.speaker_profiles)
+                if total_profiles > 0:
+                    # Profiles exist, but not Derek's - list what's available
+                    profile_names = list(speaker_service.speaker_profiles.keys())
+                    print(
+                        f"{Colors.YELLOW}   ⚠️  Derek's profile not found in {total_profiles} loaded profile(s){Colors.ENDC}"
+                    )
+                    print(f"{Colors.CYAN}   Available profiles: {', '.join(profile_names)}{Colors.ENDC}")
+                    print(
+                        f"{Colors.CYAN}   💡 Voice authentication will operate in enrollment mode{Colors.ENDC}"
+                    )
+                else:
+                    # No profiles at all - provide enrollment instructions
+                    print(
+                        f"{Colors.YELLOW}   ⚠️  No speaker profiles found in database{Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}   💡 To create Derek's voice profile, say:{Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}      - 'Learn my voice as Derek'{Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}      - 'Create speaker profile for Derek'{Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}   Voice authentication will activate after enrollment{Colors.ENDC}"
+                    )
+
+                # Store globally anyway so backend can access enrollment functionality
+                import backend.voice.speaker_verification_service as sv
+
+                sv._global_speaker_service = speaker_service
+                print(f"{Colors.GREEN}   ✓ Global speaker service injected (enrollment mode){Colors.ENDC}")
 
         except Exception as e:
             print(f"{Colors.YELLOW}   ⚠️  Speaker pre-loading failed: {e}{Colors.ENDC}")

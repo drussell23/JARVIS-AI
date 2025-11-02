@@ -172,7 +172,19 @@ class SpeakerVerificationService:
         )
 
     async def _load_speaker_profiles(self):
-        """Load speaker profiles from learning database"""
+        """
+        Load speaker profiles from learning database with enhanced error handling and validation.
+
+        This method:
+        1. Retrieves all speaker profiles from the database
+        2. Validates and deserializes voiceprint embeddings
+        3. Assesses profile quality (excellent/good/fair/legacy)
+        4. Sets adaptive verification thresholds
+        5. Provides detailed diagnostics if profiles are missing
+        """
+        loaded_count = 0
+        skipped_count = 0
+
         try:
             logger.info("🔄 Loading speaker profiles from database...")
 
@@ -180,38 +192,87 @@ class SpeakerVerificationService:
             from intelligence.learning_database import get_learning_database
             self.learning_db = await get_learning_database()
 
+            # Verify database connection
+            if not self.learning_db or not self.learning_db.initialized:
+                logger.error("❌ Learning database not initialized - cannot load speaker profiles")
+                raise RuntimeError("Learning database not initialized")
+
             profiles = await self.learning_db.get_all_speaker_profiles()
             logger.info(f"📊 Found {len(profiles)} speaker profiles in database")
 
-            for profile in profiles:
-                speaker_id = profile["speaker_id"]
-                speaker_name = profile["speaker_name"]
+            # If no profiles found, provide helpful diagnostic information
+            if len(profiles) == 0:
+                logger.warning("⚠️ No speaker profiles found in database!")
+                logger.info("💡 To create a speaker profile, use voice commands like:")
+                logger.info("   - 'Learn my voice as Derek'")
+                logger.info("   - 'Create speaker profile for Derek'")
+                logger.info("   - Or run the voice enrollment workflow")
 
-                # Deserialize embedding
-                embedding_bytes = profile.get("voiceprint_embedding")
-                if embedding_bytes:
-                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                # Check if database table exists
+                try:
+                    async with self.learning_db.db.cursor() as cursor:
+                        # Try to describe the table
+                        await cursor.execute(
+                            "SELECT COUNT(*) as count FROM speaker_profiles"
+                        )
+                        result = await cursor.fetchone()
+                        logger.info(f"✅ speaker_profiles table exists (row count: {result['count'] if result else 0})")
+                except Exception as table_error:
+                    logger.error(f"❌ speaker_profiles table may not exist or is inaccessible: {table_error}")
+                    logger.info("💡 Run database migrations to create the speaker_profiles table")
+
+            for profile in profiles:
+                try:
+                    speaker_id = profile.get("speaker_id")
+                    speaker_name = profile.get("speaker_name")
+
+                    # Validate required fields
+                    if not speaker_id or not speaker_name:
+                        logger.warning(f"⚠️ Skipping invalid profile: missing speaker_id or speaker_name")
+                        skipped_count += 1
+                        continue
+
+                    # Deserialize embedding
+                    embedding_bytes = profile.get("voiceprint_embedding")
+                    if not embedding_bytes:
+                        logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding - skipping")
+                        skipped_count += 1
+                        continue
+
+                    # Validate embedding data
+                    try:
+                        embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                    except Exception as deserialize_error:
+                        logger.error(f"❌ Failed to deserialize embedding for {speaker_name}: {deserialize_error}")
+                        skipped_count += 1
+                        continue
+
+                    # Validate embedding dimension
+                    if embedding.shape[0] == 0:
+                        logger.warning(f"⚠️ Speaker profile {speaker_name} has empty embedding - skipping")
+                        skipped_count += 1
+                        continue
 
                     # Assess profile quality based on embedding dimension
                     # Current ECAPA-TDNN uses 192 dimensions
-                    is_native = embedding.shape[0] == 192 # Native profile if 192D embedding matches encoder dimension (192D) 
-                    total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation 
+                    is_native = embedding.shape[0] == 192 # Native profile if 192D embedding matches encoder dimension (192D)
+                    total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation
 
-                    # Determine quality and threshold based on samples and native status 
-                    if is_native and total_samples >= 100: 
-                        quality = "excellent" # High-quality native profile 
-                        threshold = self.verification_threshold  # 0.75 
+                    # Determine quality and threshold based on samples and native status
+                    if is_native and total_samples >= 100:
+                        quality = "excellent" # High-quality native profile
+                        threshold = self.verification_threshold  # 0.75
                     elif is_native and total_samples >= 50:
                         quality = "good" # Medium-quality native profile
                         threshold = self.verification_threshold  # 0.75
                     elif total_samples >= 50:
-                        quality = "fair" # Medium-quality legacy profile 
+                        quality = "fair" # Medium-quality legacy profile
                         threshold = self.legacy_threshold  # 0.50
-                    else: 
-                        quality = "legacy" # Low-quality legacy profile 
+                    else:
+                        quality = "legacy" # Low-quality legacy profile
                         threshold = self.legacy_threshold  # 0.50
 
-                    # Store profile in cache and quality scores for adaptive thresholding and verification 
+                    # Store profile in cache and quality scores for adaptive thresholding and verification
                     self.speaker_profiles[speaker_name] = {
                         "speaker_id": speaker_id,
                         "embedding": embedding,
@@ -238,14 +299,35 @@ class SpeakerVerificationService:
                         f"Embedding: {embedding.shape[0]}D, Quality: {quality}, "
                         f"Threshold: {threshold*100:.0f}%, Samples: {total_samples})"
                     )
-                else:
-                    logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding!")
+                    loaded_count += 1
 
-            logger.info(f"✅ Successfully loaded {len(self.speaker_profiles)} speaker profiles")
+                except Exception as profile_error:
+                    logger.error(f"❌ Error loading profile {profile.get('speaker_name', 'unknown')}: {profile_error}")
+                    skipped_count += 1
+                    continue
+
+            # Summary
+            logger.info(
+                f"✅ Speaker profile loading complete: {loaded_count} loaded, {skipped_count} skipped"
+            )
+
+            if loaded_count == 0 and len(profiles) == 0:
+                logger.warning(
+                    "⚠️ No speaker profiles available - voice authentication will operate in enrollment mode"
+                )
+            elif loaded_count == 0 and len(profiles) > 0:
+                logger.error(
+                    f"❌ Found {len(profiles)} profiles in database but failed to load any - check logs above for errors"
+                )
 
         except Exception as e:
             logger.error(f"❌ Failed to load speaker profiles: {e}", exc_info=True)
             logger.warning("⚠️ Continuing with 0 profiles - voice verification will fail until profiles are loaded")
+            logger.info("💡 Troubleshooting steps:")
+            logger.info("   1. Check database connection and credentials")
+            logger.info("   2. Verify speaker_profiles table exists and has correct schema")
+            logger.info("   3. Run database migrations if needed")
+            logger.info("   4. Check Cloud SQL proxy is running (if using Cloud SQL)")
 
     async def verify_speaker(self, audio_data: bytes, speaker_name: Optional[str] = None) -> dict:
         """

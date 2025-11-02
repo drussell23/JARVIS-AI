@@ -473,7 +473,10 @@ class DatabaseCursorWrapper:
         self, table: str, unique_cols: List[str], data: Dict[str, Any]
     ) -> "DatabaseCursorWrapper":
         """
-        Database-agnostic UPSERT - delegates to adapter connection's upsert method.
+        Database-agnostic UPSERT with robust fallback implementation.
+
+        Tries to delegate to adapter connection's upsert method first.
+        Falls back to manual UPSERT SQL if adapter doesn't have upsert.
 
         Args:
             table: Table name
@@ -483,9 +486,68 @@ class DatabaseCursorWrapper:
         Returns:
             Self for method chaining
         """
-        await self.adapter_conn.upsert(table, unique_cols, data)
-        self._row_count = 1  # UPSERT affects 1 row
-        return self
+        # Try to use adapter's upsert if available
+        if hasattr(self.adapter_conn, 'upsert') and callable(getattr(self.adapter_conn, 'upsert')):
+            try:
+                await self.adapter_conn.upsert(table, unique_cols, data)
+                self._row_count = 1  # UPSERT affects 1 row
+                return self
+            except Exception as e:
+                logger.debug(f"adapter_conn.upsert failed, falling back to manual UPSERT: {e}")
+
+        # Fallback: Construct UPSERT SQL manually
+        logger.debug(f"Using fallback UPSERT for table {table}")
+
+        cols = list(data.keys())
+        values = tuple(data.values())
+
+        # Detect database type by checking for asyncpg/psycopg methods
+        is_postgresql = hasattr(self.adapter_conn, 'fetch') or hasattr(self.adapter_conn, 'fetchrow')
+
+        if is_postgresql:
+            # PostgreSQL: INSERT ... ON CONFLICT DO UPDATE
+            placeholders = ",".join([f"${i+1}" for i in range(len(cols))])
+            col_names = ",".join(cols)
+            conflict_target = ",".join(unique_cols)
+            update_cols = [col for col in cols if col not in unique_cols]
+
+            if update_cols:
+                update_set = ",".join([f"{col} = EXCLUDED.{col}" for col in update_cols])
+                query = f"""
+                    INSERT INTO {table} ({col_names})
+                    VALUES ({placeholders})
+                    ON CONFLICT ({conflict_target})
+                    DO UPDATE SET {update_set}
+                """
+            else:
+                # No non-unique columns, just ignore conflicts
+                query = f"""
+                    INSERT INTO {table} ({col_names})
+                    VALUES ({placeholders})
+                    ON CONFLICT ({conflict_target}) DO NOTHING
+                """
+        else:
+            # SQLite: INSERT OR REPLACE
+            placeholders = ",".join(["?" for _ in cols])
+            col_names = ",".join(cols)
+            query = f"INSERT OR REPLACE INTO {table} ({col_names}) VALUES ({placeholders})"
+
+        # Execute the UPSERT
+        try:
+            if is_postgresql:
+                # PostgreSQL uses $1, $2, etc
+                await self.adapter_conn.execute(query, *values)
+            else:
+                # SQLite uses ?
+                await self.execute(query, values)
+
+            self._row_count = 1  # UPSERT affects 1 row
+            return self
+        except Exception as e:
+            logger.error(f"Fallback UPSERT failed for table {table}: {e}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Values: {values}")
+            raise
 
     async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DatabaseCursorWrapper":
         """
