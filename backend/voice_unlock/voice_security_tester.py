@@ -489,13 +489,14 @@ class VoiceSecurityTester:
     5. Generating comprehensive security report
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, playback_config: Optional[PlaybackConfig] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, playback_config: Optional[PlaybackConfig] = None, progress_callback: Optional[callable] = None):
         """
         Initialize voice security tester.
 
         Args:
             config: Optional configuration overrides
             playback_config: Audio playback configuration (enables audio during tests)
+            progress_callback: Optional callback function for progress updates (current, total)
         """
         self.config = config or {}
         self.authorized_user = self.config.get('authorized_user', 'Derek')
@@ -510,6 +511,9 @@ class VoiceSecurityTester:
         # Audio playback configuration
         self.playback_config = playback_config or PlaybackConfig()
         self.audio_player = AudioPlayer(self.playback_config) if self.playback_config.enabled else None
+
+        # Progress tracking callback
+        self.progress_callback = progress_callback
 
         # GCP TTS service (dynamic, robust voice generation)
         self.gcp_tts = GCPTTSService(cache_dir=self.temp_dir / 'gcp_tts_cache')
@@ -992,7 +996,17 @@ class VoiceSecurityTester:
         logger.info("ATTACKER VOICE TESTS - Generating Synthetic Voices")
         logger.info(f"{'='*80}")
 
+        total_tests = len(self.test_profiles)
         for i, profile in enumerate(self.test_profiles, start=2):
+            current_test = i - 1  # Subtract 1 since we start at test 2
+
+            # Emit progress update (visual only, not spoken)
+            if self.progress_callback:
+                try:
+                    await self.progress_callback(current_test, total_tests)
+                except Exception as e:
+                    logger.debug(f"Progress callback failed: {e}")
+
             logger.info(f"\nTEST {i}: {profile.value.replace('_', ' ').title()}")
             logger.info(f"Expected result: REJECT (unauthorized voice)")
 

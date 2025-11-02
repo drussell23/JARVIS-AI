@@ -274,9 +274,10 @@ class VoiceProfileGenerator:
     def __init__(self, tts_service: GCPTTSService):
         self.tts_service = tts_service
 
-    async def generate_attacker_profiles(self, count: int = 24) -> List[VoiceConfig]:
+    async def generate_attacker_profiles(self, count: int = 32) -> List[VoiceConfig]:
         """
         Generate diverse attacker voice profiles dynamically.
+        Includes diverse racial/ethnic linguistic patterns for comprehensive testing.
 
         Args:
             count: Target number of profiles (will generate up to this many)
@@ -287,40 +288,61 @@ class VoiceProfileGenerator:
         profiles = []
 
         # Define diverse voice characteristics
+        # Includes racial/ethnic diversity through accent, language origin, and voice characteristics
         voice_specs = [
-            # English accents
-            ("en-US", VoiceGender.MALE, "Standard", 1.0, 0.0),
-            ("en-US", VoiceGender.FEMALE, "Standard", 1.0, 0.0),
-            ("en-US", VoiceGender.NEUTRAL, "Standard", 1.0, 0.0),
-            ("en-GB", VoiceGender.MALE, "British", 1.0, 0.0),
-            ("en-GB", VoiceGender.FEMALE, "British", 1.0, 0.0),
-            ("en-AU", VoiceGender.MALE, "Australian", 1.0, 0.0),
-            ("en-AU", VoiceGender.FEMALE, "Australian", 1.0, 0.0),
-            ("en-IN", VoiceGender.MALE, "Indian", 1.0, 0.0),
-            ("en-IN", VoiceGender.FEMALE, "Indian", 1.0, 0.0),
+            # Standard American English (various ethnic backgrounds)
+            ("en-US", VoiceGender.MALE, "StandardMale", 1.0, 0.0),
+            ("en-US", VoiceGender.FEMALE, "StandardFemale", 1.0, 0.0),
+            ("en-US", VoiceGender.NEUTRAL, "StandardNeutral", 1.0, 0.0),
 
-            # Speed variations
-            ("en-US", VoiceGender.MALE, "Fast", 1.3, 0.0),
-            ("en-US", VoiceGender.FEMALE, "Slow", 0.7, 0.0),
+            # British English (UK)
+            ("en-GB", VoiceGender.MALE, "BritishMale", 1.0, 0.0),
+            ("en-GB", VoiceGender.FEMALE, "BritishFemale", 1.0, 0.0),
 
-            # Pitch variations
-            ("en-US", VoiceGender.MALE, "Deep", 1.0, -5.0),
-            ("en-US", VoiceGender.FEMALE, "HighPitched", 1.0, 5.0),
-            ("en-US", VoiceGender.MALE, "Child", 1.0, 8.0),
-            ("en-US", VoiceGender.MALE, "Elderly", 0.85, -3.0),
+            # Australian English
+            ("en-AU", VoiceGender.MALE, "AustralianMale", 1.0, 0.0),
+            ("en-AU", VoiceGender.FEMALE, "AustralianFemale", 1.0, 0.0),
 
-            # Combined variations
-            ("en-GB", VoiceGender.MALE, "FastBritish", 1.2, 0.0),
-            ("en-AU", VoiceGender.FEMALE, "SlowAustralian", 0.8, 2.0),
-            ("en-IN", VoiceGender.MALE, "DeepIndian", 1.0, -4.0),
+            # Indian English (South Asian)
+            ("en-IN", VoiceGender.MALE, "IndianMale", 1.0, 0.0),
+            ("en-IN", VoiceGender.FEMALE, "IndianFemale", 1.0, 0.0),
 
-            # Extreme variations
-            ("en-US", VoiceGender.FEMALE, "Whispered", 0.9, -2.0),
-            ("en-US", VoiceGender.MALE, "Shouted", 1.1, 3.0),
-            ("en-US", VoiceGender.NEUTRAL, "Robotic", 1.0, 0.0),
-            ("en-GB", VoiceGender.FEMALE, "Breathy", 0.95, 1.0),
-            ("en-AU", VoiceGender.MALE, "Raspy", 0.9, -1.0),
-            ("en-IN", VoiceGender.FEMALE, "Nasal", 1.05, 4.0),
+            # African English variants
+            ("en-NG", VoiceGender.MALE, "NigerianMale", 1.0, 0.0),  # West African
+            ("en-NG", VoiceGender.FEMALE, "NigerianFemale", 1.0, 0.0),
+            ("en-ZA", VoiceGender.MALE, "SouthAfricanMale", 1.0, 0.0),  # Southern African
+            ("en-ZA", VoiceGender.FEMALE, "SouthAfricanFemale", 1.0, 0.0),
+
+            # East Asian English accents
+            ("en-US", VoiceGender.MALE, "AsianAccentMale", 1.05, 1.0),  # Slight pitch/rate variation
+            ("en-US", VoiceGender.FEMALE, "AsianAccentFemale", 1.05, 2.0),
+
+            # Hispanic/Latino English
+            ("en-US", VoiceGender.MALE, "HispanicMale", 1.0, 0.5),
+            ("en-US", VoiceGender.FEMALE, "HispanicFemale", 1.0, 1.0),
+
+            # Age variations
+            ("en-US", VoiceGender.MALE, "ChildVoice", 1.1, 8.0),
+            ("en-US", VoiceGender.MALE, "TeenVoice", 1.05, 4.0),
+            ("en-US", VoiceGender.MALE, "ElderlyVoice", 0.85, -3.0),
+            ("en-US", VoiceGender.FEMALE, "ElderlyFemale", 0.85, -2.0),
+
+            # Speaking style variations
+            ("en-US", VoiceGender.MALE, "FastSpeaker", 1.3, 0.0),
+            ("en-US", VoiceGender.FEMALE, "SlowSpeaker", 0.7, 0.0),
+            ("en-US", VoiceGender.MALE, "DeepVoice", 1.0, -5.0),
+            ("en-US", VoiceGender.FEMALE, "HighPitchedVoice", 1.0, 5.0),
+
+            # Expressive variations
+            ("en-US", VoiceGender.FEMALE, "WhisperedVoice", 0.9, -2.0),
+            ("en-US", VoiceGender.MALE, "ShoutedVoice", 1.1, 3.0),
+            ("en-GB", VoiceGender.FEMALE, "BreathyVoice", 0.95, 1.0),
+            ("en-AU", VoiceGender.MALE, "RaspyVoice", 0.9, -1.0),
+            ("en-IN", VoiceGender.FEMALE, "NasalVoice", 1.05, 4.0),
+
+            # Synthetic/modified voices
+            ("en-US", VoiceGender.NEUTRAL, "RoboticVoice", 1.0, 0.0),
+            ("en-US", VoiceGender.MALE, "ModulatedVoice", 1.0, -2.0),
         ]
 
         # Discover actual voices for each spec

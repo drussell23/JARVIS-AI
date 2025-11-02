@@ -1346,14 +1346,26 @@ class AdvancedAsyncPipeline:
                 pause_after_playback=0.5
             )
 
-            # Use full test mode (24 profiles - complete dynamic range)
+            # Use full test mode (32 profiles - complete dynamic range with ethnic diversity)
             test_config = {
                 'test_mode': 'full',
                 'authorized_user': user_name,
             }
 
-            # Create tester instance with audio playback
-            tester = VoiceSecurityTester(config=test_config, playback_config=playback_config)
+            # Define progress callback to provide visual feedback (not announced)
+            async def progress_callback(current: int, total: int):
+                """Update progress - visual only, not announced audibly"""
+                progress_msg = f"Testing voice {current} of {total}"
+                logger.info(f"🔒 [SECURITY-TEST-PROGRESS] {progress_msg}")
+                # Note: Progress is logged but NOT spoken via TTS
+                # User can see it in logs/UI without audio interruption
+
+            # Create tester instance with audio playback and progress callback
+            tester = VoiceSecurityTester(
+                config=test_config,
+                playback_config=playback_config,
+                progress_callback=progress_callback
+            )
 
             # Run security tests
             logger.info("🔒 [SECURITY-TEST-RUNNING] Executing voice security tests with audio playback...")
