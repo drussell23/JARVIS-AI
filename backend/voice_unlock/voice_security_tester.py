@@ -865,16 +865,21 @@ class VoiceSecurityTester:
             with open(audio_file, 'rb') as f:
                 audio_data = f.read()
 
-            # Perform verification using the shared verification service
+            # Perform speaker identification (not verification against specific user)
+            # This tests whether the system correctly identifies/rejects voices
             result = await self.verification_service.verify_speaker(
                 audio_data=audio_data,
-                speaker_name=self.authorized_user
+                speaker_name=None  # Let system identify - attacker voices should be rejected
             )
 
             # Extract results
-            similarity_score = result.get('confidence', 0.0)  # Changed from 'similarity_score' to 'confidence'
+            similarity_score = result.get('confidence', 0.0)
             was_accepted = result.get('verified', False)
+            identified_speaker = result.get('speaker_name', 'unknown')
             embedding_dim = result.get('embedding_dimension', self.embedding_dimension)
+
+            # Log identification result for debugging
+            logger.debug(f"Test {profile.value}: identified='{identified_speaker}', confidence={similarity_score:.2%}, verified={was_accepted}")
 
             # Determine test result
             if should_accept and was_accepted:
