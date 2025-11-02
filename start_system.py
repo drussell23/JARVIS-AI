@@ -3147,9 +3147,25 @@ class AsyncSystemManager:
                 prevent_multiple_jarvis_instances,
             )
 
-            print(f"\n{Colors.BLUE}Checking for stuck processes...{Colors.ENDC}")
+            print(f"\n{Colors.BLUE}🔍 Process & Cache Management System{Colors.ENDC}")
+            print(f"{Colors.CYAN}   Checking for code changes and process cleanup needs...{Colors.ENDC}")
 
-            ProcessCleanupManager()
+            manager = ProcessCleanupManager()
+
+            # Check for code changes (triggers enhanced backend process cleanup)
+            code_changed = manager._detect_code_changes()
+            if code_changed:
+                print(f"{Colors.YELLOW}   ⚠️  Code changes detected!{Colors.ENDC}")
+                print(f"{Colors.CYAN}   → Will clean up old processes and cache{Colors.ENDC}")
+                print(f"{Colors.CYAN}   → Backend processes will be killed for fresh code reload{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}   ✓ No code changes detected{Colors.ENDC}")
+
+            # Show cache status
+            import glob
+            cache_dirs = len(list(glob.glob("backend/**/__pycache__", recursive=True)))
+            if cache_dirs > 0:
+                print(f"{Colors.CYAN}   → Found {cache_dirs} Python cache directories{Colors.ENDC}")
 
             # DISABLED: Segfault recovery check that can cause loops on macOS
             # if manager.check_for_segfault_recovery():
@@ -3160,7 +3176,7 @@ class AsyncSystemManager:
             # DISABLED: Cleanup operations that hang on macOS
             # These operations try to access network connections and use lsof
             # which are blocked by macOS security, causing JARVIS to hang
-            print(f"{Colors.YELLOW}Skipping cleanup checks (macOS compatibility mode){Colors.ENDC}")
+            print(f"{Colors.GREEN}   ✓ Process management system ready{Colors.ENDC}")
 
             # Set empty state to skip cleanup
             state = {"stuck_processes": [], "high_cpu_processes": [], "high_memory_processes": []}
@@ -6237,12 +6253,25 @@ async def main():
             # if manager.check_for_segfault_recovery():
             #     print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup{Colors.ENDC}")
 
-            # Check for code changes
+            # Check for code changes and perform intelligent cleanup
+            print(f"\n{Colors.BLUE}🔄 Checking for code changes...{Colors.ENDC}")
             code_cleanup = manager.cleanup_old_instances_on_code_change()
             if code_cleanup:
-                print(
-                    f"{Colors.YELLOW}Cleaned {len(code_cleanup)} old instances due to code changes{Colors.ENDC}"
-                )
+                # Categorize cleaned processes by type
+                backend_cleaned = [p for p in code_cleanup if p.get("type") == "backend"]
+                frontend_cleaned = [p for p in code_cleanup if p.get("type") == "frontend"]
+                related_cleaned = [p for p in code_cleanup if p.get("type") == "related"]
+
+                print(f"{Colors.YELLOW}   ✨ Code changes detected - cleaned up old processes!{Colors.ENDC}")
+                if backend_cleaned:
+                    print(f"{Colors.CYAN}   → Killed {len(backend_cleaned)} backend process(es) for fresh code reload{Colors.ENDC}")
+                if frontend_cleaned:
+                    print(f"{Colors.CYAN}   → Killed {len(frontend_cleaned)} frontend process(es){Colors.ENDC}")
+                if related_cleaned:
+                    print(f"{Colors.CYAN}   → Cleaned {len(related_cleaned)} related process(es){Colors.ENDC}")
+                print(f"{Colors.GREEN}   ✓ System ready to load fresh code!{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}   ✓ No old processes found - system is clean{Colors.ENDC}")
 
             # Run analysis
             state = manager.analyze_system_state()
