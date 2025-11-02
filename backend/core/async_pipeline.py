@@ -1346,9 +1346,9 @@ class AdvancedAsyncPipeline:
                 pause_after_playback=0.5
             )
 
-            # Use standard test mode (8 diverse profiles)
+            # Use full test mode (24 profiles - complete dynamic range)
             test_config = {
-                'test_mode': 'standard',
+                'test_mode': 'full',
                 'authorized_user': user_name,
             }
 
