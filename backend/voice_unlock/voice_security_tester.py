@@ -535,7 +535,8 @@ class VoiceSecurityTester:
         self.progress_callback = progress_callback
 
         # GCP TTS service (dynamic, robust voice generation)
-        self.gcp_tts = GCPTTSService(cache_dir=self.temp_dir / 'gcp_tts_cache')
+        # Use permanent cache directory to persist voices across tests and stay in free tier
+        self.gcp_tts = GCPTTSService()  # Uses default ~/.jarvis/tts_cache
         self.voice_generator = VoiceProfileGenerator(self.gcp_tts)
         self.gcp_voice_profiles: Optional[List[VoiceConfig]] = None  # Lazy loaded
 
