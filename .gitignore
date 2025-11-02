@@ -296,3 +296,4 @@ model_checkpoints/
 # Voice enrollment data
 backend/voice/voice_samples/
 backend/voice/voiceprints/
+ROTATION_INSTRUCTIONS.md

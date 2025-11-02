@@ -7419,22 +7419,57 @@ Phase 3.1 enables 6 new LLM-powered use cases:
 
 ## Installation
 
+### Quick Start
+
 ```bash
-# Install dependencies
+# 1. Install dependencies
 pip install -r backend/requirements.txt
 
-# Set API key
+# 2. Set up secrets (RECOMMENDED - uses GCP Secret Manager + macOS Keychain)
+python backend/scripts/setup_local_secrets.py
+
+# Alternative: Set environment variables (not recommended for production)
 export ANTHROPIC_API_KEY="your-key-here"
 
-# Start backend
+# 3. Start backend
 cd backend
 python main.py --port 8010
 
-# Start frontend
+# 4. Start frontend
 cd frontend
 npm install
 npm start
 ```
+
+### 🔐 Secret Management (NEW in v17.4)
+
+JARVIS now includes **enterprise-grade secret management** with automatic fallback:
+
+**Production (Recommended):**
+- Secrets stored in **GCP Secret Manager** (encrypted, versioned, audited)
+- Automatic retrieval with zero configuration
+- Cost: < $1/month (within GCP free tier)
+
+**Local Development:**
+- Secrets stored in **macOS Keychain** (OS-level encryption)
+- One-time setup: `python backend/scripts/setup_local_secrets.py`
+- No .env files needed
+
+**CI/CD:**
+- Uses GitHub Secrets automatically
+- Environment variables as fallback
+
+**Features:**
+- ✅ **Zero secrets in repository** - impossible to commit secrets
+- ✅ **Pre-commit hook** - gitleaks blocks any secret commits
+- ✅ **GitHub Actions** - automated secret scanning on every PR
+- ✅ **Automatic rotation** - supports credential rotation without code changes
+- ✅ **Multi-environment** - works seamlessly in prod/dev/CI
+
+**Documentation:**
+- Complete guide: `LONG_TERM_SECRET_MANAGEMENT.md`
+- Implementation details: `SECRET_MANAGEMENT_IMPLEMENTATION.md`
+- Security response: `SECURITY_CLEANUP_PLAN.md`
 
 ## System Status
 
