@@ -259,6 +259,7 @@ class SpeakerVerificationService:
                     total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation
 
                     # Determine quality and threshold based on samples and native status
+                    # SECURITY FIX: Use 75% threshold for ALL profiles to prevent false acceptances
                     if is_native and total_samples >= 100:
                         quality = "excellent" # High-quality native profile
                         threshold = self.verification_threshold  # 0.75
@@ -267,10 +268,10 @@ class SpeakerVerificationService:
                         threshold = self.verification_threshold  # 0.75
                     elif total_samples >= 50:
                         quality = "fair" # Medium-quality legacy profile
-                        threshold = self.legacy_threshold  # 0.50
+                        threshold = self.verification_threshold  # 0.75 (upgraded from 0.50 for security)
                     else:
                         quality = "legacy" # Low-quality legacy profile
-                        threshold = self.legacy_threshold  # 0.50
+                        threshold = self.verification_threshold  # 0.75 (upgraded from 0.50 for security)
 
                     # Store profile in cache and quality scores for adaptive thresholding and verification
                     self.speaker_profiles[speaker_name] = {
