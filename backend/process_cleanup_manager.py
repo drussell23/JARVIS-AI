@@ -543,6 +543,53 @@ class ProcessCleanupManager:
 
         return hasher.hexdigest()
 
+    def _clear_python_cache(self) -> int:
+        """
+        Aggressively clear all Python __pycache__ directories and .pyc files.
+        This ensures fresh code is ALWAYS loaded on restart.
+
+        Returns:
+            Number of cache directories/files removed
+        """
+        cleared_count = 0
+
+        logger.info("🧹 Clearing all Python cache to ensure fresh code loads...")
+
+        # Clear __pycache__ directories recursively
+        try:
+            for root, dirs, files in os.walk(self.backend_path):
+                # Clear __pycache__ directories
+                if "__pycache__" in dirs:
+                    pycache_path = Path(root) / "__pycache__"
+                    try:
+                        import shutil
+                        shutil.rmtree(pycache_path)
+                        cleared_count += 1
+                        logger.debug(f"Cleared cache: {pycache_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove {pycache_path}: {e}")
+
+                # Also clear any .pyc files in the directory
+                for file in files:
+                    if file.endswith(".pyc"):
+                        pyc_path = Path(root) / file
+                        try:
+                            pyc_path.unlink()
+                            cleared_count += 1
+                            logger.debug(f"Removed .pyc file: {pyc_path}")
+                        except Exception as e:
+                            logger.warning(f"Failed to remove {pyc_path}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during Python cache cleanup: {e}")
+
+        if cleared_count > 0:
+            logger.info(f"✅ Cleared {cleared_count} Python cache directories/files")
+        else:
+            logger.debug("No Python cache found to clear")
+
+        return cleared_count
+
     def _detect_code_changes(self) -> bool:
         """Detect if JARVIS code has changed since last run"""
         current_hash = self._calculate_code_hash()
@@ -592,6 +639,9 @@ class ProcessCleanupManager:
             return cleaned
 
         logger.warning("🔄 Code changes detected! Cleaning up old JARVIS instances...")
+
+        # Clear Python cache FIRST to ensure fresh code loads
+        self._clear_python_cache()
 
         current_pid = os.getpid()
         current_time = time.time()
@@ -1956,8 +2006,13 @@ def ensure_fresh_jarvis_instance():
     Ensure JARVIS is running fresh code. Call this at startup.
     Returns True if it's safe to start, False if another instance should be used.
     Includes orphaned VM cleanup (synchronous version).
+    ALWAYS clears Python cache to guarantee fresh code loads.
     """
     manager = ProcessCleanupManager()
+
+    # ALWAYS clear Python cache at startup to ensure fresh code
+    logger.info("🔄 Ensuring fresh code by clearing Python cache at startup...")
+    manager._clear_python_cache()
 
     # Check for crash recovery first
     if manager.check_for_segfault_recovery():
@@ -1989,6 +2044,7 @@ def prevent_multiple_jarvis_instances():
     """
     Comprehensive check to prevent multiple JARVIS instances from running.
     This is the main function to call at startup.
+    ALWAYS clears Python cache to guarantee fresh code loads.
 
     Returns:
         Tuple[bool, str]: (can_start, message)
@@ -1998,6 +2054,10 @@ def prevent_multiple_jarvis_instances():
     manager = ProcessCleanupManager()
 
     try:
+        # Step 1: ALWAYS clear Python cache at startup to ensure fresh code
+        logger.info("🔄 Ensuring fresh code by clearing Python cache at startup...")
+        manager._clear_python_cache()
+
         # DISABLED: Check for crash recovery (causes loops on macOS)
         # if manager.check_for_segfault_recovery():
         #     return True, "System recovered from crash - safe to start fresh"
