@@ -206,6 +206,19 @@ except ImportError:
     COST_TRACKING_AVAILABLE = False
     # Logger not yet initialized, will log later
 
+# Helper function to get Anthropic API key from Secret Manager
+def _get_anthropic_api_key():
+    """Get Anthropic API key with fallback chain: Secret Manager -> environment"""
+    try:
+        from core.secret_manager import get_anthropic_key
+        key = get_anthropic_key()
+        if key:
+            return key
+    except (ImportError, Exception):
+        pass
+    # Fallback to environment variable
+    return os.getenv("ANTHROPIC_API_KEY")
+
 # Set fork safety for macOS to prevent segmentation faults
 if platform.system() == "Darwin":
     # Set environment variable for fork safety
@@ -3045,7 +3058,7 @@ class AsyncSystemManager:
 
     async def check_claude_config(self):
         """Check Claude API configuration"""
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = _get_anthropic_api_key()
         if api_key:
             print(f"{Colors.GREEN}✓ Claude API configured{Colors.ENDC}")
             self.claude_configured = True
@@ -3800,7 +3813,7 @@ class AsyncSystemManager:
         else:
             env["LD_LIBRARY_PATH"] = swift_lib_path
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = _get_anthropic_api_key()
         if api_key:
             env["ANTHROPIC_API_KEY"] = api_key
 
@@ -3996,7 +4009,7 @@ class AsyncSystemManager:
         else:
             env["LD_LIBRARY_PATH"] = swift_lib_path
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = _get_anthropic_api_key()
         if api_key:
             env["ANTHROPIC_API_KEY"] = api_key
 
@@ -4229,7 +4242,7 @@ class AsyncSystemManager:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = _get_anthropic_api_key()
         if api_key:
             env["ANTHROPIC_API_KEY"] = api_key
 
@@ -4824,7 +4837,7 @@ if (typeof localStorage !== 'undefined') {
 
                     load_dotenv(env_path, override=True)
 
-                    if os.getenv("ANTHROPIC_API_KEY"):
+                    if _get_anthropic_api_key():
                         print(f"{Colors.GREEN}✅ Found API key in {env_path}{Colors.ENDC}")
                         return True
                 except:

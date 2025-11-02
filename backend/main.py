@@ -254,6 +254,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+# Import centralized secret manager
+try:
+    from core.secret_manager import get_anthropic_key
+    SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    SECRET_MANAGER_AVAILABLE = False
+
 # Load environment variables (force override of system env vars)
 try:
     from dotenv import load_dotenv
@@ -1102,7 +1109,11 @@ async def lifespan(app: FastAPI):
     vision_analyzer = None
     if vision.get("available"):
         analyzer_class = vision.get("analyzer")
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Get API key with fallback chain: Secret Manager -> environment
+        if SECRET_MANAGER_AVAILABLE:
+            api_key = get_anthropic_key()
+        else:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
         if analyzer_class and api_key:
             vision_analyzer = analyzer_class(api_key)
             app.state.vision_analyzer = vision_analyzer
