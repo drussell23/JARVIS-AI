@@ -972,6 +972,20 @@ class AdvancedAsyncPipeline:
                 text, user_name, metadata, audio_data=audio_data, speaker_name=speaker_name
             )
 
+        # FAST PATH for voice security testing - direct execution
+        if any(
+            phrase in text_lower
+            for phrase in [
+                "test my voice security",
+                "test voice security",
+                "verify voice authentication",
+                "check voice security",
+                "run security test",
+                "test voice biometric",
+            ]
+        ):
+            return await self._fast_voice_security_test(text, user_name, metadata)
+
         # Create pipeline context
         command_id = f"cmd_{int(time.time() * 1000)}"
         context = PipelineContext(
@@ -1288,6 +1302,96 @@ class AdvancedAsyncPipeline:
                 "response": f"Failed to {action_type.lower()} screen: {str(e)}",
                 "latency_ms": elapsed_ms,
                 "metadata": {"command": text, "user": user_name, "action_type": action_type}
+            }
+
+    async def _fast_voice_security_test(
+        self,
+        text: str,
+        user_name: str,
+        metadata: Optional[Dict] = None,
+    ) -> Dict:
+        """Fast voice security test handler.
+
+        Runs comprehensive voice biometric security tests to verify that
+        unauthorized voices are rejected and the authorized voice is accepted.
+
+        Args:
+            text: Command text
+            user_name: User name
+            metadata: Optional metadata dict
+
+        Returns:
+            Result dict with test results and security verdict
+        """
+        start_time = time.time()
+
+        logger.info(f"🔒 [SECURITY-TEST-START] Voice security test initiated at {datetime.now().isoformat()}")
+        logger.info(f"🔒 [SECURITY-TEST-USER] Testing for user: {user_name}")
+
+        try:
+            # Import voice security tester
+            from backend.voice_unlock.voice_security_tester import VoiceSecurityTester
+
+            # Create tester instance
+            tester = VoiceSecurityTester()
+
+            # Run security tests
+            logger.info("🔒 [SECURITY-TEST-RUNNING] Executing voice security tests...")
+            report = await tester.run_security_tests()
+
+            # Save report
+            await tester.save_report(report)
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            # Generate response based on results
+            if report.is_secure:
+                response = (
+                    f"Voice security test complete. {report.summary['passed']} of {report.summary['total']} tests passed. "
+                    f"Your voice authentication is secure. No unauthorized voices were accepted."
+                )
+            else:
+                breaches = report.summary.get('security_breaches', 0)
+                false_rejects = report.summary.get('false_rejections', 0)
+                response = (
+                    f"Voice security test complete. Warning: {breaches} security breaches detected. "
+                    f"{false_rejects} false rejections occurred. Please review the security report."
+                )
+
+            logger.info(
+                f"✅ [SECURITY-TEST-COMPLETE] Test finished in {latency_ms:.0f}ms "
+                f"(secure={report.is_secure}) | Tests: {report.summary['total']}, "
+                f"Passed: {report.summary['passed']}, Failed: {report.summary['failed']}"
+            )
+
+            return {
+                "success": True,
+                "response": response,
+                "fast_path": True,
+                "is_secure": report.is_secure,
+                "test_summary": report.summary,
+                "latency_ms": latency_ms,
+                "metadata": {
+                    "method": "fast_voice_security_test",
+                    "command": text,
+                    "user": user_name,
+                    "report_file": str(report.report_file) if hasattr(report, 'report_file') else None
+                },
+            }
+
+        except Exception as e:
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.error(
+                f"❌ [SECURITY-TEST-ERROR] Voice security test failed after {elapsed_ms:.0f}ms: {e}",
+                exc_info=True
+            )
+
+            return {
+                "success": False,
+                "error": str(e),
+                "response": f"Voice security test failed: {str(e)}",
+                "latency_ms": elapsed_ms,
+                "metadata": {"command": text, "user": user_name}
             }
 
 
