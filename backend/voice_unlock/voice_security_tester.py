@@ -128,7 +128,7 @@ class AudioPlayer:
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
-    async def play(self, audio_file: Path, profile: VoiceProfile):
+    async def play(self, audio_file: Path, profile: 'VoiceProfile'):
         """
         Play audio file with current backend.
 
