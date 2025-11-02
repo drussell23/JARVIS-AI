@@ -850,19 +850,23 @@ class VoiceSecurityTester:
             if self.audio_player:
                 await self.audio_player.play(audio_file, profile)
 
-            # Import verification service
-            from backend.voice.speaker_verification_service import SpeakerVerificationService
+            # Use the already-initialized verification service from run_security_tests()
+            if not hasattr(self, 'verification_service') or self.verification_service is None:
+                # Fallback: Initialize if not already done (standalone test case)
+                from backend.voice.speaker_verification_service import SpeakerVerificationService
+                from backend.intelligence.learning_database import get_learning_database
 
-            # Initialize service
-            verification_service = SpeakerVerificationService()
-            await verification_service.initialize()
+                learning_db = await get_learning_database()
+                self.verification_service = SpeakerVerificationService(learning_db=learning_db)
+                await self.verification_service.initialize()
+                logger.info(f"Initialized verification service with {len(self.verification_service.speaker_profiles)} profiles")
 
             # Read audio file as bytes
             with open(audio_file, 'rb') as f:
                 audio_data = f.read()
 
-            # Perform verification
-            result = await verification_service.verify_speaker(
+            # Perform verification using the shared verification service
+            result = await self.verification_service.verify_speaker(
                 audio_data=audio_data,
                 speaker_name=self.authorized_user
             )
@@ -923,6 +927,20 @@ class VoiceSecurityTester:
 
         start_time = time.time()
         tests = []
+
+        # Initialize verification service with Cloud SQL database (once for all tests)
+        logger.info("Initializing speaker verification service with Cloud SQL...")
+        from backend.voice.speaker_verification_service import SpeakerVerificationService
+        from backend.intelligence.learning_database import get_learning_database
+
+        # Get the already-initialized Cloud SQL database instance
+        learning_db = await get_learning_database()
+        logger.info(f"Learning database connection: {type(learning_db).__name__}")
+
+        # Initialize service with Cloud SQL database (reuse for all tests)
+        self.verification_service = SpeakerVerificationService(learning_db=learning_db)
+        await self.verification_service.initialize()
+        logger.info(f"Verification service initialized with {len(self.verification_service.speaker_profiles)} speaker profiles")
 
         # Load system configuration
         logger.info("Loading system configuration...")
