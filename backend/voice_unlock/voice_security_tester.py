@@ -37,6 +37,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 
+# GCP TTS integration
+from backend.audio.gcp_tts_service import (
+    GCPTTSService,
+    VoiceProfileGenerator,
+    VoiceConfig,
+    VoiceGender
+)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -397,7 +405,42 @@ class VoiceSecurityReport:
         }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert report to dictionary"""
+        """Convert report to dictionary with actionable insights"""
+        # Calculate similarity statistics for analysis
+        attacker_similarities = [t.similarity_score for t in self.tests if not t.should_accept and t.similarity_score is not None]
+
+        # Find closest attacker (highest similarity)
+        closest_attacker = None
+        if attacker_similarities:
+            closest = max(self.tests, key=lambda t: t.similarity_score if (not t.should_accept and t.similarity_score is not None) else -1)
+            if closest.similarity_score is not None:
+                closest_attacker = {
+                    'profile': closest.profile_type.value,
+                    'similarity': closest.similarity_score,
+                    'threshold': closest.threshold,
+                    'margin': closest.threshold - closest.similarity_score
+                }
+
+        # Generate recommendations
+        recommendations = []
+        if not self.is_secure:
+            recommendations.append("CRITICAL: Security breaches detected! Unauthorized voices were accepted.")
+            recommendations.append("Action: Increase recognition threshold or collect more voice samples.")
+
+        if closest_attacker and closest_attacker['margin'] < 0.1:
+            recommendations.append(f"WARNING: Attacker voice ({closest_attacker['profile']}) came within {closest_attacker['margin']:.1%} of threshold.")
+            recommendations.append("Action: Consider collecting more diverse voice samples to increase separation.")
+
+        if len(self.false_rejections) > 0:
+            recommendations.append(f"WARNING: {len(self.false_rejections)} false rejection(s) of authorized user.")
+            recommendations.append("Action: Lower threshold or collect more voice samples from authorized user.")
+
+        if len(attacker_similarities) > 0:
+            avg_attacker_sim = sum(attacker_similarities) / len(attacker_similarities)
+            if avg_attacker_sim > 0.65:
+                recommendations.append(f"WARNING: Average attacker similarity is high ({avg_attacker_sim:.1%}).")
+                recommendations.append("Action: Voice profile may need more training samples for better discrimination.")
+
         return {
             'timestamp': self.timestamp,
             'authorized_user': self.authorized_user_name,
@@ -408,6 +451,14 @@ class VoiceSecurityReport:
             'security_breaches': len(self.security_breaches),
             'false_rejections': len(self.false_rejections),
             'total_duration_ms': self.total_duration_ms,
+            'analysis': {
+                'closest_attacker': closest_attacker,
+                'avg_attacker_similarity': sum(attacker_similarities) / len(attacker_similarities) if attacker_similarities else None,
+                'min_attacker_similarity': min(attacker_similarities) if attacker_similarities else None,
+                'max_attacker_similarity': max(attacker_similarities) if attacker_similarities else None,
+                'security_margin': closest_attacker['margin'] if closest_attacker else None,
+                'recommendations': recommendations
+            },
             'tests': [
                 {
                     'profile': t.profile_type.value,
@@ -460,12 +511,18 @@ class VoiceSecurityTester:
         self.playback_config = playback_config or PlaybackConfig()
         self.audio_player = AudioPlayer(self.playback_config) if self.playback_config.enabled else None
 
+        # GCP TTS service (dynamic, robust voice generation)
+        self.gcp_tts = GCPTTSService(cache_dir=self.temp_dir / 'gcp_tts_cache')
+        self.voice_generator = VoiceProfileGenerator(self.gcp_tts)
+        self.gcp_voice_profiles: Optional[List[VoiceConfig]] = None  # Lazy loaded
+
         # Test profile selection (dynamic based on config)
         test_mode = self.config.get('test_mode', 'standard')
         self.test_profiles = self._select_test_profiles(test_mode)
 
         logger.info(f"Voice Security Tester initialized for user: {self.authorized_user}")
         logger.info(f"   Test mode: {test_mode} ({len(self.test_profiles)} profiles)")
+        logger.info(f"   TTS Engine: Google Cloud TTS (400+ voices, real accents)")
         if self.playback_config.enabled:
             logger.info(f"   Audio playback: ENABLED (backend: {self.audio_player.backend.value if self.audio_player else 'none'})")
         else:
@@ -652,13 +709,68 @@ class VoiceSecurityTester:
             logger.error(f"Error generating {profile.value} voice: {e}")
             return None
 
+    async def _get_gcp_voice_config(self, profile: VoiceProfile) -> Optional[VoiceConfig]:
+        """
+        Get GCP TTS voice configuration for a given profile.
+        Dynamically discovers voices - no hardcoding.
+
+        Args:
+            profile: Voice profile type
+
+        Returns:
+            VoiceConfig or None if profile mapping fails
+        """
+        # Lazy load voice profiles from GCP (once per session)
+        if self.gcp_voice_profiles is None:
+            logger.info("🔍 Discovering available voices from GCP TTS...")
+            self.gcp_voice_profiles = await self.voice_generator.generate_attacker_profiles(
+                count=len(self.test_profiles)
+            )
+
+        # Map VoiceProfile enum to index in generated profiles
+        profile_index_map = {
+            VoiceProfile.MALE_ATTACKER: 0,
+            VoiceProfile.FEMALE_ATTACKER: 1,
+            VoiceProfile.NONBINARY_ATTACKER: 2,
+            VoiceProfile.CHILD_ATTACKER: 3,
+            VoiceProfile.TEEN_ATTACKER: 4,
+            VoiceProfile.ELDERLY_ATTACKER: 5,
+            VoiceProfile.DEEP_VOICE_ATTACKER: 6,
+            VoiceProfile.HIGH_PITCHED_ATTACKER: 7,
+            VoiceProfile.RASPY_VOICE_ATTACKER: 8,
+            VoiceProfile.BREATHY_VOICE_ATTACKER: 9,
+            VoiceProfile.NASAL_VOICE_ATTACKER: 10,
+            VoiceProfile.BRITISH_ACCENT_ATTACKER: 11,
+            VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: 12,
+            VoiceProfile.INDIAN_ACCENT_ATTACKER: 13,
+            VoiceProfile.SOUTHERN_ACCENT_ATTACKER: 14,
+            VoiceProfile.FAST_SPEAKER_ATTACKER: 15,
+            VoiceProfile.SLOW_SPEAKER_ATTACKER: 16,
+            VoiceProfile.WHISPERED_ATTACKER: 17,
+            VoiceProfile.SHOUTED_ATTACKER: 18,
+            VoiceProfile.ROBOTIC_ATTACKER: 19,
+            VoiceProfile.PITCHED_ATTACKER: 20,
+            VoiceProfile.SYNTHESIZED_ATTACKER: 21,
+            VoiceProfile.MODULATED_ATTACKER: 22,
+            VoiceProfile.VOCODED_ATTACKER: 23,
+        }
+
+        profile_index = profile_index_map.get(profile)
+        if profile_index is not None and profile_index < len(self.gcp_voice_profiles):
+            return self.gcp_voice_profiles[profile_index]
+
+        # Fallback: return first profile if mapping fails
+        logger.warning(f"⚠️ No GCP voice mapping for {profile.value}, using fallback")
+        return self.gcp_voice_profiles[0] if self.gcp_voice_profiles else None
+
     async def _try_tts_engines(
         self,
         profile: VoiceProfile,
         text: str
     ) -> Optional[Path]:
         """
-        Try multiple TTS engines to generate voice.
+        Generate voice using GCP TTS with dynamic voice discovery.
+        Falls back to legacy engines if GCP TTS fails.
 
         Args:
             profile: Voice profile type
@@ -667,163 +779,52 @@ class VoiceSecurityTester:
         Returns:
             Path to generated audio or None
         """
-        audio_file = self.temp_dir / f"{profile.value}_{int(time.time())}.wav"
+        audio_file = self.temp_dir / f"{profile.value}_{int(time.time())}.mp3"
 
-        # Engine 1: macOS 'say' command (fast, built-in)
+        # Primary Engine: Google Cloud TTS (400+ voices, real accents)
         try:
-            # Comprehensive macOS voice mapping for all profiles
-            voice_map = {
-                # Gender variations
-                VoiceProfile.MALE_ATTACKER: "Alex",  # US male
-                VoiceProfile.FEMALE_ATTACKER: "Samantha",  # US female
-                VoiceProfile.NONBINARY_ATTACKER: "Fred",  # Neutral voice
+            voice_config = await self._get_gcp_voice_config(profile)
 
-                # Age variations
-                VoiceProfile.CHILD_ATTACKER: "Karen",  # Child-like
-                VoiceProfile.TEEN_ATTACKER: "Ava",  # Teen/young adult
-                VoiceProfile.ELDERLY_ATTACKER: "Ralph",  # Elderly male
+            if voice_config:
+                # Synthesize using GCP TTS
+                audio_data = await self.gcp_tts.synthesize_speech(
+                    text=text,
+                    voice_config=voice_config,
+                    use_cache=True  # Use cache to stay within free tier
+                )
 
-                # Vocal characteristics
-                VoiceProfile.DEEP_VOICE_ATTACKER: "Bruce",  # Deep voice
-                VoiceProfile.HIGH_PITCHED_ATTACKER: "Princess",  # High-pitched
-                VoiceProfile.RASPY_VOICE_ATTACKER: "Bahh",  # Raspy
-                VoiceProfile.BREATHY_VOICE_ATTACKER: "Whisper",  # Breathy/whispered
-                VoiceProfile.NASAL_VOICE_ATTACKER: "Bubbles",  # Nasal
+                # Save audio to file
+                audio_file.write_bytes(audio_data)
 
-                # Accents
-                VoiceProfile.BRITISH_ACCENT_ATTACKER: "Daniel",  # British male
-                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: "Karen",  # Australian
-                VoiceProfile.INDIAN_ACCENT_ATTACKER: "Rishi",  # Indian (if available)
-                VoiceProfile.SOUTHERN_ACCENT_ATTACKER: "Samantha",  # US (closest to Southern)
-
-                # Speech patterns
-                VoiceProfile.FAST_SPEAKER_ATTACKER: "Alex",  # Will adjust rate
-                VoiceProfile.SLOW_SPEAKER_ATTACKER: "Alex",  # Will adjust rate
-                VoiceProfile.WHISPERED_ATTACKER: "Whisper",  # Whispered
-                VoiceProfile.SHOUTED_ATTACKER: "Bahh",  # Loud/emphatic
-
-                # Synthetic/modified
-                VoiceProfile.ROBOTIC_ATTACKER: "Zarvox",  # Robotic
-                VoiceProfile.PITCHED_ATTACKER: "Ralph",  # Will pitch-shift
-                VoiceProfile.SYNTHESIZED_ATTACKER: "Cellos",  # Synthesized
-                VoiceProfile.MODULATED_ATTACKER: "Trinoids",  # Modulated
-                VoiceProfile.VOCODED_ATTACKER: "Albert",  # Vocoded effect
-            }
-
-            voice = voice_map.get(profile, "Alex")
-            rate_modifier = 1.0  # Default speech rate
-
-            # Adjust speech rate for specific profiles
-            if profile == VoiceProfile.FAST_SPEAKER_ATTACKER:
-                rate_modifier = 1.5  # 50% faster
-            elif profile == VoiceProfile.SLOW_SPEAKER_ATTACKER:
-                rate_modifier = 0.6  # 40% slower
-            elif profile == VoiceProfile.CHILD_ATTACKER:
-                rate_modifier = 1.2  # Slightly faster
-
-            # Build say command with rate modifier
-            say_cmd = ['say', '-v', voice, '-r', str(int(200 * rate_modifier)), '-o', str(audio_file), '--data-format=LEF32@22050', text]
-
-            process = await asyncio.create_subprocess_exec(
-                *say_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            await asyncio.wait_for(process.wait(), timeout=10.0)
-
-            if audio_file.exists() and audio_file.stat().st_size > 0:
-                logger.info(f"Generated voice with macOS 'say' command: {voice} (rate: {rate_modifier}x)")
-                return audio_file
+                if audio_file.exists() and audio_file.stat().st_size > 0:
+                    logger.info(f"✅ Generated voice with GCP TTS: {voice_config.name} ({voice_config.language_code})")
+                    return audio_file
 
         except Exception as e:
-            logger.debug(f"macOS 'say' failed: {e}")
+            logger.warning(f"⚠️ GCP TTS failed for {profile.value}: {e}")
 
-        # Engine 2: gTTS (Google TTS) - fallback
+        # Fallback Engine: macOS 'say' command (for local development)
         try:
-            from gtts import gTTS
+            if platform.system() == 'Darwin':  # macOS only
+                wav_file = self.temp_dir / f"{profile.value}_{int(time.time())}.wav"
+                say_cmd = ['say', '-v', 'Alex', '-o', str(wav_file), '--data-format=LEF32@22050', text]
 
-            # Comprehensive gTTS language/accent mapping
-            lang_map = {
-                # Gender variations (use different accents)
-                VoiceProfile.MALE_ATTACKER: 'en',  # US
-                VoiceProfile.FEMALE_ATTACKER: 'en-uk',  # UK female
-                VoiceProfile.NONBINARY_ATTACKER: 'en-ca',  # Canadian (neutral)
+                process = await asyncio.create_subprocess_exec(
+                    *say_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
 
-                # Age variations
-                VoiceProfile.CHILD_ATTACKER: 'en-au',  # Australian (lighter tone)
-                VoiceProfile.TEEN_ATTACKER: 'en',  # US (young)
-                VoiceProfile.ELDERLY_ATTACKER: 'en-uk',  # UK (mature)
+                await asyncio.wait_for(process.wait(), timeout=10.0)
 
-                # Vocal characteristics (use slow parameter for variation)
-                VoiceProfile.DEEP_VOICE_ATTACKER: 'en-gb',  # British (deeper)
-                VoiceProfile.HIGH_PITCHED_ATTACKER: 'en-au',  # Australian
-                VoiceProfile.RASPY_VOICE_ATTACKER: 'en-ie',  # Irish
-                VoiceProfile.BREATHY_VOICE_ATTACKER: 'en-uk',  # UK
-                VoiceProfile.NASAL_VOICE_ATTACKER: 'en-in',  # Indian
-
-                # Accents
-                VoiceProfile.BRITISH_ACCENT_ATTACKER: 'en-uk',  # UK
-                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: 'en-au',  # Australian
-                VoiceProfile.INDIAN_ACCENT_ATTACKER: 'en-in',  # Indian
-                VoiceProfile.SOUTHERN_ACCENT_ATTACKER: 'en',  # US
-
-                # Speech patterns
-                VoiceProfile.FAST_SPEAKER_ATTACKER: 'en',  # US (will use slow=False)
-                VoiceProfile.SLOW_SPEAKER_ATTACKER: 'en',  # US (will use slow=True)
-                VoiceProfile.WHISPERED_ATTACKER: 'en-uk',  # UK
-                VoiceProfile.SHOUTED_ATTACKER: 'en',  # US
-
-                # Synthetic/modified
-                VoiceProfile.ROBOTIC_ATTACKER: 'en-in',  # Indian (robotic quality)
-                VoiceProfile.PITCHED_ATTACKER: 'en-ca',  # Canadian
-                VoiceProfile.SYNTHESIZED_ATTACKER: 'en',  # US
-                VoiceProfile.MODULATED_ATTACKER: 'en-ie',  # Irish
-                VoiceProfile.VOCODED_ATTACKER: 'en-nz',  # New Zealand
-            }
-
-            lang = lang_map.get(profile, 'en')
-            # Use slow parameter for specific profiles
-            slow = profile == VoiceProfile.SLOW_SPEAKER_ATTACKER
-
-            tts = gTTS(text=text, lang=lang, slow=slow)
-            tts.save(str(audio_file))
-
-            if audio_file.exists():
-                logger.info(f"Generated voice with gTTS: {lang} (slow: {slow})")
-                return audio_file
+                if wav_file.exists() and wav_file.stat().st_size > 0:
+                    logger.info(f"✅ Generated voice with macOS 'say' (fallback)")
+                    return wav_file
 
         except Exception as e:
-            logger.debug(f"gTTS failed: {e}")
+            logger.debug(f"macOS 'say' fallback failed: {e}")
 
-        # Engine 3: pyttsx3 (offline TTS) - final fallback
-        try:
-            import pyttsx3
-
-            engine = pyttsx3.init()
-
-            # Configure voice characteristics
-            voices = engine.getProperty('voices')
-            if profile == VoiceProfile.FEMALE_ATTACKER and len(voices) > 1:
-                engine.setProperty('voice', voices[1].id)
-
-            rate = engine.getProperty('rate')
-            if profile == VoiceProfile.CHILD_ATTACKER:
-                engine.setProperty('rate', rate + 50)
-            elif profile == VoiceProfile.ROBOTIC_ATTACKER:
-                engine.setProperty('rate', rate - 50)
-
-            engine.save_to_file(text, str(audio_file))
-            engine.runAndWait()
-
-            if audio_file.exists():
-                logger.info("Generated voice with pyttsx3")
-                return audio_file
-
-        except Exception as e:
-            logger.debug(f"pyttsx3 failed: {e}")
-
-        logger.error(f"All TTS engines failed for {profile.value}")
+        logger.error(f"❌ All TTS engines failed for {profile.value}")
         return None
 
     async def test_voice_authentication(
