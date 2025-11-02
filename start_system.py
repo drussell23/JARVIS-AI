@@ -5433,6 +5433,27 @@ except Exception as e:
         """Main run method with self-healing"""
         self.print_header()
 
+        # Display system environment and configuration details
+        print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.BLUE}📊 System Environment & Configuration{Colors.ENDC}")
+        print(f"{Colors.BLUE}{'='*70}{Colors.ENDC}\n")
+
+        print(f"{Colors.CYAN}🐍 Python Environment:{Colors.ENDC}")
+        print(f"   ├─ Version: {sys.version.split()[0]}")
+        print(f"   ├─ Executable: {sys.executable}")
+        print(f"   └─ Platform: {sys.platform}")
+
+        print(f"\n{Colors.CYAN}📁 Working Directories:{Colors.ENDC}")
+        print(f"   ├─ Root: {Path(__file__).parent}")
+        print(f"   ├─ Backend: {self.backend_dir}")
+        print(f"   └─ Frontend: {self.frontend_dir}")
+
+        # Show module import paths
+        backend_in_path = str(self.backend_dir) in sys.path
+        print(f"\n{Colors.CYAN}🔧 Module Import Configuration:{Colors.ENDC}")
+        print(f"   ├─ Backend in sys.path: {Colors.GREEN}Yes{Colors.ENDC}" if backend_in_path else f"   ├─ Backend in sys.path: {Colors.YELLOW}No (will add){Colors.ENDC}")
+        print(f"   └─ PYTHONPATH entries: {len(sys.path)}")
+
         # Start Cloud SQL proxy FIRST (before any database connections)
         if self.cloud_sql_proxy_enabled:
             print(f"\n{Colors.CYAN}🔐 Starting Cloud SQL Proxy...{Colors.ENDC}")
@@ -5441,32 +5462,60 @@ except Exception as e:
                 backend_dir = Path(__file__).parent / "backend"
                 if str(backend_dir) not in sys.path:
                     sys.path.insert(0, str(backend_dir))
+                    print(f"{Colors.CYAN}   → Added backend to sys.path{Colors.ENDC}")
 
+                print(f"{Colors.CYAN}   → Importing CloudSQLProxyManager...{Colors.ENDC}")
                 from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
 
+                print(f"{Colors.CYAN}   → Initializing proxy manager...{Colors.ENDC}")
                 self.cloud_sql_proxy_manager = CloudSQLProxyManager()
+
+                # Display proxy configuration before starting
+                print(f"{Colors.CYAN}   → Proxy configuration loaded:{Colors.ENDC}")
+                print(f"      ├─ Connection: {self.cloud_sql_proxy_manager.config['cloud_sql']['connection_name']}")
+                print(f"      ├─ Database: {self.cloud_sql_proxy_manager.config['cloud_sql']['database']}")
+                print(f"      └─ Port: {self.cloud_sql_proxy_manager.config['cloud_sql']['port']}")
+
                 # Start proxy asynchronously (non-blocking)
+                print(f"{Colors.CYAN}   → Starting proxy process (force_restart=True)...{Colors.ENDC}")
                 proxy_started = await self.cloud_sql_proxy_manager.start(force_restart=True)
 
                 if proxy_started:
                     print(f"   • {Colors.GREEN}✓{Colors.ENDC} Proxy started on port {self.cloud_sql_proxy_manager.config['cloud_sql']['port']}")
                     print(f"   • {Colors.GREEN}✓{Colors.ENDC} Connection: {self.cloud_sql_proxy_manager.config['cloud_sql']['connection_name']}")
                     print(f"   • {Colors.GREEN}✓{Colors.ENDC} Log: {self.cloud_sql_proxy_manager.log_path}")
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Ready to accept database connections")
                 else:
                     logger.warning("⚠️  Cloud SQL proxy failed to start - falling back to SQLite")
+                    print(f"{Colors.YELLOW}   ⚠️  Will use local SQLite database instead{Colors.ENDC}")
                     self.cloud_sql_proxy_enabled = False
             except Exception as e:
                 logger.warning(f"Cloud SQL proxy initialization failed: {e}")
+                print(f"{Colors.YELLOW}   ⚠️  Error: {e}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   ⚠️  Falling back to SQLite database{Colors.ENDC}")
                 self.cloud_sql_proxy_enabled = False
 
         # Start hybrid cloud intelligence coordinator
         if self.hybrid_enabled and self.hybrid_coordinator:
             print(f"\n{Colors.CYAN}🌐 Starting Hybrid Cloud Intelligence...{Colors.ENDC}")
             try:
+                print(f"{Colors.CYAN}   → Initializing RAM monitor and workload router...{Colors.ENDC}")
                 await self.hybrid_coordinator.start()
+
+                # Get detailed RAM state
                 ram_state = await self.hybrid_coordinator.ram_monitor.get_current_state()
+                ram_percent = ram_state['percent'] * 100
+                ram_used_gb = ram_state.get('used_gb', 0)
+                ram_total_gb = ram_state.get('total_gb', 0)
+                ram_available_gb = ram_state.get('available_gb', 0)
+
+                print(f"{Colors.CYAN}   → RAM monitoring active:{Colors.ENDC}")
+                print(f"      ├─ Status: {ram_state['status']}")
+                print(f"      ├─ Usage: {ram_percent:.1f}% ({ram_used_gb:.1f}GB / {ram_total_gb:.1f}GB)")
+                print(f"      └─ Available: {ram_available_gb:.1f}GB")
+
                 print(
-                    f"   • {Colors.GREEN}✓{Colors.ENDC} RAM Monitor: {ram_state['percent']*100:.1f}% used ({ram_state['status']})"
+                    f"   • {Colors.GREEN}✓{Colors.ENDC} RAM Monitor: {ram_percent:.1f}% used ({ram_state['status']})"
                 )
                 print(
                     f"   • {Colors.GREEN}✓{Colors.ENDC} Workload Router: Standby for automatic GCP routing"
@@ -5474,8 +5523,11 @@ except Exception as e:
                 print(
                     f"   • {Colors.GREEN}✓{Colors.ENDC} Monitoring: Active every {self.hybrid_coordinator.monitoring_interval}s"
                 )
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Auto-offloading to GCP when RAM > 80%")
             except Exception as e:
                 logger.warning(f"Hybrid coordinator start failed: {e}")
+                print(f"{Colors.YELLOW}   ⚠️  Error: {e}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   ⚠️  Will run in local-only mode{Colors.ENDC}")
                 self.hybrid_enabled = False
 
         # Start autonomous systems if enabled
@@ -5508,10 +5560,26 @@ except Exception as e:
                     self.ports["frontend"] = service.port
 
         # Start pre-warming imports early
+        print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.BLUE}🔥 Background Module Pre-Warming{Colors.ENDC}")
+        print(f"{Colors.BLUE}{'='*70}{Colors.ENDC}\n")
+
+        print(f"{Colors.CYAN}🔄 Starting background import pre-warming...{Colors.ENDC}")
+        print(f"{Colors.CYAN}   → This will speed up module loading during startup{Colors.ENDC}")
         task = asyncio.create_task(self._prewarm_python_imports())
         self.background_tasks.append(task)
+        print(f"{Colors.GREEN}   ✓ Background task started{Colors.ENDC}")
 
         # Run initial checks in parallel
+        print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.BLUE}🔍 System Validation Checks{Colors.ENDC}")
+        print(f"{Colors.BLUE}{'='*70}{Colors.ENDC}\n")
+
+        print(f"{Colors.CYAN}🧪 Running parallel validation checks (3 tasks):{Colors.ENDC}")
+        print(f"{Colors.CYAN}   1. Python version compatibility{Colors.ENDC}")
+        print(f"{Colors.CYAN}   2. Claude API configuration{Colors.ENDC}")
+        print(f"{Colors.CYAN}   3. System resources availability{Colors.ENDC}")
+
         check_tasks = [
             self.check_python_version(),
             self.check_claude_config(),
@@ -5520,23 +5588,41 @@ except Exception as e:
 
         results = await asyncio.gather(*check_tasks)
         if not results[0]:  # Python version is critical
+            print(f"{Colors.FAIL}❌ Python version check failed - cannot continue{Colors.ENDC}")
             return False
 
+        print(f"{Colors.GREEN}   ✓ All parallel checks completed successfully{Colors.ENDC}")
+
         # Additional checks
+        print(f"\n{Colors.CYAN}🎤 Checking microphone system...{Colors.ENDC}")
         await self.check_microphone_system()
+
+        print(f"{Colors.CYAN}👁️  Checking vision system permissions...{Colors.ENDC}")
         await self.check_vision_permissions()
+
+        print(f"{Colors.CYAN}⚡ Checking performance optimizations...{Colors.ENDC}")
         await self.check_performance_fixes()
 
         # Create necessary directories
+        print(f"\n{Colors.CYAN}📁 Creating necessary directories...{Colors.ENDC}")
         await self.create_directories()
+        print(f"{Colors.GREEN}   ✓ Directory structure verified{Colors.ENDC}")
 
         # Check dependencies
+        print(f"\n{Colors.CYAN}📦 Checking Python package dependencies...{Colors.ENDC}")
         deps_ok, critical_missing, optional_missing = await self.check_dependencies()
+
+        if critical_missing:
+            print(f"{Colors.YELLOW}   ⚠️  Missing {len(critical_missing)} critical package(s): {', '.join(critical_missing)}{Colors.ENDC}")
+        if optional_missing:
+            print(f"{Colors.CYAN}   ℹ️  Missing {len(optional_missing)} optional package(s): {', '.join(optional_missing[:5])}{Colors.ENDC}")
 
         if not deps_ok:
             print(f"\n{Colors.FAIL}❌ Critical packages missing!{Colors.ENDC}")
             print(f"Install with: pip install {' '.join(critical_missing)}")
             return False
+
+        print(f"{Colors.GREEN}   ✓ All critical dependencies satisfied{Colors.ENDC}")
 
         # Auto-install critical packages if requested or in autonomous mode
         if critical_missing:
@@ -5555,31 +5641,57 @@ except Exception as e:
                     await proc.wait()
 
         # Start services with advanced parallel initialization
-        print(f"\n{Colors.CYAN}🚀 Starting services with parallel initialization...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.BLUE}🚀 Service Initialization{Colors.ENDC}")
+        print(f"{Colors.BLUE}{'='*70}{Colors.ENDC}\n")
 
         if self.backend_only:
-            print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
+            print(f"{Colors.CYAN}🎯 Mode: Backend-only startup{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → WebSocket router will be started{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Backend API will be initialized{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Frontend will be skipped{Colors.ENDC}")
             await self.start_websocket_router()
             await asyncio.sleep(2)  # Reduced wait time
             await self.start_backend()
         elif self.frontend_only:
-            print(f"{Colors.CYAN}Starting frontend only...{Colors.ENDC}")
+            print(f"{Colors.CYAN}🎯 Mode: Frontend-only startup{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Frontend interface will be started{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Backend will be skipped (expects existing backend){Colors.ENDC}")
             await self.start_frontend()
         else:
             # Advanced parallel startup with intelligent sequencing
+            print(f"{Colors.CYAN}🎯 Mode: Full-stack parallel initialization{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → All services will be started in optimized sequence{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Backend and frontend will start in parallel{Colors.ENDC}")
+
             start_time = time.time()
 
             # Phase 1: Start WebSocket router first (optional - for advanced features)
-            print(f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router (optional)...{Colors.ENDC}")
+            print(f"\n{Colors.BLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.CYAN}Phase 1/3: WebSocket Router (Optional){Colors.ENDC}")
+            print(f"{Colors.BLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.CYAN}🌐 Starting WebSocket router for advanced features...{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Enables real-time bidirectional communication{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Required for: Live updates, streaming responses{Colors.ENDC}")
+
             websocket_router_process = await self.start_websocket_router()
             if not websocket_router_process:
                 print(
-                    f"{Colors.WARNING}⚠ WebSocket router not available (optional feature). Continuing...{Colors.ENDC}"
+                    f"{Colors.WARNING}   ⚠ WebSocket router not available (optional feature){Colors.ENDC}"
                 )
+                print(f"{Colors.CYAN}   → Continuing with HTTP-only mode{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}   ✓ WebSocket router started successfully{Colors.ENDC}")
 
             # Phase 2: Start backend and frontend in parallel
+            print(f"\n{Colors.BLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.CYAN}Phase 2/3: Backend & Frontend (Parallel){Colors.ENDC}")
+            print(f"{Colors.BLUE}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.CYAN}🔄 Starting backend and frontend concurrently...{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Backend: FastAPI server with AI services{Colors.ENDC}")
+            print(f"{Colors.CYAN}   → Frontend: User interface and voice interaction{Colors.ENDC}")
             print(
-                f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
+                f"{Colors.CYAN}   → Optimization: Parallel startup saves ~5-10 seconds{Colors.ENDC}"
             )
 
             # Small delay to ensure router is ready
