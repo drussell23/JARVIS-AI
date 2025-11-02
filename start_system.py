@@ -3757,7 +3757,7 @@ class AsyncSystemManager:
             # Check if proxy is running, start if needed
             if not proxy_manager.is_running():
                 print(f"\n{Colors.CYAN}☁️  Starting Cloud SQL proxy...{Colors.ENDC}")
-                if proxy_manager.start(force_restart=False):
+                if await proxy_manager.start(force_restart=False):
                     print(f"{Colors.GREEN}   ✓ Cloud SQL proxy started successfully{Colors.ENDC}")
                     print(
                         f"{Colors.GREEN}   ✓ Listening on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}{Colors.ENDC}"

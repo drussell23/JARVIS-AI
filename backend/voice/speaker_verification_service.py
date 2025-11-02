@@ -193,7 +193,7 @@ class SpeakerVerificationService:
             self.learning_db = await get_learning_database()
 
             # Verify database connection
-            if not self.learning_db or not self.learning_db.initialized:
+            if not self.learning_db or not self.learning_db._initialized:
                 logger.error("❌ Learning database not initialized - cannot load speaker profiles")
                 raise RuntimeError("Learning database not initialized")
 
