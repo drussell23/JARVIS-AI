@@ -295,6 +295,13 @@ class VoiceProfileGenerator:
             ("en-US", VoiceGender.FEMALE, "StandardFemale", 1.0, 0.0),
             ("en-US", VoiceGender.NEUTRAL, "StandardNeutral", 1.0, 0.0),
 
+            # African American English (AAVE-influenced characteristics)
+            # Using specific voice IDs and prosody adjustments for authenticity
+            ("en-US", VoiceGender.MALE, "AfricanAmericanMale1", 0.95, -1.5),  # Deeper, slightly slower
+            ("en-US", VoiceGender.MALE, "AfricanAmericanMale2", 0.98, -2.0),  # Rich baritone
+            ("en-US", VoiceGender.FEMALE, "AfricanAmericanFemale1", 0.97, -0.5),  # Warm tone
+            ("en-US", VoiceGender.FEMALE, "AfricanAmericanFemale2", 0.96, -1.0),  # Smooth contralto
+
             # British English (UK)
             ("en-GB", VoiceGender.MALE, "BritishMale", 1.0, 0.0),
             ("en-GB", VoiceGender.FEMALE, "BritishFemale", 1.0, 0.0),
