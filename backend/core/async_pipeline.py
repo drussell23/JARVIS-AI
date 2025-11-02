@@ -1329,14 +1329,34 @@ class AdvancedAsyncPipeline:
         logger.info(f"🔒 [SECURITY-TEST-USER] Testing for user: {user_name}")
 
         try:
-            # Import voice security tester
-            from backend.voice_unlock.voice_security_tester import VoiceSecurityTester
+            # Import voice security tester with audio playback
+            from backend.voice_unlock.voice_security_tester import (
+                VoiceSecurityTester,
+                PlaybackConfig,
+                AudioBackend,
+            )
 
-            # Create tester instance
-            tester = VoiceSecurityTester()
+            # Enable audio playback for voice-triggered tests
+            playback_config = PlaybackConfig(
+                enabled=True,
+                verbose=True,
+                backend=AudioBackend.AUTO,
+                volume=0.5,
+                announce_profile=True,
+                pause_after_playback=0.5
+            )
+
+            # Use standard test mode (8 diverse profiles)
+            test_config = {
+                'test_mode': 'standard',
+                'authorized_user': user_name,
+            }
+
+            # Create tester instance with audio playback
+            tester = VoiceSecurityTester(config=test_config, playback_config=playback_config)
 
             # Run security tests
-            logger.info("🔒 [SECURITY-TEST-RUNNING] Executing voice security tests...")
+            logger.info("🔒 [SECURITY-TEST-RUNNING] Executing voice security tests with audio playback...")
             report = await tester.run_security_tests()
 
             # Save report
