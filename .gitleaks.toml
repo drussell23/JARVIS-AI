@@ -1,0 +1,112 @@
+title = "JARVIS Secret Scanner Configuration"
+
+[extend]
+# Use default gitleaks rules
+useDefault = true
+
+# Custom rules for JARVIS-specific secrets
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-api03-[a-zA-Z0-9_-]{95}'''
+tags = ["key", "anthropic"]
+
+[[rules]]
+id = "anthropic-api-key-partial"
+description = "Partial Anthropic API Key"
+regex = '''sk-ant-api03-[a-zA-Z0-9_-]{10,}'''
+tags = ["key", "anthropic", "partial"]
+
+[[rules]]
+id = "picovoice-key"
+description = "Picovoice Access Key"
+regex = '''[a-zA-Z0-9+/]{40,}=='''
+tags = ["key", "picovoice"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey|access[_-]?key)["\s:=]+[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "generic"]
+
+[[rules]]
+id = "password-assignment"
+description = "Password assignment in code/docs"
+regex = '''(?i)(password|passwd|pwd)["\s:=]+[^"\s]{8,}'''
+tags = ["password"]
+
+[[rules]]
+id = "database-password"
+description = "Database connection string with password"
+regex = '''(?i)password["\s:=]+JarvisSecure[a-zA-Z0-9!@#$%^&*]+'''
+tags = ["password", "database"]
+
+[[rules]]
+id = "gcp-service-account-key"
+description = "GCP Service Account Key"
+regex = '''"type":\s*"service_account"'''
+tags = ["gcp", "service-account"]
+
+# Allowlist - patterns that are safe to ignore
+[allowlist]
+description = "Allowlist for safe patterns and example files"
+
+# Safe placeholder patterns
+regexes = [
+  '''YOUR_.*_HERE''',
+  '''your-.*-here''',
+  '''example\.com''',
+  '''\*\*\*REMOVED\*\*\*''',
+  '''<YOUR_.*>''',
+  '''placeholder''',
+  '''XXXXXXXX''',
+  '''sk-ant-api03-YOUR''',
+  # Allow reference to secret manager retrieval
+  '''get_secret\(".*"\)''',
+  '''SecretManager''',
+  '''get_db_password''',
+  '''get_anthropic_key''',
+  '''get_picovoice_key''',
+  # Allow documentation about secret patterns
+  '''regex\s*=''',
+  '''pattern\s*=''',
+  # Allow function names with password
+  '''import.*password''',
+  '''def.*password''',
+  # Allow environment variable references
+  '''JARVIS_DB_PASSWORD''',
+  '''os\.getenv.*PASSWORD''',
+]
+
+# Safe paths - files that are allowed to contain example secrets
+paths = [
+  '''.env.example''',
+  '''backend/.env.example''',
+  '''frontend/.env.example''',
+  '''backend/voice/.env.example''',
+  '''SECURITY_CLEANUP_PLAN.md''',
+  '''LONG_TERM_SECRET_MANAGEMENT.md''',
+  '''SECRET_MANAGEMENT_IMPLEMENTATION.md''',
+  '''CLOUD_SQL_PROXY_SETUP.md''',
+  '''VOICE_UNLOCK_OPTIMIZATION.md''',
+  '''.gitleaks.toml''',
+  '''README.md''',
+  # Secret manager code
+  '''backend/core/secret_manager.py''',
+  '''backend/scripts/setup_local_secrets.py''',
+  '''backend/intelligence/cloud_database_adapter.py''',
+  '''backend/chatbots/claude_chatbot.py''',
+  # Test files can have mock secrets
+  '''backend/tests/''',
+  '''backend/*/tests/''',
+  # Documentation
+  '''docs/''',
+  '''wiki/''',
+  '''JARVIS-AI.wiki/''',
+]
+
+# Commits to skip (if you've already cleaned history)
+commits = []
+
+# Stop scanning at specific commits (if needed)
+stopwords = []

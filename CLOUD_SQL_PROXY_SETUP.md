@@ -111,7 +111,7 @@ All settings loaded from `~/.jarvis/gcp/database_config.json`:
     "private_ip": "34.46.152.27",
     "database": "jarvis_learning",
     "user": "jarvis",
-    "password": "JarvisSecure2025!",
+    "password": "YOUR_DB_PASSWORD_HERE",
     "port": 5432
   },
   "project_id": "jarvis-473803",
@@ -205,7 +205,7 @@ lsof -i :5432
 
 **Check database connection:**
 ```bash
-PGPASSWORD=JarvisSecure2025! psql -h 127.0.0.1 -U jarvis -d jarvis_learning -c "SELECT COUNT(*) FROM speaker_profiles;"
+PGPASSWORD=YOUR_DB_PASSWORD_HERE psql -h 127.0.0.1 -U jarvis -d jarvis_learning -c "SELECT COUNT(*) FROM speaker_profiles;"
 ```
 
 **Expected output:** `2` (Derek profiles)

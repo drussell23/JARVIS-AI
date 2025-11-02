@@ -32,6 +32,17 @@ except ImportError:
         "Cloud SQL Connector not available - install with: pip install cloud-sql-python-connector[asyncpg]"
     )
 
+# Import centralized secret manager
+try:
+    from core.secret_manager import get_db_password
+    SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.core.secret_manager import get_db_password
+        SECRET_MANAGER_AVAILABLE = True
+    except ImportError:
+        SECRET_MANAGER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +72,12 @@ class DatabaseConfig:
         self.db_port = int(os.getenv("JARVIS_DB_PORT", str(self.db_port)))
         self.db_name = os.getenv("JARVIS_DB_NAME", self.db_name)
         self.db_user = os.getenv("JARVIS_DB_USER", self.db_user)
-        self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
+
+        # Get password with fallback chain: Secret Manager -> environment -> config file
+        if SECRET_MANAGER_AVAILABLE:
+            self.db_password = get_db_password() or self.db_password
+        else:
+            self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
 
         # CRITICAL: Always use localhost for Cloud SQL proxy connections
         # The proxy running locally handles the actual connection to Cloud SQL

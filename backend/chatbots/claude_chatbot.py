@@ -9,6 +9,17 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+# Import centralized secret manager
+try:
+    from core.secret_manager import get_anthropic_key
+    SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.core.secret_manager import get_anthropic_key
+        SECRET_MANAGER_AVAILABLE = True
+    except ImportError:
+        SECRET_MANAGER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # Check if anthropic package is available
@@ -54,7 +65,14 @@ class ClaudeChatbot:
             system_prompt: System instructions for the assistant
             use_intelligent_selection: Use intelligent model selection (recommended)
         """
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        # Get API key with fallback chain: parameter -> Secret Manager -> environment
+        if api_key:
+            self.api_key = api_key
+        elif SECRET_MANAGER_AVAILABLE:
+            self.api_key = get_anthropic_key()
+        else:
+            self.api_key = os.getenv("ANTHROPIC_API_KEY")
+
         if not self.api_key:
             logger.warning(
                 "Anthropic API key not set. Intelligent model selection will prefer local models."

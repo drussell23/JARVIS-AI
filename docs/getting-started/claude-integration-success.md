@@ -8,7 +8,7 @@ Your JARVIS Document Writer is now fully integrated with the Claude API and will
 
 1. **API Key Configuration**
    - Added valid Claude API key to `/backend/.env`
-   - Key: `sk-ant-api03-AqIrRCst...` (verified working)
+   - Key: `YOUR_API_KEY...` (verified working)
 
 2. **Code Improvements**
    - Enhanced error messages for better debugging
