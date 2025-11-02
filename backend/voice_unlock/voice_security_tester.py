@@ -130,6 +130,20 @@ class VoiceSecurityReport:
         """Check if system is secure (no breaches)"""
         return len(self.security_breaches) == 0
 
+    @property
+    def summary(self) -> Dict[str, Any]:
+        """Get summary dictionary for quick access to test results"""
+        return {
+            'total': self.total_tests,
+            'passed': self.passed_tests,
+            'failed': self.failed_tests,
+            'is_secure': self.is_secure,
+            'security_breaches': len(self.security_breaches),
+            'false_rejections': len(self.false_rejections),
+            'authorized_user': self.authorized_user_name,
+            'duration_ms': self.total_duration_ms,
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert report to dictionary"""
         return {
