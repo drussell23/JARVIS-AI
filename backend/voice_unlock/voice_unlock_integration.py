@@ -407,9 +407,25 @@ class VoiceUnlockSystem:
                     logger.info("🔒 Running voice security test...")
 
                     try:
-                        from .voice_security_tester import VoiceSecurityTester
+                        from .voice_security_tester import VoiceSecurityTester, PlaybackConfig, AudioBackend
 
-                        tester = VoiceSecurityTester()
+                        # Enable audio playback for voice-triggered tests
+                        playback_config = PlaybackConfig(
+                            enabled=True,
+                            verbose=True,
+                            backend=AudioBackend.AUTO,
+                            volume=0.5,
+                            announce_profile=True,
+                            pause_after_playback=0.5
+                        )
+
+                        # Use standard test mode (8 diverse profiles)
+                        test_config = {
+                            'test_mode': 'standard',
+                            'authorized_user': self.authorized_user if hasattr(self, 'authorized_user') else 'Derek',
+                        }
+
+                        tester = VoiceSecurityTester(config=test_config, playback_config=playback_config)
                         report = await tester.run_security_tests()
 
                         # Save the report
