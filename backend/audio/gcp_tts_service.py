@@ -274,10 +274,10 @@ class VoiceProfileGenerator:
     def __init__(self, tts_service: GCPTTSService):
         self.tts_service = tts_service
 
-    async def generate_attacker_profiles(self, count: int = 32) -> List[VoiceConfig]:
+    async def generate_attacker_profiles(self, count: int = 36) -> List[VoiceConfig]:
         """
-        Generate diverse attacker voice profiles dynamically.
-        Includes diverse racial/ethnic linguistic patterns for comprehensive testing.
+        Generate diverse attacker voice profiles with SPECIFIC voice IDs.
+        Each profile uses a unique voice for true accent diversity.
 
         Args:
             count: Target number of profiles (will generate up to this many)
@@ -287,91 +287,87 @@ class VoiceProfileGenerator:
         """
         profiles = []
 
-        # Define diverse voice characteristics
-        # Includes racial/ethnic diversity through accent, language origin, and voice characteristics
+        # Define SPECIFIC voice IDs for true diversity
+        # Each entry: (voice_id, language_code, gender, label, speaking_rate, pitch)
         voice_specs = [
-            # Standard American English (various ethnic backgrounds)
-            ("en-US", VoiceGender.MALE, "StandardMale", 1.0, 0.0),
-            ("en-US", VoiceGender.FEMALE, "StandardFemale", 1.0, 0.0),
-            ("en-US", VoiceGender.NEUTRAL, "StandardNeutral", 1.0, 0.0),
+            # Standard American English - Multiple distinct voices
+            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "StandardMale", 1.0, 0.0),
+            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "StandardFemale", 1.0, 0.0),
+            ("Autonoe", "en-US", VoiceGender.NEUTRAL, "StandardNeutral", 1.0, 0.0),
 
-            # African American English (AAVE-influenced characteristics)
-            # Using specific voice IDs and prosody adjustments for authenticity
-            ("en-US", VoiceGender.MALE, "AfricanAmericanMale1", 0.95, -1.5),  # Deeper, slightly slower
-            ("en-US", VoiceGender.MALE, "AfricanAmericanMale2", 0.98, -2.0),  # Rich baritone
-            ("en-US", VoiceGender.FEMALE, "AfricanAmericanFemale1", 0.97, -0.5),  # Warm tone
-            ("en-US", VoiceGender.FEMALE, "AfricanAmericanFemale2", 0.96, -1.0),  # Smooth contralto
+            # African American English - Using distinct US voices with deeper prosody
+            ("Charon", "en-US", VoiceGender.MALE, "AfricanAmericanMale1", 0.95, -1.5),
+            ("Achird", "en-US", VoiceGender.MALE, "AfricanAmericanMale2", 0.98, -2.0),
+            ("Aoede", "en-US", VoiceGender.FEMALE, "AfricanAmericanFemale1", 0.97, -0.5),
+            ("Callirrhoe", "en-US", VoiceGender.FEMALE, "AfricanAmericanFemale2", 0.96, -1.0),
 
-            # British English (UK)
-            ("en-GB", VoiceGender.MALE, "BritishMale", 1.0, 0.0),
-            ("en-GB", VoiceGender.FEMALE, "BritishFemale", 1.0, 0.0),
+            # British English - Actual GB accents
+            ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMale", 1.0, 0.0),
+            ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemale", 1.0, 0.0),
 
-            # Australian English
-            ("en-AU", VoiceGender.MALE, "AustralianMale", 1.0, 0.0),
-            ("en-AU", VoiceGender.FEMALE, "AustralianFemale", 1.0, 0.0),
+            # Australian English - Actual AU accents
+            ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMale", 1.0, 0.0),
+            ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemale", 1.0, 0.0),
 
-            # Indian English (South Asian)
-            ("en-IN", VoiceGender.MALE, "IndianMale", 1.0, 0.0),
-            ("en-IN", VoiceGender.FEMALE, "IndianFemale", 1.0, 0.0),
+            # Indian English - Actual IN accents
+            ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMale", 1.0, 0.0),
+            ("en-IN-Chirp-HD-F", "en-IN", VoiceGender.FEMALE, "IndianFemale", 1.0, 0.0),
 
-            # African English variants
-            ("en-NG", VoiceGender.MALE, "NigerianMale", 1.0, 0.0),  # West African
-            ("en-NG", VoiceGender.FEMALE, "NigerianFemale", 1.0, 0.0),
-            ("en-ZA", VoiceGender.MALE, "SouthAfricanMale", 1.0, 0.0),  # Southern African
-            ("en-ZA", VoiceGender.FEMALE, "SouthAfricanFemale", 1.0, 0.0),
+            # East Asian English accents - Using different US voices with prosody
+            ("Algenib", "en-US", VoiceGender.MALE, "AsianAccentMale", 1.05, 1.0),
+            ("Achernar", "en-US", VoiceGender.FEMALE, "AsianAccentFemale", 1.05, 2.0),
 
-            # East Asian English accents
-            ("en-US", VoiceGender.MALE, "AsianAccentMale", 1.05, 1.0),  # Slight pitch/rate variation
-            ("en-US", VoiceGender.FEMALE, "AsianAccentFemale", 1.05, 2.0),
+            # Hispanic/Latino English - Different US voices with prosody
+            ("Algieba", "en-US", VoiceGender.MALE, "HispanicMale", 1.0, 0.5),
+            ("Despina", "en-US", VoiceGender.FEMALE, "HispanicFemale", 1.0, 1.0),
 
-            # Hispanic/Latino English
-            ("en-US", VoiceGender.MALE, "HispanicMale", 1.0, 0.5),
-            ("en-US", VoiceGender.FEMALE, "HispanicFemale", 1.0, 1.0),
+            # Age variations - Different US voices with age-appropriate prosody
+            ("en-US-Chirp3-HD-Alnilam", "en-US", VoiceGender.MALE, "ChildVoice", 1.1, 8.0),
+            ("en-US-Chirp3-HD-Achird", "en-US", VoiceGender.MALE, "TeenVoice", 1.05, 4.0),
+            ("en-US-Chirp3-HD-Algenib", "en-US", VoiceGender.MALE, "ElderlyVoice", 0.85, -3.0),
+            ("en-US-Chirp3-HD-Aoede", "en-US", VoiceGender.FEMALE, "ElderlyFemale", 0.85, -2.0),
 
-            # Age variations
-            ("en-US", VoiceGender.MALE, "ChildVoice", 1.1, 8.0),
-            ("en-US", VoiceGender.MALE, "TeenVoice", 1.05, 4.0),
-            ("en-US", VoiceGender.MALE, "ElderlyVoice", 0.85, -3.0),
-            ("en-US", VoiceGender.FEMALE, "ElderlyFemale", 0.85, -2.0),
+            # Speaking style variations - More distinct US voices
+            ("en-US-Chirp3-HD-Charon", "en-US", VoiceGender.MALE, "FastSpeaker", 1.3, 0.0),
+            ("en-US-Chirp3-HD-Callirrhoe", "en-US", VoiceGender.FEMALE, "SlowSpeaker", 0.7, 0.0),
+            ("en-US-Chirp3-HD-Algieba", "en-US", VoiceGender.MALE, "DeepVoice", 1.0, -5.0),
+            ("en-US-Chirp3-HD-Achernar", "en-US", VoiceGender.FEMALE, "HighPitchedVoice", 1.0, 5.0),
 
-            # Speaking style variations
-            ("en-US", VoiceGender.MALE, "FastSpeaker", 1.3, 0.0),
-            ("en-US", VoiceGender.FEMALE, "SlowSpeaker", 0.7, 0.0),
-            ("en-US", VoiceGender.MALE, "DeepVoice", 1.0, -5.0),
-            ("en-US", VoiceGender.FEMALE, "HighPitchedVoice", 1.0, 5.0),
+            # Expressive variations - Using actual accents with prosody
+            ("en-US-Chirp3-HD-Despina", "en-US", VoiceGender.FEMALE, "WhisperedVoice", 0.9, -2.0),
+            ("en-US-Chirp3-HD-Autonoe", "en-US", VoiceGender.MALE, "ShoutedVoice", 1.1, 3.0),
+            ("en-GB-Chirp3-HD-Aoede", "en-GB", VoiceGender.FEMALE, "BreathyVoice", 0.95, 1.0),
+            ("en-AU-Chirp3-HD-Achird", "en-AU", VoiceGender.MALE, "RaspyVoice", 0.9, -1.0),
+            ("en-IN-Chirp3-HD-Achernar", "en-IN", VoiceGender.FEMALE, "NasalVoice", 1.05, 4.0),
 
-            # Expressive variations
-            ("en-US", VoiceGender.FEMALE, "WhisperedVoice", 0.9, -2.0),
-            ("en-US", VoiceGender.MALE, "ShoutedVoice", 1.1, 3.0),
-            ("en-GB", VoiceGender.FEMALE, "BreathyVoice", 0.95, 1.0),
-            ("en-AU", VoiceGender.MALE, "RaspyVoice", 0.9, -1.0),
-            ("en-IN", VoiceGender.FEMALE, "NasalVoice", 1.05, 4.0),
+            # Additional British voices for more UK diversity
+            ("en-GB-Chirp3-HD-Achird", "en-GB", VoiceGender.MALE, "BritishMale2", 1.0, 0.0),
+            ("en-GB-Chirp3-HD-Autonoe", "en-GB", VoiceGender.FEMALE, "BritishFemale2", 1.0, 0.0),
 
-            # Synthetic/modified voices
-            ("en-US", VoiceGender.NEUTRAL, "RoboticVoice", 1.0, 0.0),
-            ("en-US", VoiceGender.MALE, "ModulatedVoice", 1.0, -2.0),
+            # Additional Australian voices
+            ("en-AU-Chirp3-HD-Algenib", "en-AU", VoiceGender.MALE, "AustralianMale2", 1.0, 0.0),
+            ("en-AU-Chirp3-HD-Aoede", "en-AU", VoiceGender.FEMALE, "AustralianFemale2", 1.0, 0.0),
+
+            # Additional Indian voices
+            ("en-IN-Chirp3-HD-Achird", "en-IN", VoiceGender.MALE, "IndianMale2", 1.0, 0.0),
+            ("en-IN-Chirp3-HD-Aoede", "en-IN", VoiceGender.FEMALE, "IndianFemale2", 1.0, 0.0),
         ]
 
-        # Discover actual voices for each spec
-        for i, (lang_code, gender, label, rate, pitch) in enumerate(voice_specs[:count]):
+        # Create voice configs with specific IDs
+        for i, (voice_id, lang_code, gender, label, rate, pitch) in enumerate(voice_specs[:count]):
             try:
-                voice_name = await self.tts_service.find_voice(lang_code, gender)
-
-                if voice_name:
-                    config = VoiceConfig(
-                        name=voice_name,
-                        language_code=lang_code,
-                        gender=gender,
-                        speaking_rate=rate,
-                        pitch=pitch
-                    )
-                    profiles.append(config)
-                    logger.debug(f"✓ Profile {i+1}: {label} - {voice_name}")
-                else:
-                    logger.warning(f"⚠️ Could not find voice for {label} ({lang_code}, {gender.name})")
+                config = VoiceConfig(
+                    name=voice_id,
+                    language_code=lang_code,
+                    gender=gender,
+                    speaking_rate=rate,
+                    pitch=pitch
+                )
+                profiles.append(config)
+                logger.debug(f"✓ Profile {i+1}: {label} - {voice_id}")
 
             except Exception as e:
                 logger.error(f"❌ Error creating profile {label}: {e}")
 
-        logger.info(f"🎭 Generated {len(profiles)} diverse attacker voice profiles")
+        logger.info(f"🎭 Generated {len(profiles)} diverse attacker voice profiles with unique voices")
         return profiles

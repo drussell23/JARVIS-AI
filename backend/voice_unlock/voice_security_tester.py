@@ -302,19 +302,20 @@ class VoiceProfile(Enum):
     # Accent-based attackers
     BRITISH_ACCENT_ATTACKER = "british_accent_attacker"
     BRITISH_FEMALE_ATTACKER = "british_female_attacker"
+    BRITISH_MALE_2 = "british_male_2"
+    BRITISH_FEMALE_2 = "british_female_2"
     AUSTRALIAN_ACCENT_ATTACKER = "australian_accent_attacker"
     AUSTRALIAN_FEMALE_ATTACKER = "australian_female_attacker"
+    AUSTRALIAN_MALE_2 = "australian_male_2"
+    AUSTRALIAN_FEMALE_2 = "australian_female_2"
     INDIAN_ACCENT_ATTACKER = "indian_accent_attacker"
     INDIAN_FEMALE_ATTACKER = "indian_female_attacker"
-    NIGERIAN_ACCENT_ATTACKER = "nigerian_accent_attacker"
-    NIGERIAN_FEMALE_ATTACKER = "nigerian_female_attacker"
-    SOUTH_AFRICAN_ATTACKER = "south_african_attacker"
-    SOUTH_AFRICAN_FEMALE_ATTACKER = "south_african_female_attacker"
+    INDIAN_MALE_2 = "indian_male_2"
+    INDIAN_FEMALE_2 = "indian_female_2"
     ASIAN_ACCENT_MALE_ATTACKER = "asian_accent_male_attacker"
     ASIAN_ACCENT_FEMALE_ATTACKER = "asian_accent_female_attacker"
     HISPANIC_MALE_ATTACKER = "hispanic_male_attacker"
     HISPANIC_FEMALE_ATTACKER = "hispanic_female_attacker"
-    SOUTHERN_ACCENT_ATTACKER = "southern_accent_attacker"
 
     # Speech pattern attackers
     FAST_SPEAKER_ATTACKER = "fast_speaker_attacker"
@@ -608,53 +609,53 @@ class VoiceSecurityTester:
             ]
 
         elif test_mode == 'full':
-            # Full test: ALL profiles (maximum security validation with ethnic/racial diversity)
+            # Full test: ALL 36 distinct voice profiles (maximum security validation)
             return [
-                # Standard gender variations
+                # Standard gender variations (3 profiles)
                 VoiceProfile.MALE_ATTACKER,
                 VoiceProfile.FEMALE_ATTACKER,
                 VoiceProfile.NONBINARY_ATTACKER,
-                # African American voices
+                # African American voices (4 profiles)
                 VoiceProfile.AFRICAN_AMERICAN_MALE_1,
                 VoiceProfile.AFRICAN_AMERICAN_MALE_2,
                 VoiceProfile.AFRICAN_AMERICAN_FEMALE_1,
                 VoiceProfile.AFRICAN_AMERICAN_FEMALE_2,
-                # Accent diversity (British, Australian, Indian)
+                # British accents (4 profiles)
                 VoiceProfile.BRITISH_ACCENT_ATTACKER,
                 VoiceProfile.BRITISH_FEMALE_ATTACKER,
+                VoiceProfile.BRITISH_MALE_2,
+                VoiceProfile.BRITISH_FEMALE_2,
+                # Australian accents (4 profiles)
                 VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER,
                 VoiceProfile.AUSTRALIAN_FEMALE_ATTACKER,
+                VoiceProfile.AUSTRALIAN_MALE_2,
+                VoiceProfile.AUSTRALIAN_FEMALE_2,
+                # Indian accents (4 profiles)
                 VoiceProfile.INDIAN_ACCENT_ATTACKER,
                 VoiceProfile.INDIAN_FEMALE_ATTACKER,
-                # African accents
-                VoiceProfile.NIGERIAN_ACCENT_ATTACKER,
-                VoiceProfile.NIGERIAN_FEMALE_ATTACKER,
-                VoiceProfile.SOUTH_AFRICAN_ATTACKER,
-                VoiceProfile.SOUTH_AFRICAN_FEMALE_ATTACKER,
-                # Asian & Hispanic accents
+                VoiceProfile.INDIAN_MALE_2,
+                VoiceProfile.INDIAN_FEMALE_2,
+                # Asian & Hispanic accents (4 profiles)
                 VoiceProfile.ASIAN_ACCENT_MALE_ATTACKER,
                 VoiceProfile.ASIAN_ACCENT_FEMALE_ATTACKER,
                 VoiceProfile.HISPANIC_MALE_ATTACKER,
                 VoiceProfile.HISPANIC_FEMALE_ATTACKER,
-                # Age variations
+                # Age variations (4 profiles)
                 VoiceProfile.CHILD_ATTACKER,
                 VoiceProfile.TEEN_ATTACKER,
                 VoiceProfile.ELDERLY_ATTACKER,
                 VoiceProfile.ELDERLY_FEMALE_ATTACKER,
-                # Vocal characteristics
+                # Vocal characteristics (5 profiles)
                 VoiceProfile.DEEP_VOICE_ATTACKER,
                 VoiceProfile.HIGH_PITCHED_ATTACKER,
                 VoiceProfile.RASPY_VOICE_ATTACKER,
                 VoiceProfile.BREATHY_VOICE_ATTACKER,
                 VoiceProfile.NASAL_VOICE_ATTACKER,
-                # Speech patterns
+                # Speech patterns (4 profiles)
                 VoiceProfile.FAST_SPEAKER_ATTACKER,
                 VoiceProfile.SLOW_SPEAKER_ATTACKER,
                 VoiceProfile.WHISPERED_ATTACKER,
                 VoiceProfile.SHOUTED_ATTACKER,
-                # Synthetic/modified
-                VoiceProfile.ROBOTIC_ATTACKER,
-                VoiceProfile.PITCHED_ATTACKER,
             ]
 
         else:
@@ -772,42 +773,54 @@ class VoiceSecurityTester:
 
         # Map VoiceProfile enum to index in generated profiles (matches gcp_tts_service.py order)
         profile_index_map = {
+            # Standard American English (0-2)
             VoiceProfile.MALE_ATTACKER: 0,
             VoiceProfile.FEMALE_ATTACKER: 1,
             VoiceProfile.NONBINARY_ATTACKER: 2,
+            # African American voices (3-6)
             VoiceProfile.AFRICAN_AMERICAN_MALE_1: 3,
             VoiceProfile.AFRICAN_AMERICAN_MALE_2: 4,
             VoiceProfile.AFRICAN_AMERICAN_FEMALE_1: 5,
             VoiceProfile.AFRICAN_AMERICAN_FEMALE_2: 6,
+            # British accents (7-8)
             VoiceProfile.BRITISH_ACCENT_ATTACKER: 7,
             VoiceProfile.BRITISH_FEMALE_ATTACKER: 8,
+            # Australian accents (9-10)
             VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: 9,
             VoiceProfile.AUSTRALIAN_FEMALE_ATTACKER: 10,
+            # Indian accents (11-12)
             VoiceProfile.INDIAN_ACCENT_ATTACKER: 11,
             VoiceProfile.INDIAN_FEMALE_ATTACKER: 12,
-            VoiceProfile.NIGERIAN_ACCENT_ATTACKER: 13,
-            VoiceProfile.NIGERIAN_FEMALE_ATTACKER: 14,
-            VoiceProfile.SOUTH_AFRICAN_ATTACKER: 15,
-            VoiceProfile.SOUTH_AFRICAN_FEMALE_ATTACKER: 16,
-            VoiceProfile.ASIAN_ACCENT_MALE_ATTACKER: 17,
-            VoiceProfile.ASIAN_ACCENT_FEMALE_ATTACKER: 18,
-            VoiceProfile.HISPANIC_MALE_ATTACKER: 19,
-            VoiceProfile.HISPANIC_FEMALE_ATTACKER: 20,
-            VoiceProfile.CHILD_ATTACKER: 21,
-            VoiceProfile.TEEN_ATTACKER: 22,
-            VoiceProfile.ELDERLY_ATTACKER: 23,
-            VoiceProfile.ELDERLY_FEMALE_ATTACKER: 24,
-            VoiceProfile.FAST_SPEAKER_ATTACKER: 25,
-            VoiceProfile.SLOW_SPEAKER_ATTACKER: 26,
-            VoiceProfile.DEEP_VOICE_ATTACKER: 27,
-            VoiceProfile.HIGH_PITCHED_ATTACKER: 28,
-            VoiceProfile.WHISPERED_ATTACKER: 29,
-            VoiceProfile.SHOUTED_ATTACKER: 30,
-            VoiceProfile.BREATHY_VOICE_ATTACKER: 31,
-            VoiceProfile.RASPY_VOICE_ATTACKER: 32,
-            VoiceProfile.NASAL_VOICE_ATTACKER: 33,
-            VoiceProfile.ROBOTIC_ATTACKER: 34,
-            VoiceProfile.PITCHED_ATTACKER: 35,
+            # Asian & Hispanic accents (13-16)
+            VoiceProfile.ASIAN_ACCENT_MALE_ATTACKER: 13,
+            VoiceProfile.ASIAN_ACCENT_FEMALE_ATTACKER: 14,
+            VoiceProfile.HISPANIC_MALE_ATTACKER: 15,
+            VoiceProfile.HISPANIC_FEMALE_ATTACKER: 16,
+            # Age variations (17-20)
+            VoiceProfile.CHILD_ATTACKER: 17,
+            VoiceProfile.TEEN_ATTACKER: 18,
+            VoiceProfile.ELDERLY_ATTACKER: 19,
+            VoiceProfile.ELDERLY_FEMALE_ATTACKER: 20,
+            # Speaking style variations (21-24)
+            VoiceProfile.FAST_SPEAKER_ATTACKER: 21,
+            VoiceProfile.SLOW_SPEAKER_ATTACKER: 22,
+            VoiceProfile.DEEP_VOICE_ATTACKER: 23,
+            VoiceProfile.HIGH_PITCHED_ATTACKER: 24,
+            # Expressive variations (25-29)
+            VoiceProfile.WHISPERED_ATTACKER: 25,
+            VoiceProfile.SHOUTED_ATTACKER: 26,
+            VoiceProfile.BREATHY_VOICE_ATTACKER: 27,
+            VoiceProfile.RASPY_VOICE_ATTACKER: 28,
+            VoiceProfile.NASAL_VOICE_ATTACKER: 29,
+            # Additional British voices (30-31)
+            VoiceProfile.BRITISH_MALE_2: 30,
+            VoiceProfile.BRITISH_FEMALE_2: 31,
+            # Additional Australian voices (32-33)
+            VoiceProfile.AUSTRALIAN_MALE_2: 32,
+            VoiceProfile.AUSTRALIAN_FEMALE_2: 33,
+            # Additional Indian voices (34-35)
+            VoiceProfile.INDIAN_MALE_2: 34,
+            VoiceProfile.INDIAN_FEMALE_2: 35,
         }
 
         profile_index = profile_index_map.get(profile)

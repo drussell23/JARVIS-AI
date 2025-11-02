@@ -1346,7 +1346,8 @@ class AdvancedAsyncPipeline:
                 pause_after_playback=0.5
             )
 
-            # Use full test mode (32 profiles - complete dynamic range with ethnic diversity)
+            # Use full test mode (36 unique voice profiles with actual accent diversity)
+            # Includes: US (21), British (5), Australian (5), Indian (5)
             test_config = {
                 'test_mode': 'full',
                 'authorized_user': user_name,
