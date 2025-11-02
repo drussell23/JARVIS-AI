@@ -400,7 +400,52 @@ class VoiceUnlockSystem:
                         command, status
                     )
                     await self._speak_response(response)
-                    
+
+                elif command.command_type == 'security_test':
+                    # Handle voice security testing
+                    await self._speak_response("Initiating voice security test. This will take a moment.")
+                    logger.info("🔒 Running voice security test...")
+
+                    try:
+                        from .voice_security_tester import VoiceSecurityTester
+
+                        tester = VoiceSecurityTester()
+                        report = await tester.run_security_tests()
+
+                        # Save the report
+                        await tester.save_report(report)
+
+                        # Generate voice response based on results
+                        if report.is_secure:
+                            response = (
+                                f"Voice security test complete. {report.summary['passed']} of {report.summary['total']} tests passed. "
+                                f"Your voice authentication is secure. No unauthorized voices were accepted."
+                            )
+                        else:
+                            breaches = report.summary.get('security_breaches', 0)
+                            false_rejects = report.summary.get('false_rejections', 0)
+                            response = (
+                                f"Voice security test complete. Warning: {breaches} security breaches detected. "
+                                f"{false_rejects} false rejections occurred. Please review the security report."
+                            )
+
+                        await self._speak_response(response)
+
+                        # Update result
+                        result['security_test'] = {
+                            'success': True,
+                            'is_secure': report.is_secure,
+                            'summary': report.summary,
+                            'report_file': str(report.report_file) if hasattr(report, 'report_file') else None
+                        }
+
+                        logger.info(f"🔒 Security test completed: {'SECURE' if report.is_secure else 'VULNERABLE'}")
+
+                    except Exception as e:
+                        logger.error(f"Security test failed: {e}")
+                        await self._speak_response(f"Security test failed: {str(e)}")
+                        result['error'] = f"Security test failed: {str(e)}"
+
                 result['command_type'] = command.command_type
                 result['raw_command'] = command.raw_text
             else:

@@ -55,7 +55,14 @@ class JARVISCommandHandler:
         (r"jarvis[,.]? (?:please )?(?:enroll|register|add) (?:me|user)?\s*(\w+)?", 'user'),
         (r"jarvis[,.]? (?:create|setup) (?:voice )?profile (?:for )?\s*(\w+)?", 'user'),
     ]
-    
+
+    SECURITY_TEST_PATTERNS = [
+        (r"jarvis[,.]? (?:please )?(?:test|check|verify) (?:my )?voice (?:security|authentication|biometric)", None),
+        (r"jarvis[,.]? (?:run|start|perform) (?:a )?(?:voice )?security (?:test|check)", None),
+        (r"jarvis[,.]? (?:verify|validate) (?:voice )?(?:authentication|security)", None),
+        (r"jarvis[,.]? (?:test|check) (?:if )?(?:my )?voice (?:unlock|authentication) (?:is )?(?:secure|working)", None),
+    ]
+
     def __init__(self):
         self.last_command = None
         self.command_history = []
@@ -138,7 +145,21 @@ class JARVISCommandHandler:
                 
                 self._record_command(command)
                 return command
-                
+
+        # Check security test commands
+        for pattern, _ in self.SECURITY_TEST_PATTERNS:
+            if re.search(pattern, text):
+                command = VoiceCommand(
+                    command_type='security_test',
+                    user_name=None,
+                    parameters={},
+                    confidence=0.9,
+                    raw_text=text
+                )
+
+                self._record_command(command)
+                return command
+
         # No matching command
         logger.debug(f"No command matched for: {text}")
         return None
@@ -239,7 +260,39 @@ class JARVISCommandHandler:
                     "Enrollment failed. Please try again.",
                     "I was unable to create a voice profile.",
                 ]
-                
+
+        elif command.command_type == 'security_test':
+            if result.get('success'):
+                summary = result.get('summary', {})
+                total = summary.get('total', 0)
+                passed = summary.get('passed', 0)
+                breaches = summary.get('security_breaches', 0)
+                false_rejects = summary.get('false_rejections', 0)
+
+                if breaches == 0 and false_rejects == 0:
+                    responses = [
+                        f"Voice security test complete. All {total} tests passed. Your voice authentication is fully secure.",
+                        f"Security test successful. {passed} of {total} tests passed with no security breaches detected.",
+                        f"Voice biometric security verified. {total} tests completed successfully. No unauthorized access possible.",
+                    ]
+                elif breaches > 0:
+                    responses = [
+                        f"Security alert: {breaches} unauthorized voices were accepted. Your voice authentication needs attention.",
+                        f"Security test found {breaches} breach{'es' if breaches > 1 else ''}. Please review your voice security settings.",
+                        f"Warning: {breaches} security breach{'es' if breaches > 1 else ''} detected in voice authentication.",
+                    ]
+                elif false_rejects > 0:
+                    responses = [
+                        f"Voice authentication is secure, but {false_rejects} false rejection{'s' if false_rejects > 1 else ''} occurred. You may need to re-enroll.",
+                        f"Security test passed, but your voice was rejected {false_rejects} time{'s' if false_rejects > 1 else ''}. Consider updating your voice profile.",
+                    ]
+            else:
+                error = result.get('error', 'Unknown error')
+                responses = [
+                    f"Voice security test failed: {error}",
+                    f"I was unable to complete the security test. {error}",
+                ]
+
         else:
             responses = ["Command processed."]
             
