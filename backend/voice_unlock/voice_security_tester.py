@@ -768,9 +768,16 @@ class VoiceSecurityTester:
         # Lazy load voice profiles from GCP (once per session)
         if self.gcp_voice_profiles is None:
             logger.info("🔍 Discovering available voices from GCP TTS...")
-            self.gcp_voice_profiles = await self.voice_generator.generate_attacker_profiles(
-                count=len(self.test_profiles)
-            )
+            try:
+                self.gcp_voice_profiles = await self.voice_generator.generate_attacker_profiles(
+                    count=len(self.test_profiles)
+                )
+                logger.info(f"✅ Successfully generated {len(self.gcp_voice_profiles)} GCP voice profiles")
+            except Exception as e:
+                logger.error(f"❌ CRITICAL: Failed to generate GCP voice profiles: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return None
 
         # Map VoiceProfile enum to index in generated profiles (matches gcp_tts_service.py order)
         profile_index_map = {
@@ -852,9 +859,11 @@ class VoiceSecurityTester:
 
         # Primary Engine: Google Cloud TTS (400+ voices, real accents)
         try:
+            logger.debug(f"🔧 Attempting GCP TTS for profile: {profile.value}")
             voice_config = await self._get_gcp_voice_config(profile)
 
             if voice_config:
+                logger.debug(f"🎤 Using voice config: {voice_config.name} (lang={voice_config.language_code}, rate={voice_config.speaking_rate}, pitch={voice_config.pitch})")
                 # Synthesize using GCP TTS
                 audio_data = await self.gcp_tts.synthesize_speech(
                     text=text,
@@ -862,17 +871,26 @@ class VoiceSecurityTester:
                     use_cache=True  # Use cache to stay within free tier
                 )
 
+                logger.debug(f"📊 Received {len(audio_data)} bytes of audio data")
+
                 # Save audio to file
                 audio_file.write_bytes(audio_data)
 
                 if audio_file.exists() and audio_file.stat().st_size > 0:
                     logger.info(f"✅ Generated voice with GCP TTS: {voice_config.name} ({voice_config.language_code})")
                     return audio_file
+                else:
+                    logger.error(f"❌ Audio file was empty or doesn't exist: {audio_file}")
+            else:
+                logger.error(f"❌ No voice config returned for profile: {profile.value}")
 
         except Exception as e:
-            logger.warning(f"⚠️ GCP TTS failed for {profile.value}: {e}")
+            logger.error(f"⚠️ GCP TTS failed for {profile.value}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
         # Fallback Engine: macOS 'say' command (for local development)
+        logger.warning(f"⚠️ FALLING BACK TO MACOS 'SAY' COMMAND for {profile.value} - GCP TTS did not work!")
         try:
             if platform.system() == 'Darwin':  # macOS only
                 wav_file = self.temp_dir / f"{profile.value}_{int(time.time())}.wav"
@@ -887,7 +905,7 @@ class VoiceSecurityTester:
                 await asyncio.wait_for(process.wait(), timeout=10.0)
 
                 if wav_file.exists() and wav_file.stat().st_size > 0:
-                    logger.info(f"✅ Generated voice with macOS 'say' (fallback)")
+                    logger.warning(f"⚠️ Generated voice with macOS 'say' (FALLBACK - not using GCP TTS!)")
                     return wav_file
 
         except Exception as e:
