@@ -7020,6 +7020,170 @@ Protected from unloading in `dynamic_component_manager.py`:
 - "Set to extend"
 - "Extended display mode"
 
+### Voice Security Testing
+
+**Test Voice Biometric Authentication Security:**
+
+JARVIS includes a comprehensive voice biometric security testing system that validates voice authentication against diverse attack vectors. Test your system's security by generating synthetic "attacker" voices and verifying they are properly rejected.
+
+#### Quick Start
+
+```bash
+# Standard test (8 profiles, silent mode, ~3 min)
+python3 backend/voice_unlock/voice_security_tester.py
+
+# Standard test with audio playback (hear the test voices)
+python3 backend/voice_unlock/voice_security_tester.py --play-audio
+
+# Quick test with audio (3 profiles, ~1 min)
+python3 backend/voice_unlock/voice_security_tester.py --mode quick --play-audio
+
+# Comprehensive test with verbose output (15 profiles, ~5 min)
+python3 backend/voice_unlock/voice_security_tester.py --mode comprehensive --play-audio --verbose
+
+# Full security audit (all 24 profiles, ~8 min)
+python3 backend/voice_unlock/voice_security_tester.py --mode full --play-audio
+```
+
+#### Test Modes
+
+| Mode | Profiles | Duration | Description |
+|------|----------|----------|-------------|
+| **quick** | 3 | ~1 min | Basic gender & robotic tests |
+| **standard** | 8 | ~3 min | Diverse age, gender, vocal characteristics |
+| **comprehensive** | 15 | ~5 min | Major categories: gender, age, accents, synthetic |
+| **full** | 24 | ~8 min | Complete security audit - all attack vectors |
+
+#### Voice Profiles Tested
+
+The security tester validates authentication against 24 diverse voice profiles:
+
+**Gender Variations:**
+- Male, Female, Non-binary voices
+
+**Age Variations:**
+- Child, Teen, Elderly voices
+
+**Vocal Characteristics:**
+- Deep voice, High-pitched, Raspy, Breathy, Nasal
+
+**Accents:**
+- British, Australian, Indian, Southern US
+
+**Speech Patterns:**
+- Fast speaker, Slow speaker, Whispered, Shouted
+
+**Synthetic/Modified Attacks:**
+- Robotic, Pitched, Synthesized, Modulated, Vocoded
+
+#### CLI Options
+
+```bash
+# Audio playback options
+--play-audio, --play, -p    # Play synthetic voices during testing
+--verbose, -v               # Show detailed/verbose output
+
+# Test configuration
+--mode, -m                  # Test mode (quick/standard/comprehensive/full)
+--user, -u                  # Authorized user name (default: Derek)
+--phrase, --text            # Test phrase to synthesize (default: "unlock my screen")
+
+# Audio configuration
+--backend, -b               # Audio backend (auto/afplay/aplay/pyaudio/sox/ffplay)
+--volume                    # Volume level 0.0-1.0 (default: 0.5)
+```
+
+#### Advanced Examples
+
+```bash
+# Test with custom user and phrase
+python3 backend/voice_unlock/voice_security_tester.py \
+  --play-audio \
+  --user "John" \
+  --phrase "open the pod bay doors"
+
+# Comprehensive test with specific audio backend
+python3 backend/voice_unlock/voice_security_tester.py \
+  --mode comprehensive \
+  --play-audio \
+  --backend afplay \
+  --volume 0.7 \
+  --verbose
+
+# Full audit with silent mode (for CI/CD)
+python3 backend/voice_unlock/voice_security_tester.py --mode full
+
+# Quick test on Linux with ALSA backend
+python3 backend/voice_unlock/voice_security_tester.py \
+  --mode quick \
+  --play-audio \
+  --backend aplay
+```
+
+#### Understanding Test Results
+
+**Secure System (Expected):**
+```
+Voice security test complete. 0 of 8 tests passed. Your voice authentication is secure.
+
+Security Status: ✅ SECURE
+- 0 security breaches (unauthorized voices accepted)
+- 0 false rejections (authorized voice rejected)
+- All 8 attacker voices were correctly REJECTED
+```
+
+**Security Breach (Action Needed):**
+```
+Voice security test complete. 2 of 8 tests passed. Security breach detected!
+
+Security Status: 🚨 BREACH
+- 2 security breaches (unauthorized voices accepted)
+- Action: Re-enroll voice profile with more samples
+```
+
+#### Audio Playback Backends
+
+The system automatically detects the best available audio backend:
+
+| Backend | Platform | Notes |
+|---------|----------|-------|
+| **afplay** | macOS | Built-in, fast, reliable |
+| **aplay** | Linux | ALSA sound system |
+| **ffplay** | Cross-platform | Requires FFmpeg |
+| **sox** | Cross-platform | Requires SoX |
+| **PyAudio** | Cross-platform | Python audio library |
+
+#### Voice Commands
+
+You can also trigger security testing via voice:
+
+- "Test my voice security"
+- "Test voice biometric security"
+- "Run voice security test"
+- "Verify voice authentication"
+
+#### Security Best Practices
+
+1. **Regular Testing:** Run security tests monthly or after re-enrolling voice profiles
+2. **Comprehensive Mode:** Use `--mode comprehensive` for thorough security validation
+3. **Audio Playback:** Enable `--play-audio` to hear what attackers might sound like
+4. **Re-enrollment:** If breaches detected, re-enroll with 100+ voice samples
+5. **Quality Monitoring:** Check `~/.jarvis/security_reports/` for detailed analysis
+
+#### Report Location
+
+Security reports are automatically saved to:
+```
+~/.jarvis/security_reports/voice_security_report_YYYYMMDD_HHMMSS.json
+```
+
+Each report includes:
+- Test configuration and timestamp
+- Individual test results with similarity scores
+- Security verdicts and breach analysis
+- Profile quality assessment
+- Recommendations for improvements
+
 ---
 
 ## 🧠 Phase 3.1: LLaMA 3.1 70B Local LLM Deployment

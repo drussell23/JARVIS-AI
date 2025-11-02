@@ -25,6 +25,9 @@ import asyncio
 import json
 import logging
 import os
+import platform
+import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -42,14 +45,263 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class AudioBackend(Enum):
+    """Available audio playback backends"""
+    AFPLAY = "afplay"  # macOS
+    APLAY = "aplay"    # Linux ALSA
+    PYAUDIO = "pyaudio"  # Cross-platform Python library
+    SOX = "sox"        # Cross-platform sound tool
+    FFPLAY = "ffplay"  # FFmpeg audio player
+    AUTO = "auto"      # Auto-detect best available
+
+
+@dataclass
+class PlaybackConfig:
+    """Configuration for audio playback during testing"""
+    enabled: bool = False  # Whether to play audio during tests
+    verbose: bool = False  # Show detailed playback information
+    backend: AudioBackend = AudioBackend.AUTO  # Which audio backend to use
+    volume: float = 0.5  # Volume level (0.0 to 1.0)
+    announce_profile: bool = True  # Announce which voice profile is playing
+    pause_after_playback: float = 0.5  # Seconds to pause after playing audio
+
+
+class AudioPlayer:
+    """
+    Cross-platform audio player with automatic backend detection.
+
+    Supports multiple audio backends with graceful fallback:
+    - macOS: afplay (built-in)
+    - Linux: aplay (ALSA)
+    - Cross-platform: PyAudio, sox, ffplay
+    """
+
+    def __init__(self, config: PlaybackConfig):
+        """Initialize audio player with configuration"""
+        self.config = config
+        self.backend = None
+        self._detect_backend()
+
+    def _detect_backend(self):
+        """Auto-detect best available audio backend"""
+        if self.config.backend != AudioBackend.AUTO:
+            # User specified a backend
+            self.backend = self.config.backend
+            return
+
+        # Detect platform and check available tools
+        system = platform.system().lower()
+
+        # Try platform-specific backends first (most reliable)
+        if system == 'darwin' and self._check_command('afplay'):
+            self.backend = AudioBackend.AFPLAY
+            logger.info("🔊 Audio backend: afplay (macOS)")
+        elif system == 'linux' and self._check_command('aplay'):
+            self.backend = AudioBackend.APLAY
+            logger.info("🔊 Audio backend: aplay (Linux ALSA)")
+        elif self._check_command('ffplay'):
+            self.backend = AudioBackend.FFPLAY
+            logger.info("🔊 Audio backend: ffplay (FFmpeg)")
+        elif self._check_command('sox'):
+            self.backend = AudioBackend.SOX
+            logger.info("🔊 Audio backend: sox")
+        else:
+            # Try PyAudio as last resort
+            try:
+                import pyaudio
+                self.backend = AudioBackend.PYAUDIO
+                logger.info("🔊 Audio backend: PyAudio")
+            except ImportError:
+                logger.warning("⚠️ No audio backend available - audio playback disabled")
+                self.config.enabled = False
+
+    def _check_command(self, command: str) -> bool:
+        """Check if a command is available in PATH"""
+        try:
+            subprocess.run(
+                ['which', command],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True
+            )
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    async def play(self, audio_file: Path, profile: VoiceProfile):
+        """
+        Play audio file with current backend.
+
+        Args:
+            audio_file: Path to audio file
+            profile: Voice profile being played (for announcements)
+        """
+        if not self.config.enabled:
+            return
+
+        if not audio_file.exists():
+            logger.error(f"Audio file not found: {audio_file}")
+            return
+
+        # Announce what's playing
+        if self.config.announce_profile:
+            profile_name = profile.value.replace('_', ' ').title()
+            logger.info(f"🎤 Playing: {profile_name}")
+
+        try:
+            # Play audio based on backend
+            if self.backend == AudioBackend.AFPLAY:
+                await self._play_afplay(audio_file)
+            elif self.backend == AudioBackend.APLAY:
+                await self._play_aplay(audio_file)
+            elif self.backend == AudioBackend.FFPLAY:
+                await self._play_ffplay(audio_file)
+            elif self.backend == AudioBackend.SOX:
+                await self._play_sox(audio_file)
+            elif self.backend == AudioBackend.PYAUDIO:
+                await self._play_pyaudio(audio_file)
+            else:
+                logger.warning("No audio backend configured")
+                return
+
+            # Pause after playback
+            if self.config.pause_after_playback > 0:
+                await asyncio.sleep(self.config.pause_after_playback)
+
+        except Exception as e:
+            if self.config.verbose:
+                logger.error(f"Audio playback error: {e}", exc_info=True)
+            else:
+                logger.warning(f"Audio playback failed: {e}")
+
+    async def _play_afplay(self, audio_file: Path):
+        """Play audio using macOS afplay"""
+        volume = int(self.config.volume * 100)
+        process = await asyncio.create_subprocess_exec(
+            'afplay', '-v', str(volume / 100.0), str(audio_file),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.wait()
+
+    async def _play_aplay(self, audio_file: Path):
+        """Play audio using Linux aplay"""
+        process = await asyncio.create_subprocess_exec(
+            'aplay', '-q', str(audio_file),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.wait()
+
+    async def _play_ffplay(self, audio_file: Path):
+        """Play audio using ffplay"""
+        volume = int(self.config.volume * 255)
+        process = await asyncio.create_subprocess_exec(
+            'ffplay', '-nodisp', '-autoexit', '-volume', str(volume), str(audio_file),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.wait()
+
+    async def _play_sox(self, audio_file: Path):
+        """Play audio using sox"""
+        volume = self.config.volume
+        process = await asyncio.create_subprocess_exec(
+            'play', '-q', '-v', str(volume), str(audio_file),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.wait()
+
+    async def _play_pyaudio(self, audio_file: Path):
+        """Play audio using PyAudio library"""
+        try:
+            import wave
+            import pyaudio
+
+            # Open wave file
+            wf = wave.open(str(audio_file), 'rb')
+
+            # Initialize PyAudio
+            p = pyaudio.PyAudio()
+
+            # Open stream
+            stream = p.open(
+                format=p.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True
+            )
+
+            # Read and play data
+            chunk_size = 1024
+            data = wf.readframes(chunk_size)
+
+            while data:
+                stream.write(data)
+                data = wf.readframes(chunk_size)
+
+            # Cleanup
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+            wf.close()
+
+        except Exception as e:
+            logger.error(f"PyAudio playback error: {e}")
+
+
 class VoiceProfile(Enum):
-    """Different voice profile types for testing"""
+    """
+    Different voice profile types for comprehensive security testing.
+
+    Tests voice biometric authentication against diverse vocal characteristics:
+    - Gender variations (male, female, non-binary)
+    - Age variations (child, teen, adult, elderly)
+    - Vocal characteristics (deep, high-pitched, raspy, breathy)
+    - Accents (US, UK, Australian, Indian, etc.)
+    - Speech patterns (fast, slow, robotic, whispered)
+    - Attack vectors (synthesized, pitched, modulated)
+    """
+
+    # Authorized user
     AUTHORIZED_USER = "authorized_user"
+
+    # Gender-based attackers
     MALE_ATTACKER = "male_attacker"
     FEMALE_ATTACKER = "female_attacker"
+    NONBINARY_ATTACKER = "nonbinary_attacker"
+
+    # Age-based attackers
     CHILD_ATTACKER = "child_attacker"
+    TEEN_ATTACKER = "teen_attacker"
+    ELDERLY_ATTACKER = "elderly_attacker"
+
+    # Vocal characteristic attackers
+    DEEP_VOICE_ATTACKER = "deep_voice_attacker"
+    HIGH_PITCHED_ATTACKER = "high_pitched_attacker"
+    RASPY_VOICE_ATTACKER = "raspy_voice_attacker"
+    BREATHY_VOICE_ATTACKER = "breathy_voice_attacker"
+    NASAL_VOICE_ATTACKER = "nasal_voice_attacker"
+
+    # Accent-based attackers
+    BRITISH_ACCENT_ATTACKER = "british_accent_attacker"
+    AUSTRALIAN_ACCENT_ATTACKER = "australian_accent_attacker"
+    INDIAN_ACCENT_ATTACKER = "indian_accent_attacker"
+    SOUTHERN_ACCENT_ATTACKER = "southern_accent_attacker"
+
+    # Speech pattern attackers
+    FAST_SPEAKER_ATTACKER = "fast_speaker_attacker"
+    SLOW_SPEAKER_ATTACKER = "slow_speaker_attacker"
+    WHISPERED_ATTACKER = "whispered_attacker"
+    SHOUTED_ATTACKER = "shouted_attacker"
+
+    # Synthetic/modified attackers
     ROBOTIC_ATTACKER = "robotic_attacker"
     PITCHED_ATTACKER = "pitched_attacker"
+    SYNTHESIZED_ATTACKER = "synthesized_attacker"
+    MODULATED_ATTACKER = "modulated_attacker"
+    VOCODED_ATTACKER = "vocoded_attacker"
 
 
 class TestResult(Enum):
@@ -186,12 +438,13 @@ class VoiceSecurityTester:
     5. Generating comprehensive security report
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, playback_config: Optional[PlaybackConfig] = None):
         """
         Initialize voice security tester.
 
         Args:
             config: Optional configuration overrides
+            playback_config: Audio playback configuration (enables audio during tests)
         """
         self.config = config or {}
         self.authorized_user = self.config.get('authorized_user', 'Derek')
@@ -203,16 +456,111 @@ class VoiceSecurityTester:
         self.verification_threshold = None  # Will be loaded from system
         self.embedding_dimension = None  # Will be detected
 
-        # Test profiles to generate
-        self.test_profiles = [
-            VoiceProfile.MALE_ATTACKER,
-            VoiceProfile.FEMALE_ATTACKER,
-            VoiceProfile.CHILD_ATTACKER,
-            VoiceProfile.ROBOTIC_ATTACKER,
-            VoiceProfile.PITCHED_ATTACKER,
-        ]
+        # Audio playback configuration
+        self.playback_config = playback_config or PlaybackConfig()
+        self.audio_player = AudioPlayer(self.playback_config) if self.playback_config.enabled else None
+
+        # Test profile selection (dynamic based on config)
+        test_mode = self.config.get('test_mode', 'standard')
+        self.test_profiles = self._select_test_profiles(test_mode)
 
         logger.info(f"Voice Security Tester initialized for user: {self.authorized_user}")
+        logger.info(f"   Test mode: {test_mode} ({len(self.test_profiles)} profiles)")
+        if self.playback_config.enabled:
+            logger.info(f"   Audio playback: ENABLED (backend: {self.audio_player.backend.value if self.audio_player else 'none'})")
+        else:
+            logger.info("   Audio playback: DISABLED (silent mode)")
+
+    def _select_test_profiles(self, test_mode: str) -> List[VoiceProfile]:
+        """
+        Select test profiles based on test mode.
+
+        Args:
+            test_mode: Test mode ('quick', 'standard', 'comprehensive', 'full')
+
+        Returns:
+            List of voice profiles to test
+        """
+        if test_mode == 'quick':
+            # Quick test: 3 basic profiles
+            return [
+                VoiceProfile.MALE_ATTACKER,
+                VoiceProfile.FEMALE_ATTACKER,
+                VoiceProfile.ROBOTIC_ATTACKER,
+            ]
+
+        elif test_mode == 'standard':
+            # Standard test: 8 diverse profiles
+            return [
+                VoiceProfile.MALE_ATTACKER,
+                VoiceProfile.FEMALE_ATTACKER,
+                VoiceProfile.CHILD_ATTACKER,
+                VoiceProfile.ELDERLY_ATTACKER,
+                VoiceProfile.DEEP_VOICE_ATTACKER,
+                VoiceProfile.HIGH_PITCHED_ATTACKER,
+                VoiceProfile.ROBOTIC_ATTACKER,
+                VoiceProfile.PITCHED_ATTACKER,
+            ]
+
+        elif test_mode == 'comprehensive':
+            # Comprehensive test: 15 profiles covering major categories
+            return [
+                # Gender variations
+                VoiceProfile.MALE_ATTACKER,
+                VoiceProfile.FEMALE_ATTACKER,
+                VoiceProfile.NONBINARY_ATTACKER,
+                # Age variations
+                VoiceProfile.CHILD_ATTACKER,
+                VoiceProfile.TEEN_ATTACKER,
+                VoiceProfile.ELDERLY_ATTACKER,
+                # Vocal characteristics
+                VoiceProfile.DEEP_VOICE_ATTACKER,
+                VoiceProfile.HIGH_PITCHED_ATTACKER,
+                VoiceProfile.RASPY_VOICE_ATTACKER,
+                # Accents
+                VoiceProfile.BRITISH_ACCENT_ATTACKER,
+                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER,
+                # Speech patterns
+                VoiceProfile.FAST_SPEAKER_ATTACKER,
+                VoiceProfile.WHISPERED_ATTACKER,
+                # Synthetic
+                VoiceProfile.ROBOTIC_ATTACKER,
+                VoiceProfile.SYNTHESIZED_ATTACKER,
+            ]
+
+        elif test_mode == 'full':
+            # Full test: ALL profiles (maximum security validation)
+            return [
+                VoiceProfile.MALE_ATTACKER,
+                VoiceProfile.FEMALE_ATTACKER,
+                VoiceProfile.NONBINARY_ATTACKER,
+                VoiceProfile.CHILD_ATTACKER,
+                VoiceProfile.TEEN_ATTACKER,
+                VoiceProfile.ELDERLY_ATTACKER,
+                VoiceProfile.DEEP_VOICE_ATTACKER,
+                VoiceProfile.HIGH_PITCHED_ATTACKER,
+                VoiceProfile.RASPY_VOICE_ATTACKER,
+                VoiceProfile.BREATHY_VOICE_ATTACKER,
+                VoiceProfile.NASAL_VOICE_ATTACKER,
+                VoiceProfile.BRITISH_ACCENT_ATTACKER,
+                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER,
+                VoiceProfile.INDIAN_ACCENT_ATTACKER,
+                VoiceProfile.SOUTHERN_ACCENT_ATTACKER,
+                VoiceProfile.FAST_SPEAKER_ATTACKER,
+                VoiceProfile.SLOW_SPEAKER_ATTACKER,
+                VoiceProfile.WHISPERED_ATTACKER,
+                VoiceProfile.SHOUTED_ATTACKER,
+                VoiceProfile.ROBOTIC_ATTACKER,
+                VoiceProfile.PITCHED_ATTACKER,
+                VoiceProfile.SYNTHESIZED_ATTACKER,
+                VoiceProfile.MODULATED_ATTACKER,
+                VoiceProfile.VOCODED_ATTACKER,
+            ]
+
+        else:
+            # Default to standard
+            logger.warning(f"Unknown test mode '{test_mode}', using 'standard'")
+            return self._select_test_profiles('standard')
 
     async def load_system_config(self) -> Dict[str, Any]:
         """
@@ -323,18 +671,61 @@ class VoiceSecurityTester:
 
         # Engine 1: macOS 'say' command (fast, built-in)
         try:
+            # Comprehensive macOS voice mapping for all profiles
             voice_map = {
-                VoiceProfile.MALE_ATTACKER: "Alex",
-                VoiceProfile.FEMALE_ATTACKER: "Samantha",
-                VoiceProfile.CHILD_ATTACKER: "Karen",
-                VoiceProfile.ROBOTIC_ATTACKER: "Zarvox",
-                VoiceProfile.PITCHED_ATTACKER: "Whisper",
+                # Gender variations
+                VoiceProfile.MALE_ATTACKER: "Alex",  # US male
+                VoiceProfile.FEMALE_ATTACKER: "Samantha",  # US female
+                VoiceProfile.NONBINARY_ATTACKER: "Fred",  # Neutral voice
+
+                # Age variations
+                VoiceProfile.CHILD_ATTACKER: "Karen",  # Child-like
+                VoiceProfile.TEEN_ATTACKER: "Ava",  # Teen/young adult
+                VoiceProfile.ELDERLY_ATTACKER: "Ralph",  # Elderly male
+
+                # Vocal characteristics
+                VoiceProfile.DEEP_VOICE_ATTACKER: "Bruce",  # Deep voice
+                VoiceProfile.HIGH_PITCHED_ATTACKER: "Princess",  # High-pitched
+                VoiceProfile.RASPY_VOICE_ATTACKER: "Bahh",  # Raspy
+                VoiceProfile.BREATHY_VOICE_ATTACKER: "Whisper",  # Breathy/whispered
+                VoiceProfile.NASAL_VOICE_ATTACKER: "Bubbles",  # Nasal
+
+                # Accents
+                VoiceProfile.BRITISH_ACCENT_ATTACKER: "Daniel",  # British male
+                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: "Karen",  # Australian
+                VoiceProfile.INDIAN_ACCENT_ATTACKER: "Rishi",  # Indian (if available)
+                VoiceProfile.SOUTHERN_ACCENT_ATTACKER: "Samantha",  # US (closest to Southern)
+
+                # Speech patterns
+                VoiceProfile.FAST_SPEAKER_ATTACKER: "Alex",  # Will adjust rate
+                VoiceProfile.SLOW_SPEAKER_ATTACKER: "Alex",  # Will adjust rate
+                VoiceProfile.WHISPERED_ATTACKER: "Whisper",  # Whispered
+                VoiceProfile.SHOUTED_ATTACKER: "Bahh",  # Loud/emphatic
+
+                # Synthetic/modified
+                VoiceProfile.ROBOTIC_ATTACKER: "Zarvox",  # Robotic
+                VoiceProfile.PITCHED_ATTACKER: "Ralph",  # Will pitch-shift
+                VoiceProfile.SYNTHESIZED_ATTACKER: "Cellos",  # Synthesized
+                VoiceProfile.MODULATED_ATTACKER: "Trinoids",  # Modulated
+                VoiceProfile.VOCODED_ATTACKER: "Albert",  # Vocoded effect
             }
 
             voice = voice_map.get(profile, "Alex")
+            rate_modifier = 1.0  # Default speech rate
+
+            # Adjust speech rate for specific profiles
+            if profile == VoiceProfile.FAST_SPEAKER_ATTACKER:
+                rate_modifier = 1.5  # 50% faster
+            elif profile == VoiceProfile.SLOW_SPEAKER_ATTACKER:
+                rate_modifier = 0.6  # 40% slower
+            elif profile == VoiceProfile.CHILD_ATTACKER:
+                rate_modifier = 1.2  # Slightly faster
+
+            # Build say command with rate modifier
+            say_cmd = ['say', '-v', voice, '-r', str(int(200 * rate_modifier)), '-o', str(audio_file), '--data-format=LEF32@22050', text]
 
             process = await asyncio.create_subprocess_exec(
-                'say', '-v', voice, '-o', str(audio_file), '--data-format=LEF32@22050', text,
+                *say_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -342,7 +733,7 @@ class VoiceSecurityTester:
             await asyncio.wait_for(process.wait(), timeout=10.0)
 
             if audio_file.exists() and audio_file.stat().st_size > 0:
-                logger.info(f"Generated voice with macOS 'say' command: {voice}")
+                logger.info(f"Generated voice with macOS 'say' command: {voice} (rate: {rate_modifier}x)")
                 return audio_file
 
         except Exception as e:
@@ -352,21 +743,54 @@ class VoiceSecurityTester:
         try:
             from gtts import gTTS
 
-            # Vary speech parameters for different profiles
+            # Comprehensive gTTS language/accent mapping
             lang_map = {
-                VoiceProfile.MALE_ATTACKER: 'en',
-                VoiceProfile.FEMALE_ATTACKER: 'en-uk',
-                VoiceProfile.CHILD_ATTACKER: 'en-au',
-                VoiceProfile.ROBOTIC_ATTACKER: 'en-in',
-                VoiceProfile.PITCHED_ATTACKER: 'en-ca',
+                # Gender variations (use different accents)
+                VoiceProfile.MALE_ATTACKER: 'en',  # US
+                VoiceProfile.FEMALE_ATTACKER: 'en-uk',  # UK female
+                VoiceProfile.NONBINARY_ATTACKER: 'en-ca',  # Canadian (neutral)
+
+                # Age variations
+                VoiceProfile.CHILD_ATTACKER: 'en-au',  # Australian (lighter tone)
+                VoiceProfile.TEEN_ATTACKER: 'en',  # US (young)
+                VoiceProfile.ELDERLY_ATTACKER: 'en-uk',  # UK (mature)
+
+                # Vocal characteristics (use slow parameter for variation)
+                VoiceProfile.DEEP_VOICE_ATTACKER: 'en-gb',  # British (deeper)
+                VoiceProfile.HIGH_PITCHED_ATTACKER: 'en-au',  # Australian
+                VoiceProfile.RASPY_VOICE_ATTACKER: 'en-ie',  # Irish
+                VoiceProfile.BREATHY_VOICE_ATTACKER: 'en-uk',  # UK
+                VoiceProfile.NASAL_VOICE_ATTACKER: 'en-in',  # Indian
+
+                # Accents
+                VoiceProfile.BRITISH_ACCENT_ATTACKER: 'en-uk',  # UK
+                VoiceProfile.AUSTRALIAN_ACCENT_ATTACKER: 'en-au',  # Australian
+                VoiceProfile.INDIAN_ACCENT_ATTACKER: 'en-in',  # Indian
+                VoiceProfile.SOUTHERN_ACCENT_ATTACKER: 'en',  # US
+
+                # Speech patterns
+                VoiceProfile.FAST_SPEAKER_ATTACKER: 'en',  # US (will use slow=False)
+                VoiceProfile.SLOW_SPEAKER_ATTACKER: 'en',  # US (will use slow=True)
+                VoiceProfile.WHISPERED_ATTACKER: 'en-uk',  # UK
+                VoiceProfile.SHOUTED_ATTACKER: 'en',  # US
+
+                # Synthetic/modified
+                VoiceProfile.ROBOTIC_ATTACKER: 'en-in',  # Indian (robotic quality)
+                VoiceProfile.PITCHED_ATTACKER: 'en-ca',  # Canadian
+                VoiceProfile.SYNTHESIZED_ATTACKER: 'en',  # US
+                VoiceProfile.MODULATED_ATTACKER: 'en-ie',  # Irish
+                VoiceProfile.VOCODED_ATTACKER: 'en-nz',  # New Zealand
             }
 
             lang = lang_map.get(profile, 'en')
-            tts = gTTS(text=text, lang=lang, slow=False)
+            # Use slow parameter for specific profiles
+            slow = profile == VoiceProfile.SLOW_SPEAKER_ATTACKER
+
+            tts = gTTS(text=text, lang=lang, slow=slow)
             tts.save(str(audio_file))
 
             if audio_file.exists():
-                logger.info(f"Generated voice with gTTS: {lang}")
+                logger.info(f"Generated voice with gTTS: {lang} (slow: {slow})")
                 return audio_file
 
         except Exception as e:
@@ -422,6 +846,10 @@ class VoiceSecurityTester:
         start_time = time.time()
 
         try:
+            # Play audio if playback is enabled
+            if self.audio_player:
+                await self.audio_player.play(audio_file, profile)
+
             # Import verification service
             from backend.voice.speaker_verification_service import SpeakerVerificationService
 
@@ -634,12 +1062,111 @@ class VoiceSecurityTester:
 
 async def main():
     """Main entry point for standalone execution"""
+    import argparse
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='JARVIS Voice Security Tester - Test voice biometric authentication security',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Quick silent test (3 profiles)
+  python3 voice_security_tester.py --mode quick
+
+  # Standard test with audio playback
+  python3 voice_security_tester.py --play-audio
+
+  # Comprehensive test with verbose output and audio
+  python3 voice_security_tester.py --mode comprehensive --play-audio --verbose
+
+  # Full test (all 24 profiles) with audio
+  python3 voice_security_tester.py --mode full --play-audio
+
+Test Modes:
+  quick         - 3 profiles (~1 min)
+  standard      - 8 profiles (~3 min) [default]
+  comprehensive - 15 profiles (~5 min)
+  full          - 24 profiles (~8 min)
+        '''
+    )
+
+    # Audio playback options
+    parser.add_argument(
+        '--play-audio', '--play', '-p',
+        action='store_true',
+        help='Play synthetic voices during testing (silent by default)'
+    )
+
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show detailed/verbose output including audio playback details'
+    )
+
+    # Test configuration
+    parser.add_argument(
+        '--mode', '-m',
+        choices=['quick', 'standard', 'comprehensive', 'full'],
+        default='standard',
+        help='Test mode: quick (3), standard (8), comprehensive (15), or full (24 profiles)'
+    )
+
+    parser.add_argument(
+        '--user', '-u',
+        default='Derek',
+        help='Authorized user name to test against (default: Derek)'
+    )
+
+    parser.add_argument(
+        '--phrase', '--text',
+        default='unlock my screen',
+        help='Test phrase to synthesize (default: "unlock my screen")'
+    )
+
+    # Audio backend selection
+    parser.add_argument(
+        '--backend', '-b',
+        choices=['auto', 'afplay', 'aplay', 'pyaudio', 'sox', 'ffplay'],
+        default='auto',
+        help='Audio playback backend (default: auto-detect)'
+    )
+
+    parser.add_argument(
+        '--volume',
+        type=float,
+        default=0.5,
+        help='Audio playback volume (0.0 to 1.0, default: 0.5)'
+    )
+
+    args = parser.parse_args()
+
+    # Display banner
     print("\n" + "="*80)
     print("JARVIS VOICE SECURITY TESTER")
     print("="*80 + "\n")
 
-    # Create tester
-    tester = VoiceSecurityTester()
+    # Create playback configuration
+    playback_config = PlaybackConfig(
+        enabled=args.play_audio,
+        verbose=args.verbose,
+        backend=AudioBackend(args.backend.upper()) if args.backend != 'auto' else AudioBackend.AUTO,
+        volume=max(0.0, min(1.0, args.volume)),  # Clamp to 0.0-1.0
+        announce_profile=True,
+        pause_after_playback=0.5
+    )
+
+    # Create test configuration
+    test_config = {
+        'authorized_user': args.user,
+        'test_phrase': args.phrase,
+        'test_mode': args.mode,
+    }
+
+    # Create tester with configurations
+    tester = VoiceSecurityTester(
+        config=test_config,
+        playback_config=playback_config
+    )
 
     try:
         # Run tests
