@@ -857,14 +857,18 @@ class VoiceSecurityTester:
             verification_service = SpeakerVerificationService()
             await verification_service.initialize()
 
+            # Read audio file as bytes
+            with open(audio_file, 'rb') as f:
+                audio_data = f.read()
+
             # Perform verification
             result = await verification_service.verify_speaker(
-                audio_file=str(audio_file),
-                expected_speaker=self.authorized_user
+                audio_data=audio_data,
+                speaker_name=self.authorized_user
             )
 
             # Extract results
-            similarity_score = result.get('similarity_score', 0.0)
+            similarity_score = result.get('confidence', 0.0)  # Changed from 'similarity_score' to 'confidence'
             was_accepted = result.get('verified', False)
             embedding_dim = result.get('embedding_dimension', self.embedding_dimension)
 
