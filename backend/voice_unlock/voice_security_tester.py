@@ -37,12 +37,22 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 
-# GCP TTS integration
+# TTS integration - Multi-provider support (GCP + ElevenLabs)
 from backend.audio.gcp_tts_service import (
     GCPTTSService,
     VoiceProfileGenerator,
     VoiceConfig,
     VoiceGender
+)
+from backend.audio.tts_provider_manager import (
+    TTSProviderManager,
+    TTSProvider,
+    UnifiedVoiceConfig
+)
+from backend.audio.elevenlabs_tts_service import (
+    ElevenLabsTTSService,
+    ElevenLabsVoiceConfig,
+    VoiceAccent
 )
 
 # Configure logging
@@ -534,11 +544,17 @@ class VoiceSecurityTester:
         # Progress tracking callback
         self.progress_callback = progress_callback
 
-        # GCP TTS service (dynamic, robust voice generation)
+        # TTS Provider Manager (multi-provider support: GCP + ElevenLabs)
         # Use permanent cache directory to persist voices across tests and stay in free tier
-        self.gcp_tts = GCPTTSService()  # Uses default ~/.jarvis/tts_cache
-        self.voice_generator = VoiceProfileGenerator(self.gcp_tts)
+        self.tts_manager = TTSProviderManager(enable_gcp=True, enable_elevenlabs=True)
+
+        # Backward compatibility: Keep GCP TTS references for existing code
+        self.gcp_tts = self.tts_manager.gcp_service
+        self.voice_generator = VoiceProfileGenerator(self.gcp_tts) if self.gcp_tts else None
         self.gcp_voice_profiles: Optional[List[VoiceConfig]] = None  # Lazy loaded
+
+        # ElevenLabs-specific voice profiles (lazy loaded)
+        self.elevenlabs_voice_profiles: Optional[List[ElevenLabsVoiceConfig]] = None
 
         # Test profile selection (dynamic based on config)
         test_mode = self.config.get('test_mode', 'standard')
@@ -546,7 +562,11 @@ class VoiceSecurityTester:
 
         logger.info(f"Voice Security Tester initialized for user: {self.authorized_user}")
         logger.info(f"   Test mode: {test_mode} ({len(self.test_profiles)} profiles)")
-        logger.info(f"   TTS Engine: Google Cloud TTS (400+ voices, real accents)")
+        logger.info(f"   TTS Engines:")
+        if self.tts_manager.gcp_service:
+            logger.info(f"     ✅ Google Cloud TTS (60+ voices, real accents)")
+        if self.tts_manager.elevenlabs_service:
+            logger.info(f"     ✅ ElevenLabs TTS (African American, African, Asian accents)")
         if self.playback_config.enabled:
             logger.info(f"   Audio playback: ENABLED (backend: {self.audio_player.backend.value if self.audio_player else 'none'})")
         else:
