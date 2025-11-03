@@ -17,7 +17,7 @@ JARVIS v17.4 represents a **complete voice system transformation** - from protot
 ✅ PostgreSQL Database: Cloud-hosted speaker profiles via GCP Cloud SQL
 ✅ SpeechBrain STT Engine: 3x faster, streaming support, intelligent caching
 ✅ Advanced Voice Enrollment: Quality validation, resume support, progress tracking
-✅ Unified TTS Engine: 3 providers (gTTS, macOS say, pyttsx3) with caching
+✅ Unified TTS Engine: 4 providers (GCP TTS, ElevenLabs, macOS say, pyttsx3) with hybrid caching
 ✅ Wake Word Detection: Picovoice Porcupine + energy-based fallback
 ✅ Noise Robustness: Pre-processing pipeline for real-world environments
 ✅ Performance Metrics: Real-time RTF, latency, confidence tracking
@@ -59,15 +59,17 @@ JARVIS v17.4 represents a **complete voice system transformation** - from protot
 ┌─────────────────────────────────────────────────────────────┐
 │                   Voice Output Pipeline                      │
 ├─────────────────────────────────────────────────────────────┤
-│ Unified TTS Engine (3 Providers)                            │
-│    • gTTS: Cloud-based, natural voices (primary)            │
+│ Multi-Provider TTS Engine (4 Providers)                      │
+│    • GCP TTS: 60 voices with diverse accents (primary)      │
+│    • ElevenLabs: 10 premium voices (secondary)              │
 │    • macOS say: Native system TTS (fallback)                │
 │    • pyttsx3: Cross-platform offline TTS (backup)           │
 │                                                              │
-│ Smart Provider Selection:                                    │
+│ Smart Provider Selection & Routing:                          │
+│    • Intelligent accent-based routing                        │
 │    • Automatic fallback cascade                              │
-│    • Audio caching with MD5 hashing                          │
-│    • 50% cache hit rate = 50% latency reduction             │
+│    • Hybrid caching with SHA256 hashing                      │
+│    • Generate once, reuse forever (FREE tier optimization)   │
 │    • Playback via pygame mixer (async)                       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -672,48 +674,72 @@ Profile saved: ~/.jarvis/voice_profiles/derek_profile.json
 You can now use voice unlock with JARVIS!
 ```
 
-#### 4. Unified TTS Engine
-**Location:** `voice/unified_tts_engine.py`
+#### 4. Multi-Provider TTS Engine
+**Location:** `backend/audio/tts_provider_manager.py`
 
 **Features:**
 ```
-Multi-Provider Support:
-  1. gTTS (Google Text-to-Speech)
-     • Cloud-based, natural voices
-     • Multiple languages supported
-     • Best quality, primary choice
+Multi-Provider Support (70 Total Voices):
+  1. Google Cloud TTS (Primary - 60 voices)
+     • Diverse accents: US, British, Australian, Indian, Hispanic, European
+     • 24 languages, natural voices
+     • FREE tier: 4M characters/month
+     • Neural voice quality
      • Requires internet connection
 
-  2. macOS 'say' command
+  2. ElevenLabs (Secondary - 10 voices)
+     • Premium voice quality
+     • American, British, Australian accents
+     • FREE tier: 10,000 characters/month
+     • Hybrid caching strategy (generate once, reuse forever)
+     • Requires internet connection
+
+  3. macOS 'say' command (Fallback)
      • Native system TTS
      • Offline capable
      • Fast and reliable
      • macOS only
 
-  3. pyttsx3 (Cross-platform)
+  4. pyttsx3 (Backup)
      • Pure Python TTS
      • Works everywhere
      • Offline capable
      • Lower quality but dependable
 
-Smart Provider Selection:
+Smart Provider Selection & Routing:
+  • Intelligent accent-based routing
   • Automatic fallback cascade
   • Provider health tracking
   • Per-request provider override
   • Failure history analysis
 
-Caching System:
-  • MD5 hash of text + provider + language
-  • Storage: ~/.jarvis/tts_cache/
-  • LRU eviction (max 100 files)
-  • 50% hit rate = 50% latency reduction
-  • Cache warming for common phrases
+Hybrid Caching System:
+  • SHA256 hash of text + voice config
+  • Storage: ~/.jarvis/tts_cache/gcp/ and ~/.jarvis/tts_cache/elevenlabs/
+  • Persistent cache (never expires)
+  • Generate once via API, reuse forever
+  • Zero API cost after initial generation
+  • FREE tier optimization
 
 Playback:
   • Async playback via pygame.mixer
   • Non-blocking operation
   • Volume control
   • Interrupt/skip support
+```
+
+**ElevenLabs Setup (Optional - Enhanced Voice Quality):**
+```bash
+# Quick setup wizard (2-3 minutes)
+python3 setup_tts_voices.py
+
+# Follow interactive prompts to:
+# 1. Set ElevenLabs API key (FREE tier)
+# 2. Auto-discover and configure 10 diverse voices
+# 3. Test voice generation
+# 4. Start using 70 total voices (60 GCP + 10 ElevenLabs)
+
+# See QUICKSTART_TTS.md for detailed guide
 ```
 
 **Code Example:**
