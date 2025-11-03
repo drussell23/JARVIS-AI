@@ -291,61 +291,81 @@ class VoiceProfileGenerator:
         # Each entry: (voice_id, language_code, gender, label, speaking_rate, pitch)
         # NOTE: ONLY D, F, O voices exist - using rate variations for diversity
         voice_specs = [
-            # American English (0-2)
+            # === AMERICAN ENGLISH (en-US) - 12 voices ===
             ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMale", 1.0, 0.0),
             ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemale", 1.0, 0.0),
             ("en-US-Chirp-HD-O", "en-US", VoiceGender.FEMALE, "USFemale2", 1.0, 0.0),
+            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleSlow", 0.88, 0.0),
+            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleFast", 1.18, 0.0),
+            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleSlow", 0.90, 0.0),
+            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleFast", 1.16, 0.0),
+            ("en-US-Chirp-HD-O", "en-US", VoiceGender.FEMALE, "USFemaleVerySlow", 0.80, 0.0),
+            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleVeryFast", 1.28, 0.0),
+            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleRapid", 1.24, 0.0),
+            ("en-US-Chirp-HD-O", "en-US", VoiceGender.FEMALE, "USFemaleModerate", 0.95, 0.0),
+            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleModerate", 0.93, 0.0),
 
-            # American English - Speed variations (3-6)
-            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleSlow", 0.90, 0.0),
-            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleFast", 1.15, 0.0),
-            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleSlow", 0.92, 0.0),
-            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleFast", 1.12, 0.0),
-
-            # British English (7-9)
+            # === BRITISH ENGLISH (en-GB) - 9 voices ===
             ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMale", 1.0, 0.0),
             ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemale", 1.0, 0.0),
             ("en-GB-Chirp-HD-O", "en-GB", VoiceGender.FEMALE, "BritishFemale2", 1.0, 0.0),
+            ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMaleSlow", 0.86, 0.0),
+            ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemaleSlow", 0.89, 0.0),
+            ("en-GB-Chirp-HD-O", "en-GB", VoiceGender.FEMALE, "BritishFemaleFast", 1.14, 0.0),
+            ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMaleVeryFast", 1.22, 0.0),
+            ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemaleVeryFast", 1.20, 0.0),
+            ("en-GB-Chirp-HD-O", "en-GB", VoiceGender.FEMALE, "BritishFemaleVerySlow", 0.82, 0.0),
 
-            # British English - Speed variations (10-12)
-            ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMaleSlow", 0.88, 0.0),
-            ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemaleSlow", 0.91, 0.0),
-            ("en-GB-Chirp-HD-O", "en-GB", VoiceGender.FEMALE, "BritishFemaleFast", 1.10, 0.0),
-
-            # Australian English (13-15)
+            # === AUSTRALIAN ENGLISH (en-AU) - 9 voices ===
             ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMale", 1.0, 0.0),
             ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemale", 1.0, 0.0),
             ("en-AU-Chirp-HD-O", "en-AU", VoiceGender.FEMALE, "AustralianFemale2", 1.0, 0.0),
+            ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMaleSlow", 0.87, 0.0),
+            ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemaleSlow", 0.91, 0.0),
+            ("en-AU-Chirp-HD-O", "en-AU", VoiceGender.FEMALE, "AustralianFemaleFast", 1.13, 0.0),
+            ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMaleVeryFast", 1.26, 0.0),
+            ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemaleVerySlow", 0.81, 0.0),
+            ("en-AU-Chirp-HD-O", "en-AU", VoiceGender.FEMALE, "AustralianFemaleRapid", 1.19, 0.0),
 
-            # Australian English - Speed variations (16-18)
-            ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMaleSlow", 0.89, 0.0),
-            ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemaleSlow", 0.93, 0.0),
-            ("en-AU-Chirp-HD-O", "en-AU", VoiceGender.FEMALE, "AustralianFemaleFast", 1.11, 0.0),
-
-            # Indian English (19-21)
+            # === INDIAN ENGLISH (en-IN) - 9 voices ===
             ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMale", 1.0, 0.0),
             ("en-IN-Chirp-HD-F", "en-IN", VoiceGender.FEMALE, "IndianFemale", 1.0, 0.0),
             ("en-IN-Chirp-HD-O", "en-IN", VoiceGender.FEMALE, "IndianFemale2", 1.0, 0.0),
+            ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMaleSlow", 0.85, 0.0),
+            ("en-IN-Chirp-HD-F", "en-IN", VoiceGender.FEMALE, "IndianFemaleSlow", 0.92, 0.0),
+            ("en-IN-Chirp-HD-O", "en-IN", VoiceGender.FEMALE, "IndianFemaleFast", 1.11, 0.0),
+            ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMaleVeryFast", 1.21, 0.0),
+            ("en-IN-Chirp-HD-F", "en-IN", VoiceGender.FEMALE, "IndianFemaleRapid", 1.17, 0.0),
+            ("en-IN-Chirp-HD-O", "en-IN", VoiceGender.FEMALE, "IndianFemaleVerySlow", 0.83, 0.0),
 
-            # Indian English - Speed variations (22-24)
-            ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMaleSlow", 0.87, 0.0),
-            ("en-IN-Chirp-HD-F", "en-IN", VoiceGender.FEMALE, "IndianFemaleSlow", 0.94, 0.0),
-            ("en-IN-Chirp-HD-O", "en-IN", VoiceGender.FEMALE, "IndianFemaleFast", 1.08, 0.0),
+            # === HISPANIC/LATINO (es-US, es-ES) - 9 voices ===
+            ("es-US-Chirp-HD-D", "es-US", VoiceGender.MALE, "HispanicMale", 1.0, 0.0),
+            ("es-US-Chirp-HD-F", "es-US", VoiceGender.FEMALE, "HispanicFemale", 1.0, 0.0),
+            ("es-US-Chirp-HD-O", "es-US", VoiceGender.FEMALE, "HispanicFemale2", 1.0, 0.0),
+            ("es-ES-Chirp-HD-D", "es-ES", VoiceGender.MALE, "SpanishMale", 1.0, 0.0),
+            ("es-ES-Chirp-HD-F", "es-ES", VoiceGender.FEMALE, "SpanishFemale", 1.0, 0.0),
+            ("es-US-Chirp-HD-D", "es-US", VoiceGender.MALE, "HispanicMaleSlow", 0.90, 0.0),
+            ("es-US-Chirp-HD-F", "es-US", VoiceGender.FEMALE, "HispanicFemaleFast", 1.15, 0.0),
+            ("es-ES-Chirp-HD-D", "es-ES", VoiceGender.MALE, "SpanishMaleFast", 1.19, 0.0),
+            ("es-ES-Chirp-HD-F", "es-ES", VoiceGender.FEMALE, "SpanishFemaleSlow", 0.88, 0.0),
 
-            # More speed variations - US voices (25-30)
-            ("en-US-Chirp-HD-O", "en-US", VoiceGender.FEMALE, "USFemaleVerySlow", 0.80, 0.0),
-            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleVeryFast", 1.25, 0.0),
-            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleVeryFast", 1.22, 0.0),
-            ("en-US-Chirp-HD-O", "en-US", VoiceGender.FEMALE, "USFemaleModerate", 0.95, 0.0),
-            ("en-US-Chirp-HD-D", "en-US", VoiceGender.MALE, "USMaleModerate", 0.97, 0.0),
-            ("en-US-Chirp-HD-F", "en-US", VoiceGender.FEMALE, "USFemaleRapid", 1.18, 0.0),
+            # === FRENCH-ACCENTED (fr-FR, fr-CA) - 6 voices ===
+            ("fr-FR-Chirp-HD-D", "fr-FR", VoiceGender.MALE, "FrenchMale", 1.0, 0.0),
+            ("fr-FR-Chirp-HD-F", "fr-FR", VoiceGender.FEMALE, "FrenchFemale", 1.0, 0.0),
+            ("fr-CA-Chirp-HD-D", "fr-CA", VoiceGender.MALE, "CanadianFrenchMale", 1.0, 0.0),
+            ("fr-CA-Chirp-HD-F", "fr-CA", VoiceGender.FEMALE, "CanadianFrenchFemale", 1.0, 0.0),
+            ("fr-FR-Chirp-HD-O", "fr-FR", VoiceGender.FEMALE, "FrenchFemale2", 0.94, 0.0),
+            ("fr-CA-Chirp-HD-O", "fr-CA", VoiceGender.FEMALE, "CanadianFrenchFemale2", 1.12, 0.0),
 
-            # More speed variations - Mixed accents (31-35)
-            ("en-GB-Chirp-HD-D", "en-GB", VoiceGender.MALE, "BritishMaleVeryFast", 1.20, 0.0),
-            ("en-AU-Chirp-HD-D", "en-AU", VoiceGender.MALE, "AustralianMaleVeryFast", 1.23, 0.0),
-            ("en-IN-Chirp-HD-D", "en-IN", VoiceGender.MALE, "IndianMaleVeryFast", 1.16, 0.0),
-            ("en-GB-Chirp-HD-F", "en-GB", VoiceGender.FEMALE, "BritishFemaleVeryFast", 1.17, 0.0),
-            ("en-AU-Chirp-HD-F", "en-AU", VoiceGender.FEMALE, "AustralianFemaleVerySlow", 0.82, 0.0),
+            # === GERMAN-ACCENTED (de-DE) - 3 voices ===
+            ("de-DE-Chirp-HD-D", "de-DE", VoiceGender.MALE, "GermanMale", 1.0, 0.0),
+            ("de-DE-Chirp-HD-F", "de-DE", VoiceGender.FEMALE, "GermanFemale", 1.0, 0.0),
+            ("de-DE-Chirp-HD-O", "de-DE", VoiceGender.FEMALE, "GermanFemale2", 0.96, 0.0),
+
+            # === ITALIAN-ACCENTED (it-IT) - 3 voices ===
+            ("it-IT-Chirp-HD-D", "it-IT", VoiceGender.MALE, "ItalianMale", 1.0, 0.0),
+            ("it-IT-Chirp-HD-F", "it-IT", VoiceGender.FEMALE, "ItalianFemale", 1.0, 0.0),
+            ("it-IT-Chirp-HD-O", "it-IT", VoiceGender.FEMALE, "ItalianFemale2", 0.98, 0.0),
         ]
 
         # Create voice configs with specific IDs
