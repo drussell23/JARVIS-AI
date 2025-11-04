@@ -270,7 +270,7 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Deploy to GCP Staging
         run: |
@@ -335,7 +335,7 @@ jobs:
           credentials_json: ${{ secrets.GCP_PRODUCTION_SERVICE_ACCOUNT_KEY }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Create Backup
         run: |
