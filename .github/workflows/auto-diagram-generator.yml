@@ -222,7 +222,12 @@ jobs:
           fi
           echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
 
-          changed_files_json=$(printf '%s\n' "${changed_files[@]}" | jq -R . | jq -s .)
+          # Safely convert changed_files array to JSON, handling empty arrays
+          if [[ "${#changed_files[@]}" -gt 0 ]]; then
+            changed_files_json=$(printf '%s\n' "${changed_files[@]}" | jq -Rs 'split("\n") | map(select(length > 0))')
+          else
+            changed_files_json='[]'
+          fi
           echo "changed_files=$changed_files_json" >> "$GITHUB_OUTPUT"
 
           # Summary
