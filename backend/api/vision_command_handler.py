@@ -236,12 +236,33 @@ class VisionCommandHandler:
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
         if not self.intelligence:
-            # If no API key provided, try to get from environment
+            # If no API key provided, try to get from SecretManager or environment
+            if not api_key:
+                try:
+                    from core.secret_manager import get_anthropic_key
+                    api_key = get_anthropic_key()
+                    if api_key:
+                        logger.info("[PURE VISION] ✅ Using API key from SecretManager")
+                except Exception as e:
+                    logger.warning(f"[PURE VISION] Could not get key from SecretManager: {e}")
+
             if not api_key:
                 api_key = os.getenv("ANTHROPIC_API_KEY")
                 if api_key:
                     logger.info("[PURE VISION] Using API key from environment")
-                    
+
+            # If still no API key, we cannot initialize vision
+            if not api_key:
+                error_msg = (
+                    "❌ No Anthropic API key found. Vision features require an API key.\n"
+                    "Please configure it using:\n"
+                    "  1. GCP Secret Manager: gcloud secrets create anthropic-api-key --data-file=-\n"
+                    "  2. Environment: export ANTHROPIC_API_KEY='your-key-here'\n"
+                    "  3. Keychain: security add-generic-password -s jarvis_anthropic-api-key -w 'your-key'"
+                )
+                logger.error(f"[PURE VISION] {error_msg}")
+                raise ValueError(error_msg)
+
             # Try to get existing vision analyzer from app state
             vision_analyzer = None
             try:
@@ -399,7 +420,7 @@ class VisionCommandHandler:
         Handle any vision command with pure intelligence.
         No pattern matching, no templates - Claude understands intent.
         """
-        logger.info(f"[VISION] Handling command: {command_text}")
+        logger.info(f"[VISION] ========== STARTING handle_command for: {command_text} ==========")
         await ws_logger.log(f"Processing vision command: {command_text}")
         
         # IMPORTANT: Check if this is a lock/unlock screen command - should NOT be handled by vision
@@ -1442,7 +1463,13 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
                 
                 if context_id:
                     # Use intelligent orchestrator for follow-up
-                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    api_key = None
+                    try:
+                        from core.secret_manager import get_anthropic_key
+                        api_key = get_anthropic_key()
+                    except:
+                        api_key = os.getenv("ANTHROPIC_API_KEY")
+
                     if api_key:
                         try:
                             from vision.intelligent_orchestrator import get_intelligent_orchestrator
@@ -2011,9 +2038,15 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
         """Handle multi-space queries using intelligent orchestration"""
         try:
             logger.info("[ORCHESTRATOR] Handling multi-space query with intelligent orchestration")
-            
+
             # Get API key (can be None for metadata-only queries)
-            api_key = os.getenv("ANTHROPIC_API_KEY")
+            api_key = None
+            try:
+                from core.secret_manager import get_anthropic_key
+                api_key = get_anthropic_key()
+            except:
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+
             if not api_key:
                 logger.warning("[ORCHESTRATOR] No Claude API key - will use metadata-based analysis only")
             

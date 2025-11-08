@@ -1154,30 +1154,77 @@ class JARVISVoiceAPI:
                 # Ensure vision handler is initialized
                 if not vision_command_handler.intelligence:
                     logger.info("[JARVIS API] Initializing vision command handler...")
-                    # Try to get API key from environment or app state
+                    # Try to get API key from SecretManager, app state, or environment
                     api_key = None
+
+                    # First try SecretManager
                     try:
-                        from api.jarvis_factory import get_app_state
+                        from core.secret_manager import get_anthropic_key
+                        api_key = get_anthropic_key()
+                        if api_key:
+                            logger.info("[JARVIS API] ✅ Got API key from SecretManager")
+                    except Exception as e:
+                        logger.debug(f"[JARVIS API] SecretManager not available: {e}")
 
-                        app_state = get_app_state()
-                        if (
-                            app_state
-                            and hasattr(app_state, "vision_analyzer")
-                            and app_state.vision_analyzer
-                        ):
-                            api_key = getattr(app_state.vision_analyzer, "api_key", None)
-                    except:
-                        pass
+                    # Then try app state
+                    if not api_key:
+                        try:
+                            from api.jarvis_factory import get_app_state
 
+                            app_state = get_app_state()
+                            if (
+                                app_state
+                                and hasattr(app_state, "vision_analyzer")
+                                and app_state.vision_analyzer
+                            ):
+                                api_key = getattr(app_state.vision_analyzer, "api_key", None)
+                                if api_key:
+                                    logger.info("[JARVIS API] Got API key from app state")
+                        except:
+                            pass
+
+                    # Finally try environment
                     if not api_key:
                         api_key = os.getenv("ANTHROPIC_API_KEY")
+                        if api_key:
+                            logger.info("[JARVIS API] Got API key from environment")
 
                     await vision_command_handler.initialize_intelligence(api_key)
 
-                vision_result = await vision_command_handler.handle_command(command.text)
-                logger.info(
-                    f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
-                )
+                logger.info(f"[JARVIS API] Calling vision handler for: '{command.text}'")
+                try:
+                    vision_result = await asyncio.wait_for(
+                        vision_command_handler.handle_command(command.text),
+                        timeout=30.0  # 30 second timeout
+                    )
+                    logger.info(
+                        f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"[JARVIS API] Vision handler timed out after 30s for: '{command.text}'")
+                    return {
+                        "response": "Vision processing is taking longer than expected. This might be due to screen capture permissions or API connectivity. Please try again.",
+                        "status": "error",
+                        "command_type": "vision",
+                        "success": False,
+                    }
+                except ValueError as ve:
+                    # This catches the "no API key" error
+                    logger.error(f"[JARVIS API] Vision handler configuration error: {ve}")
+                    return {
+                        "response": f"Vision features are not configured. {str(ve)}",
+                        "status": "error",
+                        "command_type": "vision",
+                        "success": False,
+                    }
+                except Exception as ve:
+                    logger.error(f"[JARVIS API] Vision handler error: {ve}", exc_info=True)
+                    return {
+                        "response": f"I encountered an error processing your vision request: {str(ve)}",
+                        "status": "error",
+                        "command_type": "vision",
+                        "success": False,
+                    }
 
                 if vision_result.get("handled"):
                     return {
