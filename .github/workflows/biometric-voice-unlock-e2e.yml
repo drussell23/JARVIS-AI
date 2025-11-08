@@ -241,12 +241,15 @@ jobs:
           pip install google-cloud-sql-python-connector google-cloud-speech
           echo "✅ Dependencies installed"
 
-      - name: Copy Test Script
+      - name: Verify Test Script Exists
         run: |
-          mkdir -p $(dirname "${{ env.TEST_SCRIPT_PATH }}")
-          cp .github/workflows/scripts/biometric_voice_e2e_test.py "${{ env.TEST_SCRIPT_PATH }}"
-          chmod +x "${{ env.TEST_SCRIPT_PATH }}"
-          echo "✅ Test script ready: ${{ env.TEST_SCRIPT_PATH }}"
+          if [ -f "${{ env.TEST_SCRIPT_PATH }}" ]; then
+            chmod +x "${{ env.TEST_SCRIPT_PATH }}"
+            echo "✅ Test script ready: ${{ env.TEST_SCRIPT_PATH }}"
+          else
+            echo "❌ Test script not found: ${{ env.TEST_SCRIPT_PATH }}"
+            exit 1
+          fi
 
       - name: Run Mock Biometric Tests
         env:

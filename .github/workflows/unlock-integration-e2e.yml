@@ -169,12 +169,15 @@ jobs:
           pip install pytest pytest-asyncio pytest-timeout pytest-mock aiohttp asyncio-pool aiodns aiofiles
           echo "✅ Dependencies installed"
 
-      - name: Copy Test Script
+      - name: Verify Test Script Exists
         run: |
-          mkdir -p $(dirname "${{ env.TEST_SCRIPT_PATH }}")
-          cp .github/workflows/scripts/unlock_integration_e2e_test.py "${{ env.TEST_SCRIPT_PATH }}"
-          chmod +x "${{ env.TEST_SCRIPT_PATH }}"
-          echo "✅ Test script ready: ${{ env.TEST_SCRIPT_PATH }}"
+          if [ -f "${{ env.TEST_SCRIPT_PATH }}" ]; then
+            chmod +x "${{ env.TEST_SCRIPT_PATH }}"
+            echo "✅ Test script ready: ${{ env.TEST_SCRIPT_PATH }}"
+          else
+            echo "❌ Test script not found: ${{ env.TEST_SCRIPT_PATH }}"
+            exit 1
+          fi
 
 
       - name: Run Mock Tests
