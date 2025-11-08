@@ -99,6 +99,8 @@ paths = [
   # Test files can have mock secrets
   '''backend/tests/''',
   '''backend/*/tests/''',
+  # GitHub Actions test scripts (mock/test data only)
+  '''.github/workflows/scripts/''',
   # Documentation
   '''docs/''',
   '''wiki/''',
