@@ -1032,6 +1032,31 @@ class AdvancedAsyncPipeline:
                 # Handle dictionary changed size during iteration
                 pass
 
+    def _record_performance(self, context: PipelineContext) -> None:
+        """Record performance metrics for the completed command.
+
+        Args:
+            context: Pipeline context with timing metrics
+        """
+        try:
+            # Record overall command duration
+            if hasattr(context, 'timestamp'):
+                duration = time.time() - context.timestamp
+                self.performance_metrics['command_duration'].append(duration)
+
+            # Record individual stage durations
+            for metric_name, metric_value in context.metrics.items():
+                if metric_name.endswith('_duration'):
+                    self.performance_metrics[metric_name].append(metric_value)
+
+            # Keep only last 1000 measurements to prevent unbounded growth
+            for key in self.performance_metrics:
+                if len(self.performance_metrics[key]) > 1000:
+                    self.performance_metrics[key] = self.performance_metrics[key][-1000:]
+
+        except Exception as e:
+            logger.debug(f"Failed to record performance metrics: {e}")
+
     async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
         """Execute the pipeline stages sequentially.
 
