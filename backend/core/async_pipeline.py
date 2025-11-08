@@ -1032,6 +1032,56 @@ class AdvancedAsyncPipeline:
                 # Handle dictionary changed size during iteration
                 pass
 
+    async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
+        """Execute the pipeline stages sequentially.
+
+        Args:
+            context: Pipeline context to process through all stages
+
+        Returns:
+            Dictionary containing the final result with response and metadata
+
+        Raises:
+            Exception: If a required stage fails
+        """
+        # Convert context to data dictionary if needed
+        if not hasattr(context, 'data'):
+            context.data = {
+                "command": context.text,
+                "user_name": context.user_name,
+                "metadata": context.metadata,
+            }
+
+        # Execute each registered stage in order
+        stage_order = [
+            "validation",
+            "screen_lock_check",
+            "preprocessing",
+            "intent_analysis",
+            "component_loading",
+            "processing",
+            "postprocessing",
+            "response_generation",
+        ]
+
+        for stage_name in stage_order:
+            if stage_name in self.stages:
+                stage = self.stages[stage_name]
+                try:
+                    await stage.execute(context)
+                except Exception as e:
+                    if stage.required:
+                        raise
+                    else:
+                        logger.warning(f"Non-required stage {stage_name} failed: {e}")
+
+        # Return final response
+        return context.data.get("response", {
+            "success": True,
+            "response": "Command processed successfully",
+            "metadata": context.metadata
+        })
+
     async def _fast_lock_unlock(
         self,
         text: str,
