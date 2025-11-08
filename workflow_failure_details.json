@@ -1,12 +1,12 @@
 {
-  "workflow_name": "Environment Variable Validation",
-  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/19199267548",
-  "branch": "main",
-  "commit_sha": "a9d83c4",
-  "run_number": 126,
+  "workflow_name": "PR Automation & Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/19199280723",
+  "branch": "fix/ci/environment-variable-validation-run126-20251108-220926",
+  "commit_sha": "5d1d4cb",
+  "run_number": 293,
   "failed_count": 1,
-  "fix_branch": "fix/ci/environment-variable-validation-run126-20251108-220926",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: Environment Variable Validation (Run #126)",
+  "fix_branch": "fix/ci/pr-automation-validation-run293-20251108-221126",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #293)",
   "analyses": [
     {
       "error_patterns": [
@@ -14,46 +14,16 @@
           "pattern": "ERROR|Error|error",
           "matches": [
             {
-              "line_number": 42,
-              "content": "2025-11-08T22:08:51.3437093Z ##[error]Process completed with exit code 1.",
+              "line_number": 25,
+              "content": "2025-11-08T22:09:56.3957598Z   subjectPatternError: The PR title must start with a capital letter.",
               "severity": "high",
               "emoji": "\u274c"
-            }
-          ],
-          "count": 1
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 40,
-              "content": "2025-11-08T22:08:51.3427999Z \u274c FAIL: Documentation coverage (3.6%) is below 5.0%",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
             },
             {
-              "line_number": 97,
-              "content": "2025-11-08T22:08:51.9653450Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "line_number": 37,
+              "content": "2025-11-08T22:09:56.9828815Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: Environment Variable Validation (Run #126)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
               "severity": "high",
-              "emoji": "\ud83d\udca5"
-            }
-          ],
-          "count": 2
-        },
-        {
-          "pattern": "WARN|Warning|warning",
-          "matches": [
-            {
-              "line_number": 65,
-              "content": "2025-11-08T22:08:51.3782775Z   if-no-files-found: warn",
-              "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
-            },
-            {
-              "line_number": 97,
-              "content": "2025-11-08T22:08:51.9653450Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
-              "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
+              "emoji": "\u274c"
             }
           ],
           "count": 2
@@ -62,8 +32,8 @@
           "pattern": "timeout|timed out",
           "matches": [
             {
-              "line_number": 22,
-              "content": "2025-11-08T22:08:51.3426131Z    \u2022 WS_ROUTER_TIMEOUT",
+              "line_number": 29,
+              "content": "- fix: Resolve database connection timeout",
               "severity": "medium",
               "emoji": "\u23f1\ufe0f"
             }
@@ -72,12 +42,13 @@
         }
       ],
       "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations"
+        "Consider increasing timeout values or optimizing slow operations",
+        "Check service availability and network connectivity"
       ],
       "severity": "high",
       "category": "timeout",
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-08T22:09:26.457265"
+  "timestamp": "2025-11-08T22:11:26.495779"
 }
