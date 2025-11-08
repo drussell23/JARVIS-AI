@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: Database Connection Validation
-- **Run Number**: #122
-- **Branch**: `main`
-- **Commit**: `a9d83c441c4968cd0bc0c4e179149b1aed738ff3`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #294
+- **Branch**: `fix/ci/database-connection-validation-run122-20251108-220945`
+- **Commit**: `30176d6ad70b362ed14042a0e698d537e53daf17`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-08T22:08:42Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/19199267542)
+- **Timestamp**: 2025-11-08T22:10:25Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS-AI/actions/runs/19199287140)
 
 ## Failure Overview
 
@@ -17,52 +17,43 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | Validate Database Configuration | syntax_error | high | 21s |
+| 1 | Validate PR Title | timeout | high | 4s |
 
 ## Detailed Analysis
 
-### 1. Validate Database Configuration
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Syntax Error
+**Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-08T22:08:47Z
-**Completed**: 2025-11-08T22:09:08Z
-**Duration**: 21 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/19199267542/job/54884762502)
+**Started**: 2025-11-08T22:10:35Z
+**Completed**: 2025-11-08T22:10:39Z
+**Duration**: 4 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS-AI/actions/runs/19199287140/job/54884808298)
 
 #### Failed Steps
 
-- **Step 6**: Validate Database Connection Code
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
 **Detected Error Patterns:**
 
 - Pattern: `ERROR|Error|error`
-  - Occurrences: 1
-  - Sample matches:
-    - Line 63: `2025-11-08T22:09:04.3433881Z ##[error]Process completed with exit code 1.`
-
-- Pattern: `FAIL|Failed|failed`
   - Occurrences: 2
   - Sample matches:
-    - Line 28: `2025-11-08T22:09:04.0919255Z [36;1m    # Only fail on critical issues[0m`
-    - Line 97: `2025-11-08T22:09:04.4961851Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
+    - Line 25: `2025-11-08T22:10:37.1633888Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-08T22:10:37.5600077Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Data`
 
-- Pattern: `WARN|Warning|warning`
+- Pattern: `timeout|timed out`
   - Occurrences: 1
   - Sample matches:
-    - Line 97: `2025-11-08T22:09:04.4961851Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
-
-- Pattern: `AssertionError|Exception`
-  - Occurrences: 1
-  - Sample matches:
-    - Line 19: `2025-11-08T22:09:04.0917094Z [36;1m    except Exception as e:[0m`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
 1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -82,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-08T22:09:45.153255*
+📊 *Report generated on 2025-11-08T22:12:04.048595*
 🤖 *JARVIS CI/CD Auto-PR Manager*
