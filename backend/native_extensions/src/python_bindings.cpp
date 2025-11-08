@@ -233,9 +233,9 @@ PYBIND11_MODULE(fast_capture, m) {
         .def("get_windows_by_app", &FastCaptureEngine::get_windows_by_app,
              py::arg("app_name"),
              "Get windows for a specific application")
-        .def("find_window", [](FastCaptureEngine& self, 
+        .def("find_window", [](FastCaptureEngine& self,
                               const std::string& app_name,
-                              const std::string& window_title) {
+                              const std::string& window_title) -> py::object {
             auto result = self.find_window(app_name, window_title);
             if (result) {
                 return py::cast(*result);
@@ -243,7 +243,7 @@ PYBIND11_MODULE(fast_capture, m) {
             return py::none();
         }, py::arg("app_name"), py::arg("window_title") = "",
            "Find a specific window")
-        .def("get_frontmost_window", [](FastCaptureEngine& self) {
+        .def("get_frontmost_window", [](FastCaptureEngine& self) -> py::object {
             auto result = self.get_frontmost_window();
             if (result) {
                 return py::cast(*result);

@@ -217,11 +217,15 @@ public:
     std::vector<std::pair<int, int>> get_screen_resolutions() const;
     
     // ===== Async Support =====
-    std::future<CaptureResult> capture_window_async(uint32_t window_id, 
+    std::future<CaptureResult> capture_window_async(uint32_t window_id,
                                                    const CaptureConfig& config = {});
     std::future<std::vector<CaptureResult>> capture_all_windows_async(
                                                    const CaptureConfig& config = {});
-    
+
+    // ===== Screen Capture (Modern API) =====
+    // Note: Screen capture methods available, implemented via window capture
+    // Use capture_window with display window IDs for screen capture
+
 private:
     class Impl;
     std::unique_ptr<Impl> pImpl;

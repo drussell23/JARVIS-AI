@@ -31,29 +31,52 @@ if(APPLE)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)
     find_library(IMAGEIO_LIBRARY ImageIO)
     find_library(APPSERVICES_LIBRARY ApplicationServices)
-    
+    find_library(FOUNDATION_LIBRARY Foundation)
+    find_library(APPKIT_LIBRARY AppKit)
+    find_library(SCREENCAPTUREKIT_LIBRARY ScreenCaptureKit)
+    find_library(METAL_LIBRARY Metal)
+    find_library(METALKIT_LIBRARY MetalKit)
+    find_library(COREVIDEO_LIBRARY CoreVideo)
+    find_library(COREMEDIA_LIBRARY CoreMedia)
+    find_library(UNIFORMTYPEIDENTIFIERS_LIBRARY UniformTypeIdentifiers)
+
     set(PLATFORM_LIBRARIES
         ${COREGRAPHICS_LIBRARY}
         ${COREFOUNDATION_LIBRARY}
         ${IMAGEIO_LIBRARY}
         ${APPSERVICES_LIBRARY}
+        ${FOUNDATION_LIBRARY}
+        ${APPKIT_LIBRARY}
+        ${SCREENCAPTUREKIT_LIBRARY}
+        ${METAL_LIBRARY}
+        ${METALKIT_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${UNIFORMTYPEIDENTIFIERS_LIBRARY}
     )
-    
-    # Enable Objective-C++ for macOS specific code
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -x objective-c++")
+
+    # Require macOS 12.3+ for ScreenCaptureKit
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.3" CACHE STRING "Minimum macOS deployment version")
 endif()
 
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Source files
+# Source files - use .mm for Objective-C++
 set(SOURCES
-    src/fast_capture.cpp
+    src/fast_capture.mm
     src/python_bindings.cpp
 )
 
 # Create the Python module
 pybind11_add_module(fast_capture ${SOURCES})
+
+# Set source file properties for Objective-C++ (only for .mm files, not during linking)
+if(APPLE)
+    set_source_files_properties(src/fast_capture.mm PROPERTIES
+        COMPILE_FLAGS "-x objective-c++"
+    )
+endif()
 
 # Set properties
 set_target_properties(fast_capture PROPERTIES
