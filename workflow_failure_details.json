@@ -1,12 +1,12 @@
 {
-  "workflow_name": "Database Connection Validation",
-  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/19199523041",
-  "branch": "main",
-  "commit_sha": "ea24de2",
-  "run_number": 127,
+  "workflow_name": "PR Automation & Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS-AI/actions/runs/19199540782",
+  "branch": "fix/ci/database-connection-validation-run127-20251108-223245",
+  "commit_sha": "7e3236e",
+  "run_number": 299,
   "failed_count": 1,
-  "fix_branch": "fix/ci/database-connection-validation-run127-20251108-223245",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: Database Connection Validation (Run #127)",
+  "fix_branch": "fix/ci/pr-automation-validation-run299-20251108-223424",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #299)",
   "analyses": [
     {
       "error_patterns": [
@@ -14,64 +14,41 @@
           "pattern": "ERROR|Error|error",
           "matches": [
             {
-              "line_number": 63,
-              "content": "2025-11-08T22:31:59.7778960Z ##[error]Process completed with exit code 1.",
+              "line_number": 25,
+              "content": "2025-11-08T22:33:32.6289660Z   subjectPatternError: The PR title must start with a capital letter.",
               "severity": "high",
               "emoji": "\u274c"
-            }
-          ],
-          "count": 1
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 28,
-              "content": "2025-11-08T22:31:59.5279793Z \u001b[36;1m    # Only fail on critical issues\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
             },
             {
-              "line_number": 97,
-              "content": "2025-11-08T22:31:59.9204113Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "line_number": 37,
+              "content": "2025-11-08T22:33:33.3821469Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: Database Connection Validation (Run #127)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
               "severity": "high",
-              "emoji": "\ud83d\udca5"
+              "emoji": "\u274c"
             }
           ],
           "count": 2
         },
         {
-          "pattern": "WARN|Warning|warning",
+          "pattern": "timeout|timed out",
           "matches": [
             {
-              "line_number": 97,
-              "content": "2025-11-08T22:31:59.9204113Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "line_number": 29,
+              "content": "- fix: Resolve database connection timeout",
               "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
-            }
-          ],
-          "count": 1
-        },
-        {
-          "pattern": "AssertionError|Exception",
-          "matches": [
-            {
-              "line_number": 19,
-              "content": "2025-11-08T22:31:59.5277394Z \u001b[36;1m    except Exception as e:\u001b[0m",
-              "severity": "high",
-              "emoji": "\ud83d\udd34"
+              "emoji": "\u23f1\ufe0f"
             }
           ],
           "count": 1
         }
       ],
       "suggested_fixes": [
-        "Consider increasing timeout values or optimizing slow operations"
+        "Consider increasing timeout values or optimizing slow operations",
+        "Check service availability and network connectivity"
       ],
       "severity": "high",
-      "category": "syntax_error",
+      "category": "timeout",
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-08T22:32:45.355117"
+  "timestamp": "2025-11-08T22:34:24.750816"
 }
