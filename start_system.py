@@ -6569,8 +6569,8 @@ async def main():
                                     "cmdline": " ".join(cmdline),
                                 }
                             )
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
 
             if jarvis_processes:
                 print(
