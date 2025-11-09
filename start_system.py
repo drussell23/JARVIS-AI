@@ -6771,18 +6771,22 @@ async def main():
                     stderr=asyncio.subprocess.DEVNULL
                 )
 
-                # Wait for server to be ready
-                await asyncio.sleep(1)
+                # Wait for server to be ready with retry logic
+                import aiohttp
+                server_ready = False
 
-                # Verify loading server is running
-                result = subprocess.run(
-                    ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{loading_server_url}/health"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
+                for attempt in range(10):  # Try for up to 5 seconds
+                    await asyncio.sleep(0.5)
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(f"{loading_server_url}/health", timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                                if resp.status == 200:
+                                    server_ready = True
+                                    break
+                    except:
+                        continue
 
-                if result.stdout == "200":
+                if server_ready:
                     print(f"{Colors.GREEN}   ✓ Loading server started on {loading_server_url}{Colors.ENDC}")
 
                     # Open loading page immediately
@@ -6792,7 +6796,8 @@ async def main():
                     except:
                         print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
                 else:
-                    print(f"{Colors.YELLOW}   ⚠️  Loading server health check failed{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}   ⚠️  Loading server health check failed (server may still be starting){Colors.ENDC}")
+                    print(f"{Colors.CYAN}   ℹ️  If needed, manually open: {loading_server_url}{Colors.ENDC}")
 
             except Exception as e:
                 print(f"{Colors.YELLOW}   ⚠️  Failed to start loading server: {e}{Colors.ENDC}")
