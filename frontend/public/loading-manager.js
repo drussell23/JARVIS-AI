@@ -303,30 +303,16 @@ class JARVISLoadingManager {
         const reactor = this.elements.reactor;
         const progressBar = this.elements.progressBar;
 
-        // Dynamic configuration - all values calculated based on total duration
-        const totalDuration = 4000; // 4 seconds total - balanced speed and visual quality
+        // Simplified, faster configuration for reliable transition
+        const totalDuration = 2500; // 2.5 seconds - fast and smooth
         const config = {
             phases: {
                 powerSurge: {
-                    duration: totalDuration * 0.15,  // 15% of total time
+                    duration: 600,  // Fixed timing for consistency
                     rings: 3
                 },
-                preload: {
-                    duration: totalDuration * 0.25,  // 25% - iframe preload happens during voice
-                    showProgress: true
-                },
-                voice: {
-                    duration: totalDuration * 0.25  // 25% of total time
-                },
-                particleBurst: {
-                    duration: totalDuration * 0.10,  // 10% of total time
-                    particles: 40
-                },
-                holographicScan: {
-                    duration: totalDuration * 0.15  // 15% of total time
-                },
                 fade: {
-                    duration: totalDuration * 0.20  // 20% of total time
+                    duration: 1000  // 1 second smooth fade
                 },
                 totalDuration: totalDuration
             },
@@ -346,209 +332,77 @@ class JARVISLoadingManager {
             }
         };
 
-        // === PHASE 1: REACTOR POWER SURGE (Dynamic) ===
-        console.log('[Animation] Phase 1: Reactor power surge');
+        // === PHASE 1: REACTOR POWER SURGE ===
+        console.log('[Animation] Phase 1: Quick reactor pulse');
 
-        // Intense reactor pulse with expanding rings (KEEP REACTOR BRIGHT!)
+        // Reactor pulse
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
-            reactor.style.transform = `scale(${config.reactor.powerUpScale})`;
-            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
-            reactor.style.opacity = '1'; // Force opacity to stay at 100%
+            reactor.style.transform = 'scale(1.5)';
+            reactor.style.filter = 'drop-shadow(0 0 80px rgba(0, 255, 65, 1)) brightness(2)';
+            reactor.style.opacity = '1';
 
-            // Create expanding energy rings (dynamic count)
-            for (let i = 0; i < config.effects.ringCount; i++) {
+            // Create 3 expanding rings
+            for (let i = 0; i < 3; i++) {
                 setTimeout(() => {
-                    this.createEnergyRing(reactor, config.effects.ringColor, i);
-                }, i * (config.phases.powerSurge.duration / config.effects.ringCount));
+                    this.createEnergyRing(reactor, '#00ff41', i);
+                }, i * 200);
             }
         }
 
-        // Progress bar glow explosion with dynamic intensity
+        // Progress bar glow
         if (progressBar) {
-            progressBar.style.boxShadow = `
-                0 0 40px rgba(0, 255, 65, 1),
-                0 0 80px rgba(0, 255, 65, 0.8),
-                0 0 120px rgba(0, 255, 65, 0.6)
-            `;
-            progressBar.style.transition = 'all 0.5s ease-out';
+            progressBar.style.boxShadow = '0 0 40px rgba(0, 255, 65, 1), 0 0 80px rgba(0, 255, 65, 0.8)';
             progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
         }
 
         await this.sleep(config.phases.powerSurge.duration);
 
-        // === PHASE 2: PRELOAD + VOICE (PARALLEL) ===
-        console.log('[Animation] Phase 2: Starting iframe preload + voice announcement');
+        // === PHASE 2: SMOOTH FADE TO BLACK ===
+        console.log('[Animation] Phase 2: Fading to black');
 
-        // Start iframe preload in background (non-blocking)
-        const iframePromise = this.preloadMainPage(redirectUrl, config.phases.preload);
+        // Fade everything to black smoothly
+        const fadeDuration = config.phases.fade.duration / 1000;
 
-        // Keep reactor glowing and breathing during voice
-        if (reactor && config.reactor.maintainBrightness) {
-            reactor.style.transition = `all ${config.reactor.breathingSpeed}s ease-in-out`;
-            reactor.style.animation = `reactorBreathing ${config.reactor.breathingSpeed}s ease-in-out infinite`;
-            reactor.style.opacity = '1';
-        }
-
-        // Play voice announcement (happens while iframe loads)
-        const voicePromise = this.playVoiceAnnouncement();
-
-        // Wait for both voice and minimum preload time (whichever is longer)
-        await Promise.race([
-            voicePromise,
-            this.sleep(config.phases.voice.duration)
-        ]);
-
-        console.log('[Animation] Voice phase complete');
-
-        // === PHASE 3: PARTICLE BURST ===
-        console.log('[Animation] Phase 3: Particle burst');
-
-        // Keep reactor fully powered
-        if (reactor) {
-            reactor.style.opacity = '1';
-            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
-        }
-
-        // Create dynamic particle explosion
-        this.createParticleBurst(reactor, config.effects.particleVelocityMin, config.effects.particleVelocityMax, config.phases.particleBurst.particles);
-
-        await this.sleep(config.phases.particleBurst.duration);
-
-        // === PHASE 4: HOLOGRAPHIC SCAN ===
-        console.log('[Animation] Phase 4: Holographic scan');
-
-        // Keep reactor bright during scan
-        if (reactor) {
-            reactor.style.opacity = '1';
-        }
-
-        // Dynamic vertical scan line effect
-        this.createHolographicScan(config.effects.scanLineHeight, config.phases.holographicScan.duration);
-
-        // Inject all animation keyframes dynamically
-        this.injectAnimationStyles(config);
-
-        await this.sleep(config.phases.holographicScan.duration);
-
-        // === PHASE 5: SMOOTH FADE TRANSITION ===
-        console.log('[Animation] Phase 5: Smooth fade transition');
-
-        // Keep reactor glowing even during fade!
-        if (reactor && config.reactor.maintainBrightness) {
-            reactor.style.opacity = '1';
-            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
-        }
-
-        // Fade out container with upward motion (but keep reactor visible!)
-        const fadeDuration = config.phases.fade.duration / 1000; // Convert to seconds
         if (container) {
-            // Fade everything EXCEPT the reactor
-            const children = Array.from(container.children).filter(child => !child.classList.contains('arc-reactor'));
-            children.forEach(child => {
-                child.style.transition = `opacity ${fadeDuration}s ease-out`;
-                child.style.opacity = '0';
-            });
+            container.style.transition = `opacity ${fadeDuration}s ease-out`;
+            container.style.opacity = '0';
         }
 
-        // Create epic green energy overlay
-        const overlay = this.createTransitionOverlay(fadeDuration);
+        if (reactor) {
+            reactor.style.transition = `all ${fadeDuration}s ease-out`;
+            reactor.style.transform = 'scale(2)';
+            reactor.style.opacity = '0';
+        }
 
-        // Add matrix-style code rain effect
-        const matrixCanvas = this.createMatrixCanvas();
-        this.startMatrixRain(matrixCanvas, config.effects.matrixColumns);
+        // Create black overlay for smooth transition
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+            opacity: 0;
+            transition: opacity ${fadeDuration}s ease-in;
+            z-index: 10000;
+        `;
+        document.body.appendChild(overlay);
 
-        // Trigger overlay fade
+        // Trigger fade
         setTimeout(() => {
             overlay.style.opacity = '1';
         }, 10);
 
-        // Wait for overlay to fade in
-        await this.sleep(config.phases.fade.duration * 0.5);
+        // Wait for fade to complete
+        await this.sleep(config.phases.fade.duration);
 
-        // === PHASE 6: SMOOTH CROSS-FADE TRANSITION (NO WHITE FLASH!) ===
-        console.log(`[Transition] Waiting for iframe to finish loading...`);
+        // === PHASE 3: NAVIGATE TO MAIN PAGE ===
+        console.log(`[Transition] Navigating to ${redirectUrl}`);
 
-        // Wait for iframe to be ready (already started loading during voice phase)
-        const iframe = await iframePromise;
-
-        console.log(`[Transition] Starting cross-fade to main page`);
-
-        // Smooth cross-fade with dynamic timing
-        const crossFadeDuration = config.phases.fade.duration / 1000;
-
-        // Fade out overlay and matrix
-        if (overlay) {
-            overlay.style.transition = `opacity ${crossFadeDuration}s ease-out`;
-            overlay.style.opacity = '0';
-        }
-        if (matrixCanvas) {
-            matrixCanvas.style.transition = `opacity ${crossFadeDuration}s ease-out`;
-            matrixCanvas.style.opacity = '0';
-        }
-
-        // Fade out reactor with smooth scale down
-        if (reactor) {
-            reactor.style.transition = `all ${crossFadeDuration}s ease-out`;
-            reactor.style.transform = 'scale(0)';
-            reactor.style.opacity = '0';
-        }
-
-        // Fade out loading container
-        if (container) {
-            container.style.transition = `opacity ${crossFadeDuration}s ease-out`;
-            container.style.opacity = '0';
-        }
-
-        await this.sleep(config.phases.fade.duration * 0.5); // Halfway through fade
-
-        // Fade in iframe (main page) - this becomes the new page!
-        if (iframe) {
-            iframe.style.transition = `opacity ${crossFadeDuration}s ease-in`;
-            iframe.style.opacity = '1';
-        }
-
-        await this.sleep(config.phases.fade.duration * 0.5); // Complete fade
-
-        // Remove all loading page elements smoothly (keep iframe as the page!)
-        console.log('[Transition] ✓ Transition complete - cleaning up loading elements');
-
-        // Fade out and remove loading elements
-        setTimeout(() => {
-            if (container) container.remove();
-            if (overlay) overlay.remove();
-            if (matrixCanvas) matrixCanvas.remove();
-            document.querySelector('.particles-bg')?.remove();
-            document.querySelector('.connection-status')?.remove();
-
-            console.log('[Transition] ✓ Loading elements removed');
-        }, 100);
-
-        // Make iframe the permanent page (no reload needed!)
-        if (iframe) {
-            // Remove transition for instant positioning
-            iframe.style.transition = 'none';
-            iframe.style.position = 'fixed';
-            iframe.style.top = '0';
-            iframe.style.left = '0';
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            iframe.style.zIndex = '1';
-            iframe.style.opacity = '1';
-
-            // Allow iframe to handle all interactions
-            iframe.style.pointerEvents = 'auto';
-        }
-
-        // Update page metadata to match main app
-        document.title = 'J.A.R.V.I.S. Interface';
-
-        // Update URL without reload (for browser history)
-        window.history.replaceState(null, '', redirectUrl);
-
-        console.log('[Transition] ✓ Seamless transition complete - iframe is now the page!');
-        console.log('[Transition] ✓ No page reload - smooth one-go transition achieved!');
+        // Clean navigation - let browser handle the transition
+        window.location.href = redirectUrl;
     }
 
     // === HELPER METHODS FOR DYNAMIC EFFECTS ===
