@@ -466,51 +466,55 @@ class JARVISLoadingManager {
 
     async playVoiceAnnouncement() {
         try {
-            // Create voice announcement using Web Speech API with UK Daniel voice
-            const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
-
-            // Try to get UK Daniel voice
-            const voices = speechSynthesis.getVoices();
-            const danielVoice = voices.find(voice =>
-                voice.name.includes('Daniel') ||
-                voice.name.includes('UK') ||
-                voice.lang === 'en-GB'
-            );
-
-            if (danielVoice) {
-                utterance.voice = danielVoice;
-                console.log(`[Voice] Using ${danielVoice.name}`);
-            } else {
-                // Fallback: Use any British English voice
-                const britishVoice = voices.find(voice => voice.lang.startsWith('en-GB'));
-                if (britishVoice) {
-                    utterance.voice = britishVoice;
-                    console.log(`[Voice] Fallback to ${britishVoice.name}`);
-                }
-            }
-
-            utterance.rate = 0.95;  // Slightly slower for dramatic effect
-            utterance.pitch = 1.0;
-            utterance.volume = 1.0;
+            // Use backend API to play voice with macOS Daniel voice (same as JARVIS)
+            console.log('[Voice] Requesting backend voice announcement...');
 
             // Visual feedback during speech
-            utterance.onstart = () => {
-                console.log('[Voice] Speaking...');
-                this.elements.statusMessage.style.animation = 'pulse 0.5s ease-in-out infinite';
-            };
+            this.elements.statusMessage.style.animation = 'pulse 0.5s ease-in-out infinite';
 
-            utterance.onend = () => {
-                console.log('[Voice] Complete');
-                this.elements.statusMessage.style.animation = '';
-            };
+            const response = await fetch(
+                `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}/api/startup-voice/announce-online`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    signal: AbortSignal.timeout(5000)
+                }
+            );
 
-            speechSynthesis.speak(utterance);
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[Voice] ✓ ${data.voice} speaking: "${data.text}"`);
+            } else {
+                console.warn('[Voice] Backend voice API failed, falling back to browser TTS');
+                // Fallback to browser's speech synthesis
+                const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
+                utterance.rate = 0.95;
+                speechSynthesis.speak(utterance);
+            }
 
             // Wait for speech to complete (approximate duration)
             await this.sleep(2500);
+
+            // Stop visual feedback
+            this.elements.statusMessage.style.animation = '';
+
         } catch (error) {
             console.error('[Voice] Error:', error);
-            // Continue animation even if voice fails
+
+            // Fallback: Try browser speech synthesis
+            try {
+                const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
+                utterance.rate = 0.95;
+                speechSynthesis.speak(utterance);
+                await this.sleep(2500);
+            } catch (fallbackError) {
+                console.error('[Voice] Fallback also failed:', fallbackError);
+            }
+
+            // Continue animation even if voice fails completely
+            this.elements.statusMessage.style.animation = '';
         }
     }
 

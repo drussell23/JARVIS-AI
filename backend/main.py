@@ -2633,6 +2633,14 @@ def mount_routers():
             app.state.voice_unlock = voice_unlock
             logger.info("✅ Voice Unlock service ready")
 
+    # Startup Voice API (for loading page voice announcement)
+    try:
+        from api.startup_voice_api import router as startup_voice_router
+        app.include_router(startup_voice_router, tags=["startup"])
+        logger.info("✅ Startup Voice API mounted at /api/startup-voice")
+    except ImportError as e:
+        logger.warning(f"Could not import startup voice router: {e}")
+
     # Screen Control API - HTTP REST endpoints for unlock/lock
     try:
         from api.screen_control_api import router as screen_control_router
