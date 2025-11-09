@@ -293,8 +293,25 @@ class AdvancedProcessDetector:
         ]
 
         # Exclude current process if configured
+        excluded_pids = set()
         if self.config.exclude_current:
-            filtered = [p for p in filtered if p.pid != self.current_pid]
+            excluded_pids.add(self.current_pid)
+
+            # Also exclude parent process (e.g., Claude Code session running start_system.py --restart)
+            try:
+                parent = self.current_process.parent()
+                if parent:
+                    excluded_pids.add(parent.pid)
+                    # Also exclude grandparent if it looks like an IDE/editor
+                    grandparent = parent.parent()
+                    if grandparent:
+                        gp_name = grandparent.name().lower()
+                        if any(ide in gp_name for ide in ['claude', 'vscode', 'code', 'pycharm', 'idea']):
+                            excluded_pids.add(grandparent.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+            filtered = [p for p in filtered if p.pid not in excluded_pids]
 
         # Build parent-child relationships
         self._build_relationships(filtered)

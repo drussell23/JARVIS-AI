@@ -6570,12 +6570,29 @@ async def main():
                 current_pid = os.getpid()
                 jarvis_processes = []
 
+                # Build exclusion list (current process + parent chain)
+                excluded_pids = {current_pid}
+                try:
+                    current_proc = psutil.Process(current_pid)
+                    parent = current_proc.parent()
+                    if parent:
+                        excluded_pids.add(parent.pid)
+                        # Also exclude grandparent if it's an IDE
+                        grandparent = parent.parent()
+                        if grandparent:
+                            gp_name = grandparent.name().lower()
+                            if any(ide in gp_name for ide in ['claude', 'vscode', 'code', 'pycharm', 'idea']):
+                                excluded_pids.add(grandparent.pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
                 print(f"  → Fallback: Basic psutil enumeration...")
+                print(f"  → Excluding {len(excluded_pids)} process(es) from current session")
                 for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
                     try:
                         pid = proc.info["pid"]
-                        if pid == current_pid:
-                            continue  # Skip ourselves
+                        if pid in excluded_pids:
+                            continue  # Skip current session processes
 
                         cmdline = proc.info.get("cmdline")
                         if not cmdline:
