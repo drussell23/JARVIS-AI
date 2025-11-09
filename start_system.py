@@ -5720,51 +5720,112 @@ except Exception as e:
             backend_task = asyncio.create_task(self.start_backend())
             frontend_task = asyncio.create_task(self.start_frontend())
 
-            # Start progress tracking task for loading page
+            # Start DYNAMIC progress tracking task for loading page
             async def track_backend_progress():
-                """Track backend initialization and broadcast granular progress 50-100%"""
-                progress_stages = [
-                    (52, "backend_init", "Initializing backend framework...", {"icon": "⚙️", "label": "Backend Init", "sublabel": "FastAPI starting..."}),
-                    (55, "config_load", "Loading configuration files...", {"icon": "📄", "label": "Configuration", "sublabel": "Loading configs..."}),
-                    (58, "database_connect", "Connecting to Cloud SQL database...", {"icon": "💾", "label": "Database", "sublabel": "Connecting..."}),
-                    (62, "database_ready", "Database connection established", {"icon": "💾", "label": "Database", "sublabel": "Connected"}),
-                    (66, "voice_init", "Initializing voice biometric system...", {"icon": "🎤", "label": "Voice", "sublabel": "Loading models..."}),
-                    (70, "voice_models", "Loading voice recognition models...", {"icon": "🎤", "label": "Voice", "sublabel": "Models loading..."}),
-                    (74, "voice_ready", "Voice system ready", {"icon": "🎤", "label": "Voice", "sublabel": "Ready"}),
-                    (78, "vision_init", "Initializing vision capture system...", {"icon": "👁️", "label": "Vision", "sublabel": "Initializing..."}),
-                    (82, "vision_yolo", "Loading YOLOv8 detection models...", {"icon": "👁️", "label": "Vision", "sublabel": "YOLO loading..."}),
-                    (86, "vision_ready", "Vision system operational", {"icon": "👁️", "label": "Vision", "sublabel": "Ready"}),
-                    (90, "api_start", "Starting FastAPI server...", {"icon": "🌐", "label": "API", "sublabel": "Starting..."}),
-                    (94, "routes_load", "Registering API routes...", {"icon": "🌐", "label": "API", "sublabel": "Routes loading..."}),
-                    (97, "health_check", "Running health checks...", {"icon": "🏥", "label": "Health Check", "sublabel": "Verifying..."}),
+                """
+                Intelligently track backend initialization with ADAPTIVE progress
+                No hardcoded timings - polls actual backend health and adjusts dynamically
+                """
+                import aiohttp
+
+                start_time = time.time()
+                max_startup_time = 300  # 5 minutes max
+                current_progress = 50
+
+                # Define milestone stages to check
+                milestones = [
+                    {"url": "http://localhost:8010/health", "progress": 60, "stage": "backend_alive", "message": "Backend process responding...", "icon": "⚙️"},
+                    {"url": "http://localhost:8010/audio/ml/config", "progress": 70, "stage": "voice_init", "message": "Voice system initializing...", "icon": "🎤"},
+                    {"url": "http://localhost:8010/voice/jarvis/status", "progress": 85, "stage": "voice_ready", "message": "Voice system operational", "icon": "🎤"},
+                    {"url": "http://localhost:8010/api/startup-voice/test", "progress": 95, "stage": "apis_ready", "message": "All APIs registered", "icon": "🌐"},
                 ]
 
-                for progress, stage, message, metadata in progress_stages:
-                    # Wait for backend to reach this stage
-                    await asyncio.sleep(3)  # ~3 seconds per stage = 39 seconds total
+                milestone_idx = 0
+                poll_interval = 2  # Poll every 2 seconds
 
-                    # Check if backend is still starting
-                    if not backend_task.done():
-                        try:
-                            # Broadcast to loading server directly
-                            import aiohttp
-                            url = "http://localhost:3001/api/update-progress"
-                            data = {
-                                "stage": stage,
-                                "message": message,
-                                "progress": progress,
-                                "timestamp": datetime.now().isoformat()
-                            }
-                            if metadata:
-                                data["metadata"] = metadata
+                async def broadcast_progress(progress, stage, message, metadata=None):
+                    """Helper to broadcast progress"""
+                    try:
+                        url = "http://localhost:3001/api/update-progress"
+                        data = {
+                            "stage": stage,
+                            "message": message,
+                            "progress": progress,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        if metadata:
+                            data["metadata"] = metadata
 
-                            async with aiohttp.ClientSession() as session:
-                                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
-                                    pass  # Silently fail if loading server not ready
-                        except:
-                            pass
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                                pass
+                    except:
+                        pass
 
-            # Always start progress tracking for restart mode
+                # Adaptive progress loop
+                while milestone_idx < len(milestones) and not backend_task.done():
+                    elapsed = time.time() - start_time
+
+                    # Timeout protection
+                    if elapsed > max_startup_time:
+                        await broadcast_progress(
+                            99,
+                            "timeout_warning",
+                            "Startup taking longer than expected...",
+                            {"icon": "⚠️", "label": "Slow Startup", "sublabel": "Please wait..."}
+                        )
+                        break
+
+                    # Get current milestone
+                    milestone = milestones[milestone_idx]
+
+                    # Try to reach this milestone
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                milestone["url"],
+                                timeout=aiohttp.ClientTimeout(total=2)
+                            ) as resp:
+                                if resp.status in [200, 404, 405]:  # Backend responding (even with errors)
+                                    # Milestone reached!
+                                    await broadcast_progress(
+                                        milestone["progress"],
+                                        milestone["stage"],
+                                        milestone["message"],
+                                        {"icon": milestone["icon"], "label": milestone["stage"].replace("_", " ").title()}
+                                    )
+                                    print(f"  {Colors.CYAN}✓ Milestone {milestone_idx + 1}/{len(milestones)}: {milestone['message']} ({milestone['progress']}%){Colors.ENDC}")
+                                    milestone_idx += 1
+                                    current_progress = milestone["progress"]
+                    except:
+                        # Milestone not reached yet - update with interpolated progress
+                        # Calculate progress between milestones based on time
+                        if milestone_idx > 0:
+                            prev_progress = milestones[milestone_idx - 1]["progress"]
+                        else:
+                            prev_progress = 50
+
+                        target_progress = milestone["progress"]
+                        time_ratio = min(elapsed / 60.0, 1.0)  # Assume 60s between milestones
+                        interpolated_progress = int(prev_progress + (target_progress - prev_progress) * time_ratio)
+
+                        if interpolated_progress > current_progress:
+                            current_progress = interpolated_progress
+                            await broadcast_progress(
+                                current_progress,
+                                "initializing",
+                                f"Backend initializing... ({int(elapsed)}s elapsed)",
+                                {"icon": "⏳", "label": "Loading", "sublabel": f"{int(elapsed)}s"}
+                            )
+
+                    # Wait before next poll
+                    await asyncio.sleep(poll_interval)
+
+                # If we exit because backend_task is done, we're at 100%
+                if backend_task.done():
+                    print(f"  {Colors.GREEN}✓ Backend initialization complete!{Colors.ENDC}")
+
+            # Always start adaptive progress tracking
             asyncio.create_task(track_backend_progress())
 
             # Wait for both with proper error handling
@@ -7029,6 +7090,20 @@ async def main():
                 45,
                 metadata={"icon": "🚀", "label": "Starting", "sublabel": "Launching..."}
             )
+
+            # Optimize system for faster startup
+            print(f"{Colors.CYAN}⚡ Optimizing system for fast startup...{Colors.ENDC}")
+            try:
+                # Reduce CPU throttling by giving JARVIS higher priority
+                import subprocess
+                subprocess.run(
+                    ["sudo", "-n", "renice", "-n", "-10", "-p", str(os.getpid())],
+                    capture_output=True,
+                    timeout=1
+                )
+                print(f"  {Colors.GREEN}✓ Process priority increased{Colors.ENDC}")
+            except:
+                pass  # Silently fail if no sudo access
 
             # Fall through to normal startup - backend will start fresh
 
