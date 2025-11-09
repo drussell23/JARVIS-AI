@@ -1,6 +1,86 @@
-# JARVIS AI Assistant v17.4.0 - Production Voice System Edition
+# JARVIS AI Assistant v17.5.0 - Advanced Process Management Edition
 
-An intelligent voice-activated AI assistant with **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+
+---
+
+## 🚀 NEW in v17.5: Advanced Process Detection & Management
+
+JARVIS v17.5 introduces an **enterprise-grade process management system** that eliminates the risk of multiple backend instances running simultaneously. Using 7 concurrent detection strategies with zero hardcoding, the system ensures clean restarts every time.
+
+### 🎯 Key Highlights - Process Management v17.5
+
+**Revolutionary Process Detection Engine:**
+```
+✅ Zero Hardcoding: All configuration dynamically loaded from environment
+✅ 7 Concurrent Strategies: psutil_scan, ps_command, port_based, network_connections, file_descriptor, parent_child, command_line
+✅ Async & Concurrent: All strategies run in parallel for 1-3 second detection time
+✅ Intelligent Deduplication: Merges results from multiple strategies (shows multi:N for N strategies)
+✅ Smart Prioritization: CRITICAL → HIGH → MEDIUM → LOW for optimal kill order
+✅ Enhanced Pattern Matching: Requires JARVIS context to prevent false positives
+✅ Graceful Error Handling: Permission errors, timeouts, automatic fallbacks
+✅ Process Tree Analysis: Detects and terminates parent-child relationships
+✅ Configuration-Driven: Customizable via backend/config/process_detection.json
+✅ Comprehensive Documentation: Full API docs in docs/ADVANCED_PROCESS_DETECTION.md
+```
+
+**Process Detection Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│          AdvancedProcessDetector (Async Engine)             │
+├─────────────────────────────────────────────────────────────┤
+│ 7 Concurrent Detection Strategies:                          │
+│                                                              │
+│ 1. psutil_scan          → Process enumeration + CWD check   │
+│ 2. ps_command           → Shell verification (grep/ps)      │
+│ 3. port_based           → Dynamic port scanning (lsof)      │
+│ 4. network_connections  → Active connection analysis        │
+│ 5. file_descriptor      → Open file tracking                │
+│ 6. parent_child         → Process tree relationship         │
+│ 7. command_line         → Regex pattern matching            │
+│                                                              │
+│ → All run concurrently with 5s timeout per strategy         │
+│ → Results merged with intelligent deduplication             │
+│ → Priority-based termination (parent processes first)       │
+└─────────────────────────────────────────────────────────────┘
+
+Example Detection Output:
+  ✓ Detected 1 JARVIS processes
+
+  1. PID 90163 (python3.10)
+     Detection: multi:3  ← Found by 3 strategies!
+     Priority: CRITICAL
+     Age: 0.35h
+     Command: python -B main.py --port 8010
+```
+
+**Restart with Enhanced Detection:**
+```bash
+python start_system.py --restart
+
+# Output:
+1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...
+  → Running 7 concurrent detection strategies...
+    • psutil_scan: Process enumeration
+    • ps_command: Shell command verification
+    • port_based: Dynamic port scanning
+    • network_connections: Active connections
+    • file_descriptor: Open file analysis
+    • parent_child: Process tree analysis
+    • command_line: Regex pattern matching
+
+  ✓ Detected 2 JARVIS processes
+
+Found 2 JARVIS process(es):
+  1. PID 26643 (psutil_scan, 2.3h)
+  2. PID 90163 (multi:3, 0.4h)  ← Detected by 3 strategies
+
+⚔️  Killing all instances...
+  → Terminating PID 26643... ✓
+  → Terminating PID 90163... ✓
+
+✓ All 2 process(es) terminated successfully
+```
 
 ---
 
