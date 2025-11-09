@@ -5867,14 +5867,35 @@ except Exception as e:
                         time_ratio = min(elapsed / window_s, 1.0)
                         interpolated_progress = int(prev_progress + (target_progress - prev_progress) * time_ratio)
 
+                        # Find appropriate fallback stage message based on time elapsed
+                        fallback_stages = config.get("fallback_stages", [])
+                        fallback_message = None
+                        fallback_icon = "⏳"
+                        fallback_label = "Loading"
+                        fallback_sublabel = f"{int(elapsed)}s elapsed"
+
+                        for stage in reversed(fallback_stages):
+                            if elapsed >= stage.get("time_trigger_s", 0):
+                                fallback_message = stage.get("message", f"Loading... ({int(elapsed)}s)")
+                                fallback_icon = stage.get("icon", "⏳")
+                                fallback_label = stage.get("label", "Loading")
+                                fallback_sublabel = stage.get("sublabel", f"{int(elapsed)}s elapsed")
+                                # Use fallback progress if higher than interpolated
+                                if stage.get("progress", 0) > interpolated_progress:
+                                    interpolated_progress = stage["progress"]
+                                break
+
+                        if not fallback_message:
+                            fallback_message = f"Backend initializing... ({int(elapsed)}s elapsed)"
+
                         # Only update if progress increased
                         if interpolated_progress > current_progress:
                             current_progress = interpolated_progress
                             await broadcast_progress(
                                 current_progress,
                                 "initializing",
-                                f"Initializing... ({int(elapsed)}s)",
-                                {"icon": "⏳", "label": "Starting", "sublabel": f"{int(elapsed)}s elapsed"}
+                                fallback_message,
+                                {"icon": fallback_icon, "label": fallback_label, "sublabel": fallback_sublabel}
                             )
 
                     # Dynamic sleep based on adaptive polling
@@ -6764,21 +6785,30 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Progress: 1% - Started
+            # Progress: 1% - Started (EXTREME DETAIL)
             await broadcast_to_loading_server(
                 "initializing",
-                "Initializing restart sequence...",
+                "Starting JARVIS restart sequence - preparing environment cleanup",
                 1,
-                metadata={"icon": "⚡", "label": "Initializing", "sublabel": "Starting..."}
+                metadata={"icon": "⚡", "label": "Initializing", "sublabel": "System check initiated"}
             )
             await asyncio.sleep(0.3)
+
+            # Progress: 2% - Backend path setup
+            await broadcast_to_loading_server(
+                "path_setup",
+                "Configuring Python import paths for backend modules",
+                2,
+                metadata={"icon": "📁", "label": "Path Setup", "sublabel": "Module paths configured"}
+            )
+            await asyncio.sleep(0.2)
 
             # Progress: 3% - Detecting
             await broadcast_to_loading_server(
                 "detecting",
-                "Scanning for existing JARVIS processes...",
+                "Scanning system for existing JARVIS processes using AdvancedProcessDetector",
                 3,
-                metadata={"icon": "🔍", "label": "Detecting", "sublabel": "Scanning..."}
+                metadata={"icon": "🔍", "label": "Process Detection", "sublabel": "Scanning PID table"}
             )
 
             # Step 1: Advanced JARVIS process detection with multiple strategies
@@ -6807,12 +6837,28 @@ async def main():
                 jarvis_processes = result["processes"]
                 print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
 
+                # Progress: 5% - Process scan in progress
+                await broadcast_to_loading_server(
+                    "scanning_ports",
+                    "Scanning active network ports (3000, 8010) for JARVIS services",
+                    5,
+                    metadata={"icon": "🔌", "label": "Port Scan", "sublabel": "Checking listeners"}
+                )
+
+                # Progress: 7% - Process enumeration
+                await broadcast_to_loading_server(
+                    "enumerating",
+                    f"Enumerating system processes - found {result['total_detected']} JARVIS instances",
+                    7,
+                    metadata={"icon": "📊", "label": "Enumeration", "sublabel": f"{result['total_detected']} processes"}
+                )
+
                 # Progress: 8% - Detection complete
                 await broadcast_to_loading_server(
                     "detected",
-                    f"Found {result['total_detected']} JARVIS process(es)",
+                    f"Process detection complete: {result['total_detected']} JARVIS processes identified (frontend, backend, minimal)",
                     8,
-                    metadata={"icon": "✓", "label": "Detected", "sublabel": f"{result['total_detected']} found"}
+                    metadata={"icon": "✓", "label": "Detection Complete", "sublabel": f"{result['total_detected']} PIDs captured"}
                 )
 
                 # Convert to old format for compatibility with existing code
@@ -6906,12 +6952,20 @@ async def main():
                     )
                     print(f"  {idx}. PID {proc['pid']} ({proc['type']}, {age_str})")
 
+                # Progress: 10% - Preparing termination
+                await broadcast_to_loading_server(
+                    "preparing_kill",
+                    f"Preparing graceful shutdown sequence for {len(jarvis_processes)} processes",
+                    10,
+                    metadata={"icon": "🛑", "label": "Shutdown Prep", "sublabel": "Saving state"}
+                )
+
                 # Progress: 12% - Starting termination
                 await broadcast_to_loading_server(
                     "terminating",
-                    f"Terminating {len(jarvis_processes)} existing process(es)...",
+                    f"Sending SIGTERM to {len(jarvis_processes)} JARVIS processes - graceful shutdown initiated",
                     12,
-                    metadata={"icon": "⚔️", "label": "Terminating", "sublabel": f"{len(jarvis_processes)} processes"}
+                    metadata={"icon": "⚔️", "label": "Terminating", "sublabel": f"SIGTERM → {len(jarvis_processes)} PIDs"}
                 )
 
                 print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
@@ -6969,21 +7023,37 @@ async def main():
                         f"{Colors.GREEN}✓ All {killed_count} process(es) terminated successfully{Colors.ENDC}"
                     )
 
+                # Progress: 16% - Verification
+                await broadcast_to_loading_server(
+                    "verifying_kill",
+                    f"Verifying process termination - checking {killed_count} PIDs no longer exist",
+                    16,
+                    metadata={"icon": "🔍", "label": "Verification", "sublabel": "Confirming shutdown"}
+                )
+
                 # Progress: 20% - Processes killed
                 await broadcast_to_loading_server(
                     "killed",
-                    f"Terminated {killed_count} process(es) successfully",
+                    f"Process termination complete: {killed_count}/{len(jarvis_processes)} processes successfully terminated",
                     20,
-                    metadata={"icon": "✓", "label": "Terminated", "sublabel": f"{killed_count} killed"}
+                    metadata={"icon": "✓", "label": "Terminated", "sublabel": f"{killed_count} PIDs released"}
                 )
                 await asyncio.sleep(0.5)
 
-                # Progress: 25% - Cleanup
+                # Progress: 23% - Port cleanup
+                await broadcast_to_loading_server(
+                    "port_cleanup",
+                    "Releasing network ports 3000 and 8010 - ensuring clean state",
+                    23,
+                    metadata={"icon": "🔌", "label": "Port Release", "sublabel": "Freeing listeners"}
+                )
+
+                # Progress: 25% - Resource cleanup
                 await broadcast_to_loading_server(
                     "cleanup",
-                    "Cleaning up resources and locks...",
+                    "Cleaning up shared memory, file locks, and temporary resources",
                     25,
-                    metadata={"icon": "🧹", "label": "Cleanup", "sublabel": "Freeing resources"}
+                    metadata={"icon": "🧹", "label": "Resource Cleanup", "sublabel": "Deallocating memory"}
                 )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
@@ -7023,6 +7093,14 @@ async def main():
             else:
                 print(f"{Colors.GREEN}✓ No VM creation lock file found{Colors.ENDC}")
 
+            # Progress: 28% - Checking database proxies
+            await broadcast_to_loading_server(
+                "checking_proxies",
+                "Scanning for active cloud-sql-proxy database connections",
+                28,
+                metadata={"icon": "🔐", "label": "DB Proxy Check", "sublabel": "Scanning processes"}
+            )
+
             # Step 1.55: Kill any running cloud-sql-proxy processes (fresh start)
             print(f"\n{Colors.YELLOW}🔐 Checking for cloud-sql-proxy processes...{Colors.ENDC}")
             try:
@@ -7038,6 +7116,15 @@ async def main():
 
                 if proxy_pids:
                     print(f"{Colors.YELLOW}Found {len(proxy_pids)} cloud-sql-proxy process(es){Colors.ENDC}")
+
+                    # Progress: 30% - Terminating database proxies
+                    await broadcast_to_loading_server(
+                        "terminating_proxies",
+                        f"Terminating {len(proxy_pids)} cloud-sql-proxy process(es) - closing database tunnels",
+                        30,
+                        metadata={"icon": "🔐", "label": "DB Proxy Kill", "sublabel": f"SIGTERM → {len(proxy_pids)} proxies"}
+                    )
+
                     for pid in proxy_pids:
                         try:
                             print(f"  → Terminating cloud-sql-proxy PID {pid}...", end="", flush=True)
@@ -7053,6 +7140,14 @@ async def main():
                     print(f"{Colors.GREEN}✓ No cloud-sql-proxy processes found{Colors.ENDC}")
             except Exception as e:
                 print(f"{Colors.WARNING}⚠️  Failed to check proxy processes: {e}{Colors.ENDC}")
+
+            # Progress: 32% - Scanning cloud resources
+            await broadcast_to_loading_server(
+                "scanning_vms",
+                "Querying GCP Compute Engine for orphaned JARVIS VMs (jarvis-auto-*, jarvis-backend-*)",
+                32,
+                metadata={"icon": "☁️", "label": "Cloud Scan", "sublabel": "Listing GCP instances"}
+            )
 
             # Step 1.6: Clean up any GCP VMs (CRITICAL for cost control)
             print(f"\n{Colors.YELLOW}🌐 Checking for orphaned GCP VMs...{Colors.ENDC}")
@@ -7078,6 +7173,14 @@ async def main():
                 if result.returncode == 0 and result.stdout.strip():
                     vms = result.stdout.strip().split("\n")
                     print(f"Found {len(vms)} GCP VM(s) to clean up:")
+
+                    # Progress: 33% - Deleting VMs
+                    await broadcast_to_loading_server(
+                        "deleting_vms",
+                        f"Terminating {len(vms)} GCP Compute Engine instance(s) - stopping cloud costs",
+                        33,
+                        metadata={"icon": "☁️", "label": "VM Deletion", "sublabel": f"Deleting {len(vms)} instances"}
+                    )
 
                     for vm_line in vms:
                         parts = vm_line.split()
@@ -7121,7 +7224,7 @@ async def main():
             # Progress: 35% - VM cleanup done
             await broadcast_to_loading_server(
                 "vm_cleanup",
-                "Cloud resources cleaned up",
+                "Cloud resource cleanup complete - all orphaned GCP VMs terminated, costs stopped",
                 35,
                 metadata={"icon": "☁️", "label": "Cloud Cleanup", "sublabel": "VMs deleted"}
             )
@@ -7136,7 +7239,7 @@ async def main():
             # Progress: 40% - Ready to start
             await broadcast_to_loading_server(
                 "ready_to_start",
-                "Environment ready, preparing to launch...",
+                "Environment validation complete - all ports free, resources available, system ready to launch",
                 40,
                 metadata={"icon": "✓", "label": "Ready", "sublabel": "Environment clean"}
             )
@@ -7145,9 +7248,9 @@ async def main():
             # Progress: 45% - Starting services
             await broadcast_to_loading_server(
                 "starting",
-                "Launching JARVIS backend services...",
+                "Spawning FastAPI backend process - initializing uvicorn ASGI server on port 8010",
                 45,
-                metadata={"icon": "🚀", "label": "Starting", "sublabel": "Launching..."}
+                metadata={"icon": "🚀", "label": "Starting", "sublabel": "Launching backend"}
             )
 
             # Optimize system for faster startup

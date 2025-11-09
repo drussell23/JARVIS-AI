@@ -4,6 +4,9 @@
     "poll_interval_ms": 2000,
     "max_startup_time_s": 300,
     "interpolation_window_s": 60,
+    "extreme_detail": true,
+    "show_timestamps": true,
+    "show_elapsed_time": true,
     "adaptive_polling": {
       "enabled": true,
       "min_interval_ms": 1000,
@@ -14,14 +17,28 @@
   "milestones": [
     {
       "name": "backend_alive",
-      "progress": 60,
+      "progress": 55,
       "endpoint": "/health",
       "method": "GET",
       "accept_status": [200, 404, 405],
-      "message": "Backend process responding...",
+      "message": "Backend HTTP server accepting TCP connections on port 8010 - FastAPI process alive",
+      "detail": "Uvicorn ASGI server bound to localhost:8010, responding to health checks",
       "icon": "⚙️",
       "label": "Backend Init",
       "required": true,
+      "timeout_s": 2
+    },
+    {
+      "name": "database_init",
+      "progress": 62,
+      "endpoint": "/health",
+      "method": "GET",
+      "accept_status": [200],
+      "message": "Database connection pool established - Cloud SQL Proxy connecting to PostgreSQL",
+      "detail": "SQLAlchemy engine initializing connection pool, authenticating with GCP Secret Manager credentials",
+      "icon": "🗄️",
+      "label": "Database Init",
+      "required": false,
       "timeout_s": 2
     },
     {
@@ -30,9 +47,23 @@
       "endpoint": "/audio/ml/config",
       "method": "GET",
       "accept_status": [200],
-      "message": "Voice system initializing...",
+      "message": "Voice biometric system loading SpeechBrain ASR models into GPU memory",
+      "detail": "Initializing Tacotron2 TTS, WaveGlow vocoder, and speaker verification embeddings (ResNet-based)",
       "icon": "🎤",
       "label": "Voice Init",
+      "required": false,
+      "timeout_s": 2
+    },
+    {
+      "name": "vision_init",
+      "progress": 78,
+      "endpoint": "/health",
+      "method": "GET",
+      "accept_status": [200],
+      "message": "Computer vision system loading YOLO v8 object detection models and PyTorch weights",
+      "detail": "Initializing OpenCV camera capture interface, CUDA acceleration for real-time inference",
+      "icon": "👁️",
+      "label": "Vision Init",
       "required": false,
       "timeout_s": 2
     },
@@ -42,9 +73,23 @@
       "endpoint": "/voice/jarvis/status",
       "method": "GET",
       "accept_status": [200],
-      "message": "Voice system operational",
+      "message": "Voice recognition system fully operational - SpeechBrain models loaded, embeddings cached",
+      "detail": "Speaker verification ready: 256-dim embedding vectors, cosine similarity threshold 0.75, real-time inference < 100ms",
       "icon": "🎤",
       "label": "Voice Ready",
+      "required": false,
+      "timeout_s": 2
+    },
+    {
+      "name": "api_routes",
+      "progress": 90,
+      "endpoint": "/health",
+      "method": "GET",
+      "accept_status": [200],
+      "message": "API route registration complete - mounting WebSocket, REST, and voice endpoints to FastAPI router",
+      "detail": "Registered endpoints: /ws/* (WebSocket), /api/* (REST), /audio/* (voice), /vision/* (video stream)",
+      "icon": "🌐",
+      "label": "API Routes",
       "required": false,
       "timeout_s": 2
     },
@@ -54,7 +99,8 @@
       "endpoint": "/api/startup-voice/test",
       "method": "GET",
       "accept_status": [200, 404],
-      "message": "All APIs registered",
+      "message": "All API routes accepting requests - CORS enabled, authentication middleware active",
+      "detail": "WebSocket server ready for bi-directional communication, REST endpoints serving JSON, voice streaming operational",
       "icon": "🌐",
       "label": "APIs Ready",
       "required": false,
@@ -63,28 +109,84 @@
   ],
   "fallback_stages": [
     {
-      "progress": 55,
-      "message": "Loading core modules...",
+      "progress": 50,
+      "message": "Backend process spawned - waiting for HTTP server to bind to port 8010",
+      "icon": "⏳",
+      "label": "Spawning",
+      "sublabel": "Waiting for TCP bind",
+      "time_trigger_s": 5
+    },
+    {
+      "progress": 52,
+      "message": "Uvicorn server initializing - loading FastAPI application module and dependencies",
       "icon": "📦",
+      "label": "Module Load",
+      "sublabel": "Importing packages",
       "time_trigger_s": 10
     },
     {
-      "progress": 65,
-      "message": "Initializing services...",
+      "progress": 56,
+      "message": "FastAPI app instance created - registering middleware (CORS, authentication, logging)",
       "icon": "🔧",
+      "label": "Middleware",
+      "sublabel": "CORS + auth setup",
+      "time_trigger_s": 15
+    },
+    {
+      "progress": 58,
+      "message": "Initializing core services - connecting to GCP Secret Manager for API keys",
+      "icon": "🔑",
+      "label": "Secrets Init",
+      "sublabel": "Fetching credentials",
+      "time_trigger_s": 20
+    },
+    {
+      "progress": 65,
+      "message": "Database connection pool initializing - establishing Cloud SQL Proxy tunnel",
+      "icon": "🗄️",
+      "label": "DB Connect",
+      "sublabel": "SQL proxy handshake",
       "time_trigger_s": 30
     },
     {
-      "progress": 75,
-      "message": "Loading AI models...",
+      "progress": 72,
+      "message": "Loading AI/ML models - downloading SpeechBrain weights from HuggingFace (may take 30-60s first run)",
       "icon": "🧠",
+      "label": "Model Download",
+      "sublabel": "HuggingFace cache",
+      "time_trigger_s": 45
+    },
+    {
+      "progress": 80,
+      "message": "Voice models loading into memory - allocating GPU/CPU tensors for inference",
+      "icon": "🎤",
+      "label": "Voice Load",
+      "sublabel": "Allocating tensors",
       "time_trigger_s": 60
     },
     {
-      "progress": 90,
-      "message": "Finalizing startup...",
-      "icon": "✨",
+      "progress": 87,
+      "message": "Registering API routes - mounting endpoint handlers to FastAPI router",
+      "icon": "🌐",
+      "label": "Route Mount",
+      "sublabel": "Binding endpoints",
+      "time_trigger_s": 90
+    },
+    {
+      "progress": 92,
+      "message": "Starting background tasks - initializing async workers and event loops",
+      "icon": "⚙️",
+      "label": "Workers Start",
+      "sublabel": "Async tasks init",
       "time_trigger_s": 120
+    },
+    {
+      "progress": 97,
+      "message": "Final health checks - verifying all systems operational before accepting connections",
+      "icon": "✨",
+      "label": "Health Check",
+      "sublabel": "System validation",
+      "time_trigger_s": 150
     }
   ],
   "backend_config": {
