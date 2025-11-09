@@ -122,9 +122,9 @@ function App() {
 
   return (
     <div className="App">
-      {/* <h1>J.A.R.V.I.S. Interface</h1>
+      <h1>J.A.R.V.I.S.</h1>
       <p className="app-subtitle">Just A Rather Very Intelligent System</p>
-      <div className="hud-divider" /> */}
+      <div className="hud-divider" />
 
       {/* Autonomous Mode Toggle - REMOVED */}
       {/* <div className="autonomous-control">
