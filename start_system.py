@@ -7412,8 +7412,13 @@ async def main():
         loop.add_signal_handler(sig, cleanup_and_shutdown)
 
     # Run the system
-    success = await _manager.run()
-    return 0 if success else 1
+    try:
+        success = await _manager.run()
+        return 0 if success else 1
+    except asyncio.CancelledError:
+        # Expected during shutdown
+        logger.info("Main task cancelled during shutdown")
+        return 0
 
 
 if __name__ == "__main__":
@@ -7427,15 +7432,25 @@ if __name__ == "__main__":
         asyncio.set_event_loop(loop)
         try:
             exit_code = loop.run_until_complete(main())
+        except asyncio.CancelledError:
+            # Expected during shutdown
+            logger.info("Main event loop cancelled")
+            exit_code = 0
         finally:
             # Cancel all pending tasks
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            # Wait for all tasks to be cancelled
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.close()
+            try:
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                # Wait for all tasks to be cancelled
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except RuntimeError:
+                # Loop may already be closed
+                pass
+            finally:
+                if not loop.is_closed():
+                    loop.close()
         sys.exit(exit_code if exit_code else 0)
     except KeyboardInterrupt:
         # Don't print anything extra - cleanup() already handles the shutdown message

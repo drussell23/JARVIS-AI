@@ -658,6 +658,9 @@ const JarvisVoice = () => {
     windowMs: 10000  // 10 second window
   });
 
+  // Track if we should skip the next restart (e.g., due to aborted error)
+  const skipNextRestartRef = useRef(false);
+
   // 🎤 Unified Voice Capture - Records audio while browser SpeechRecognition runs
   const voiceAudioStreamRef = useRef(null); // Audio stream for voice biometrics
   const voiceAudioRecorderRef = useRef(null); // MediaRecorder for continuous audio capture
@@ -2010,6 +2013,7 @@ const JarvisVoice = () => {
           // Restart recognition if needed (but NOT for aborted errors with skipRestart)
           if (mlResult.skipRestart) {
             console.log('Skipping restart per ML handler instruction');
+            skipNextRestartRef.current = true;  // Set flag to prevent onend from restarting
             return;  // Don't restart
           }
 
@@ -2150,6 +2154,13 @@ const JarvisVoice = () => {
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended - enforcing indefinite listening');
 
+        // Check if we should skip this restart (e.g., due to aborted error)
+        if (skipNextRestartRef.current) {
+          console.log('⏭️ Skipping restart due to skipNextRestart flag');
+          skipNextRestartRef.current = false;  // Reset flag
+          return;  // Don't restart
+        }
+
         // ALWAYS restart if continuous listening is enabled (check ref for most current state)
         if (continuousListeningRef.current || continuousListening) {
           // Check circuit breaker to prevent infinite restart loops
@@ -2171,6 +2182,7 @@ const JarvisVoice = () => {
             setContinuousListening(false);
             setError('⚠️ Too many microphone restarts - please restart manually');
             setMicStatus('error');
+            skipNextRestartRef.current = false;  // Reset flag
             return;  // Don't restart
           }
 
