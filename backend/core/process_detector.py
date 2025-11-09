@@ -239,8 +239,11 @@ class AdvancedProcessDetector:
         # Run all strategies concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Merge results from all strategies
-        all_processes: Set[ProcessInfo] = set()
+        # Merge results from all strategies with intelligent deduplication
+        # Track processes by PID and merge information from multiple strategies
+        pid_to_process: Dict[int, ProcessInfo] = {}
+        strategy_detections: Dict[int, List[str]] = {}  # PID -> list of strategies that found it
+
         for i, result in enumerate(results):
             strategy = self.config.enabled_strategies[i]
             if isinstance(result, Exception):
@@ -248,8 +251,40 @@ class AdvancedProcessDetector:
                 continue
 
             if isinstance(result, list):
-                all_processes.update(result)
                 logger.info(f"Strategy {strategy.value} found {len(result)} processes")
+
+                for proc in result:
+                    if proc.pid not in pid_to_process:
+                        # First time seeing this PID
+                        pid_to_process[proc.pid] = proc
+                        strategy_detections[proc.pid] = [proc.detection_strategy]
+                    else:
+                        # Merge information from multiple strategies
+                        existing = pid_to_process[proc.pid]
+                        strategy_detections[proc.pid].append(proc.detection_strategy)
+
+                        # Merge ports
+                        if proc.ports:
+                            existing.ports = list(set(existing.ports + proc.ports))
+
+                        # Merge connections
+                        if proc.connections:
+                            existing.connections = list(set(existing.connections + proc.connections))
+
+                        # Use better detection_strategy name (show all strategies)
+                        existing.detection_strategy = f"multi:{len(strategy_detections[proc.pid])}"
+
+                        # Update age if we now have more accurate info
+                        if proc.age_hours > 0 and existing.age_hours == 0:
+                            existing.age_hours = proc.age_hours
+                            existing.create_time = proc.create_time
+
+        all_processes = list(pid_to_process.values())
+
+        # Log deduplication stats
+        multi_strategy = sum(1 for strategies in strategy_detections.values() if len(strategies) > 1)
+        if multi_strategy > 0:
+            logger.info(f"Deduplicated {multi_strategy} processes detected by multiple strategies")
 
         # Filter by age
         filtered = [
@@ -315,16 +350,40 @@ class AdvancedProcessDetector:
 
         def scan():
             found = []
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time', 'cwd']):
                 try:
                     info = proc.info
                     name = info['name'].lower()
                     cmdline = info.get('cmdline') or []
                     cmdline_str = ' '.join(cmdline).lower()
+                    cwd = info.get('cwd', '').lower() if info.get('cwd') else ''
 
-                    # Check if matches any pattern
-                    if any(pattern.lower() in name or pattern.lower() in cmdline_str
-                           for pattern in self.config.process_patterns):
+                    # ENHANCED: Must match pattern AND be in JARVIS directory
+                    # This prevents false positives from other Python processes
+                    matches_pattern = any(
+                        pattern.lower() in name or pattern.lower() in cmdline_str
+                        for pattern in self.config.process_patterns
+                    )
+
+                    # Check if running from JARVIS directory or mentions jarvis in path
+                    in_jarvis_dir = 'jarvis' in cwd or 'jarvis' in cmdline_str
+
+                    # For main.py and start_system.py, require JARVIS context
+                    is_main_py = 'main.py' in cmdline_str
+                    is_start_system = 'start_system.py' in cmdline_str
+
+                    if is_main_py or is_start_system:
+                        # These files must be in JARVIS directory
+                        if not in_jarvis_dir:
+                            continue
+
+                    # For other patterns, also require JARVIS context
+                    if matches_pattern and not (is_main_py or is_start_system):
+                        if not in_jarvis_dir:
+                            continue
+
+                    # If we got here, it's a valid JARVIS process
+                    if matches_pattern or is_main_py or is_start_system:
                         process_info = ProcessInfo(
                             pid=info['pid'],
                             name=info['name'],
@@ -349,9 +408,8 @@ class AdvancedProcessDetector:
         processes = []
 
         try:
-            # Build grep pattern from process patterns
-            pattern = "|".join(self.config.process_patterns)
-            cmd = f"ps aux | grep -E '{pattern}' | grep -v grep"
+            # More precise: look for JARVIS-specific processes
+            cmd = "ps aux | grep -E '(start_system\\.py|backend/main\\.py|backend.*main\\.py)' | grep -i jarvis | grep -v grep"
 
             result = await asyncio.create_subprocess_shell(
                 cmd,
@@ -427,11 +485,28 @@ class AdvancedProcessDetector:
                         try:
                             pid = int(pid_str)
                             proc = psutil.Process(pid)
+                            cmdline = proc.cmdline()
+                            cmdline_str = ' '.join(cmdline).lower()
+                            cwd = proc.cwd().lower() if hasattr(proc, 'cwd') else ''
+
+                            # ENHANCED: Verify process is JARVIS-related
+                            # Don't blindly trust port detection - verify it's our process
+                            is_jarvis = (
+                                'jarvis' in cmdline_str or
+                                'jarvis' in cwd or
+                                'main.py' in cmdline_str or
+                                'start_system.py' in cmdline_str or
+                                'uvicorn' in cmdline_str
+                            )
+
+                            if not is_jarvis:
+                                logger.debug(f"Port {port} process {pid} is not JARVIS-related, skipping")
+                                continue
 
                             process_info = ProcessInfo(
                                 pid=pid,
                                 name=proc.name(),
-                                cmdline=proc.cmdline(),
+                                cmdline=cmdline,
                                 create_time=proc.create_time(),
                                 ports=[port],
                                 detection_strategy=f"port_based:{port}",
@@ -451,24 +526,44 @@ class AdvancedProcessDetector:
 
         def scan_connections():
             found = []
-            for conn in psutil.net_connections(kind='inet'):
-                if conn.laddr and conn.laddr.port in self.config.ports:
-                    try:
-                        if conn.pid:
-                            proc = psutil.Process(conn.pid)
-                            process_info = ProcessInfo(
-                                pid=conn.pid,
-                                name=proc.name(),
-                                cmdline=proc.cmdline(),
-                                create_time=proc.create_time(),
-                                ports=[conn.laddr.port],
-                                connections=[f"{conn.laddr.ip}:{conn.laddr.port}"],
-                                detection_strategy="network_connections",
-                                age_hours=(time.time() - proc.create_time()) / 3600,
-                            )
-                            found.append(process_info)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
+            try:
+                # This may require elevated permissions on macOS
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr and conn.laddr.port in self.config.ports:
+                        try:
+                            if conn.pid:
+                                proc = psutil.Process(conn.pid)
+                                cmdline = proc.cmdline()
+                                cmdline_str = ' '.join(cmdline).lower()
+                                cwd = proc.cwd().lower() if hasattr(proc, 'cwd') else ''
+
+                                # ENHANCED: Verify it's JARVIS-related
+                                is_jarvis = (
+                                    'jarvis' in cmdline_str or
+                                    'jarvis' in cwd or
+                                    'main.py' in cmdline_str or
+                                    'start_system.py' in cmdline_str
+                                )
+
+                                if not is_jarvis:
+                                    continue
+
+                                process_info = ProcessInfo(
+                                    pid=conn.pid,
+                                    name=proc.name(),
+                                    cmdline=cmdline,
+                                    create_time=proc.create_time(),
+                                    ports=[conn.laddr.port],
+                                    connections=[f"{conn.laddr.ip}:{conn.laddr.port}"],
+                                    detection_strategy="network_connections",
+                                    age_hours=(time.time() - proc.create_time()) / 3600,
+                                )
+                                found.append(process_info)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            continue
+            except (psutil.AccessDenied, PermissionError) as e:
+                # This is expected on macOS without sudo
+                logger.debug(f"Network connections scan requires elevated permissions: {e}")
             return found
 
         loop = asyncio.get_event_loop()
