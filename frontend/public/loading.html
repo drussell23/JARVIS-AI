@@ -134,9 +134,8 @@
             border: 3px solid;
             border-radius: 50%;
             animation: rotate linear infinite;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            inset: 0;
+            margin: auto;
         }
 
         .reactor-ring:nth-child(1) {
@@ -168,9 +167,8 @@
             position: absolute;
             width: 50px;
             height: 50px;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            inset: 0;
+            margin: auto;
             background: radial-gradient(circle, var(--jarvis-green) 0%, var(--jarvis-green-dark) 70%, transparent 100%);
             border-radius: 50%;
             box-shadow:
@@ -188,17 +186,16 @@
             position: absolute;
             width: 30px;
             height: 30px;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            inset: 0;
+            margin: auto;
             background: var(--jarvis-green);
             border-radius: 50%;
             box-shadow: 0 0 15px var(--jarvis-green);
         }
 
         @keyframes rotate {
-            from { transform: translate(-50%, -50%) rotate(0deg); }
-            to { transform: translate(-50%, -50%) rotate(360deg); }
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         @keyframes pulse {
@@ -208,11 +205,11 @@
 
         @keyframes corePulse {
             0%, 100% {
-                transform: translate(-50%, -50%) scale(1);
+                transform: scale(1);
                 box-shadow: 0 0 30px var(--jarvis-green), 0 0 60px var(--jarvis-green-dark);
             }
             50% {
-                transform: translate(-50%, -50%) scale(1.15);
+                transform: scale(1.15);
                 box-shadow: 0 0 50px var(--jarvis-green), 0 0 90px var(--jarvis-green-dark);
             }
         }
@@ -530,6 +527,11 @@
             .reactor-core {
                 width: 30px;
                 height: 30px;
+            }
+
+            .reactor-core::before {
+                width: 18px;
+                height: 18px;
             }
 
             .stages-container {
