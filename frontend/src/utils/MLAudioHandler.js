@@ -360,6 +360,15 @@ class MLAudioHandler {
                     message: 'Network or service error - will retry automatically'
                 };
 
+            case 'aborted':
+                // Recognition was aborted (likely due to restart)
+                // This is expected during microphone restarts, treat as success
+                return {
+                    success: true,
+                    message: 'Recognition aborted - normal during restart cycle',
+                    skipRestart: true  // Don't trigger another restart
+                };
+
             default:
                 console.warn('No local strategy for error type:', error.error);
                 return {

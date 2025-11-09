@@ -650,6 +650,14 @@ const JarvisVoice = () => {
   const continuousListeningRef = useRef(false);
   const isWaitingForCommandRef = useRef(false);
 
+  // Circuit breaker for restart loop prevention
+  const restartCircuitBreakerRef = useRef({
+    count: 0,
+    lastReset: Date.now(),
+    threshold: 5,  // Max restarts per window
+    windowMs: 10000  // 10 second window
+  });
+
   // 🎤 Unified Voice Capture - Records audio while browser SpeechRecognition runs
   const voiceAudioStreamRef = useRef(null); // Audio stream for voice biometrics
   const voiceAudioRecorderRef = useRef(null); // MediaRecorder for continuous audio capture
@@ -1989,13 +1997,18 @@ const JarvisVoice = () => {
 
         if (mlResult && mlResult.success) {
           // Only log recovery for non-no-speech errors
-          if (event.error !== 'no-speech') {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
             console.log('ML audio recovery successful:', mlResult);
           }
           setError('');
           setMicStatus('ready');
 
-          // Restart recognition if needed
+          // Restart recognition if needed (but NOT for aborted errors with skipRestart)
+          if (mlResult.skipRestart) {
+            console.log('Skipping restart per ML handler instruction');
+            return;  // Don't restart
+          }
+
           if (mlResult && (mlResult.newContext || (mlResult.message && mlResult.message.includes('granted')))) {
             startListening();
           }
@@ -2135,7 +2148,29 @@ const JarvisVoice = () => {
 
         // ALWAYS restart if continuous listening is enabled (check ref for most current state)
         if (continuousListeningRef.current || continuousListening) {
-          console.log('♾️ Indefinite listening active - restarting microphone...');
+          // Check circuit breaker to prevent infinite restart loops
+          const now = Date.now();
+          const breaker = restartCircuitBreakerRef.current;
+
+          // Reset counter if window has passed
+          if (now - breaker.lastReset > breaker.windowMs) {
+            breaker.count = 0;
+            breaker.lastReset = now;
+          }
+
+          // Check if we've exceeded threshold
+          breaker.count++;
+          if (breaker.count > breaker.threshold) {
+            console.warn(`🚨 Circuit breaker tripped: ${breaker.count} restarts in ${breaker.windowMs}ms`);
+            console.warn('⛔ Stopping continuous listening to prevent infinite loop');
+            continuousListeningRef.current = false;
+            setContinuousListening(false);
+            setError('⚠️ Too many microphone restarts - please restart manually');
+            setMicStatus('error');
+            return;  // Don't restart
+          }
+
+          console.log(`♾️ Indefinite listening active - restarting microphone (${breaker.count}/${breaker.threshold})...`);
 
           // Track restart attempts
           let restartAttempt = 0;
