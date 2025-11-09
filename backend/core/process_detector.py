@@ -302,14 +302,21 @@ class AdvancedProcessDetector:
                 parent = self.current_process.parent()
                 if parent:
                     excluded_pids.add(parent.pid)
-                    # Also exclude grandparent if it looks like an IDE/editor
+                    # Also exclude grandparent
                     grandparent = parent.parent()
                     if grandparent:
-                        gp_name = grandparent.name().lower()
-                        if any(ide in gp_name for ide in ['claude', 'vscode', 'code', 'pycharm', 'idea']):
-                            excluded_pids.add(grandparent.pid)
+                        excluded_pids.add(grandparent.pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
+
+            # CRITICAL: Exclude ALL IDE/editor processes to prevent killing active development sessions
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    proc_name = proc.name().lower()
+                    if any(ide in proc_name for ide in ['claude', 'vscode', 'code-helper', 'pycharm', 'idea', 'cursor']):
+                        excluded_pids.add(proc.pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
 
             filtered = [p for p in filtered if p.pid not in excluded_pids]
 

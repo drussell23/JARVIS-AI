@@ -6570,24 +6570,31 @@ async def main():
                 current_pid = os.getpid()
                 jarvis_processes = []
 
-                # Build exclusion list (current process + parent chain)
+                # Build exclusion list (current process + parent chain + all IDE processes)
                 excluded_pids = {current_pid}
                 try:
                     current_proc = psutil.Process(current_pid)
                     parent = current_proc.parent()
                     if parent:
                         excluded_pids.add(parent.pid)
-                        # Also exclude grandparent if it's an IDE
+                        # Also exclude grandparent
                         grandparent = parent.parent()
                         if grandparent:
-                            gp_name = grandparent.name().lower()
-                            if any(ide in gp_name for ide in ['claude', 'vscode', 'code', 'pycharm', 'idea']):
-                                excluded_pids.add(grandparent.pid)
+                            excluded_pids.add(grandparent.pid)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
 
+                # CRITICAL: Exclude ALL Claude Code / IDE processes to prevent killing the active session
+                for proc in psutil.process_iter(['pid', 'name']):
+                    try:
+                        proc_name = proc.info['name'].lower()
+                        if any(ide in proc_name for ide in ['claude', 'vscode', 'code-helper', 'pycharm', 'idea', 'cursor']):
+                            excluded_pids.add(proc.info['pid'])
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
                 print(f"  → Fallback: Basic psutil enumeration...")
-                print(f"  → Excluding {len(excluded_pids)} process(es) from current session")
+                print(f"  → Excluding {len(excluded_pids)} process(es) from current session + IDEs")
                 for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
                     try:
                         pid = proc.info["pid"]
