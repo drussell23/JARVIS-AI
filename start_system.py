@@ -5735,9 +5735,9 @@ except Exception as e:
                 await self.cleanup()
                 return False
 
-            # Open loading page immediately after backend starts (if in restart mode)
+            # Open loading page from frontend immediately after it starts (if in restart mode)
             if hasattr(self, '_startup_progress') and self._startup_progress and not self.no_browser:
-                loading_url = f"http://localhost:{self.ports['main_api']}/loading/loading.html"
+                loading_url = f"http://localhost:{self.ports['frontend']}/loading.html"
                 print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
                 await self.open_browser_smart(loading_url)
 
@@ -6520,7 +6520,14 @@ async def main():
                 from api.startup_progress_api import get_startup_progress_manager
                 startup_progress = get_startup_progress_manager()
                 await startup_progress.broadcast_progress(
-                    "detecting", "Detecting existing JARVIS processes...", 5
+                    "detecting",
+                    "Detecting existing JARVIS processes...",
+                    5,
+                    metadata={
+                        "icon": "🔍",
+                        "label": "Detecting",
+                        "sublabel": "Scanning processes..."
+                    }
                 )
             except Exception as e:
                 print(f"  {Colors.WARNING}⚠️ Startup progress UI unavailable: {e}{Colors.ENDC}")
@@ -6647,7 +6654,12 @@ async def main():
                         "killing",
                         f"Terminating {len(jarvis_processes)} existing process(es)...",
                         15,
-                        {"count": len(jarvis_processes)}
+                        details={"count": len(jarvis_processes)},
+                        metadata={
+                            "icon": "⚔️",
+                            "label": "Terminating",
+                            "sublabel": f"{len(jarvis_processes)} processes"
+                        }
                     )
 
                 print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
@@ -6707,7 +6719,15 @@ async def main():
 
                 if startup_progress:
                     await startup_progress.broadcast_progress(
-                        "cleanup", "Processes terminated, cleaning up resources...", 30
+                        "cleanup",
+                        "Processes terminated, cleaning up resources...",
+                        30,
+                        details={"killed": killed_count, "failed": failed_count},
+                        metadata={
+                            "icon": "🧹",
+                            "label": "Cleanup",
+                            "sublabel": f"{killed_count} terminated"
+                        }
                     )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
@@ -6846,7 +6866,14 @@ async def main():
 
             if startup_progress:
                 await startup_progress.broadcast_progress(
-                    "starting", "Starting fresh JARVIS instance...", 50
+                    "starting",
+                    "Starting fresh JARVIS instance...",
+                    50,
+                    metadata={
+                        "icon": "🚀",
+                        "label": "Starting",
+                        "sublabel": "Launching services..."
+                    }
                 )
 
             # Fall through to normal startup - backend will start fresh

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS - Initializing</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --jarvis-green: #00ff41;
+            --jarvis-green-dark: #00aa2e;
+            --jarvis-green-glow: rgba(0, 255, 65, 0.5);
+            --jarvis-orange: #ff8c00;
+            --jarvis-red: #ff4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: var(--jarvis-green);
+            font-family: 'Rajdhani', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Particle background */
+        .particles-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.3;
+        }
+
+        .particle {
+            position: absolute;
+            background: var(--jarvis-green);
+            border-radius: 50%;
+            animation: float linear infinite;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(50px);
+                opacity: 0;
+            }
+        }
+
+        /* Main container */
+        .loading-container {
+            text-align: center;
+            z-index: 10;
+            max-width: 900px;
+            width: 90%;
+            padding: 40px;
+        }
+
+        /* Logo */
+        .jarvis-logo {
+            font-family: 'Orbitron', monospace;
+            font-size: 5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 30px var(--jarvis-green-glow));
+            animation: pulse 2s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.3rem;
+            color: var(--jarvis-green-dark);
+            margin-bottom: 60px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
+
+        /* Arc Reactor */
+        .arc-reactor {
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 50px;
+            position: relative;
+        }
+
+        .reactor-ring {
+            position: absolute;
+            border: 3px solid;
+            border-radius: 50%;
+            animation: rotate linear infinite;
+        }
+
+        .reactor-ring:nth-child(1) {
+            width: 180px;
+            height: 180px;
+            border-color: var(--jarvis-green) transparent transparent transparent;
+            animation-duration: 3s;
+        }
+
+        .reactor-ring:nth-child(2) {
+            width: 130px;
+            height: 130px;
+            top: 25px;
+            left: 25px;
+            border-color: transparent var(--jarvis-green-dark) transparent transparent;
+            animation-direction: reverse;
+            animation-duration: 2s;
+        }
+
+        .reactor-ring:nth-child(3) {
+            width: 80px;
+            height: 80px;
+            top: 50px;
+            left: 50px;
+            border-color: transparent transparent var(--jarvis-green) transparent;
+            animation-duration: 1.5s;
+        }
+
+        .reactor-core {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            top: 70px;
+            left: 70px;
+            background: radial-gradient(circle, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
+            border-radius: 50%;
+            box-shadow:
+                0 0 30px var(--jarvis-green),
+                0 0 60px var(--jarvis-green-dark),
+                0 0 90px var(--jarvis-green-glow);
+            animation: corePulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        @keyframes corePulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 30px var(--jarvis-green), 0 0 60px var(--jarvis-green-dark);
+            }
+            50% {
+                transform: scale(1.15);
+                box-shadow: 0 0 50px var(--jarvis-green), 0 0 90px var(--jarvis-green-dark);
+            }
+        }
+
+        /* Progress percentage */
+        .progress-percentage {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--jarvis-green);
+            margin-bottom: 25px;
+            font-family: 'Orbitron', monospace;
+            text-shadow: 0 0 20px var(--jarvis-green-glow);
+            transition: all 0.3s ease;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            width: 100%;
+            height: 50px;
+            background: rgba(0, 255, 65, 0.08);
+            border: 2px solid var(--jarvis-green);
+            border-radius: 25px;
+            overflow: hidden;
+            position: relative;
+            box-shadow:
+                0 0 15px var(--jarvis-green-glow),
+                inset 0 0 15px rgba(0, 255, 65, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg,
+                var(--jarvis-green) 0%,
+                var(--jarvis-green-dark) 50%,
+                var(--jarvis-green) 100%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite linear;
+            width: 0%;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(255, 255, 255, 0.4),
+                transparent);
+            animation: slide 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @keyframes slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* Status message */
+        .status-message {
+            font-size: 1.2rem;
+            color: #fff;
+            margin: 20px 0;
+            min-height: 40px;
+            text-shadow: 0 0 10px var(--jarvis-green-glow);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+
+        /* Stage indicators */
+        .stages-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin-top: 50px;
+        }
+
+        .stage-item {
+            padding: 20px 15px;
+            background: rgba(0, 255, 65, 0.05);
+            border: 1px solid rgba(0, 255, 65, 0.25);
+            border-radius: 12px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stage-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .stage-item.active {
+            background: rgba(0, 255, 65, 0.15);
+            border-color: var(--jarvis-green);
+            box-shadow: 0 0 20px var(--jarvis-green-glow);
+            transform: scale(1.05);
+        }
+
+        .stage-item.active::before {
+            left: 100%;
+        }
+
+        .stage-item.completed {
+            background: rgba(0, 255, 65, 0.1);
+            border-color: var(--jarvis-green-dark);
+        }
+
+        .stage-item.failed {
+            background: rgba(255, 68, 68, 0.1);
+            border-color: var(--jarvis-red);
+        }
+
+        .stage-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            filter: drop-shadow(0 0 5px var(--jarvis-green-glow));
+        }
+
+        .stage-label {
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+        }
+
+        .stage-sublabel {
+            font-size: 0.75rem;
+            color: var(--jarvis-green-dark);
+            margin-top: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .stage-item.active .stage-sublabel,
+        .stage-item.completed .stage-sublabel {
+            opacity: 1;
+        }
+
+        /* Connection status */
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+
+        .status-indicator.connecting {
+            background: var(--jarvis-orange);
+        }
+
+        .status-indicator.connected {
+            background: var(--jarvis-green);
+            animation: none;
+        }
+
+        .status-indicator.disconnected {
+            background: var(--jarvis-red);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Details panel */
+        .details-panel {
+            margin-top: 40px;
+            padding: 25px;
+            background: rgba(0, 255, 65, 0.03);
+            border: 1px solid rgba(0, 255, 65, 0.15);
+            border-radius: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            text-align: left;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s ease;
+        }
+
+        .details-panel.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .details-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .details-panel::-webkit-scrollbar-track {
+            background: rgba(0, 255, 65, 0.05);
+            border-radius: 4px;
+        }
+
+        .details-panel::-webkit-scrollbar-thumb {
+            background: var(--jarvis-green-dark);
+            border-radius: 4px;
+        }
+
+        .detail-item {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: var(--jarvis-green-dark);
+            margin: 8px 0;
+            padding: 8px 12px;
+            background: rgba(0, 255, 65, 0.05);
+            border-left: 3px solid var(--jarvis-green);
+            border-radius: 4px;
+        }
+
+        .detail-key {
+            color: var(--jarvis-green);
+            font-weight: 700;
+        }
+
+        /* Error state */
+        .error-container {
+            display: none;
+            margin-top: 40px;
+            padding: 30px;
+            background: rgba(255, 68, 68, 0.1);
+            border: 2px solid var(--jarvis-red);
+            border-radius: 12px;
+            animation: shake 0.5s;
+        }
+
+        .error-container.visible {
+            display: block;
+        }
+
+        .error-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .error-title {
+            font-size: 1.8rem;
+            color: var(--jarvis-red);
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .error-message {
+            font-size: 1.1rem;
+            color: #ff8888;
+            line-height: 1.6;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .jarvis-logo {
+                font-size: 3.5rem;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+            }
+
+            .arc-reactor {
+                width: 140px;
+                height: 140px;
+            }
+
+            .reactor-ring:nth-child(1) {
+                width: 140px;
+                height: 140px;
+            }
+
+            .reactor-ring:nth-child(2) {
+                width: 100px;
+                height: 100px;
+                top: 20px;
+                left: 20px;
+            }
+
+            .reactor-ring:nth-child(3) {
+                width: 60px;
+                height: 60px;
+                top: 40px;
+                left: 40px;
+            }
+
+            .reactor-core {
+                width: 30px;
+                height: 30px;
+                top: 55px;
+                left: 55px;
+            }
+
+            .stages-container {
+                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+                gap: 10px;
+            }
+
+            .stage-icon {
+                font-size: 2rem;
+            }
+
+            .stage-label {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Particle background -->
+    <div class="particles-bg" id="particles"></div>
+
+    <!-- Connection status -->
+    <div class="connection-status">
+        <div class="status-indicator connecting" id="status-indicator"></div>
+        <span id="status-text">Connecting to backend...</span>
+    </div>
+
+    <!-- Main loading container -->
+    <div class="loading-container">
+        <div class="jarvis-logo">J.A.R.V.I.S.</div>
+        <div class="subtitle" id="subtitle">System Initialization</div>
+
+        <!-- Arc Reactor -->
+        <div class="arc-reactor">
+            <div class="reactor-ring"></div>
+            <div class="reactor-ring"></div>
+            <div class="reactor-ring"></div>
+            <div class="reactor-core"></div>
+        </div>
+
+        <!-- Progress percentage -->
+        <div class="progress-percentage" id="progress-percentage">0%</div>
+
+        <!-- Progress bar -->
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+
+        <!-- Status message -->
+        <div class="status-message" id="status-message">Initializing JARVIS systems...</div>
+
+        <!-- Stage indicators (dynamically populated) -->
+        <div class="stages-container" id="stages-container"></div>
+
+        <!-- Details panel -->
+        <div class="details-panel" id="details-panel"></div>
+
+        <!-- Error container -->
+        <div class="error-container" id="error-container">
+            <div class="error-icon">⚠️</div>
+            <div class="error-title">Startup Failed</div>
+            <div class="error-message" id="error-message"></div>
+        </div>
+    </div>
+
+    <script src="/loading-manager.js"></script>
+</body>
+</html>

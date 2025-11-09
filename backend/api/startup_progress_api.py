@@ -53,6 +53,7 @@ class StartupProgressManager:
         message: str,
         progress: int,
         details: Dict = None,
+        metadata: Dict = None,
     ):
         """
         Broadcast progress update to all connected clients
@@ -62,6 +63,7 @@ class StartupProgressManager:
             message: Human-readable message
             progress: Progress percentage (0-100)
             details: Optional additional data
+            metadata: Optional stage metadata (icon, label, sublabel for dynamic UI)
         """
         status = {
             "stage": stage,
@@ -72,6 +74,9 @@ class StartupProgressManager:
 
         if details:
             status["details"] = details
+
+        if metadata:
+            status["metadata"] = metadata
 
         self.current_status = status
 
@@ -138,6 +143,13 @@ async def startup_progress_websocket(websocket: WebSocket):
         logger.error(f"Startup progress WebSocket error: {e}")
     finally:
         await startup_progress_manager.disconnect(websocket)
+
+
+# HTTP endpoint for polling fallback
+@router.get("/api/startup-progress")
+async def get_startup_progress():
+    """HTTP endpoint for polling-based progress updates (fallback for WebSocket)"""
+    return startup_progress_manager.current_status
 
 
 # Convenience function for use in start_system.py
