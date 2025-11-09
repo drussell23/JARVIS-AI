@@ -6477,139 +6477,100 @@ async def main():
                 sys.path.insert(0, str(backend_dir))
 
             # Step 1: Advanced JARVIS process detection with multiple strategies
-            print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection...{Colors.ENDC}")
-            current_pid = os.getpid()
-            jarvis_processes = []
+            print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
 
-            # Strategy 1: psutil with robust matching
-            print(f"  → Strategy 1: psutil enumeration...")
-            for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            # Import the advanced process detector
+            import sys
+            backend_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
+            if backend_path not in sys.path:
+                sys.path.insert(0, backend_path)
+
+            try:
+                from core.process_detector import (
+                    AdvancedProcessDetector,
+                    DetectionConfig,
+                    detect_and_kill_jarvis_processes,
+                )
+
+                # Run async detection
+                print(f"  → Running 7 concurrent detection strategies...")
+                print(f"    • psutil_scan: Process enumeration")
+                print(f"    • ps_command: Shell command verification")
+                print(f"    • port_based: Dynamic port scanning")
+                print(f"    • network_connections: Active connections")
+                print(f"    • file_descriptor: Open file analysis")
+                print(f"    • parent_child: Process tree analysis")
+                print(f"    • command_line: Regex pattern matching")
+
+                # Create event loop if not exists
                 try:
-                    pid = proc.info["pid"]
-                    if pid == current_pid:
-                        continue  # Skip ourselves
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
 
-                    cmdline = proc.info.get("cmdline")
-                    if not cmdline:
-                        continue
+                # Detect processes (dry run first to show what we found)
+                result = loop.run_until_complete(detect_and_kill_jarvis_processes(dry_run=True))
 
-                    cmdline_str = " ".join(cmdline).lower()
+                jarvis_processes = result["processes"]
+                print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
 
-                    # Enhanced matching: catch all variants
-                    is_start_system = "python" in cmdline_str and "start_system.py" in cmdline_str
-                    is_backend = (
-                        "python" in cmdline_str
-                        and "main.py" in cmdline_str
-                        and "backend" in cmdline_str
-                    )
+                # Convert to old format for compatibility with existing code
+                jarvis_processes = [
+                    {
+                        "pid": p["pid"],
+                        "age_hours": p["age_hours"],
+                        "type": p["detection_strategy"],
+                        "cmdline": p["cmdline"],
+                    }
+                    for p in jarvis_processes
+                ]
 
-                    # Also check if process is in JARVIS directory
-                    is_jarvis_dir = "jarvis" in cmdline_str.lower()
+            except ImportError as e:
+                print(f"  {Colors.YELLOW}⚠ Advanced detector not available, falling back to basic detection{Colors.ENDC}")
+                print(f"    Error: {e}")
 
-                    if (is_start_system or is_backend) and is_jarvis_dir:
-                        jarvis_processes.append(
-                            {
-                                "pid": pid,
-                                "age_hours": (time.time() - proc.info["create_time"]) / 3600,
-                                "type": (
-                                    "start_system.py" if is_start_system else "backend/main.py"
-                                ),
-                                "cmdline": " ".join(cmdline),
-                            }
+                # Fallback to basic detection
+                current_pid = os.getpid()
+                jarvis_processes = []
+
+                print(f"  → Fallback: Basic psutil enumeration...")
+                for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+                    try:
+                        pid = proc.info["pid"]
+                        if pid == current_pid:
+                            continue  # Skip ourselves
+
+                        cmdline = proc.info.get("cmdline")
+                        if not cmdline:
+                            continue
+
+                        cmdline_str = " ".join(cmdline).lower()
+
+                        # Enhanced matching: catch all variants
+                        is_start_system = "python" in cmdline_str and "start_system.py" in cmdline_str
+                        is_backend = (
+                            "python" in cmdline_str
+                            and "main.py" in cmdline_str
+                            and "backend" in cmdline_str
                         )
+
+                        # Also check if process is in JARVIS directory
+                        is_jarvis_dir = "jarvis" in cmdline_str.lower()
+
+                        if (is_start_system or is_backend) and is_jarvis_dir:
+                            jarvis_processes.append(
+                                {
+                                    "pid": pid,
+                                    "age_hours": (time.time() - proc.info["create_time"]) / 3600,
+                                    "type": (
+                                        "start_system.py" if is_start_system else "backend/main.py"
+                                    ),
+                                    "cmdline": " ".join(cmdline),
+                                }
+                            )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
-
-            # Strategy 2: Direct ps command as backup (catches edge cases)
-            print(f"  → Strategy 2: ps command verification...")
-            try:
-                ps_result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
-
-                for line in ps_result.stdout.split("\n"):
-                    if not line.strip():
-                        continue
-
-                    # Look for python processes running start_system.py or backend/main.py
-                    if "python" in line.lower() and (
-                        "start_system.py" in line or "backend/main.py" in line
-                    ):
-                        # Extract PID (second column in ps aux output)
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            try:
-                                pid = int(parts[1])
-                                if pid == current_pid:
-                                    continue
-
-                                # Check if we already found this PID
-                                if not any(p["pid"] == pid for p in jarvis_processes):
-                                    jarvis_processes.append(
-                                        {
-                                            "pid": pid,
-                                            "age_hours": 0.0,  # Unknown age from ps
-                                            "type": (
-                                                "start_system.py"
-                                                if "start_system.py" in line
-                                                else "backend/main.py"
-                                            ),
-                                            "cmdline": line,
-                                        }
-                                    )
-                            except (ValueError, IndexError):
-                                continue
-            except Exception as e:
-                print(f"  {Colors.YELLOW}⚠ ps command failed (non-critical): {e}{Colors.ENDC}")
-
-            # Strategy 3: Check for processes using JARVIS ports (8010, 8000, 3000)
-            print(f"  → Strategy 3: Port-based detection (8010, 8000, 3000)...")
-            try:
-                for port in [8010, 8000, 3000]:
-                    # Use lsof to find processes using these ports
-                    lsof_result = subprocess.run(
-                        ["lsof", "-ti", f":{port}"],
-                        capture_output=True,
-                        text=True,
-                        timeout=2
-                    )
-                    if lsof_result.stdout.strip():
-                        pids = lsof_result.stdout.strip().split("\n")
-                        for pid_str in pids:
-                            if pid_str:
-                                try:
-                                    pid = int(pid_str)
-                                    if pid == current_pid:
-                                        continue
-
-                                    # Check if we already found this PID
-                                    if not any(p["pid"] == pid for p in jarvis_processes):
-                                        # Get process details
-                                        try:
-                                            proc = psutil.Process(pid)
-                                            cmdline = " ".join(proc.cmdline())
-                                            jarvis_processes.append(
-                                                {
-                                                    "pid": pid,
-                                                    "age_hours": (time.time() - proc.create_time()) / 3600,
-                                                    "type": f"port-{port}",
-                                                    "cmdline": cmdline,
-                                                }
-                                            )
-                                            print(f"    Found process on port {port}: PID {pid}")
-                                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                            pass
-                                except (ValueError, psutil.NoSuchProcess):
-                                    continue
-            except Exception as e:
-                print(f"  {Colors.YELLOW}⚠ Port detection failed (non-critical): {e}{Colors.ENDC}")
-
-            # Remove duplicates (same PID from both strategies)
-            seen_pids = set()
-            unique_processes = []
-            for proc in jarvis_processes:
-                if proc["pid"] not in seen_pids:
-                    seen_pids.add(proc["pid"])
-                    unique_processes.append(proc)
-            jarvis_processes = unique_processes
 
             if jarvis_processes:
                 print(

@@ -1,0 +1,45 @@
+{
+  "description": "Advanced Process Detection Configuration for JARVIS",
+  "version": "1.0.0",
+  "ports": [
+    8010,
+    8000,
+    3000,
+    5000,
+    8080
+  ],
+  "process_patterns": [
+    "jarvis",
+    "main.py",
+    "start_system.py",
+    "uvicorn",
+    "fastapi",
+    "voice_api",
+    "backend"
+  ],
+  "file_patterns": [
+    "jarvis",
+    ".jarvis",
+    "backend/main.py",
+    "start_system.py"
+  ],
+  "cmdline_patterns": [
+    "python.*jarvis",
+    "python.*main\\.py",
+    "python.*start_system",
+    "uvicorn.*jarvis",
+    "uvicorn.*main:app"
+  ],
+  "strategy_timeout": 5.0,
+  "max_concurrency": 10,
+  "min_age_hours": 0.01,
+  "enabled_strategies": [
+    "psutil_scan",
+    "ps_command",
+    "port_based",
+    "network_connections",
+    "file_descriptor",
+    "parent_child",
+    "command_line"
+  ]
+}
