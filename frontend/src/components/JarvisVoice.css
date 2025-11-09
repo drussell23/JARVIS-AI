@@ -541,7 +541,10 @@
 .text-command-container {
   width: 100%;
   max-width: 800px;
-  margin: 1.5rem auto 0;
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
   padding: 0 20px;
 }
@@ -626,11 +629,7 @@
   max-width: 700px;
   z-index: 10;
   padding: 0 20px;
-  display: block;
-  position: fixed;
-  bottom: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
+  display: none;
 }
 
 .jarvis-input-container {

@@ -119,8 +119,8 @@
 
         /* Arc Reactor Wrapper */
         .arc-reactor-wrapper {
-            width: 200px;
-            height: 200px;
+            width: 300px;
+            height: 300px;
             margin: 0 auto 50px;
             position: relative;
             display: flex;
@@ -130,13 +130,23 @@
 
         /* Arc Reactor */
         .arc-reactor {
-            width: 200px;
-            height: 200px;
+            width: 300px;
+            height: 300px;
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             transform-origin: center center;
+            animation: reactorFloat 4s ease-in-out infinite;
+        }
+
+        @keyframes reactorFloat {
+            0%, 100% {
+                transform: translate(-50%, -50%) translateY(0px);
+            }
+            50% {
+                transform: translate(-50%, -50%) translateY(-10px);
+            }
         }
 
         .reactor-ring {
@@ -149,44 +159,90 @@
         }
 
         .reactor-ring:nth-child(1) {
-            width: 200px;
-            height: 200px;
+            width: 300px;
+            height: 300px;
             border-color: var(--jarvis-green) transparent transparent transparent;
-            animation-duration: 3s;
-            box-shadow: 0 0 10px var(--jarvis-green-glow);
+            border-width: 4px;
+            animation: rotate 3s linear infinite, ringPulse1 2s ease-in-out infinite;
+            box-shadow:
+                0 0 20px var(--jarvis-green-glow),
+                inset 0 0 20px rgba(0, 255, 65, 0.1);
         }
 
         .reactor-ring:nth-child(2) {
-            width: 150px;
-            height: 150px;
+            width: 220px;
+            height: 220px;
             border-color: transparent var(--jarvis-green-dark) transparent transparent;
-            animation-direction: reverse;
-            animation-duration: 2s;
-            box-shadow: 0 0 8px var(--jarvis-green-glow);
+            border-width: 4px;
+            animation: rotate 2s linear infinite reverse, ringPulse2 2.5s ease-in-out infinite;
+            box-shadow:
+                0 0 15px var(--jarvis-green-glow),
+                inset 0 0 15px rgba(0, 255, 65, 0.1);
         }
 
         .reactor-ring:nth-child(3) {
-            width: 100px;
-            height: 100px;
+            width: 140px;
+            height: 140px;
             border-color: transparent transparent var(--jarvis-green) transparent;
-            animation-duration: 1.5s;
-            box-shadow: 0 0 6px var(--jarvis-green-glow);
+            border-width: 4px;
+            animation: rotate 1.5s linear infinite, ringPulse3 3s ease-in-out infinite;
+            box-shadow:
+                0 0 10px var(--jarvis-green-glow),
+                inset 0 0 10px rgba(0, 255, 65, 0.1);
+        }
+
+        @keyframes ringPulse1 {
+            0%, 100% {
+                opacity: 1;
+                filter: drop-shadow(0 0 20px var(--jarvis-green));
+            }
+            50% {
+                opacity: 0.7;
+                filter: drop-shadow(0 0 30px var(--jarvis-green));
+            }
+        }
+
+        @keyframes ringPulse2 {
+            0%, 100% {
+                opacity: 0.8;
+                filter: drop-shadow(0 0 15px var(--jarvis-green-dark));
+            }
+            50% {
+                opacity: 1;
+                filter: drop-shadow(0 0 25px var(--jarvis-green-dark));
+            }
+        }
+
+        @keyframes ringPulse3 {
+            0%, 100% {
+                opacity: 0.9;
+                filter: drop-shadow(0 0 10px var(--jarvis-green));
+            }
+            50% {
+                opacity: 1;
+                filter: drop-shadow(0 0 20px var(--jarvis-green));
+            }
         }
 
         .reactor-core {
             position: absolute;
-            width: 50px;
-            height: 50px;
+            width: 80px;
+            height: 80px;
             inset: 0;
             margin: auto;
-            background: radial-gradient(circle, var(--jarvis-green) 0%, var(--jarvis-green-dark) 70%, transparent 100%);
+            background: radial-gradient(circle,
+                var(--jarvis-green) 0%,
+                var(--jarvis-green) 30%,
+                var(--jarvis-green-dark) 60%,
+                rgba(0, 170, 46, 0.5) 85%,
+                transparent 100%);
             border-radius: 50%;
             box-shadow:
-                0 0 20px var(--jarvis-green),
-                0 0 40px var(--jarvis-green),
-                0 0 60px var(--jarvis-green-dark),
-                0 0 80px var(--jarvis-green-glow),
-                inset 0 0 20px var(--jarvis-green);
+                0 0 30px var(--jarvis-green),
+                0 0 60px var(--jarvis-green),
+                0 0 90px var(--jarvis-green-dark),
+                0 0 120px var(--jarvis-green-glow),
+                inset 0 0 30px var(--jarvis-green);
             animation: corePulse 1.5s ease-in-out infinite;
             z-index: 10;
         }
@@ -194,13 +250,32 @@
         .reactor-core::before {
             content: '';
             position: absolute;
-            width: 30px;
-            height: 30px;
+            width: 50px;
+            height: 50px;
             inset: 0;
             margin: auto;
             background: var(--jarvis-green);
             border-radius: 50%;
-            box-shadow: 0 0 15px var(--jarvis-green);
+            box-shadow:
+                0 0 25px var(--jarvis-green),
+                0 0 50px rgba(0, 255, 65, 0.8),
+                inset 0 0 15px rgba(255, 255, 255, 0.5);
+            animation: coreGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes coreGlow {
+            0%, 100% {
+                box-shadow:
+                    0 0 25px var(--jarvis-green),
+                    0 0 50px rgba(0, 255, 65, 0.8),
+                    inset 0 0 15px rgba(255, 255, 255, 0.5);
+            }
+            50% {
+                box-shadow:
+                    0 0 40px var(--jarvis-green),
+                    0 0 80px rgba(0, 255, 65, 1),
+                    inset 0 0 25px rgba(255, 255, 255, 0.8);
+            }
         }
 
         @keyframes rotate {
@@ -515,38 +590,38 @@
             }
 
             .arc-reactor-wrapper {
-                width: 140px;
-                height: 140px;
+                width: 220px;
+                height: 220px;
             }
 
             .arc-reactor {
-                width: 140px;
-                height: 140px;
+                width: 220px;
+                height: 220px;
             }
 
             .reactor-ring:nth-child(1) {
-                width: 140px;
-                height: 140px;
+                width: 220px;
+                height: 220px;
             }
 
             .reactor-ring:nth-child(2) {
+                width: 160px;
+                height: 160px;
+            }
+
+            .reactor-ring:nth-child(3) {
                 width: 100px;
                 height: 100px;
             }
 
-            .reactor-ring:nth-child(3) {
+            .reactor-core {
                 width: 60px;
                 height: 60px;
             }
 
-            .reactor-core {
-                width: 30px;
-                height: 30px;
-            }
-
             .reactor-core::before {
-                width: 18px;
-                height: 18px;
+                width: 38px;
+                height: 38px;
             }
 
             .stages-container {
