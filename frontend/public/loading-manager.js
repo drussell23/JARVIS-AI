@@ -581,7 +581,7 @@ class JARVISLoadingManager {
     }
 
     /**
-     * Handle completion
+     * Handle completion with smooth animation
      */
     handleCompletion(success, redirectUrl, message) {
         if (!success) {
@@ -591,23 +591,65 @@ class JARVISLoadingManager {
 
         console.log('[Complete] Startup successful');
 
+        // Update text
         this.elements.subtitle.textContent = 'System Ready!';
         this.elements.statusMessage.textContent = message || 'JARVIS is ready!';
 
-        // Redirect after brief delay
-        if (redirectUrl) {
-            setTimeout(() => {
-                console.log(`[Redirect] Navigating to ${redirectUrl}`);
-                window.location.href = redirectUrl;
-            }, 2000);
-        } else {
-            // Auto-detect main app URL
-            const mainAppUrl = `${this.config.httpProtocol}//${this.config.hostname}:3000`;
-            setTimeout(() => {
-                console.log(`[Redirect] Navigating to ${mainAppUrl}`);
-                window.location.href = mainAppUrl;
-            }, 2000);
+        // Smooth animation sequence
+        const container = document.querySelector('.loading-container');
+        const reactor = document.querySelector('.arc-reactor');
+
+        // 1. Pulse the reactor core (success indicator)
+        if (reactor) {
+            reactor.style.animation = 'pulse 0.5s ease-in-out 3';
         }
+
+        // 2. Fade out after 1.5 seconds with smooth transition
+        setTimeout(() => {
+            if (container) {
+                container.style.transition = 'opacity 1s ease-out, transform 1s ease-out';
+                container.style.opacity = '0';
+                container.style.transform = 'scale(0.95)';
+            }
+
+            // Set body background for smooth transition
+            document.body.style.transition = 'background-color 1s ease-out';
+            document.body.style.backgroundColor = '#000';
+
+        }, 1500);
+
+        // 3. Redirect after fade completes
+        const delay = 2500; // 1.5s wait + 1s fade
+        const targetUrl = redirectUrl || `${this.config.httpProtocol}//${this.config.hostname}:3000`;
+
+        setTimeout(() => {
+            console.log(`[Redirect] Navigating to ${targetUrl}`);
+
+            // Add a nice fade-to-white before redirect
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(135deg, #000 0%, #003300 100%);
+                opacity: 0;
+                transition: opacity 0.5s ease-in;
+                z-index: 10000;
+            `;
+            document.body.appendChild(overlay);
+
+            // Trigger fade
+            setTimeout(() => {
+                overlay.style.opacity = '1';
+            }, 10);
+
+            // Redirect after overlay fades in
+            setTimeout(() => {
+                window.location.href = targetUrl;
+            }, 500);
+        }, delay);
     }
 
     /**

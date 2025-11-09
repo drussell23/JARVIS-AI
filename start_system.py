@@ -5720,6 +5720,36 @@ except Exception as e:
             backend_task = asyncio.create_task(self.start_backend())
             frontend_task = asyncio.create_task(self.start_frontend())
 
+            # Start progress tracking task if in restart mode
+            async def track_backend_progress():
+                """Track backend initialization and broadcast progress"""
+                if not hasattr(self, '_startup_progress') or not self._startup_progress:
+                    return
+
+                progress_stages = [
+                    (60, "database", "Initializing database connections...", {"icon": "💾", "label": "Database", "sublabel": "Connecting..."}),
+                    (70, "voice", "Loading voice biometric system...", {"icon": "🎤", "label": "Voice System", "sublabel": "Loading models..."}),
+                    (80, "vision", "Initializing vision components...", {"icon": "👁️", "label": "Vision", "sublabel": "Starting capture..."}),
+                    (90, "api", "Starting API server...", {"icon": "🌐", "label": "API Server", "sublabel": "Starting FastAPI..."}),
+                ]
+
+                for progress, stage, message, metadata in progress_stages:
+                    # Wait for backend to reach this stage (rough timing)
+                    await asyncio.sleep(10)  # Adjust based on typical startup time
+
+                    # Check if backend is still starting
+                    if not backend_task.done():
+                        try:
+                            await self._startup_progress.broadcast_progress(
+                                stage, message, progress, metadata=metadata
+                            )
+                        except:
+                            pass
+
+            # Start progress tracking in background (don't await)
+            if hasattr(self, '_startup_progress') and self._startup_progress:
+                asyncio.create_task(track_backend_progress())
+
             # Wait for both with proper error handling
             backend_result, frontend_result = await asyncio.gather(
                 backend_task, frontend_task, return_exceptions=True
@@ -5735,11 +5765,8 @@ except Exception as e:
                 await self.cleanup()
                 return False
 
-            # Open loading page from frontend immediately after it starts (if in restart mode)
-            if hasattr(self, '_startup_progress') and self._startup_progress and not self.no_browser:
-                loading_url = f"http://localhost:{self.ports['frontend']}/loading.html"
-                print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
-                await self.open_browser_smart(loading_url)
+            # Loading page already opened by standalone server during restart mode
+            # (See loading_server.py started before process cleanup)
 
             # Check frontend result (non-critical)
             if isinstance(frontend_result, Exception):
@@ -6501,13 +6528,53 @@ async def main():
             time.sleep(2)
             print(f"{Colors.GREEN}✓ Ready to start fresh instance{Colors.ENDC}\n")
 
+    # Loading server process (module scope for cleanup)
+    loading_server_process = None
+
     # Handle restart mode (explicit --restart flag)
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
 
-        # Note: Loading page will be opened through backend server after it starts
-        # This allows WebSocket connection for real-time progress updates
+        # Step 0: Start standalone loading server BEFORE killing processes
+        loading_server_url = "http://localhost:3001"
+
+        if not args.no_browser:
+            print(f"{Colors.CYAN}📡 Starting loading page server...{Colors.ENDC}")
+            try:
+                loading_server_script = Path(__file__).parent / "loading_server.py"
+                loading_server_process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    str(loading_server_script),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+
+                # Wait for server to be ready
+                await asyncio.sleep(1)
+
+                # Verify loading server is running
+                result = subprocess.run(
+                    ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{loading_server_url}/health"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+
+                if result.stdout == "200":
+                    print(f"{Colors.GREEN}   ✓ Loading server started on {loading_server_url}{Colors.ENDC}")
+
+                    # Open loading page immediately
+                    print(f"{Colors.CYAN}🌐 Opening loading page...{Colors.ENDC}")
+                    try:
+                        subprocess.Popen(["open", loading_server_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except:
+                        print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
+                else:
+                    print(f"{Colors.YELLOW}   ⚠️  Loading server health check failed{Colors.ENDC}")
+
+            except Exception as e:
+                print(f"{Colors.YELLOW}   ⚠️  Failed to start loading server: {e}{Colors.ENDC}")
 
         try:
             backend_dir = Path(__file__).parent / "backend"
@@ -6960,13 +7027,22 @@ async def main():
     loop = asyncio.get_event_loop()
 
     def cleanup_and_shutdown():
-        """Cleanup PID file and trigger shutdown"""
+        """Cleanup PID file, loading server, and trigger shutdown"""
         try:
             if pid_file.exists():
                 pid_file.unlink()
                 logger.info("🧹 PID file removed")
         except Exception as e:
             logger.warning(f"Could not remove PID file: {e}")
+
+        # Cleanup loading server if it exists
+        if 'loading_server_process' in locals() and loading_server_process:
+            try:
+                loading_server_process.terminate()
+                logger.info("🧹 Loading server stopped")
+            except:
+                pass
+
         asyncio.create_task(shutdown_handler())
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
