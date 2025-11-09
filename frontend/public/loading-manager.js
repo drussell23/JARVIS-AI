@@ -438,18 +438,92 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.matrixRain.duration);
 
-        // === PHASE 6: REDIRECT ===
-        console.log(`[Redirect] → ${redirectUrl}`);
+        // === PHASE 6: SMOOTH CROSS-FADE TRANSITION (NO WHITE FLASH!) ===
+        console.log(`[Transition] → ${redirectUrl}`);
+
+        // Create black background layer to prevent white flash
+        const blackBackground = document.createElement('div');
+        blackBackground.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+            z-index: 9998;
+        `;
+        document.body.insertBefore(blackBackground, document.body.firstChild);
 
         // Final reactor pulse before redirect
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
             reactor.style.transform = 'scale(2)';
             reactor.style.opacity = '1';
+            reactor.style.zIndex = '10002'; // Keep reactor on top
         }
 
-        await this.sleep(300);
-        window.location.href = redirectUrl;
+        // Preload main page in hidden iframe to avoid white flash
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            opacity: 0;
+            z-index: 10001;
+            background: #000000;
+        `;
+        iframe.src = redirectUrl;
+        document.body.appendChild(iframe);
+
+        // Wait for iframe to load
+        await new Promise((resolve) => {
+            iframe.onload = () => {
+                console.log('[Transition] Main page loaded in iframe');
+                resolve();
+            };
+            // Timeout after 3 seconds
+            setTimeout(resolve, 3000);
+        });
+
+        // Smooth cross-fade to main page
+        console.log('[Transition] Starting cross-fade...');
+
+        // Fade out overlay and matrix
+        if (overlay) {
+            overlay.style.transition = 'opacity 0.8s ease-out';
+            overlay.style.opacity = '0';
+        }
+        if (matrixCanvas) {
+            matrixCanvas.style.transition = 'opacity 0.8s ease-out';
+            matrixCanvas.style.opacity = '0';
+        }
+
+        // Fade out reactor with smooth scale down
+        if (reactor) {
+            reactor.style.transition = 'all 0.8s ease-out';
+            reactor.style.transform = 'scale(0)';
+            reactor.style.opacity = '0';
+        }
+
+        // Fade out loading container
+        if (container) {
+            container.style.transition = 'opacity 0.8s ease-out';
+            container.style.opacity = '0';
+        }
+
+        await this.sleep(400); // Halfway through fade
+
+        // Fade in iframe (main page)
+        iframe.style.transition = 'opacity 0.8s ease-in';
+        iframe.style.opacity = '1';
+
+        await this.sleep(800); // Complete fade
+
+        // Replace current page with iframe content (no white flash!)
+        window.location.replace(redirectUrl);
     }
 
     // === HELPER METHODS FOR DYNAMIC EFFECTS ===

@@ -28,6 +28,24 @@
     href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Rajdhani:wght@400;600;700&display=swap"
     rel="stylesheet">
   <title>J.A.R.V.I.S. Interface</title>
+  <style>
+    /* Prevent white flash during page load and transitions */
+    html, body {
+      background-color: #000000 !important;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Ensure smooth fade-in on initial load */
+    #root {
+      animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
 </head>
 
 <body>

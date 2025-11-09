@@ -20,6 +20,10 @@
             box-sizing: border-box;
         }
 
+        html {
+            background: #000;
+        }
+
         body {
             background: #000;
             color: var(--jarvis-green);
@@ -30,6 +34,20 @@
             min-height: 100vh;
             overflow: hidden;
             position: relative;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Prevent white flash during page transitions */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: -1;
         }
 
         /* Particle background */
