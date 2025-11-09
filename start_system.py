@@ -6560,6 +6560,48 @@ async def main():
             except Exception as e:
                 print(f"  {Colors.YELLOW}⚠ ps command failed (non-critical): {e}{Colors.ENDC}")
 
+            # Strategy 3: Check for processes using JARVIS ports (8010, 8000, 3000)
+            print(f"  → Strategy 3: Port-based detection (8010, 8000, 3000)...")
+            try:
+                for port in [8010, 8000, 3000]:
+                    # Use lsof to find processes using these ports
+                    lsof_result = subprocess.run(
+                        ["lsof", "-ti", f":{port}"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if lsof_result.stdout.strip():
+                        pids = lsof_result.stdout.strip().split("\n")
+                        for pid_str in pids:
+                            if pid_str:
+                                try:
+                                    pid = int(pid_str)
+                                    if pid == current_pid:
+                                        continue
+
+                                    # Check if we already found this PID
+                                    if not any(p["pid"] == pid for p in jarvis_processes):
+                                        # Get process details
+                                        try:
+                                            proc = psutil.Process(pid)
+                                            cmdline = " ".join(proc.cmdline())
+                                            jarvis_processes.append(
+                                                {
+                                                    "pid": pid,
+                                                    "age_hours": (time.time() - proc.create_time()) / 3600,
+                                                    "type": f"port-{port}",
+                                                    "cmdline": cmdline,
+                                                }
+                                            )
+                                            print(f"    Found process on port {port}: PID {pid}")
+                                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                            pass
+                                except (ValueError, psutil.NoSuchProcess):
+                                    continue
+            except Exception as e:
+                print(f"  {Colors.YELLOW}⚠ Port detection failed (non-critical): {e}{Colors.ENDC}")
+
             # Remove duplicates (same PID from both strategies)
             seen_pids = set()
             unique_processes = []
