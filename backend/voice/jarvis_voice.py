@@ -513,6 +513,20 @@ class EnhancedVoiceEngine:
         self.voice_queue = AsyncVoiceQueue(maxsize=100)
         logger.info("[ASYNC] Initialized async voice queue")
 
+        # ===================================================================
+        # BACKGROUND SYSTEM MONITOR - Non-blocking CPU/Memory tracking
+        # ===================================================================
+
+        # Cached system metrics (updated by background monitor)
+        self._cached_cpu_usage = 0.0
+        self._cached_memory_usage = 0.0
+        self._last_metric_update = time.time()
+        self._metric_cache_duration = 1.0  # Cache for 1 second
+        self._system_monitor_task = None
+        self._monitor_running = False
+
+        logger.info("[SYSTEM-MONITOR] Initialized non-blocking system metrics cache")
+
         # Subscribe to voice events
         self._setup_event_handlers()
 
@@ -789,25 +803,32 @@ class EnhancedVoiceEngine:
             logger.error(f"[ADAPTIVE] Failed to initialize: {e}")
 
     def _start_optimization_thread(self):
-        """Start background thread to optimize recognition parameters"""
-        import threading
+        """Start background thread to optimize recognition parameters (DEPRECATED - use async version)"""
+        # This method is deprecated but kept for compatibility
+        # The async version (_start_optimization_async) should be used instead
+        logger.warning("[ADAPTIVE] Sync optimization thread is deprecated. Use async version instead.")
 
-        def optimize_loop():
+    async def _start_optimization_async(self):
+        """Start background async task to optimize recognition parameters (NON-BLOCKING)"""
+        async def optimize_loop():
             """Continuous optimization based on performance metrics"""
             while not self.stop_optimization:
                 try:
-                    import time
-                    time.sleep(self.optimization_interval)
+                    await asyncio.sleep(self.optimization_interval)
 
-                    # Run optimization
-                    self._optimize_parameters()
+                    # Run optimization in executor to avoid blocking
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self._optimize_parameters)
 
+                except asyncio.CancelledError:
+                    logger.info("[ADAPTIVE] Optimization task cancelled")
+                    break
                 except Exception as e:
                     logger.error(f"[ADAPTIVE] Optimization error: {e}")
 
-        self.optimization_thread = threading.Thread(target=optimize_loop, daemon=True)
-        self.optimization_thread.start()
-        logger.info("[ADAPTIVE] Optimization thread started")
+        # Create and store the task
+        self.optimization_task = asyncio.create_task(optimize_loop())
+        logger.info("[ADAPTIVE] Async optimization task started")
 
     def _optimize_parameters(self):
         """
@@ -1087,6 +1108,157 @@ class EnhancedVoiceEngine:
             # Always complete the task
             self.voice_queue.complete_task(task.task_id)
 
+    # ===================================================================
+    # BACKGROUND SYSTEM MONITOR - Non-blocking CPU/Memory/Performance tracking
+    # ===================================================================
+
+    async def start_system_monitor(self):
+        """Start the background system monitor for non-blocking metrics"""
+        if self._monitor_running:
+            logger.warning("[SYSTEM-MONITOR] Monitor already running")
+            return
+
+        self._monitor_running = True
+        self._system_monitor_task = asyncio.create_task(self._system_monitor_loop())
+        logger.info("[SYSTEM-MONITOR] Started background system monitor")
+
+    async def stop_system_monitor(self):
+        """Stop the background system monitor"""
+        if not self._monitor_running:
+            return
+
+        self._monitor_running = False
+        if self._system_monitor_task:
+            self._system_monitor_task.cancel()
+            try:
+                await self._system_monitor_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("[SYSTEM-MONITOR] Stopped background system monitor")
+
+    async def _system_monitor_loop(self):
+        """
+        Background loop that monitors system metrics non-blockingly.
+        Updates cached values for instant access without blocking.
+        """
+        logger.info("[SYSTEM-MONITOR] Monitor loop started")
+
+        # Track monitoring performance
+        monitor_iterations = 0
+        monitor_errors = 0
+        last_alert_time = 0
+
+        while self._monitor_running:
+            try:
+                # Run psutil in executor to avoid blocking the event loop
+                loop = asyncio.get_event_loop()
+
+                # Get CPU usage non-blockingly (interval=None for instant reading)
+                cpu_task = loop.run_in_executor(
+                    None,
+                    lambda: __import__('psutil').cpu_percent(interval=None)
+                )
+
+                # Get memory usage non-blockingly
+                memory_task = loop.run_in_executor(
+                    None,
+                    lambda: __import__('psutil').virtual_memory().percent
+                )
+
+                # Wait for both with timeout protection
+                try:
+                    cpu_usage, memory_usage = await asyncio.wait_for(
+                        asyncio.gather(cpu_task, memory_task),
+                        timeout=2.0
+                    )
+
+                    # Update cached values atomically
+                    self._cached_cpu_usage = cpu_usage
+                    self._cached_memory_usage = memory_usage
+                    self._last_metric_update = time.time()
+
+                    monitor_iterations += 1
+
+                    # Alert on high resource usage (max once per 30 seconds)
+                    current_time = time.time()
+                    if current_time - last_alert_time > 30:
+                        if cpu_usage > 80:
+                            logger.warning(f"[SYSTEM-MONITOR] High CPU usage: {cpu_usage:.1f}%")
+                            await self.event_bus.publish("high_cpu", {"cpu": cpu_usage})
+                            last_alert_time = current_time
+                        elif memory_usage > 85:
+                            logger.warning(f"[SYSTEM-MONITOR] High memory usage: {memory_usage:.1f}%")
+                            await self.event_bus.publish("high_memory", {"memory": memory_usage})
+                            last_alert_time = current_time
+
+                    # Log stats every 100 iterations (about 100 seconds)
+                    if monitor_iterations % 100 == 0:
+                        logger.debug(
+                            f"[SYSTEM-MONITOR] Stats - CPU: {cpu_usage:.1f}%, "
+                            f"Memory: {memory_usage:.1f}%, Iterations: {monitor_iterations}, "
+                            f"Errors: {monitor_errors}"
+                        )
+
+                except asyncio.TimeoutError:
+                    logger.warning("[SYSTEM-MONITOR] Metrics collection timeout")
+                    monitor_errors += 1
+
+                # Update every 1 second (non-blocking sleep)
+                await asyncio.sleep(self._metric_cache_duration)
+
+            except asyncio.CancelledError:
+                logger.info("[SYSTEM-MONITOR] Monitor loop cancelled")
+                break
+            except Exception as e:
+                logger.error(f"[SYSTEM-MONITOR] Error in monitor loop: {e}")
+                monitor_errors += 1
+                await asyncio.sleep(5)  # Back off on errors
+
+    def get_cached_cpu_usage(self) -> float:
+        """
+        Get cached CPU usage (non-blocking, instant).
+        Returns cached value updated by background monitor.
+        """
+        # Check if cache is stale
+        cache_age = time.time() - self._last_metric_update
+        if cache_age > 5.0:  # Cache older than 5 seconds
+            logger.warning(
+                f"[SYSTEM-MONITOR] CPU cache is stale ({cache_age:.1f}s old). "
+                "Monitor may not be running."
+            )
+
+        return self._cached_cpu_usage
+
+    def get_cached_memory_usage(self) -> float:
+        """
+        Get cached memory usage (non-blocking, instant).
+        Returns cached value updated by background monitor.
+        """
+        cache_age = time.time() - self._last_metric_update
+        if cache_age > 5.0:
+            logger.warning(
+                f"[SYSTEM-MONITOR] Memory cache is stale ({cache_age:.1f}s old). "
+                "Monitor may not be running."
+            )
+
+        return self._cached_memory_usage
+
+    def get_system_health(self) -> Dict[str, Any]:
+        """
+        Get comprehensive system health metrics (non-blocking).
+        Returns cached metrics with metadata.
+        """
+        cache_age = time.time() - self._last_metric_update
+
+        return {
+            "cpu_percent": self._cached_cpu_usage,
+            "memory_percent": self._cached_memory_usage,
+            "cache_age_seconds": cache_age,
+            "cache_fresh": cache_age < 2.0,
+            "monitor_running": self._monitor_running,
+            "timestamp": self._last_metric_update,
+        }
+
     def _play_sound(self, sound_type: str):
         """Play UI sounds for feedback"""
         # In a real implementation, you'd have actual sound files
@@ -1124,11 +1296,19 @@ class EnhancedJARVISPersonality:
         # ML trainer for adaptive learning
         self.ml_trainer = ml_trainer
 
+        # Voice engine reference (for accessing system metrics)
+        self._voice_engine = None
+
         # Initialize weather service
         if WEATHER_SERVICE_AVAILABLE:
             self.weather_service = WeatherService()
         else:
             self.weather_service = None
+
+    def set_voice_engine(self, voice_engine: "EnhancedVoiceEngine"):
+        """Set reference to voice engine for system metrics access"""
+        self._voice_engine = voice_engine
+        logger.info("[PERSONALITY] Voice engine reference set for system metrics")
     
     def _local_command_interpretation(self, text: str, confidence: float) -> str:
         """Local command interpretation when Claude is unavailable or CPU is high"""
@@ -1210,14 +1390,27 @@ class EnhancedJARVISPersonality:
         if context_info:
             prompt = f"{context_info}\n\n{prompt}"
 
-        # Check CPU usage before making Claude call
-        import psutil
-        cpu_usage = psutil.cpu_percent(interval=0.1)
-        
+        # ===================================================================
+        # NON-BLOCKING CPU CHECK - Uses cached value from background monitor
+        # This is INSTANT and doesn't block the event loop!
+        # ===================================================================
+
+        # Get cached CPU usage (non-blocking, instant)
+        cpu_usage = getattr(self, '_voice_engine', None)
+        if cpu_usage and hasattr(cpu_usage, 'get_cached_cpu_usage'):
+            cpu_usage = cpu_usage.get_cached_cpu_usage()
+        else:
+            # Fallback if voice engine not set (shouldn't happen)
+            cpu_usage = 0.0
+            logger.warning("[CPU-CHECK] Voice engine not available, skipping CPU check")
+
         if cpu_usage > 25:  # Don't call Claude if CPU > 25%
-            logger.warning(f"CPU usage too high ({cpu_usage}%) - using local response")
-            return self._local_command_interpretation(text, confidence)
-        
+            logger.warning(f"[CPU-CHECK] CPU usage too high ({cpu_usage:.1f}%) - using local response")
+            return self._local_command_interpretation(command.raw_text, command.confidence)
+
+        # Log CPU check for monitoring
+        logger.debug(f"[CPU-CHECK] CPU usage OK ({cpu_usage:.1f}%) - proceeding with Claude call")
+
         # Get interpretation from Claude only if CPU is low
         message = await asyncio.to_thread(
             self.claude.messages.create,
@@ -1565,6 +1758,10 @@ class EnhancedJARVISVoiceAssistant:
         self.voice_engine = EnhancedVoiceEngine(
             ml_trainer=self.ml_trainer, ml_enhanced_system=self.ml_enhanced_system
         )
+
+        # Wire up voice engine reference to personality for system metrics
+        self.personality.set_voice_engine(self.voice_engine)
+        logger.info("[JARVIS] Voice engine wired to personality for non-blocking metrics")
         self.running = False
         self.command_queue = queue.Queue()
 
@@ -1671,6 +1868,20 @@ class EnhancedJARVISVoiceAssistant:
         """Start enhanced JARVIS voice assistant"""
         print("\n=== JARVIS Enhanced Voice System Initializing ===")
         print("🚀 Loading professional-grade voice processing...")
+
+        # ===================================================================
+        # START BACKGROUND MONITORS - Non-blocking system optimization
+        # ===================================================================
+
+        # Start system monitor for non-blocking CPU/memory tracking
+        print("📊 Starting background system monitor...")
+        await self.voice_engine.start_system_monitor()
+
+        # Start async optimization task
+        print("🔧 Starting adaptive optimization...")
+        await self.voice_engine._start_optimization_async()
+
+        logger.info("[JARVIS] All background monitors started successfully")
 
         # Enhanced calibration
         self.voice_engine.calibrate_microphone(duration=3)
@@ -1985,14 +2196,32 @@ class EnhancedJARVISVoiceAssistant:
         # Continue wake word loop
 
     async def _shutdown(self):
-        """Shutdown JARVIS with ML system cleanup"""
+        """Shutdown JARVIS with complete cleanup of all background tasks"""
         self.voice_engine.speak("Shutting down. Goodbye, sir.")
+
+        logger.info("[JARVIS] Starting shutdown sequence...")
+
+        # Stop system monitor
+        logger.info("[JARVIS] Stopping system monitor...")
+        await self.voice_engine.stop_system_monitor()
+
+        # Stop optimization task
+        logger.info("[JARVIS] Stopping optimization task...")
+        self.voice_engine.stop_optimization = True
+        if hasattr(self.voice_engine, 'optimization_task'):
+            self.voice_engine.optimization_task.cancel()
+            try:
+                await self.voice_engine.optimization_task
+            except asyncio.CancelledError:
+                pass
 
         # Stop ML enhanced system if running
         if self.ml_enhanced_system:
+            logger.info("[JARVIS] Stopping ML enhanced system...")
             await self.ml_enhanced_system.stop()
 
         self.running = False
+        logger.info("[JARVIS] Shutdown complete")
 
     async def _calibrate(self):
         """Recalibrate microphone"""
