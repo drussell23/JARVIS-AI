@@ -38,16 +38,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  /* This will space out the items */
+  justify-content: flex-start;
+  gap: 3rem;
+  /* Consistent spacing between all sections */
   height: 100vh;
   width: 100%;
   padding: 2rem;
+  padding-bottom: 140px;
+  /* Extra space for fixed input at bottom */
   box-sizing: border-box;
-  /* Ensures padding is included in height */
   background: none;
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Subtle radial glow from center */
@@ -133,10 +136,12 @@
   /* Increased from 360px */
   height: 420px;
   /* Increased from 360px */
-  margin: auto;
-  /* This will center it between the header and transcript */
+  margin: 0 auto;
+  /* Center horizontally, no vertical auto margin */
   z-index: 10;
   filter: drop-shadow(0 0 80px var(--glow-blue));
+  flex-shrink: 0;
+  /* Prevent reactor from shrinking */
 }
 
 /* Core with holographic effect */
@@ -433,12 +438,15 @@
 .jarvis-transcript {
   width: 100%;
   max-width: 1000px;
-  height: 450px;
-  /* Fixed height for the transcript window */
+  min-height: 300px;
+  max-height: 450px;
+  /* Allow flexible height up to max */
   margin: 0 auto;
   padding: 2rem;
   box-sizing: border-box;
   z-index: 10;
+  flex-shrink: 0;
+  /* Prevent transcript from shrinking */
   overflow-y: auto;
   /* Allow internal scrolling */
   background: none;
