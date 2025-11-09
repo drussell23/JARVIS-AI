@@ -5735,6 +5735,12 @@ except Exception as e:
                 await self.cleanup()
                 return False
 
+            # Open loading page immediately after backend starts (if in restart mode)
+            if hasattr(self, '_startup_progress') and self._startup_progress and not self.no_browser:
+                loading_url = f"http://localhost:{self.ports['main_api']}/loading/loading.html"
+                print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
+                await self.open_browser_smart(loading_url)
+
             # Check frontend result (non-critical)
             if isinstance(frontend_result, Exception):
                 print(f"{Colors.WARNING}⚠ Frontend failed: {frontend_result}{Colors.ENDC}")
@@ -5862,17 +5868,11 @@ except Exception as e:
                     success=True,
                     redirect_url=f"http://localhost:{self.ports['frontend']}"
                 )
-
-            await asyncio.sleep(1)  # Brief pause before opening
-
-            # Open loading page if in restart mode, otherwise open frontend
-            if hasattr(self, '_startup_progress') and self._startup_progress:
-                # In restart mode - open loading page which will redirect to frontend when ready
-                loading_url = f"http://localhost:{self.ports['main_api']}/loading/loading.html"
-                print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
-                await self.open_browser_smart(loading_url)
+                # Loading page already open - it will auto-redirect via WebSocket
+                print(f"{Colors.GREEN}✓ Loading page will redirect to frontend automatically{Colors.ENDC}")
             else:
                 # Normal startup - open frontend directly
+                await asyncio.sleep(1)  # Brief pause before opening
                 await self.open_browser_smart()
 
         # Monitor services
@@ -6506,18 +6506,8 @@ async def main():
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
 
-        # Open loading page FIRST (from file system, not backend server)
-        loading_page_path = Path(__file__).parent / "landing-page" / "loading.html"
-        if loading_page_path.exists() and not args.no_browser:
-            loading_url = f"file://{loading_page_path.absolute()}"
-            print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
-            try:
-                # Open browser with loading page
-                import webbrowser
-                webbrowser.open(loading_url)
-                await asyncio.sleep(1)  # Give browser time to open
-            except Exception as e:
-                print(f"  {Colors.WARNING}⚠️ Failed to open loading page: {e}{Colors.ENDC}")
+        # Note: Loading page will be opened through backend server after it starts
+        # This allows WebSocket connection for real-time progress updates
 
         try:
             backend_dir = Path(__file__).parent / "backend"
@@ -6852,8 +6842,9 @@ async def main():
     _manager = AsyncSystemManager()
 
     # Store startup progress manager for completion notification
-    if args.restart and 'startup_progress' in locals():
+    if args.restart and 'startup_progress' in locals() and startup_progress is not None:
         _manager._startup_progress = startup_progress
+        print(f"{Colors.CYAN}✓ Startup progress tracking enabled for loading page{Colors.ENDC}")
     _manager.no_browser = args.no_browser
     _manager.backend_only = args.backend_only
     _manager.frontend_only = args.frontend_only
