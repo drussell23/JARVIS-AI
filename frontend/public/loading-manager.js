@@ -13,6 +13,9 @@ class JARVISLoadingManager {
     constructor() {
         // Configuration (auto-discovered from environment)
         this.config = {
+            // Use loading server port (3001) for WebSocket during startup
+            // This ensures progress updates work BEFORE backend loads
+            loadingPort: window.location.port || 3001,
             backendPort: this.discoverBackendPort(),
             wsProtocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
             httpProtocol: window.location.protocol,
@@ -213,10 +216,11 @@ class JARVISLoadingManager {
         }
 
         try {
-            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.backendPort}/ws/startup-progress`;
+            // Connect to loading server (port 3001) which is always available during startup
+            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.loadingPort}/ws/startup-progress`;
             console.log(`[Connect] Attempting WebSocket connection to ${wsUrl} (attempt ${this.state.reconnectAttempts + 1}/${this.config.reconnect.maxAttempts})`);
 
-            this.updateConnectionStatus('connecting', 'Connecting to backend...');
+            this.updateConnectionStatus('connecting', 'Connecting to loading server...');
 
             this.state.ws = new WebSocket(wsUrl);
 
@@ -342,7 +346,7 @@ class JARVISLoadingManager {
         this.state.pollingInterval = setInterval(async () => {
             try {
                 const response = await this.fetchWithTimeout(
-                    `${this.config.httpProtocol}//${this.config.hostname}:${this.config.backendPort}/api/startup-progress`,
+                    `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingPort}/api/startup-progress`,
                     { timeout: 3000 }
                 );
 

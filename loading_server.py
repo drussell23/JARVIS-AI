@@ -102,6 +102,23 @@ async def get_progress(request):
     return web.json_response(progress_state)
 
 
+async def update_progress_endpoint(request):
+    """HTTP endpoint for receiving progress updates from start_system.py"""
+    try:
+        data = await request.json()
+        stage = data.get('stage')
+        message = data.get('message')
+        progress = data.get('progress', 0)
+        metadata = data.get('metadata')
+
+        await update_progress(stage, message, progress, metadata)
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"[Update] Error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
 async def update_progress(stage, message, progress, metadata=None):
     """Update progress and broadcast to all connected clients"""
     global progress_state
@@ -142,6 +159,14 @@ async def start_server(host='0.0.0.0', port=LOADING_SERVER_PORT):
     app.router.add_get('/loading-manager.js', serve_loading_manager)
     app.router.add_get('/health', health_check)
 
+    # WebSocket and progress endpoints
+    app.router.add_get('/ws/startup-progress', websocket_handler)
+    app.router.add_get('/api/startup-progress', get_progress)
+    app.router.add_post('/api/update-progress', update_progress_endpoint)
+
+    # Store app in module for external access
+    app['update_progress'] = update_progress
+
     runner = web.AppRunner(app)
     await runner.setup()
 
@@ -149,6 +174,8 @@ async def start_server(host='0.0.0.0', port=LOADING_SERVER_PORT):
     await site.start()
 
     logger.info(f"✅ Loading server started on http://{host}:{port}")
+    logger.info(f"   WebSocket: ws://{host}:{port}/ws/startup-progress")
+    logger.info(f"   HTTP API: http://{host}:{port}/api/startup-progress")
     return runner
 
 

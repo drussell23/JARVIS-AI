@@ -5720,12 +5720,9 @@ except Exception as e:
             backend_task = asyncio.create_task(self.start_backend())
             frontend_task = asyncio.create_task(self.start_frontend())
 
-            # Start progress tracking task if in restart mode
+            # Start progress tracking task for loading page
             async def track_backend_progress():
-                """Track backend initialization and broadcast progress"""
-                if not hasattr(self, '_startup_progress') or not self._startup_progress:
-                    return
-
+                """Track backend initialization and broadcast progress to loading server"""
                 progress_stages = [
                     (60, "database", "Initializing database connections...", {"icon": "💾", "label": "Database", "sublabel": "Connecting..."}),
                     (70, "voice", "Loading voice biometric system...", {"icon": "🎤", "label": "Voice System", "sublabel": "Loading models..."}),
@@ -5735,20 +5732,31 @@ except Exception as e:
 
                 for progress, stage, message, metadata in progress_stages:
                     # Wait for backend to reach this stage (rough timing)
-                    await asyncio.sleep(10)  # Adjust based on typical startup time
+                    await asyncio.sleep(8)  # Adjusted for typical startup time
 
                     # Check if backend is still starting
                     if not backend_task.done():
                         try:
-                            await self._startup_progress.broadcast_progress(
-                                stage, message, progress, metadata=metadata
-                            )
+                            # Broadcast to loading server directly
+                            import aiohttp
+                            url = "http://localhost:3001/api/update-progress"
+                            data = {
+                                "stage": stage,
+                                "message": message,
+                                "progress": progress,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            if metadata:
+                                data["metadata"] = metadata
+
+                            async with aiohttp.ClientSession() as session:
+                                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                                    pass  # Silently fail if loading server not ready
                         except:
                             pass
 
-            # Start progress tracking in background (don't await)
-            if hasattr(self, '_startup_progress') and self._startup_progress:
-                asyncio.create_task(track_backend_progress())
+            # Always start progress tracking for restart mode
+            asyncio.create_task(track_backend_progress())
 
             # Wait for both with proper error handling
             backend_result, frontend_result = await asyncio.gather(
@@ -5794,6 +5802,29 @@ except Exception as e:
 
         # Print access info
         self.print_access_info()
+
+        # Broadcast 100% completion to loading page
+        try:
+            import aiohttp
+            url = "http://localhost:3001/api/update-progress"
+            data = {
+                "stage": "complete",
+                "message": "JARVIS is ready!",
+                "progress": 100,
+                "timestamp": datetime.now().isoformat(),
+                "metadata": {
+                    "icon": "✅",
+                    "label": "Complete",
+                    "sublabel": "System ready!",
+                    "success": True,
+                    "redirect_url": "http://localhost:3000"
+                }
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                    print(f"{Colors.GREEN}✓ Loading page notified of completion{Colors.ENDC}")
+        except:
+            pass  # Loading server might have already shut down
 
         # Configure frontend for autonomous mode
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:
@@ -6531,6 +6562,29 @@ async def main():
     # Loading server process (module scope for cleanup)
     loading_server_process = None
 
+    # Helper function to broadcast progress to loading server
+    async def broadcast_to_loading_server(stage, message, progress, metadata=None):
+        """Send progress update to loading server via HTTP"""
+        try:
+            import aiohttp
+            url = "http://localhost:3001/api/update-progress"
+            data = {
+                "stage": stage,
+                "message": message,
+                "progress": progress,
+                "timestamp": datetime.now().isoformat()
+            }
+            if metadata:
+                data["metadata"] = metadata
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                    if resp.status == 200:
+                        print(f"  {Colors.CYAN}📊 Progress: {progress}% - {message}{Colors.ENDC}")
+        except Exception as e:
+            # Silently fail - loading server might not be ready yet
+            pass
+
     # Handle restart mode (explicit --restart flag)
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
@@ -6581,23 +6635,17 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Initialize startup progress manager for real-time UI updates
-            startup_progress = None
-            try:
-                from api.startup_progress_api import get_startup_progress_manager
-                startup_progress = get_startup_progress_manager()
-                await startup_progress.broadcast_progress(
-                    "detecting",
-                    "Detecting existing JARVIS processes...",
-                    5,
-                    metadata={
-                        "icon": "🔍",
-                        "label": "Detecting",
-                        "sublabel": "Scanning processes..."
-                    }
-                )
-            except Exception as e:
-                print(f"  {Colors.WARNING}⚠️ Startup progress UI unavailable: {e}{Colors.ENDC}")
+            # Broadcast initial progress
+            await broadcast_to_loading_server(
+                "detecting",
+                "Detecting existing JARVIS processes...",
+                5,
+                metadata={
+                    "icon": "🔍",
+                    "label": "Detecting",
+                    "sublabel": "Scanning processes..."
+                }
+            )
 
             # Step 1: Advanced JARVIS process detection with multiple strategies
             print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
@@ -6716,18 +6764,16 @@ async def main():
                     )
                     print(f"  {idx}. PID {proc['pid']} ({proc['type']}, {age_str})")
 
-                if startup_progress:
-                    await startup_progress.broadcast_progress(
-                        "killing",
-                        f"Terminating {len(jarvis_processes)} existing process(es)...",
-                        15,
-                        details={"count": len(jarvis_processes)},
-                        metadata={
-                            "icon": "⚔️",
-                            "label": "Terminating",
-                            "sublabel": f"{len(jarvis_processes)} processes"
-                        }
-                    )
+                await broadcast_to_loading_server(
+                    "killing",
+                    f"Terminating {len(jarvis_processes)} existing process(es)...",
+                    15,
+                    metadata={
+                        "icon": "⚔️",
+                        "label": "Terminating",
+                        "sublabel": f"{len(jarvis_processes)} processes"
+                    }
+                )
 
                 print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
 
@@ -6784,24 +6830,26 @@ async def main():
                         f"{Colors.GREEN}✓ All {killed_count} process(es) terminated successfully{Colors.ENDC}"
                     )
 
-                if startup_progress:
-                    await startup_progress.broadcast_progress(
-                        "cleanup",
-                        "Processes terminated, cleaning up resources...",
-                        30,
-                        details={"killed": killed_count, "failed": failed_count},
-                        metadata={
-                            "icon": "🧹",
-                            "label": "Cleanup",
-                            "sublabel": f"{killed_count} terminated"
-                        }
-                    )
+                await broadcast_to_loading_server(
+                    "cleanup",
+                    "Processes terminated, cleaning up resources...",
+                    30,
+                    metadata={
+                        "icon": "🧹",
+                        "label": "Cleanup",
+                        "sublabel": f"{killed_count} terminated"
+                    }
+                )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
-                if startup_progress:
-                    await startup_progress.broadcast_progress(
-                        "cleanup", "No existing processes found, proceeding...", 25
-                    )
+                await broadcast_to_loading_server(
+                    "cleanup", "No existing processes found, proceeding...", 25,
+                    metadata={
+                        "icon": "🧹",
+                        "label": "Cleanup",
+                        "sublabel": "Clean state"
+                    }
+                )
 
             # Step 1.5: Clean up VM creation lock file (prevent lock conflicts)
             print(f"\n{Colors.YELLOW}🔒 Checking VM creation lock file...{Colors.ENDC}")
@@ -6931,26 +6979,26 @@ async def main():
             )
             print(f"{'='*50}\n")
 
-            if startup_progress:
-                await startup_progress.broadcast_progress(
-                    "starting",
-                    "Starting fresh JARVIS instance...",
-                    50,
-                    metadata={
-                        "icon": "🚀",
-                        "label": "Starting",
-                        "sublabel": "Launching services..."
-                    }
-                )
+            # Broadcast 50% - ready to start
+            await broadcast_to_loading_server(
+                "starting",
+                "Starting JARVIS services...",
+                50,
+                metadata={
+                    "icon": "🚀",
+                    "label": "Starting",
+                    "sublabel": "Launching services..."
+                }
+            )
 
             # Fall through to normal startup - backend will start fresh
 
         except Exception as e:
             print(f"{Colors.FAIL}Restart failed: {e}{Colors.ENDC}")
-            if startup_progress:
-                await startup_progress.broadcast_progress(
-                    "failed", f"Restart failed: {str(e)}", 0
-                )
+            await broadcast_to_loading_server(
+                "failed", f"Restart failed: {str(e)}", 0,
+                metadata={"icon": "❌", "label": "Failed", "sublabel": "Error occurred"}
+            )
             import traceback
 
             traceback.print_exc()
@@ -6958,11 +7006,6 @@ async def main():
 
     # Create manager
     _manager = AsyncSystemManager()
-
-    # Store startup progress manager for completion notification
-    if args.restart and 'startup_progress' in locals() and startup_progress is not None:
-        _manager._startup_progress = startup_progress
-        print(f"{Colors.CYAN}✓ Startup progress tracking enabled for loading page{Colors.ENDC}")
     _manager.no_browser = args.no_browser
     _manager.backend_only = args.backend_only
     _manager.frontend_only = args.frontend_only
