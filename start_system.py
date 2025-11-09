@@ -5057,19 +5057,42 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
             if all_tasks:
                 print(f"   ├─ Found {len(all_tasks)} pending async tasks")
+
+                # Cancel tasks safely with recursion protection
+                cancelled_count = 0
                 for task in all_tasks:
                     if not task.done():
-                        task.cancel()
+                        try:
+                            task.cancel()
+                            cancelled_count += 1
+                        except RecursionError:
+                            # Skip tasks that cause recursion during cancellation
+                            logger.warning(f"Skipping task due to recursion: {task.get_name()}")
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Failed to cancel task {task.get_name()}: {e}")
+                            continue
 
-                # Wait for cancellation to complete
+                print(f"   ├─ Cancelled {cancelled_count}/{len(all_tasks)} tasks")
+
+                # Wait for cancellation to complete with timeout
                 try:
-                    await asyncio.gather(*all_tasks, return_exceptions=True)
+                    # Use wait_for to prevent hanging
+                    await asyncio.wait_for(
+                        asyncio.gather(*all_tasks, return_exceptions=True),
+                        timeout=5.0
+                    )
                     print(f"   └─ {Colors.GREEN}✓ All async tasks cancelled{Colors.ENDC}")
+                except asyncio.TimeoutError:
+                    print(f"   └─ {Colors.YELLOW}⚠ Task cancellation timeout (some tasks may still be running){Colors.ENDC}")
                 except Exception as e:
                     print(f"   └─ {Colors.YELLOW}⚠ Task cancellation warning: {e}{Colors.ENDC}")
             else:
                 print(f"   └─ {Colors.GREEN}✓ No pending async tasks{Colors.ENDC}")
 
+            self.background_tasks.clear()
+        except RecursionError:
+            print(f"   └─ {Colors.YELLOW}⚠ Recursion error during task enumeration - forcing cleanup{Colors.ENDC}")
             self.background_tasks.clear()
         except Exception as e:
             print(f"   └─ {Colors.YELLOW}⚠ Could not enumerate tasks: {e}{Colors.ENDC}")
@@ -7624,26 +7647,58 @@ if __name__ == "__main__":
                 loop = None
 
             if loop and not loop.is_closed():
-                # Cancel all remaining tasks
-                all_tasks = asyncio.all_tasks(loop)
+                # Cancel all remaining tasks with recursion protection
+                try:
+                    all_tasks = asyncio.all_tasks(loop)
+                except RecursionError:
+                    print(f"   ├─ {Colors.YELLOW}⚠ Recursion error enumerating tasks - skipping final cancellation{Colors.ENDC}")
+                    all_tasks = []
+
                 if all_tasks:
                     print(f"   ├─ Canceling {len(all_tasks)} remaining async tasks...")
+                    cancelled = 0
                     for task in all_tasks:
                         if not task.done():
-                            task.cancel()
+                            try:
+                                task.cancel()
+                                cancelled += 1
+                            except RecursionError:
+                                continue  # Skip tasks causing recursion
+                            except Exception:
+                                continue
+
+                    print(f"   ├─ Cancelled {cancelled}/{len(all_tasks)} tasks")
 
                     # Run the loop briefly to process cancellations
-                    try:
-                        loop.run_until_complete(asyncio.gather(*all_tasks, return_exceptions=True))
-                    except Exception:
-                        pass  # Ignore errors during final cleanup
+                    if cancelled > 0:
+                        try:
+                            loop.run_until_complete(
+                                asyncio.wait_for(
+                                    asyncio.gather(*all_tasks, return_exceptions=True),
+                                    timeout=2.0
+                                )
+                            )
+                        except (RecursionError, asyncio.TimeoutError):
+                            pass  # Ignore recursion/timeout during final cleanup
+                        except Exception:
+                            pass
 
                 # Stop and close the event loop
                 print(f"   ├─ Stopping event loop...")
-                loop.stop()
+                try:
+                    loop.stop()
+                except RecursionError:
+                    pass  # Event loop may already be stopped
+
                 print(f"   ├─ Closing event loop...")
-                loop.close()
-                print(f"   └─ {Colors.GREEN}✓ Event loop closed{Colors.ENDC}")
+                try:
+                    loop.close()
+                except RecursionError:
+                    pass  # Event loop may already be closed
+
+                print(f"   └─ {Colors.GREEN}✓ Event loop cleanup complete{Colors.ENDC}")
+        except RecursionError as e:
+            print(f"   └─ {Colors.YELLOW}⚠ Recursion error during cleanup - event loop may not be fully closed{Colors.ENDC}")
         except Exception as e:
             print(f"   └─ {Colors.YELLOW}⚠ Event loop cleanup warning: {e}{Colors.ENDC}")
 

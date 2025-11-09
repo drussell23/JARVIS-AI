@@ -69,7 +69,7 @@ progress_tracker = asyncio.create_task(track_backend_progress())
 self.background_tasks.append(progress_tracker)
 ```
 
-### **2. Comprehensive Task Cancellation (Lines 5050-5075)**
+### **2. Comprehensive Task Cancellation (Lines 5050-5098)**
 
 ```python
 async def cleanup(self):
@@ -79,18 +79,33 @@ async def cleanup(self):
 
     if all_tasks:
         print(f"   ├─ Found {len(all_tasks)} pending async tasks")
+
+        # Cancel tasks safely with recursion protection
+        cancelled_count = 0
         for task in all_tasks:
             if not task.done():
-                task.cancel()
+                try:
+                    task.cancel()
+                    cancelled_count += 1
+                except RecursionError:
+                    # Skip tasks that cause recursion during cancellation
+                    continue
 
-        # Wait for cancellation to complete
-        await asyncio.gather(*all_tasks, return_exceptions=True)
+        print(f"   ├─ Cancelled {cancelled_count}/{len(all_tasks)} tasks")
+
+        # Wait for cancellation with timeout
+        await asyncio.wait_for(
+            asyncio.gather(*all_tasks, return_exceptions=True),
+            timeout=5.0
+        )
         print(f"   └─ ✓ All async tasks cancelled")
 ```
 
 **Key improvements:**
 - ✅ Enumerates ALL tasks (not just tracked ones)
 - ✅ Excludes current task (avoid canceling self)
+- ✅ **Recursion protection** - Catches and skips tasks causing deep nesting
+- ✅ **Timeout protection** - Won't hang if cancellation takes too long
 - ✅ Graceful cancellation with `gather(return_exceptions=True)`
 - ✅ Clear visual feedback of cleanup progress
 
