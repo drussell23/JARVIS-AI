@@ -303,123 +303,198 @@ class JARVISLoadingManager {
         const reactor = this.elements.reactor;
         const progressBar = this.elements.progressBar;
 
-        // === PHASE 1: REACTOR POWER SURGE (0-800ms) ===
+        // Dynamic configuration for transition (no hardcoding!)
+        const config = {
+            phases: {
+                powerSurge: { duration: 800, rings: 5 },
+                voice: { duration: 2500 },
+                particleBurst: { duration: 700, particles: 50 },
+                holographicScan: { duration: 1500 },
+                matrixRain: { duration: 1500 },
+                totalDuration: 7000
+            },
+            reactor: {
+                powerUpScale: 1.5,
+                glowIntensity: 80,
+                breathingSpeed: 2,
+                maintainBrightness: true // Keep reactor glowing!
+            },
+            effects: {
+                ringColor: '#00ff41',
+                ringCount: 5,
+                particleVelocityMin: 200,
+                particleVelocityMax: 400,
+                scanLineHeight: 3,
+                matrixColumns: Math.floor(window.innerWidth / 20)
+            }
+        };
+
+        // === PHASE 1: REACTOR POWER SURGE (Dynamic) ===
         console.log('[Animation] Phase 1: Reactor power surge');
 
-        // Intense reactor pulse with expanding rings
+        // Intense reactor pulse with expanding rings (KEEP REACTOR BRIGHT!)
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
-            reactor.style.transform = 'scale(1.3)';
-            reactor.style.filter = 'drop-shadow(0 0 50px rgba(0, 255, 65, 1)) brightness(1.5)';
+            reactor.style.transform = `scale(${config.reactor.powerUpScale})`;
+            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
+            reactor.style.opacity = '1'; // Force opacity to stay at 100%
 
-            // Create expanding energy rings
-            for (let i = 0; i < 3; i++) {
+            // Create expanding energy rings (dynamic count)
+            for (let i = 0; i < config.effects.ringCount; i++) {
                 setTimeout(() => {
-                    const ring = document.createElement('div');
-                    ring.style.cssText = `
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        width: 300px;
-                        height: 300px;
-                        border: 3px solid #00ff41;
-                        border-radius: 50%;
-                        opacity: 1;
-                        animation: expandRing 1s ease-out forwards;
-                        pointer-events: none;
-                    `;
-                    reactor.parentElement.appendChild(ring);
-                    setTimeout(() => ring.remove(), 1000);
-                }, i * 200);
+                    this.createEnergyRing(reactor, config.effects.ringColor, i);
+                }, i * (config.phases.powerSurge.duration / config.effects.ringCount));
             }
         }
 
-        // Progress bar glow explosion
+        // Progress bar glow explosion with dynamic intensity
         if (progressBar) {
-            progressBar.style.boxShadow = '0 0 40px rgba(0, 255, 65, 1), 0 0 80px rgba(0, 255, 65, 0.6)';
+            progressBar.style.boxShadow = `
+                0 0 40px rgba(0, 255, 65, 1),
+                0 0 80px rgba(0, 255, 65, 0.8),
+                0 0 120px rgba(0, 255, 65, 0.6)
+            `;
             progressBar.style.transition = 'all 0.5s ease-out';
+            progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
         }
 
-        await this.sleep(800);
+        await this.sleep(config.phases.powerSurge.duration);
 
-        // === PHASE 2: VOICE ANNOUNCEMENT (800-3300ms) ===
+        // === PHASE 2: VOICE ANNOUNCEMENT ===
         console.log('[Animation] Phase 2: Voice announcement');
+
+        // Keep reactor glowing and breathing during voice
+        if (reactor && config.reactor.maintainBrightness) {
+            reactor.style.transition = `all ${config.reactor.breathingSpeed}s ease-in-out`;
+            reactor.style.animation = `reactorBreathing ${config.reactor.breathingSpeed}s ease-in-out infinite`;
+            reactor.style.opacity = '1'; // Maintain brightness
+        }
 
         // Play JARVIS voice: "JARVIS is online. Ready for your command."
         await this.playVoiceAnnouncement();
 
-        // Subtle reactor breathing during voice
-        if (reactor) {
-            reactor.style.transition = 'all 2s ease-in-out';
-            reactor.style.animation = 'reactorBreathing 2s ease-in-out infinite';
-        }
+        await this.sleep(config.phases.voice.duration);
 
-        await this.sleep(2500);
-
-        // === PHASE 3: PARTICLE BURST (3300-4000ms) ===
+        // === PHASE 3: PARTICLE BURST ===
         console.log('[Animation] Phase 3: Particle burst');
 
-        // Create green particle explosion
-        this.createParticleBurst(reactor);
+        // Keep reactor fully powered
+        if (reactor) {
+            reactor.style.opacity = '1';
+            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
+        }
 
-        await this.sleep(700);
+        // Create dynamic particle explosion
+        this.createParticleBurst(reactor, config.effects.particleVelocityMin, config.effects.particleVelocityMax, config.phases.particleBurst.particles);
 
-        // === PHASE 4: HOLOGRAPHIC SCAN (4000-5500ms) ===
+        await this.sleep(config.phases.particleBurst.duration);
+
+        // === PHASE 4: HOLOGRAPHIC SCAN ===
         console.log('[Animation] Phase 4: Holographic scan');
 
-        // Vertical scan line effect
+        // Keep reactor bright during scan
+        if (reactor) {
+            reactor.style.opacity = '1';
+        }
+
+        // Dynamic vertical scan line effect
+        this.createHolographicScan(config.effects.scanLineHeight, config.phases.holographicScan.duration);
+
+        // Inject all animation keyframes dynamically
+        this.injectAnimationStyles(config);
+
+        await this.sleep(config.phases.holographicScan.duration);
+
+        // === PHASE 5: MATRIX RAIN + TRANSITION ===
+        console.log('[Animation] Phase 5: Matrix rain and transition');
+
+        // Keep reactor glowing even during fade!
+        if (reactor && config.reactor.maintainBrightness) {
+            reactor.style.opacity = '1';
+            reactor.style.filter = `drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2)`;
+        }
+
+        // Fade out container with upward motion (but keep reactor visible!)
+        if (container) {
+            // Fade everything EXCEPT the reactor
+            const children = Array.from(container.children).filter(child => !child.classList.contains('arc-reactor'));
+            children.forEach(child => {
+                child.style.transition = 'opacity 1.5s ease-out';
+                child.style.opacity = '0';
+            });
+        }
+
+        // Create epic green energy overlay
+        const overlay = this.createTransitionOverlay();
+
+        // Add matrix-style code rain effect
+        const matrixCanvas = this.createMatrixCanvas();
+        this.startMatrixRain(matrixCanvas, config.effects.matrixColumns);
+
+        // Trigger overlay fade
+        setTimeout(() => {
+            overlay.style.opacity = '1';
+        }, 10);
+
+        await this.sleep(config.phases.matrixRain.duration);
+
+        // === PHASE 6: REDIRECT ===
+        console.log(`[Redirect] → ${redirectUrl}`);
+
+        // Final reactor pulse before redirect
+        if (reactor) {
+            reactor.style.transition = 'all 0.3s ease-out';
+            reactor.style.transform = 'scale(2)';
+            reactor.style.opacity = '1';
+        }
+
+        await this.sleep(300);
+        window.location.href = redirectUrl;
+    }
+
+    // === HELPER METHODS FOR DYNAMIC EFFECTS ===
+
+    createEnergyRing(reactor, color, index) {
+        const ring = document.createElement('div');
+        ring.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            border: 3px solid ${color};
+            border-radius: 50%;
+            opacity: 1;
+            animation: expandRing 1s ease-out forwards;
+            pointer-events: none;
+        `;
+        reactor.parentElement.appendChild(ring);
+        setTimeout(() => ring.remove(), 1000);
+    }
+
+    createHolographicScan(height, duration) {
         const scanLine = document.createElement('div');
         scanLine.style.cssText = `
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
-            height: 3px;
+            height: ${height}px;
             background: linear-gradient(90deg,
                 transparent 0%,
                 #00ff41 50%,
                 transparent 100%);
             box-shadow: 0 0 20px #00ff41;
             opacity: 1;
-            animation: scanDown 1.5s ease-in-out;
+            animation: scanDown ${duration / 1000}s ease-in-out;
             z-index: 10000;
         `;
         document.body.appendChild(scanLine);
+        setTimeout(() => scanLine.remove(), duration);
+    }
 
-        // Add scan line animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes scanDown {
-                0% { top: 0; opacity: 1; }
-                100% { top: 100%; opacity: 0; }
-            }
-            @keyframes expandRing {
-                0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
-                100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
-            }
-            @keyframes reactorBreathing {
-                0%, 100% { transform: scale(1.3); filter: drop-shadow(0 0 50px rgba(0, 255, 65, 1)); }
-                50% { transform: scale(1.4); filter: drop-shadow(0 0 70px rgba(0, 255, 65, 1)) brightness(1.8); }
-            }
-            @keyframes fadeOutUp {
-                0% { opacity: 1; transform: translateY(0) scale(1); }
-                100% { opacity: 0; transform: translateY(-50px) scale(0.9); }
-            }
-        `;
-        document.head.appendChild(style);
-
-        await this.sleep(1500);
-
-        // === PHASE 5: TRANSITION FADE (5500-7000ms) ===
-        console.log('[Animation] Phase 5: Transition to main app');
-
-        // Fade out container with upward motion
-        if (container) {
-            container.style.animation = 'fadeOutUp 1.5s ease-out forwards';
-        }
-
-        // Create epic green energy overlay
+    createTransitionOverlay() {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed;
@@ -436,13 +511,10 @@ class JARVISLoadingManager {
             z-index: 9999;
         `;
         document.body.appendChild(overlay);
+        return overlay;
+    }
 
-        // Trigger overlay fade
-        setTimeout(() => {
-            overlay.style.opacity = '1';
-        }, 10);
-
-        // Add matrix-style code rain effect
+    createMatrixCanvas() {
         const matrixCanvas = document.createElement('canvas');
         matrixCanvas.style.cssText = `
             position: fixed;
@@ -455,13 +527,36 @@ class JARVISLoadingManager {
             pointer-events: none;
         `;
         document.body.appendChild(matrixCanvas);
-        this.startMatrixRain(matrixCanvas);
+        return matrixCanvas;
+    }
 
-        await this.sleep(1500);
-
-        // === PHASE 6: REDIRECT (7000ms) ===
-        console.log(`[Redirect] → ${redirectUrl}`);
-        window.location.href = redirectUrl;
+    injectAnimationStyles(config) {
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes scanDown {
+                0% { top: 0; opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+            @keyframes expandRing {
+                0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+                100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+            }
+            @keyframes reactorBreathing {
+                0%, 100% {
+                    transform: scale(${config.reactor.powerUpScale});
+                    filter: drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2);
+                }
+                50% {
+                    transform: scale(${config.reactor.powerUpScale + 0.1});
+                    filter: drop-shadow(0 0 ${config.reactor.glowIntensity + 20}px rgba(0, 255, 65, 1)) brightness(2.2);
+                }
+            }
+            @keyframes fadeOutUp {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                100% { opacity: 0; transform: translateY(-50px) scale(0.9); }
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     async playVoiceAnnouncement() {
@@ -518,28 +613,31 @@ class JARVISLoadingManager {
         }
     }
 
-    createParticleBurst(centerElement) {
+    createParticleBurst(centerElement, velocityMin = 200, velocityMax = 300, particleCount = 30) {
         const centerRect = centerElement.getBoundingClientRect();
         const centerX = centerRect.left + centerRect.width / 2;
         const centerY = centerRect.top + centerRect.height / 2;
 
-        // Create 30 particles bursting outward
-        for (let i = 0; i < 30; i++) {
+        // Create dynamic particle burst
+        for (let i = 0; i < particleCount; i++) {
             const particle = document.createElement('div');
-            const angle = (Math.PI * 2 * i) / 30;
-            const velocity = 200 + Math.random() * 100;
+            const angle = (Math.PI * 2 * i) / particleCount;
+            const velocity = velocityMin + Math.random() * (velocityMax - velocityMin);
             const endX = Math.cos(angle) * velocity;
             const endY = Math.sin(angle) * velocity;
+
+            // Random particle size for variety
+            const size = 3 + Math.random() * 3;
 
             particle.style.cssText = `
                 position: fixed;
                 left: ${centerX}px;
                 top: ${centerY}px;
-                width: 4px;
-                height: 4px;
+                width: ${size}px;
+                height: ${size}px;
                 background: #00ff41;
                 border-radius: 50%;
-                box-shadow: 0 0 10px #00ff41;
+                box-shadow: 0 0 10px #00ff41, 0 0 20px rgba(0, 255, 65, 0.5);
                 transform: translate(-50%, -50%);
                 animation: particleBurst${i} 1s ease-out forwards;
                 pointer-events: none;
@@ -570,28 +668,33 @@ class JARVISLoadingManager {
         }
     }
 
-    startMatrixRain(canvas) {
+    startMatrixRain(canvas, columnCount) {
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        const columns = Math.floor(canvas.width / 20);
+        const columns = columnCount || Math.floor(canvas.width / 20);
         const drops = Array(columns).fill(0);
 
         const matrix = 'JARVIS01';
-        ctx.font = '15px monospace';
+        const fontSize = 15;
+        const columnWidth = canvas.width / columns;
+        ctx.font = `${fontSize}px monospace`;
 
         const draw = () => {
+            // Fade effect for trail
             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Draw matrix characters
             ctx.fillStyle = '#00ff41';
             drops.forEach((y, i) => {
                 const text = matrix[Math.floor(Math.random() * matrix.length)];
-                const x = i * 20;
-                ctx.fillText(text, x, y * 20);
+                const x = i * columnWidth;
+                ctx.fillText(text, x, y * fontSize);
 
-                if (y * 20 > canvas.height && Math.random() > 0.975) {
+                // Reset drop to top with random chance
+                if (y * fontSize > canvas.height && Math.random() > 0.975) {
                     drops[i] = 0;
                 }
                 drops[i]++;
