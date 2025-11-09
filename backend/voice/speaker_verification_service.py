@@ -109,6 +109,8 @@ class SpeakerVerificationService:
         self._preload_thread = None
         self._encoder_preloading = False
         self._encoder_preloaded = False
+        self._shutdown_event = threading.Event()  # For clean thread shutdown
+        self._preload_loop = None  # Track event loop for cleanup
 
     async def initialize_fast(self):
         """
@@ -156,7 +158,7 @@ class SpeakerVerificationService:
         self._start_background_preload()
 
     def _start_background_preload(self):
-        """Start background thread to pre-load speaker encoder"""
+        """Start background thread to pre-load speaker encoder with proper cleanup"""
         if self._encoder_preloading or self._encoder_preloaded:
             return
 
@@ -168,18 +170,41 @@ class SpeakerVerificationService:
                 # Run async function in thread's event loop
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.speechbrain_engine._load_speaker_encoder())
-                loop.close()
+                self._preload_loop = loop  # Store for cleanup
 
-                self._encoder_preloaded = True
-                self._encoder_preloading = False
-                logger.info("✅ Speaker encoder pre-loaded in background - unlock is now instant!")
+                try:
+                    loop.run_until_complete(self.speechbrain_engine._load_speaker_encoder())
+                    self._encoder_preloaded = True
+                    logger.info("✅ Speaker encoder pre-loaded in background - unlock is now instant!")
+                finally:
+                    # Clean shutdown of event loop
+                    try:
+                        # Cancel all pending tasks
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+
+                        # Wait for tasks to finish cancellation
+                        if pending:
+                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+                        # Close the loop
+                        loop.close()
+                    except Exception as cleanup_error:
+                        logger.debug(f"Event loop cleanup: {cleanup_error}")
+                    finally:
+                        self._preload_loop = None
 
             except Exception as e:
                 logger.error(f"Background encoder pre-loading failed: {e}", exc_info=True)
+            finally:
                 self._encoder_preloading = False
 
-        self._preload_thread = threading.Thread(target=preload_worker, daemon=True)
+        self._preload_thread = threading.Thread(
+            target=preload_worker,
+            daemon=True,
+            name="SpeakerEncoderPreloader"  # Give it a descriptive name
+        )
         self._preload_thread.start()
 
     async def initialize(self, preload_encoder: bool = True):
@@ -513,13 +538,47 @@ class SpeakerVerificationService:
         await self._load_speaker_profiles()
 
     async def cleanup(self):
-        """Cleanup resources"""
+        """Cleanup resources and terminate background threads"""
+        logger.info("🧹 Cleaning up Speaker Verification Service...")
+
+        # Signal shutdown to background threads
+        self._shutdown_event.set()
+
+        # Wait for preload thread to complete (with timeout)
+        if self._preload_thread and self._preload_thread.is_alive():
+            logger.debug("   Waiting for background preload thread to finish...")
+            self._preload_thread.join(timeout=2.0)
+
+            if self._preload_thread.is_alive():
+                logger.warning("   Preload thread did not exit cleanly (daemon will be terminated)")
+            else:
+                logger.debug("   ✅ Preload thread terminated cleanly")
+
+        # Clean up event loop if still running
+        if self._preload_loop and not self._preload_loop.is_closed():
+            try:
+                logger.debug("   Closing background event loop...")
+                self._preload_loop.stop()
+                self._preload_loop.close()
+                self._preload_loop = None
+            except Exception as e:
+                logger.debug(f"   Event loop cleanup error: {e}")
+
+        # Clean up SpeechBrain engine
         if self.speechbrain_engine:
             await self.speechbrain_engine.cleanup()
 
+        # Clear caches
         self.speaker_profiles.clear()
+        self.profile_quality_scores.clear()
+
+        # Reset state
         self.initialized = False
-        logger.info("🧹 Speaker Verification Service cleaned up")
+        self._encoder_preloaded = False
+        self._encoder_preloading = False
+        self._preload_thread = None
+
+        logger.info("✅ Speaker Verification Service cleaned up")
 
 
 # Global singleton instance

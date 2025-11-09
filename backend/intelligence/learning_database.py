@@ -1221,6 +1221,10 @@ class JARVISLearningDatabase:
         # Initialization flag to prevent multiple initializations
         self._initialized = False
 
+        # Background task management for clean shutdown
+        self._background_tasks: List[asyncio.Task] = []
+        self._shutdown_event = asyncio.Event()
+
         # Performance metrics
         self.metrics = LearningMetrics(
             total_patterns=0,
@@ -1258,15 +1262,17 @@ class JARVISLearningDatabase:
         # Load metrics
         await self._load_metrics()
 
-        # Start background tasks
-        asyncio.create_task(self._auto_flush_batches())
-        asyncio.create_task(self._auto_optimize_task())
+        # Start background tasks and track them for clean shutdown
+        flush_task = asyncio.create_task(self._auto_flush_batches())
+        optimize_task = asyncio.create_task(self._auto_optimize_task())
+        self._background_tasks.extend([flush_task, optimize_task])
 
         self._initialized = True
         logger.info(f"✅ Advanced Learning Database initialized")
         logger.info(f"   Cache: {self.cache_size} entries, {self.cache_ttl}s TTL")
         logger.info(f"   ML Features: {self.enable_ml}")
         logger.info(f"   Auto-optimize: {self.auto_optimize}")
+        logger.info(f"   Background tasks: {len(self._background_tasks)} started")
 
     def _ensure_db_initialized(self) -> Union[aiosqlite.Connection, "DatabaseConnectionWrapper"]:
         """Assert that database is initialized and return it with proper type."""
@@ -1274,11 +1280,17 @@ class JARVISLearningDatabase:
         return self.db
 
     async def _init_sqlite(self):
-        """Initialize async database (SQLite or Cloud SQL) with enhanced schema"""
-        # Try to use Cloud SQL if available
+        """Initialize async database (SQLite or Cloud SQL) with enhanced schema and timeout protection"""
+        # Try to use Cloud SQL if available (with timeout protection)
         if CLOUD_ADAPTER_AVAILABLE:
             try:
-                adapter = await get_database_adapter()
+                # CRITICAL FIX: Add timeout protection to prevent infinite hangs
+                # If Cloud SQL proxy isn't running, this will timeout and fallback to SQLite
+                adapter = await asyncio.wait_for(
+                    get_database_adapter(),
+                    timeout=15.0  # 15 second timeout for database adapter initialization
+                )
+
                 if adapter.is_cloud:
                     logger.info("☁️  Using Cloud SQL (PostgreSQL)")
                     self.db = DatabaseConnectionWrapper(adapter)
@@ -1286,8 +1298,18 @@ class JARVISLearningDatabase:
                     logger.info("📂 Using SQLite (Cloud SQL not configured)")
                     self.db = await aiosqlite.connect(str(self.sqlite_path))
                     self.db.row_factory = aiosqlite.Row
+
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "⏱️  Cloud SQL adapter initialization timeout (15s exceeded)\n"
+                    "   → Falling back to local SQLite"
+                )
+                self.db = await aiosqlite.connect(str(self.sqlite_path))
+                self.db.row_factory = aiosqlite.Row
+
             except Exception as e:
-                logger.warning(f"⚠️  Cloud SQL adapter failed ({e}), falling back to SQLite")
+                logger.warning(f"⚠️  Cloud SQL adapter failed: {e}")
+                logger.info("📂 Falling back to SQLite")
                 self.db = await aiosqlite.connect(str(self.sqlite_path))
                 self.db.row_factory = aiosqlite.Row
         else:
@@ -5039,15 +5061,59 @@ class JARVISLearningDatabase:
             return False
 
     async def close(self):
-        """Close database connections gracefully"""
-        # Flush pending batches
-        await self._flush_goal_batch()
-        await self._flush_action_batch()
-        await self._flush_pattern_batch()
+        """Close database connections gracefully with timeout protection"""
+        logger.info("🧹 Closing learning database...")
 
-        # Close SQLite
+        # Signal shutdown to background tasks
+        self._shutdown_event.set()
+
+        # Cancel and wait for background tasks (with timeout)
+        if self._background_tasks:
+            logger.debug(f"   Canceling {len(self._background_tasks)} background tasks...")
+            for task in self._background_tasks:
+                if not task.done():
+                    task.cancel()
+
+            # Wait for task cancellation with timeout
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._background_tasks, return_exceptions=True),
+                    timeout=2.0
+                )
+                logger.debug("   ✓ Background tasks cancelled")
+            except asyncio.TimeoutError:
+                logger.warning("   ⚠ Background task cancellation timeout")
+
+        # Flush pending batches (with timeout)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    self._flush_goal_batch(),
+                    self._flush_action_batch(),
+                    self._flush_pattern_batch(),
+                    return_exceptions=True
+                ),
+                timeout=5.0
+            )
+            logger.debug("   ✓ Pending batches flushed")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠ Batch flush timeout - some data may not be saved")
+        except Exception as e:
+            logger.warning(f"   ⚠ Batch flush error: {e}")
+
+        # Close database connection
         if self.db:
-            await self.db.close()
+            try:
+                await asyncio.wait_for(self.db.close(), timeout=3.0)
+                logger.debug("   ✓ Database connection closed")
+            except asyncio.TimeoutError:
+                logger.warning("   ⚠ Database close timeout")
+            except Exception as e:
+                logger.warning(f"   ⚠ Database close error: {e}")
+
+        # Reset state
+        self._initialized = False
+        self._background_tasks.clear()
 
         logger.info("✅ Learning database closed gracefully")
 

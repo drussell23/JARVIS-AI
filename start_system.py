@@ -5267,7 +5267,20 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
         # Give a moment for processes to die
         print(f"\n{Colors.CYAN}⏳ [6/6] Finalizing shutdown...{Colors.ENDC}")
-        print(f"   ├─ Waiting for process cleanup (0.5s)...")
+
+        # Clean up speaker verification service (and its background threads)
+        try:
+            print(f"   ├─ Cleaning up speaker verification service...")
+            import backend.voice.speaker_verification_service as sv
+            if sv._global_speaker_service:
+                await sv._global_speaker_service.cleanup()
+                print(f"   ├─ {Colors.GREEN}✓ Speaker service cleaned up{Colors.ENDC}")
+            else:
+                print(f"   ├─ Speaker service not active")
+        except Exception as e:
+            print(f"   ├─ {Colors.YELLOW}⚠ Speaker service cleanup warning: {e}{Colors.ENDC}")
+
+        print(f"   ├─ Waiting for final process cleanup (0.5s)...")
         await asyncio.sleep(0.5)
         print(f"   └─ {Colors.GREEN}✓ Shutdown complete{Colors.ENDC}")
 
