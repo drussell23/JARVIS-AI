@@ -502,7 +502,7 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.fade.duration * 0.5); // Halfway through fade
 
-        // Fade in iframe (main page)
+        // Fade in iframe (main page) - this becomes the new page!
         if (iframe) {
             iframe.style.transition = `opacity ${crossFadeDuration}s ease-in`;
             iframe.style.opacity = '1';
@@ -510,9 +510,45 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.fade.duration * 0.5); // Complete fade
 
-        // Replace current page with iframe content (no white flash!)
-        console.log('[Transition] Redirecting to main page...');
-        window.location.replace(redirectUrl);
+        // Remove all loading page elements smoothly (keep iframe as the page!)
+        console.log('[Transition] ✓ Transition complete - cleaning up loading elements');
+
+        // Fade out and remove loading elements
+        setTimeout(() => {
+            if (container) container.remove();
+            if (overlay) overlay.remove();
+            if (matrixCanvas) matrixCanvas.remove();
+            document.querySelector('.particles-bg')?.remove();
+            document.querySelector('.connection-status')?.remove();
+
+            console.log('[Transition] ✓ Loading elements removed');
+        }, 100);
+
+        // Make iframe the permanent page (no reload needed!)
+        if (iframe) {
+            // Remove transition for instant positioning
+            iframe.style.transition = 'none';
+            iframe.style.position = 'fixed';
+            iframe.style.top = '0';
+            iframe.style.left = '0';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframe.style.zIndex = '1';
+            iframe.style.opacity = '1';
+
+            // Allow iframe to handle all interactions
+            iframe.style.pointerEvents = 'auto';
+        }
+
+        // Update page metadata to match main app
+        document.title = 'J.A.R.V.I.S. Interface';
+
+        // Update URL without reload (for browser history)
+        window.history.replaceState(null, '', redirectUrl);
+
+        console.log('[Transition] ✓ Seamless transition complete - iframe is now the page!');
+        console.log('[Transition] ✓ No page reload - smooth one-go transition achieved!');
     }
 
     // === HELPER METHODS FOR DYNAMIC EFFECTS ===
