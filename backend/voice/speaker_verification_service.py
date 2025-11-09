@@ -564,9 +564,23 @@ class SpeakerVerificationService:
             except Exception as e:
                 logger.debug(f"   Event loop cleanup error: {e}")
 
+        # Clean up learning database (closes background tasks and threads)
+        if self.learning_db:
+            try:
+                logger.debug("   Closing learning database...")
+                from intelligence.learning_database import close_learning_database
+                await close_learning_database()
+                logger.debug("   ✅ Learning database closed")
+            except Exception as e:
+                logger.warning(f"   ⚠ Learning database cleanup error: {e}")
+
         # Clean up SpeechBrain engine
         if self.speechbrain_engine:
-            await self.speechbrain_engine.cleanup()
+            try:
+                await self.speechbrain_engine.cleanup()
+                logger.debug("   ✅ SpeechBrain engine cleaned up")
+            except Exception as e:
+                logger.warning(f"   ⚠ SpeechBrain cleanup error: {e}")
 
         # Clear caches
         self.speaker_profiles.clear()
@@ -577,6 +591,7 @@ class SpeakerVerificationService:
         self._encoder_preloaded = False
         self._encoder_preloading = False
         self._preload_thread = None
+        self.learning_db = None
 
         logger.info("✅ Speaker Verification Service cleaned up")
 

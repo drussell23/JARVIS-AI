@@ -3701,18 +3701,33 @@ class JARVISLearningDatabase:
         logger.info("✨ Database optimized")
 
     async def _auto_flush_batches(self):
-        """Auto-flush batch queues periodically"""
-        while True:
-            await asyncio.sleep(5)  # Flush every 5 seconds
+        """Auto-flush batch queues periodically with shutdown support"""
+        try:
+            while not self._shutdown_event.is_set():
+                try:
+                    # Wait with timeout to allow checking shutdown event
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=5.0  # Flush every 5 seconds
+                    )
+                    break  # Shutdown requested
+                except asyncio.TimeoutError:
+                    # Timeout - time to flush
+                    pass
 
-            if self.pending_goals:
-                await self._flush_goal_batch()
+                if self.pending_goals:
+                    await self._flush_goal_batch()
 
-            if self.pending_actions:
-                await self._flush_action_batch()
+                if self.pending_actions:
+                    await self._flush_action_batch()
 
-            if self.pending_patterns:
-                await self._flush_pattern_batch()
+                if self.pending_patterns:
+                    await self._flush_pattern_batch()
+
+        except asyncio.CancelledError:
+            logger.debug("Auto-flush task cancelled")
+        finally:
+            logger.debug("Auto-flush task exiting")
 
     async def _flush_goal_batch(self):
         """Flush pending goals"""
@@ -3953,13 +3968,30 @@ class JARVISLearningDatabase:
         )
 
     async def _auto_optimize_task(self):
-        """Auto-optimize database periodically"""
+        """Auto-optimize database periodically with shutdown support"""
         if not self.auto_optimize:
+            logger.debug("Auto-optimize disabled")
             return
 
-        while True:
-            await asyncio.sleep(3600)  # Every hour
-            await self.optimize()
+        try:
+            while not self._shutdown_event.is_set():
+                try:
+                    # Wait with timeout to allow checking shutdown event
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=3600.0  # Every hour
+                    )
+                    break  # Shutdown requested
+                except asyncio.TimeoutError:
+                    # Timeout - time to optimize
+                    pass
+
+                await self.optimize()
+
+        except asyncio.CancelledError:
+            logger.debug("Auto-optimize task cancelled")
+        finally:
+            logger.debug("Auto-optimize task exiting")
 
     async def _load_metrics(self):
         """Load initial metrics"""
@@ -5101,6 +5133,19 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.warning(f"   ⚠ Batch flush error: {e}")
 
+        # Close ChromaDB client (releases background threads)
+        if self.chroma_client:
+            try:
+                logger.debug("   Closing ChromaDB client...")
+                # ChromaDB doesn't have an async close, but we should clean up references
+                self.goal_collection = None
+                self.pattern_collection = None
+                self.context_collection = None
+                self.chroma_client = None
+                logger.debug("   ✓ ChromaDB client cleaned up")
+            except Exception as e:
+                logger.warning(f"   ⚠ ChromaDB cleanup error: {e}")
+
         # Close database connection
         if self.db:
             try:
@@ -5132,6 +5177,17 @@ async def get_learning_database(config: Optional[Dict] = None) -> JARVISLearning
             _db_instance = JARVISLearningDatabase(config=config)
             await _db_instance.initialize()
         return _db_instance
+
+
+async def close_learning_database():
+    """Close the global learning database instance"""
+    global _db_instance
+
+    async with _db_lock:
+        if _db_instance is not None:
+            await _db_instance.close()
+            _db_instance = None
+            logger.info("✅ Global learning database instance closed")
 
 
 async def test_database():
