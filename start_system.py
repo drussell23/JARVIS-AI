@@ -7257,7 +7257,6 @@ async def main():
             print(f"{Colors.CYAN}⚡ Optimizing system for fast startup...{Colors.ENDC}")
             try:
                 # Reduce CPU throttling by giving JARVIS higher priority
-                import subprocess
                 subprocess.run(
                     ["sudo", "-n", "renice", "-n", "-10", "-p", str(os.getpid())],
                     capture_output=True,
@@ -7429,8 +7428,6 @@ if __name__ == "__main__":
         )
 
         try:
-            import subprocess
-
             project_id = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
 
             # Check if coordinator exists and has session tracker
