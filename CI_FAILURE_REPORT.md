@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: Unlock Integration E2E Testing
-- **Run Number**: #70
-- **Branch**: `main`
-- **Commit**: `091f42eb5cd43ad29b8c5bcb4fc32aea8c31d34b`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #311
+- **Branch**: `fix/ci/unlock-integration-e2e-testing-run70-20251109-042727`
+- **Commit**: `258a95e39f67fb8bd5b4c762b28b24fc1060db90`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-09T04:25:46Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19203325139)
+- **Timestamp**: 2025-11-09T04:27:49Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19203346582)
 
 ## Failure Overview
 
@@ -17,50 +17,43 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | Integration Tests - macOS | timeout | high | 49s |
+| 1 | Validate PR Title | timeout | high | 4s |
 
 ## Detailed Analysis
 
-### 1. Integration Tests - macOS
+### 1. Validate PR Title
 
 **Status**: ❌ failure
 **Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-09T04:26:02Z
-**Completed**: 2025-11-09T04:26:51Z
-**Duration**: 49 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19203325139/job/54894944337)
+**Started**: 2025-11-09T04:27:54Z
+**Completed**: 2025-11-09T04:27:58Z
+**Duration**: 4 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19203346582/job/54894987612)
 
 #### Failed Steps
 
-- **Step 4**: Install Dependencies
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
 **Detected Error Patterns:**
 
 - Pattern: `ERROR|Error|error`
-  - Occurrences: 3
+  - Occurrences: 2
   - Sample matches:
-    - Line 52: `2025-11-09T04:26:46.7952670Z ERROR: Cannot install psutil==5.9.6 and psutil==5.9.8 because these pac`
-    - Line 65: `2025-11-09T04:26:46.7960780Z ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/late`
-    - Line 66: `2025-11-09T04:26:47.2797040Z ##[error]Process completed with exit code 1.`
+    - Line 25: `2025-11-09T04:27:56.2074095Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-09T04:27:56.6552564Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Unlo`
 
-- Pattern: `FAIL|Failed|failed`
+- Pattern: `timeout|timed out`
   - Occurrences: 1
   - Sample matches:
-    - Line 97: `2025-11-09T04:26:47.7749490Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 12`
-
-- Pattern: `WARN|Warning|warning`
-  - Occurrences: 3
-  - Sample matches:
-    - Line 72: `2025-11-09T04:26:47.2869360Z   if-no-files-found: warn`
-    - Line 86: `2025-11-09T04:26:47.4760360Z ##[warning]No files were found with the provided path: test-results/unl`
-    - Line 97: `2025-11-09T04:26:47.7749490Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 12`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
 1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -80,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-09T04:27:27.023859*
+📊 *Report generated on 2025-11-09T04:28:54.475855*
 🤖 *JARVIS CI/CD Auto-PR Manager*
