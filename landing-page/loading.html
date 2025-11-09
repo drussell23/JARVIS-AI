@@ -9,11 +9,17 @@
     <link rel="stylesheet" href="css/holographic.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --jarvis-green: #00ff41;
+            --jarvis-green-dark: #00aa2e;
+            --jarvis-green-glow: rgba(0, 255, 65, 0.5);
+        }
+
         body {
             margin: 0;
             padding: 0;
             background: #000;
-            color: #00d4ff;
+            color: var(--jarvis-green);
             font-family: 'Rajdhani', sans-serif;
             display: flex;
             justify-content: center;
@@ -37,43 +43,46 @@
             font-family: 'Orbitron', monospace;
             font-size: 4rem;
             font-weight: 900;
-            color: #00d4ff;
+            background: linear-gradient(135deg, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             text-shadow:
-                0 0 10px #00d4ff,
-                0 0 20px #00d4ff,
-                0 0 30px #0099cc,
-                0 0 40px #0099cc;
+                0 0 15px var(--jarvis-green-glow),
+                0 0 30px var(--jarvis-green-glow);
             animation: pulse 2s ease-in-out infinite;
             margin-bottom: 10px;
         }
 
         .subtitle {
             font-size: 1.2rem;
-            color: #0099cc;
+            color: var(--jarvis-green-dark);
             margin-bottom: 50px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
         }
 
         /* Progress Bar */
         .progress-container {
             width: 100%;
             height: 40px;
-            background: rgba(0, 212, 255, 0.1);
-            border: 2px solid #00d4ff;
+            background: rgba(0, 255, 65, 0.1);
+            border: 2px solid var(--jarvis-green);
             border-radius: 20px;
             overflow: hidden;
             position: relative;
             box-shadow:
-                0 0 10px rgba(0, 212, 255, 0.3),
-                inset 0 0 10px rgba(0, 212, 255, 0.1);
+                0 0 10px var(--jarvis-green-glow),
+                inset 0 0 10px rgba(0, 255, 65, 0.1);
             margin-bottom: 30px;
         }
 
         .progress-bar {
             height: 100%;
             background: linear-gradient(90deg,
-                #00d4ff 0%,
-                #0099cc 50%,
-                #00d4ff 100%);
+                var(--jarvis-green) 0%,
+                var(--jarvis-green-dark) 50%,
+                var(--jarvis-green) 100%);
             background-size: 200% 100%;
             animation: shimmer 2s infinite linear;
             width: 0%;
@@ -110,15 +119,16 @@
             margin: 15px 0;
             min-height: 30px;
             color: #fff;
-            text-shadow: 0 0 5px #00d4ff;
+            text-shadow: 0 0 5px var(--jarvis-green-glow);
         }
 
         .progress-percentage {
             font-size: 2rem;
             font-weight: 700;
-            color: #00d4ff;
+            color: var(--jarvis-green);
             margin-bottom: 20px;
             font-family: 'Orbitron', monospace;
+            text-shadow: 0 0 10px var(--jarvis-green-glow);
         }
 
         /* Status stages */
@@ -134,21 +144,21 @@
             min-width: 150px;
             padding: 15px;
             margin: 5px;
-            background: rgba(0, 212, 255, 0.05);
-            border: 1px solid rgba(0, 212, 255, 0.3);
+            background: rgba(0, 255, 65, 0.05);
+            border: 1px solid rgba(0, 255, 65, 0.3);
             border-radius: 10px;
             transition: all 0.3s ease;
         }
 
         .status-item.active {
-            background: rgba(0, 212, 255, 0.2);
-            border-color: #00d4ff;
-            box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+            background: rgba(0, 255, 65, 0.15);
+            border-color: var(--jarvis-green);
+            box-shadow: 0 0 15px var(--jarvis-green-glow);
         }
 
         .status-item.complete {
-            background: rgba(0, 255, 136, 0.1);
-            border-color: #00ff88;
+            background: rgba(0, 255, 65, 0.1);
+            border-color: var(--jarvis-green-dark);
         }
 
         .status-icon {
@@ -171,7 +181,7 @@
 
         .reactor-ring {
             position: absolute;
-            border: 3px solid #00d4ff;
+            border: 3px solid var(--jarvis-green);
             border-radius: 50%;
             animation: rotate 3s linear infinite;
         }
@@ -181,7 +191,7 @@
             height: 150px;
             top: 0;
             left: 0;
-            border-color: #00d4ff transparent transparent transparent;
+            border-color: var(--jarvis-green) transparent transparent transparent;
         }
 
         .reactor-ring:nth-child(2) {
@@ -189,7 +199,7 @@
             height: 110px;
             top: 20px;
             left: 20px;
-            border-color: transparent #0099cc transparent transparent;
+            border-color: transparent var(--jarvis-green-dark) transparent transparent;
             animation-direction: reverse;
             animation-duration: 2s;
         }
@@ -199,7 +209,7 @@
             height: 70px;
             top: 40px;
             left: 40px;
-            border-color: transparent transparent #00d4ff transparent;
+            border-color: transparent transparent var(--jarvis-green) transparent;
             animation-duration: 1.5s;
         }
 
@@ -209,11 +219,12 @@
             height: 30px;
             top: 60px;
             left: 60px;
-            background: #00d4ff;
+            background: var(--jarvis-green);
             border-radius: 50%;
             box-shadow:
-                0 0 20px #00d4ff,
-                0 0 40px #0099cc;
+                0 0 20px var(--jarvis-green),
+                0 0 40px var(--jarvis-green-dark),
+                0 0 60px var(--jarvis-green-glow);
             animation: pulse 1s ease-in-out infinite;
         }
 
@@ -241,8 +252,8 @@
         .details-section {
             margin-top: 30px;
             padding: 20px;
-            background: rgba(0, 212, 255, 0.05);
-            border: 1px solid rgba(0, 212, 255, 0.2);
+            background: rgba(0, 255, 65, 0.05);
+            border: 1px solid rgba(0, 255, 65, 0.2);
             border-radius: 10px;
             text-align: left;
             max-height: 200px;
@@ -251,7 +262,7 @@
 
         .detail-item {
             font-size: 0.9rem;
-            color: #0099cc;
+            color: var(--jarvis-green-dark);
             margin: 5px 0;
             font-family: 'Courier New', monospace;
         }
