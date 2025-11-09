@@ -4599,9 +4599,15 @@ if (typeof localStorage !== 'undefined') {
             # Non-critical, don't fail startup
             logger.debug(f"Could not add cache clearing: {e}")
 
-    async def open_browser_smart(self):
-        """Open browser intelligently - reuse tabs when possible"""
-        if self.frontend_dir.exists() and not self.backend_only:
+    async def open_browser_smart(self, custom_url: str = None):
+        """Open browser intelligently - reuse tabs when possible
+
+        Args:
+            custom_url: Optional custom URL to open (e.g., loading page)
+        """
+        if custom_url:
+            url = custom_url
+        elif self.frontend_dir.exists() and not self.backend_only:
             url = f"http://localhost:{self.ports['frontend']}/"
         else:
             url = f"http://localhost:{self.ports['main_api']}/docs"
@@ -5858,7 +5864,16 @@ except Exception as e:
                 )
 
             await asyncio.sleep(1)  # Brief pause before opening
-            await self.open_browser_smart()
+
+            # Open loading page if in restart mode, otherwise open frontend
+            if hasattr(self, '_startup_progress') and self._startup_progress:
+                # In restart mode - open loading page which will redirect to frontend when ready
+                loading_url = f"http://localhost:{self.ports['main_api']}/loading/loading.html"
+                print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
+                await self.open_browser_smart(loading_url)
+            else:
+                # Normal startup - open frontend directly
+                await self.open_browser_smart()
 
         # Monitor services
         try:

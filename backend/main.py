@@ -2977,6 +2977,22 @@ def mount_routers():
     except Exception as e:
         logger.warning(f"Could not mount static files: {e}")
 
+    # Mount landing-page directory for loading screen
+    try:
+        import os
+        from pathlib import Path
+
+        landing_page_dir = Path(__file__).parent.parent / "landing-page"
+        if landing_page_dir.exists():
+            app.mount("/loading", StaticFiles(directory=str(landing_page_dir), html=True), name="loading")
+            logger.info(
+                f"✅ Landing page mounted - loading screen available at /loading/loading.html"
+            )
+        else:
+            logger.warning(f"Landing page directory not found: {landing_page_dir}")
+    except Exception as e:
+        logger.warning(f"Could not mount landing page: {e}")
+
 
 # Note: Startup tasks are now handled in the lifespan handler above
 
