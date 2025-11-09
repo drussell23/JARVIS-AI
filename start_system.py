@@ -6506,6 +6506,19 @@ async def main():
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
 
+        # Open loading page FIRST (from file system, not backend server)
+        loading_page_path = Path(__file__).parent / "landing-page" / "loading.html"
+        if loading_page_path.exists() and not args.no_browser:
+            loading_url = f"file://{loading_page_path.absolute()}"
+            print(f"{Colors.CYAN}🌐 Opening loading page: {loading_url}{Colors.ENDC}")
+            try:
+                # Open browser with loading page
+                import webbrowser
+                webbrowser.open(loading_url)
+                await asyncio.sleep(1)  # Give browser time to open
+            except Exception as e:
+                print(f"  {Colors.WARNING}⚠️ Failed to open loading page: {e}{Colors.ENDC}")
+
         try:
             backend_dir = Path(__file__).parent / "backend"
             if str(backend_dir) not in sys.path:
