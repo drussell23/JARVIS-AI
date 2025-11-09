@@ -457,12 +457,19 @@
 
 .user-message,
 .jarvis-message {
-  margin: 0 0 1rem 0;
-  padding: 0.5rem 0;
+  margin: 0 0 2.5rem 0;
+  /* Increased spacing between messages */
+  padding: 0.8rem 0;
   border-radius: 0;
   background: none;
   border-left: none;
   animation: messageFadeIn 0.5s ease-out;
+}
+
+.user-message:last-child,
+.jarvis-message:last-child {
+  margin-bottom: 0;
+  /* No margin on last message */
 }
 
 @keyframes messageFadeIn {
@@ -491,7 +498,8 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  /* Increased spacing between label and text */
   opacity: 0.7;
 }
 
