@@ -6479,12 +6479,6 @@ async def main():
             # Step 1: Advanced JARVIS process detection with multiple strategies
             print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
 
-            # Import the advanced process detector
-            import sys
-            backend_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
-            if backend_path not in sys.path:
-                sys.path.insert(0, backend_path)
-
             try:
                 from core.process_detector import (
                     AdvancedProcessDetector,
