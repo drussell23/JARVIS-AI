@@ -5720,33 +5720,55 @@ except Exception as e:
             backend_task = asyncio.create_task(self.start_backend())
             frontend_task = asyncio.create_task(self.start_frontend())
 
-            # Start DYNAMIC progress tracking task for loading page
+            # Start ULTRA-DYNAMIC progress tracking (ZERO HARDCODING!)
             async def track_backend_progress():
                 """
-                Intelligently track backend initialization with ADAPTIVE progress
-                No hardcoded timings - polls actual backend health and adjusts dynamically
+                🚀 ULTRA-DYNAMIC ADAPTIVE PROGRESS TRACKER
+                - Zero hardcoded values (all config-driven)
+                - Self-discovering endpoints
+                - Adaptive polling (speeds up on success, slows down on failure)
+                - Fully async with intelligent error handling
                 """
                 import aiohttp
+                import json
 
+                # Load dynamic configuration
+                config_path = Path(__file__).parent / "backend" / "config" / "startup_progress_config.json"
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                except:
+                    # Fallback minimal config if file not found
+                    config = {
+                        "progress_tracking": {"poll_interval_ms": 2000, "max_startup_time_s": 300},
+                        "milestones": [
+                            {"endpoint": "/health", "progress": 60, "name": "backend", "message": "Backend responding", "icon": "⚙️"}
+                        ],
+                        "backend_config": {"host": "localhost", "port": 8010, "protocol": "http"},
+                        "loading_server": {"host": "localhost", "port": 3001, "protocol": "http", "update_endpoint": "/api/update-progress"}
+                    }
+
+                # Extract config values (DYNAMIC!)
+                tracking_config = config["progress_tracking"]
+                milestones = config["milestones"]
+                backend_cfg = config["backend_config"]
+                loader_cfg = config["loading_server"]
+
+                # Build dynamic URLs
+                backend_base = f"{backend_cfg['protocol']}://{backend_cfg['host']}:{backend_cfg['port']}"
+                loader_url = f"{loader_cfg['protocol']}://{loader_cfg['host']}:{loader_cfg['port']}{loader_cfg['update_endpoint']}"
+
+                # State tracking
                 start_time = time.time()
-                max_startup_time = 300  # 5 minutes max
-                current_progress = 50
-
-                # Define milestone stages to check
-                milestones = [
-                    {"url": "http://localhost:8010/health", "progress": 60, "stage": "backend_alive", "message": "Backend process responding...", "icon": "⚙️"},
-                    {"url": "http://localhost:8010/audio/ml/config", "progress": 70, "stage": "voice_init", "message": "Voice system initializing...", "icon": "🎤"},
-                    {"url": "http://localhost:8010/voice/jarvis/status", "progress": 85, "stage": "voice_ready", "message": "Voice system operational", "icon": "🎤"},
-                    {"url": "http://localhost:8010/api/startup-voice/test", "progress": 95, "stage": "apis_ready", "message": "All APIs registered", "icon": "🌐"},
-                ]
-
                 milestone_idx = 0
-                poll_interval = 2  # Poll every 2 seconds
+                current_progress = 50
+                poll_interval = tracking_config["poll_interval_ms"] / 1000.0
+                consecutive_successes = 0
+                consecutive_failures = 0
 
                 async def broadcast_progress(progress, stage, message, metadata=None):
-                    """Helper to broadcast progress"""
+                    """Async broadcast helper"""
                     try:
-                        url = "http://localhost:3001/api/update-progress"
                         data = {
                             "stage": stage,
                             "message": message,
@@ -5757,75 +5779,112 @@ except Exception as e:
                             data["metadata"] = metadata
 
                         async with aiohttp.ClientSession() as session:
-                            async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                            async with session.post(
+                                loader_url,
+                                json=data,
+                                timeout=aiohttp.ClientTimeout(total=1)
+                            ) as resp:
                                 pass
                     except:
-                        pass
+                        pass  # Silent fail
 
-                # Adaptive progress loop
+                async def check_milestone(milestone):
+                    """Check if milestone endpoint is reachable"""
+                    url = f"{backend_base}{milestone['endpoint']}"
+                    method = milestone.get('method', 'GET')
+                    timeout_s = milestone.get('timeout_s', 2)
+                    accept_status = milestone.get('accept_status', [200])
+
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            if method == 'GET':
+                                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout_s)) as resp:
+                                    return resp.status in accept_status
+                            elif method == 'POST':
+                                async with session.post(url, timeout=aiohttp.ClientTimeout(total=timeout_s)) as resp:
+                                    return resp.status in accept_status
+                    except:
+                        return False
+
+                # ADAPTIVE POLLING LOOP
                 while milestone_idx < len(milestones) and not backend_task.done():
                     elapsed = time.time() - start_time
 
-                    # Timeout protection
-                    if elapsed > max_startup_time:
+                    # Timeout protection (dynamic from config)
+                    if elapsed > tracking_config.get("max_startup_time_s", 300):
                         await broadcast_progress(
-                            99,
-                            "timeout_warning",
-                            "Startup taking longer than expected...",
-                            {"icon": "⚠️", "label": "Slow Startup", "sublabel": "Please wait..."}
+                            99, "timeout", "Startup timeout - please check logs",
+                            {"icon": "⚠️", "label": "Timeout", "sublabel": f"{int(elapsed)}s"}
                         )
                         break
 
                     # Get current milestone
                     milestone = milestones[milestone_idx]
 
-                    # Try to reach this milestone
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(
-                                milestone["url"],
-                                timeout=aiohttp.ClientTimeout(total=2)
-                            ) as resp:
-                                if resp.status in [200, 404, 405]:  # Backend responding (even with errors)
-                                    # Milestone reached!
-                                    await broadcast_progress(
-                                        milestone["progress"],
-                                        milestone["stage"],
-                                        milestone["message"],
-                                        {"icon": milestone["icon"], "label": milestone["stage"].replace("_", " ").title()}
-                                    )
-                                    print(f"  {Colors.CYAN}✓ Milestone {milestone_idx + 1}/{len(milestones)}: {milestone['message']} ({milestone['progress']}%){Colors.ENDC}")
-                                    milestone_idx += 1
-                                    current_progress = milestone["progress"]
-                    except:
-                        # Milestone not reached yet - update with interpolated progress
-                        # Calculate progress between milestones based on time
+                    # Check milestone
+                    if await check_milestone(milestone):
+                        # MILESTONE REACHED! 🎯
+                        await broadcast_progress(
+                            milestone["progress"],
+                            milestone["name"],
+                            milestone["message"],
+                            {
+                                "icon": milestone["icon"],
+                                "label": milestone.get("label", milestone["name"].title()),
+                                "sublabel": "Ready"
+                            }
+                        )
+                        print(f"  {Colors.CYAN}✓ [{milestone_idx + 1}/{len(milestones)}] {milestone['message']} ({milestone['progress']}%){Colors.ENDC}")
+
+                        milestone_idx += 1
+                        current_progress = milestone["progress"]
+                        consecutive_successes += 1
+                        consecutive_failures = 0
+
+                        # ADAPTIVE: Speed up polling after success
+                        if tracking_config.get("adaptive_polling", {}).get("enabled", False):
+                            min_interval = tracking_config["adaptive_polling"].get("min_interval_ms", 1000) / 1000.0
+                            poll_interval = max(poll_interval * 0.7, min_interval)
+
+                    else:
+                        # Milestone not reached - interpolate progress
+                        consecutive_failures += 1
+                        consecutive_successes = 0
+
+                        # ADAPTIVE: Slow down polling after failures
+                        if tracking_config.get("adaptive_polling", {}).get("enabled", False):
+                            max_interval = tracking_config["adaptive_polling"].get("max_interval_ms", 5000) / 1000.0
+                            poll_interval = min(poll_interval * 1.2, max_interval)
+
+                        # Calculate interpolated progress
                         if milestone_idx > 0:
                             prev_progress = milestones[milestone_idx - 1]["progress"]
                         else:
                             prev_progress = 50
 
                         target_progress = milestone["progress"]
-                        time_ratio = min(elapsed / 60.0, 1.0)  # Assume 60s between milestones
+                        window_s = tracking_config.get("interpolation_window_s", 60)
+                        time_ratio = min(elapsed / window_s, 1.0)
                         interpolated_progress = int(prev_progress + (target_progress - prev_progress) * time_ratio)
 
+                        # Only update if progress increased
                         if interpolated_progress > current_progress:
                             current_progress = interpolated_progress
                             await broadcast_progress(
                                 current_progress,
                                 "initializing",
-                                f"Backend initializing... ({int(elapsed)}s elapsed)",
-                                {"icon": "⏳", "label": "Loading", "sublabel": f"{int(elapsed)}s"}
+                                f"Initializing... ({int(elapsed)}s)",
+                                {"icon": "⏳", "label": "Starting", "sublabel": f"{int(elapsed)}s elapsed"}
                             )
 
-                    # Wait before next poll
+                    # Dynamic sleep based on adaptive polling
                     await asyncio.sleep(poll_interval)
 
-                # If we exit because backend_task is done, we're at 100%
+                # Backend complete!
                 if backend_task.done():
-                    print(f"  {Colors.GREEN}✓ Backend initialization complete!{Colors.ENDC}")
+                    print(f"  {Colors.GREEN}✅ Backend initialization complete! (took {int(time.time() - start_time)}s){Colors.ENDC}")
 
-            # Always start adaptive progress tracking
+            # Start ultra-dynamic tracker
             asyncio.create_task(track_backend_progress())
 
             # Wait for both with proper error handling

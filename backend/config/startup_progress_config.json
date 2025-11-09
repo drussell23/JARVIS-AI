@@ -1,0 +1,101 @@
+{
+  "progress_tracking": {
+    "enabled": true,
+    "poll_interval_ms": 2000,
+    "max_startup_time_s": 300,
+    "interpolation_window_s": 60,
+    "adaptive_polling": {
+      "enabled": true,
+      "min_interval_ms": 1000,
+      "max_interval_ms": 5000,
+      "speed_up_on_success": true
+    }
+  },
+  "milestones": [
+    {
+      "name": "backend_alive",
+      "progress": 60,
+      "endpoint": "/health",
+      "method": "GET",
+      "accept_status": [200, 404, 405],
+      "message": "Backend process responding...",
+      "icon": "⚙️",
+      "label": "Backend Init",
+      "required": true,
+      "timeout_s": 2
+    },
+    {
+      "name": "voice_init",
+      "progress": 70,
+      "endpoint": "/audio/ml/config",
+      "method": "GET",
+      "accept_status": [200],
+      "message": "Voice system initializing...",
+      "icon": "🎤",
+      "label": "Voice Init",
+      "required": false,
+      "timeout_s": 2
+    },
+    {
+      "name": "voice_ready",
+      "progress": 85,
+      "endpoint": "/voice/jarvis/status",
+      "method": "GET",
+      "accept_status": [200],
+      "message": "Voice system operational",
+      "icon": "🎤",
+      "label": "Voice Ready",
+      "required": false,
+      "timeout_s": 2
+    },
+    {
+      "name": "apis_ready",
+      "progress": 95,
+      "endpoint": "/api/startup-voice/test",
+      "method": "GET",
+      "accept_status": [200, 404],
+      "message": "All APIs registered",
+      "icon": "🌐",
+      "label": "APIs Ready",
+      "required": false,
+      "timeout_s": 2
+    }
+  ],
+  "fallback_stages": [
+    {
+      "progress": 55,
+      "message": "Loading core modules...",
+      "icon": "📦",
+      "time_trigger_s": 10
+    },
+    {
+      "progress": 65,
+      "message": "Initializing services...",
+      "icon": "🔧",
+      "time_trigger_s": 30
+    },
+    {
+      "progress": 75,
+      "message": "Loading AI models...",
+      "icon": "🧠",
+      "time_trigger_s": 60
+    },
+    {
+      "progress": 90,
+      "message": "Finalizing startup...",
+      "icon": "✨",
+      "time_trigger_s": 120
+    }
+  ],
+  "backend_config": {
+    "host": "localhost",
+    "port": 8010,
+    "protocol": "http"
+  },
+  "loading_server": {
+    "host": "localhost",
+    "port": 3001,
+    "protocol": "http",
+    "update_endpoint": "/api/update-progress"
+  }
+}
