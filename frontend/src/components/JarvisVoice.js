@@ -690,6 +690,10 @@ const JarvisVoice = () => {
       await configPromise;
       console.log('JarvisVoice: Config ready, initializing...');
 
+      // CRITICAL: Connect WebSocket FIRST before doing anything else
+      console.log('🔌 Connecting WebSocket on component mount...');
+      connectWebSocket();
+
       await checkJarvisStatus();
       await checkMicrophonePermission();
       await initializeWakeWordService();
@@ -2265,6 +2269,31 @@ const JarvisVoice = () => {
   const handleVoiceCommand = async (command, confidenceInfo = {}) => {
     console.log('🎯 handleVoiceCommand called with:', command);
     console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
+
+    // CRITICAL: Check WebSocket connection before proceeding
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('⚠️ WebSocket not connected! Attempting to reconnect...');
+      connectWebSocket();
+      setError('Reconnecting to JARVIS...');
+
+      // Wait for connection with timeout
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          console.log('✅ WebSocket reconnected successfully');
+          setError('');
+          break;
+        }
+      }
+
+      // If still not connected after 5 seconds, show error
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error('❌ Failed to reconnect WebSocket');
+        setError('⚠️ Connection lost - please refresh the page');
+        return;  // Don't send command
+      }
+    }
+
     setTranscript(command);
 
     // Track command start time for adaptive learning
@@ -2394,6 +2423,16 @@ const JarvisVoice = () => {
       setJarvisStatus('activating');
       setTimeout(async () => {
         setJarvisStatus('online');
+
+        // CRITICAL: Ensure WebSocket is connected before proceeding
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          console.log('🔌 WebSocket not connected after activation, connecting now...');
+          connectWebSocket();
+          // Wait a bit for connection to establish
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          console.log('✅ WebSocket already connected');
+        }
 
         // Initialize wake word service if not already done
         if (!wakeWordServiceRef.current) {
