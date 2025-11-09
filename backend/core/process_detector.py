@@ -646,13 +646,29 @@ class AdvancedProcessDetector:
             import re
             patterns = [re.compile(p, re.IGNORECASE) for p in self.config.cmdline_patterns]
 
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time', 'cwd']):
                 try:
                     info = proc.info
                     cmdline = info.get('cmdline') or []
-                    cmdline_str = ' '.join(cmdline)
+                    cmdline_str = ' '.join(cmdline).lower()
+                    cwd = info.get('cwd', '').lower() if info.get('cwd') else ''
 
+                    # Check if matches any pattern
                     if any(pattern.search(cmdline_str) for pattern in patterns):
+                        # ENHANCED: Verify it's actually JARVIS-related
+                        # Don't blindly trust pattern match - verify JARVIS context
+                        is_jarvis = (
+                            'jarvis' in cmdline_str or
+                            'jarvis' in cwd or
+                            # For main.py and start_system, require JARVIS directory
+                            ('main.py' in cmdline_str and 'jarvis' in cwd) or
+                            ('start_system' in cmdline_str and 'jarvis' in cwd)
+                        )
+
+                        if not is_jarvis:
+                            logger.debug(f"Pattern matched PID {info['pid']} but not JARVIS-related, skipping")
+                            continue
+
                         process_info = ProcessInfo(
                             pid=info['pid'],
                             name=info['name'],
