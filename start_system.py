@@ -6497,7 +6497,7 @@ async def main():
                 print(f"    • command_line: Regex pattern matching")
 
                 # Detect processes (dry run first to show what we found)
-                result = asyncio.run(detect_and_kill_jarvis_processes(dry_run=True))
+                result = await detect_and_kill_jarvis_processes(dry_run=True)
 
                 jarvis_processes = result["processes"]
                 print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
