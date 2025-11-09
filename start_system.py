@@ -5929,8 +5929,12 @@ except Exception as e:
             # Check frontend result (non-critical)
             if isinstance(frontend_result, Exception):
                 print(f"{Colors.WARNING}⚠ Frontend failed: {frontend_result}{Colors.ENDC}")
-            elif not frontend_result:
-                print(f"{Colors.WARNING}⚠ Frontend failed to start{Colors.ENDC}")
+            elif frontend_result is None:
+                print(f"{Colors.WARNING}⚠ Frontend returned None (may still be starting){Colors.ENDC}")
+            elif hasattr(frontend_result, 'returncode') and frontend_result.returncode is not None:
+                print(f"{Colors.WARNING}⚠ Frontend process exited with code {frontend_result.returncode}{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}✓ Frontend process started successfully{Colors.ENDC}")
 
             # Phase 3: Quick health checks
             print(f"\n{Colors.CYAN}Phase 3/3: Running parallel health checks...{Colors.ENDC}")
