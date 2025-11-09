@@ -5722,17 +5722,26 @@ except Exception as e:
 
             # Start progress tracking task for loading page
             async def track_backend_progress():
-                """Track backend initialization and broadcast progress to loading server"""
+                """Track backend initialization and broadcast granular progress 50-100%"""
                 progress_stages = [
-                    (60, "database", "Initializing database connections...", {"icon": "💾", "label": "Database", "sublabel": "Connecting..."}),
-                    (70, "voice", "Loading voice biometric system...", {"icon": "🎤", "label": "Voice System", "sublabel": "Loading models..."}),
-                    (80, "vision", "Initializing vision components...", {"icon": "👁️", "label": "Vision", "sublabel": "Starting capture..."}),
-                    (90, "api", "Starting API server...", {"icon": "🌐", "label": "API Server", "sublabel": "Starting FastAPI..."}),
+                    (52, "backend_init", "Initializing backend framework...", {"icon": "⚙️", "label": "Backend Init", "sublabel": "FastAPI starting..."}),
+                    (55, "config_load", "Loading configuration files...", {"icon": "📄", "label": "Configuration", "sublabel": "Loading configs..."}),
+                    (58, "database_connect", "Connecting to Cloud SQL database...", {"icon": "💾", "label": "Database", "sublabel": "Connecting..."}),
+                    (62, "database_ready", "Database connection established", {"icon": "💾", "label": "Database", "sublabel": "Connected"}),
+                    (66, "voice_init", "Initializing voice biometric system...", {"icon": "🎤", "label": "Voice", "sublabel": "Loading models..."}),
+                    (70, "voice_models", "Loading voice recognition models...", {"icon": "🎤", "label": "Voice", "sublabel": "Models loading..."}),
+                    (74, "voice_ready", "Voice system ready", {"icon": "🎤", "label": "Voice", "sublabel": "Ready"}),
+                    (78, "vision_init", "Initializing vision capture system...", {"icon": "👁️", "label": "Vision", "sublabel": "Initializing..."}),
+                    (82, "vision_yolo", "Loading YOLOv8 detection models...", {"icon": "👁️", "label": "Vision", "sublabel": "YOLO loading..."}),
+                    (86, "vision_ready", "Vision system operational", {"icon": "👁️", "label": "Vision", "sublabel": "Ready"}),
+                    (90, "api_start", "Starting FastAPI server...", {"icon": "🌐", "label": "API", "sublabel": "Starting..."}),
+                    (94, "routes_load", "Registering API routes...", {"icon": "🌐", "label": "API", "sublabel": "Routes loading..."}),
+                    (97, "health_check", "Running health checks...", {"icon": "🏥", "label": "Health Check", "sublabel": "Verifying..."}),
                 ]
 
                 for progress, stage, message, metadata in progress_stages:
-                    # Wait for backend to reach this stage (rough timing)
-                    await asyncio.sleep(8)  # Adjusted for typical startup time
+                    # Wait for backend to reach this stage
+                    await asyncio.sleep(3)  # ~3 seconds per stage = 39 seconds total
 
                     # Check if backend is still starting
                     if not backend_task.done():
@@ -6635,16 +6644,21 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Broadcast initial progress
+            # Progress: 1% - Started
+            await broadcast_to_loading_server(
+                "initializing",
+                "Initializing restart sequence...",
+                1,
+                metadata={"icon": "⚡", "label": "Initializing", "sublabel": "Starting..."}
+            )
+            await asyncio.sleep(0.3)
+
+            # Progress: 3% - Detecting
             await broadcast_to_loading_server(
                 "detecting",
-                "Detecting existing JARVIS processes...",
-                5,
-                metadata={
-                    "icon": "🔍",
-                    "label": "Detecting",
-                    "sublabel": "Scanning processes..."
-                }
+                "Scanning for existing JARVIS processes...",
+                3,
+                metadata={"icon": "🔍", "label": "Detecting", "sublabel": "Scanning..."}
             )
 
             # Step 1: Advanced JARVIS process detection with multiple strategies
@@ -6672,6 +6686,14 @@ async def main():
 
                 jarvis_processes = result["processes"]
                 print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
+
+                # Progress: 8% - Detection complete
+                await broadcast_to_loading_server(
+                    "detected",
+                    f"Found {result['total_detected']} JARVIS process(es)",
+                    8,
+                    metadata={"icon": "✓", "label": "Detected", "sublabel": f"{result['total_detected']} found"}
+                )
 
                 # Convert to old format for compatibility with existing code
                 jarvis_processes = [
@@ -6764,15 +6786,12 @@ async def main():
                     )
                     print(f"  {idx}. PID {proc['pid']} ({proc['type']}, {age_str})")
 
+                # Progress: 12% - Starting termination
                 await broadcast_to_loading_server(
-                    "killing",
+                    "terminating",
                     f"Terminating {len(jarvis_processes)} existing process(es)...",
-                    15,
-                    metadata={
-                        "icon": "⚔️",
-                        "label": "Terminating",
-                        "sublabel": f"{len(jarvis_processes)} processes"
-                    }
+                    12,
+                    metadata={"icon": "⚔️", "label": "Terminating", "sublabel": f"{len(jarvis_processes)} processes"}
                 )
 
                 print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
@@ -6830,15 +6849,21 @@ async def main():
                         f"{Colors.GREEN}✓ All {killed_count} process(es) terminated successfully{Colors.ENDC}"
                     )
 
+                # Progress: 20% - Processes killed
+                await broadcast_to_loading_server(
+                    "killed",
+                    f"Terminated {killed_count} process(es) successfully",
+                    20,
+                    metadata={"icon": "✓", "label": "Terminated", "sublabel": f"{killed_count} killed"}
+                )
+                await asyncio.sleep(0.5)
+
+                # Progress: 25% - Cleanup
                 await broadcast_to_loading_server(
                     "cleanup",
-                    "Processes terminated, cleaning up resources...",
-                    30,
-                    metadata={
-                        "icon": "🧹",
-                        "label": "Cleanup",
-                        "sublabel": f"{killed_count} terminated"
-                    }
+                    "Cleaning up resources and locks...",
+                    25,
+                    metadata={"icon": "🧹", "label": "Cleanup", "sublabel": "Freeing resources"}
                 )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
@@ -6973,22 +6998,36 @@ async def main():
             except Exception as e:
                 print(f"{Colors.YELLOW}⚠ VM cleanup failed: {e} - proceeding anyway{Colors.ENDC}")
 
+            # Progress: 35% - VM cleanup done
+            await broadcast_to_loading_server(
+                "vm_cleanup",
+                "Cloud resources cleaned up",
+                35,
+                metadata={"icon": "☁️", "label": "Cloud Cleanup", "sublabel": "VMs deleted"}
+            )
+            await asyncio.sleep(0.3)
+
             print(f"\n{'='*50}")
             print(
                 f"{Colors.GREEN}🎉 Old instances cleaned up - starting fresh JARVIS...{Colors.ENDC}"
             )
             print(f"{'='*50}\n")
 
-            # Broadcast 50% - ready to start
+            # Progress: 40% - Ready to start
+            await broadcast_to_loading_server(
+                "ready_to_start",
+                "Environment ready, preparing to launch...",
+                40,
+                metadata={"icon": "✓", "label": "Ready", "sublabel": "Environment clean"}
+            )
+            await asyncio.sleep(0.5)
+
+            # Progress: 45% - Starting services
             await broadcast_to_loading_server(
                 "starting",
-                "Starting JARVIS services...",
-                50,
-                metadata={
-                    "icon": "🚀",
-                    "label": "Starting",
-                    "sublabel": "Launching services..."
-                }
+                "Launching JARVIS backend services...",
+                45,
+                metadata={"icon": "🚀", "label": "Starting", "sublabel": "Launching..."}
             )
 
             # Fall through to normal startup - backend will start fresh
