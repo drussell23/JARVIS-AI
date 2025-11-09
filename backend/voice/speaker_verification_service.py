@@ -16,6 +16,65 @@ import threading
 from typing import Optional
 
 import numpy as np
+
+# ============================================================================
+# CRITICAL FIX: Patch torchaudio for compatibility with version 2.9.0+
+# ============================================================================
+# Issue: torchaudio.list_audio_backends() was removed in torchaudio 2.9.0
+# This breaks SpeechBrain 1.0.3 which still calls the deprecated function
+# Solution: Monkey patch torchaudio before importing SpeechBrain
+# ============================================================================
+try:
+    import torchaudio
+
+    # Check if list_audio_backends is missing (torchaudio >= 2.9.0)
+    if not hasattr(torchaudio, 'list_audio_backends'):
+        logging.getLogger(__name__).info(
+            "🔧 Patching torchaudio 2.9.0+ for SpeechBrain compatibility..."
+        )
+
+        # Add dummy list_audio_backends function that returns available backends
+        # In torchaudio 2.9+, the backend system was simplified - we can safely
+        # return a list of known backends without actually checking
+        def _list_audio_backends_fallback():
+            """
+            Fallback implementation for removed torchaudio.list_audio_backends()
+
+            Returns list of potentially available backends. Since torchaudio 2.9+
+            handles backend selection automatically, we just return common ones.
+            """
+            backends = []
+            try:
+                # Try to import soundfile (most common backend)
+                import soundfile
+                backends.append('soundfile')
+            except ImportError:
+                pass
+
+            try:
+                # Try to import sox_io
+                import torchaudio.backend.sox_io_backend
+                backends.append('sox_io')
+            except (ImportError, AttributeError):
+                pass
+
+            # If no backends found, return default
+            if not backends:
+                backends = ['soundfile']  # Default assumption
+
+            return backends
+
+        # Monkey patch the missing function
+        torchaudio.list_audio_backends = _list_audio_backends_fallback
+
+        logging.getLogger(__name__).info(
+            f"✅ torchaudio patched successfully - backends: {torchaudio.list_audio_backends()}"
+        )
+
+except ImportError as e:
+    logging.getLogger(__name__).warning(f"Could not patch torchaudio: {e}")
+
+# Now safe to import SpeechBrain components
 from intelligence.learning_database import JARVISLearningDatabase
 from voice.engines.speechbrain_engine import SpeechBrainEngine
 from voice.stt_config import ModelConfig, STTEngine

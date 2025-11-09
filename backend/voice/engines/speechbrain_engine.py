@@ -52,6 +52,26 @@ logger = logging.getLogger(__name__)
 # Suppress MPS FFT fallback warnings (expected behavior for unsupported ops)
 warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarning)
 
+# ============================================================================
+# TORCHAUDIO 2.9.0+ COMPATIBILITY PATCH
+# ============================================================================
+# Ensure torchaudio has list_audio_backends for older SpeechBrain versions
+if not hasattr(torchaudio, 'list_audio_backends'):
+    logger.info("🔧 Applying torchaudio 2.9.0+ compatibility patch...")
+
+    def _list_audio_backends_compat():
+        """Compatibility shim for torchaudio 2.9.0+ (removed list_audio_backends)"""
+        backends = []
+        try:
+            import soundfile
+            backends.append('soundfile')
+        except ImportError:
+            pass
+        return backends if backends else ['soundfile']
+
+    torchaudio.list_audio_backends = _list_audio_backends_compat
+    logger.info(f"✅ Compatibility patch applied - detected backends: {torchaudio.list_audio_backends()}")
+
 
 @dataclass
 class StreamingChunk:
@@ -497,8 +517,21 @@ class SpeechBrainEngine(BaseSTTEngine):
                 "speechbrain.lobes.models.huggingface_transformers.huggingface"
             ).setLevel(stdlib_logging.ERROR)
 
+            # Suppress torchaudio backend warnings (handled by our compatibility patch)
+            stdlib_logging.getLogger("speechbrain.utils.torch_audio_backend").setLevel(
+                stdlib_logging.ERROR
+            )
+
             # Import in initialize to avoid loading if not needed
-            from speechbrain.inference.ASR import EncoderDecoderASR
+            try:
+                from speechbrain.inference.ASR import EncoderDecoderASR
+            except AttributeError as e:
+                if "list_audio_backends" in str(e):
+                    logger.error(
+                        "❌ SpeechBrain import failed due to torchaudio compatibility issue. "
+                        "This should have been patched - check import order!"
+                    )
+                raise
 
             # Determine device
             self.device = self._get_optimal_device()
@@ -539,10 +572,13 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             self.initialized = True
             duration = time.time() - start_time
-            logger.info(f"SpeechBrain {self.model_config.name} ready ({duration:.2f}s)")
+            logger.info(f"✅ SpeechBrain {self.model_config.name} ready ({duration:.2f}s)")
 
         except Exception as e:
-            logger.error(f"SpeechBrain initialization failed: {e}", exc_info=True)
+            logger.error(f"❌ SpeechBrain initialization failed: {e}", exc_info=True)
+            logger.error(
+                "   Hint: If you see 'list_audio_backends' error, ensure torchaudio compatibility patch is loaded first"
+            )
             raise
 
     async def _load_speaker_encoder(self):
@@ -560,7 +596,7 @@ class SpeechBrainEngine(BaseSTTEngine):
         try:
             from speechbrain.inference.speaker import EncoderClassifier
 
-            logger.info("Loading speaker encoder (ECAPA-TDNN)...")
+            logger.info("🔄 Loading speaker encoder (ECAPA-TDNN)...")
             loop = asyncio.get_event_loop()
 
             # IMPORTANT: Force CPU for speaker encoder
@@ -579,10 +615,24 @@ class SpeechBrainEngine(BaseSTTEngine):
             )
 
             self.speaker_encoder_loaded = True
-            logger.info("Speaker encoder loaded successfully")
+            logger.info("✅ Speaker encoder loaded successfully")
 
+        except AttributeError as e:
+            if "list_audio_backends" in str(e):
+                logger.error(
+                    "❌ Speaker encoder loading failed: torchaudio compatibility issue detected!\n"
+                    "   This indicates the torchaudio patch was not applied before SpeechBrain import.\n"
+                    "   Please restart the system to ensure proper initialization order."
+                )
+            else:
+                logger.error(f"❌ Speaker encoder loading failed: {e}", exc_info=True)
+            raise
         except Exception as e:
-            logger.error(f"Failed to load speaker encoder: {e}", exc_info=True)
+            logger.error(f"❌ Speaker encoder loading failed: {e}", exc_info=True)
+            logger.error(
+                "   This may prevent speaker verification from working.\n"
+                "   Check that all dependencies are installed: pip install speechbrain soundfile"
+            )
             raise
 
     def _get_optimal_device(self) -> str:
