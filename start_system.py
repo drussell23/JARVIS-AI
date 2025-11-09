@@ -7771,6 +7771,64 @@ if __name__ == "__main__":
                         except Exception as e:
                             logger.debug(f"Cleanup gather exception: {e}")
 
+                # CRITICAL: Ensure all subprocess waiters complete BEFORE stopping loop
+                print(f"   ├─ Waiting for subprocess handlers to complete...")
+                try:
+                    # Get all pending tasks that might be subprocess waiters
+                    import threading
+                    import asyncio.subprocess
+
+                    waitpid_threads = [t for t in threading.enumerate() if t.name.startswith('waitpid-')]
+
+                    if waitpid_threads:
+                        print(f"   │  Found {len(waitpid_threads)} waitpid threads - draining subprocess operations...")
+
+                        # Strategy 1: Find and complete all pending subprocess wait() operations
+                        try:
+                            # Get all tasks and filter for subprocess-related ones
+                            all_tasks = asyncio.all_tasks(loop)
+                            subprocess_tasks = []
+
+                            for task in all_tasks:
+                                # Check if task is related to subprocess (waitpid)
+                                if not task.done():
+                                    task_repr = repr(task)
+                                    if 'subprocess' in task_repr.lower() or 'wait' in task_repr.lower():
+                                        subprocess_tasks.append(task)
+
+                            if subprocess_tasks:
+                                print(f"   │  Completing {len(subprocess_tasks)} subprocess-related tasks...")
+                                try:
+                                    loop.run_until_complete(
+                                        asyncio.wait_for(
+                                            asyncio.gather(*subprocess_tasks, return_exceptions=True),
+                                            timeout=2.0
+                                        )
+                                    )
+                                except:
+                                    pass
+                        except:
+                            pass
+
+                        # Strategy 2: Give remaining waitpid threads time to complete
+                        for i in range(20):  # Up to 1 second
+                            try:
+                                loop.run_until_complete(asyncio.sleep(0.05))
+                                # Check if waitpid threads are done
+                                remaining = [t for t in threading.enumerate() if t.name.startswith('waitpid-')]
+                                if not remaining:
+                                    print(f"   │  ✓ All waitpid threads completed after {(i+1)*50}ms")
+                                    break
+                                elif i == 19:
+                                    print(f"   │  ⚠ {len(remaining)} waitpid threads still active (will be orphaned)")
+                            except:
+                                break
+                    else:
+                        print(f"   │  No waitpid threads found")
+
+                except Exception as e:
+                    logger.debug(f"Subprocess waiter cleanup exception: {e}")
+
                 # Stop and close the event loop
                 print(f"   ├─ Stopping event loop...")
                 try:
@@ -7780,14 +7838,6 @@ if __name__ == "__main__":
 
                 print(f"   ├─ Closing event loop...")
                 try:
-                    # CRITICAL: Ensure all subprocess waiters are cleaned up before closing
-                    # This prevents "Loop that handles pid X is closed" warnings
-                    try:
-                        # Allow pending callbacks to complete (including subprocess waitpid handlers)
-                        loop.run_until_complete(asyncio.sleep(0.05))
-                    except:
-                        pass
-
                     loop.close()
                 except RecursionError:
                     pass  # Event loop may already be closed

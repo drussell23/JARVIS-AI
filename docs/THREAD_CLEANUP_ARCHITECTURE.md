@@ -512,19 +512,26 @@ The new cleanup architecture ensures:
    - Log non-cancelled exceptions for debugging
    - Prevents "_GatheringFuture exception was never retrieved" warnings
 
-4. **Waitpid Handler Cleanup** (Lines 7785-7789)
-   - Run `asyncio.sleep(0.05)` before closing loop
-   - Allows pending callbacks (subprocess waitpid handlers) to complete
+4. **Dynamic Waitpid Handler Cleanup** (Lines 7774-7830)
+   - **Strategy 1:** Detect and complete all pending subprocess-related tasks
+     - Enumerate all tasks in event loop
+     - Filter for subprocess/wait-related tasks
+     - Force completion with `gather()` and 2-second timeout
+   - **Strategy 2:** Monitor and wait for waitpid threads to complete
+     - Detect active `waitpid-*` threads
+     - Give up to 1 second for natural completion
+     - Check every 50ms if threads have finished
    - Prevents "Loop that handles pid X is closed" warnings
+   - Dynamic timeout based on actual completion (not fixed delay)
 
 **Files Modified:**
 - `start_system.py:2792` - Added `self.subprocesses` list
 - `start_system.py:6797-6798` - Track loading_server_process
 - `start_system.py:5101-5157` - Subprocess cleanup before loop closure
-- `start_system.py:5082-5090` - Capture gather() results in cleanup()
-- `start_system.py:5139-5147` - Capture subprocess wait() gather() results
-- `start_system.py:7745-7768` - Capture final gather() results
-- `start_system.py:7785-7789` - Allow waitpid handlers to complete
+- `start_system.py:5082-5097` - Capture gather() results in cleanup()
+- `start_system.py:5139-5149` - Capture subprocess wait() gather() results
+- `start_system.py:7745-7772` - Capture final gather() results with exception handling
+- `start_system.py:7774-7830` - **Dynamic waitpid handler cleanup with 2-strategy approach**
 - `docs/THREAD_CLEANUP_ARCHITECTURE.md` - Updated documentation
 
 **Expected Result:**
@@ -536,12 +543,26 @@ The new cleanup architecture ensures:
 
 🧹 Performing final async cleanup...
    ├─ Canceling 0 remaining async tasks...
+   ├─ Waiting for subprocess handlers to complete...
+   │  Found 3 waitpid threads - draining subprocess operations...
+   │  Completing 0 subprocess-related tasks...
+   │  ✓ All waitpid threads completed after 150ms
    ├─ Stopping event loop...
    ├─ Closing event loop...
    └─ ✓ Event loop cleanup complete
 
 ℹ️  1 daemon threads (will auto-terminate):
-   - waitpid-0
+   - Dummy-2
 ```
 
 **Zero asyncio warnings! ✅**
+
+### **Key Improvements:**
+
+1. **Proactive Detection**: Scans for `waitpid-*` threads before closing loop
+2. **Dual Strategy**:
+   - First attempts to complete pending subprocess tasks
+   - Then monitors threads with dynamic timeout
+3. **Visual Feedback**: Shows exactly when waitpid threads complete
+4. **Fail-Safe**: Up to 1-second timeout, prevents hanging
+5. **No Fixed Delays**: Exits immediately when all threads complete
