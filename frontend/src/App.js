@@ -122,23 +122,6 @@ function App() {
 
   return (
     <div className="App">
-      <h1>J.A.R.V.I.S.</h1>
-      <p className="app-subtitle">Just A Rather Very Intelligent System</p>
-      <div className="hud-divider" />
-
-      {/* Autonomous Mode Toggle - REMOVED */}
-      {/* <div className="autonomous-control">
-        <button
-          onClick={toggleAutonomousMode}
-          className={`autonomous-toggle ${autonomousMode ? 'active' : ''}`}
-        >
-          {autonomousMode ? '🤖 Autonomous Mode ON' : '👤 Manual Mode'}
-        </button>
-        <span className={`vision-status ${visionStatus}`}>
-          Vision: {visionStatus}
-        </span>
-      </div> */}
-
       {/* Voice Control Section */}
       <JarvisVoice />
 
