@@ -310,11 +310,16 @@ class AdvancedProcessDetector:
                 pass
 
             # CRITICAL: Exclude ALL IDE/editor processes to prevent killing active development sessions
-            for proc in psutil.process_iter(['pid', 'name']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
-                    proc_name = proc.name().lower()
-                    if any(ide in proc_name for ide in ['claude', 'vscode', 'code-helper', 'pycharm', 'idea', 'cursor']):
-                        excluded_pids.add(proc.pid)
+                    proc_name = proc.info['name'].lower()
+                    cmdline = proc.info.get('cmdline', [])
+                    cmdline_str = ' '.join(cmdline).lower() if cmdline else ''
+
+                    # Check both process name and command line for IDE patterns
+                    ide_patterns = ['claude', 'vscode', 'code-helper', 'pycharm', 'idea', 'cursor']
+                    if any(ide in proc_name or ide in cmdline_str for ide in ide_patterns):
+                        excluded_pids.add(proc.info['pid'])
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
 
