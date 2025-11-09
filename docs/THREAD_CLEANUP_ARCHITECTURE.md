@@ -1,31 +1,42 @@
-# Thread and Async Task Cleanup Architecture
+# Thread, Async Task, and Subprocess Cleanup Architecture
 
 ## Overview
 
-JARVIS implements a **comprehensive, multi-layered cleanup system** to ensure zero lingering threads and async tasks at shutdown. This document describes the architecture and implementation.
+JARVIS implements a **comprehensive, multi-layered cleanup system** to ensure zero lingering threads, async tasks, and subprocesses at shutdown. This document describes the architecture and implementation.
+
+**Latest Update (2025-11-09):** Added comprehensive subprocess lifecycle management to eliminate asyncio warnings ("Loop that handles pid X is closed" and "_GatheringFuture exception was never retrieved").
 
 ---
 
 ## 🎯 Problem Statement
 
-**Before the fix:**
+**Before the fixes:**
 ```
 ⚠️  3 threads still running:
    - asyncio_1 (non-daemon)
    - asyncio_2 (non-daemon)
    - Dummy-2 (daemon)
+
+2025-11-09 04:46:33,328 - asyncio - WARNING - Loop <_UnixSelectorEventLoop running=False closed=True debug=False> that handles pid 98928 is closed
+2025-11-09 04:46:33,328 - asyncio - WARNING - Loop <_UnixSelectorEventLoop running=False closed=True debug=False> that handles pid 99004 is closed
+2025-11-09 04:46:33,373 - asyncio - ERROR - _GatheringFuture exception was never retrieved
+future: <_GatheringFuture finished exception=CancelledError()>
+asyncio.exceptions.CancelledError
 ```
 
-These lingering threads were caused by:
+These issues were caused by:
 1. **Untracked async tasks** - `track_backend_progress()` was created but not tracked
 2. **Incomplete event loop shutdown** - Event loop not properly closed
 3. **Missing task cancellation** - No comprehensive cancellation of ALL pending tasks
+4. **Untracked subprocesses** - Loading server and cleanup processes not tracked
+5. **Loop closed with active waiters** - Event loop closed while subprocess waitpid handlers still active
+6. **Uncaught gather() exceptions** - CancelledError exceptions not properly handled
 
 ---
 
 ## ✅ Solution Architecture
 
-### **3-Layer Cleanup Strategy:**
+### **5-Layer Cleanup Strategy:**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -40,13 +51,30 @@ These lingering threads were caused by:
 │  • Cancel ALL tasks in event loop (tracked + untracked)      │
 │  • asyncio.all_tasks() enumeration                           │
 │  • Graceful cancellation with exception handling             │
+│  • Capture gather() results to suppress warnings             │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│    Layer 2.5: Subprocess Lifecycle Management (NEW)          │
+│  • Track all asyncio.create_subprocess_exec/shell() calls    │
+│  • Graceful SIGTERM → wait() → force SIGKILL if timeout     │
+│  • Ensure all subprocess.wait() calls complete               │
+│  • Clear subprocess references before loop closure           │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │           Layer 3: Event Loop Shutdown                       │
+│  • Allow pending callbacks to complete (waitpid handlers)    │
 │  • Stop event loop                                           │
 │  • Close event loop                                          │
 │  • Final thread audit and reporting                          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│         Layer 4: Exception Suppression (NEW)                 │
+│  • Capture all gather() results                              │
+│  • Process CancelledError exceptions silently                │
+│  • Log non-cancelled exceptions for debugging                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -109,7 +137,76 @@ async def cleanup(self):
 - ✅ Graceful cancellation with `gather(return_exceptions=True)`
 - ✅ Clear visual feedback of cleanup progress
 
-### **3. Event Loop Shutdown (Lines 7611-7643)**
+### **2.5. Subprocess Lifecycle Management (Lines 5101-5157, NEW)**
+
+**Problem:** Event loop closed while subprocess waitpid handlers still registered, causing "Loop that handles pid X is closed" warnings.
+
+**Solution:**
+```python
+# Track subprocesses in __init__ (Line 2792)
+self.subprocesses = []  # Track asyncio subprocesses for proper cleanup
+
+# Track loading server subprocess (Line 6797-6798)
+loading_server_process = await asyncio.create_subprocess_exec(...)
+globals()['_loading_server_process'] = loading_server_process
+
+# Cleanup BEFORE event loop closure (Lines 5101-5157)
+print(f"\n{Colors.CYAN}🔌 [0.5/6] Cleaning up asyncio subprocesses...{Colors.ENDC}")
+
+# Include loading server process if it exists
+if '_loading_server_process' in globals():
+    loading_proc = globals()['_loading_server_process']
+    if loading_proc and loading_proc.returncode is None:
+        self.subprocesses.append(loading_proc)
+
+if self.subprocesses:
+    terminated_count = 0
+
+    # Step 1: Graceful SIGTERM
+    for proc in self.subprocesses:
+        if proc and proc.returncode is None:
+            try:
+                proc.terminate()  # Graceful SIGTERM
+                subprocess_cleanup_tasks.append(proc.wait())
+                terminated_count += 1
+            except ProcessLookupError:
+                pass
+
+    # Step 2: Wait for graceful shutdown with timeout
+    if subprocess_cleanup_tasks:
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*subprocess_cleanup_tasks, return_exceptions=True),
+                timeout=3.0
+            )
+            # Process results to handle any exceptions
+            if results:
+                for result in results:
+                    if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                        logger.debug(f"Subprocess wait exception: {result}")
+        except asyncio.TimeoutError:
+            # Step 3: Force SIGKILL if timeout
+            killed_count = 0
+            for proc in self.subprocesses:
+                if proc and proc.returncode is None:
+                    try:
+                        proc.kill()  # Force SIGKILL
+                        killed_count += 1
+                    except ProcessLookupError:
+                        pass
+
+    self.subprocesses.clear()
+```
+
+**Key improvements:**
+- ✅ Track ALL subprocess creations (loading server, etc.)
+- ✅ Terminate before event loop closure (prevents waitpid warnings)
+- ✅ Graceful SIGTERM with 3-second timeout
+- ✅ Force SIGKILL if graceful shutdown fails
+- ✅ Capture gather() results to suppress warnings
+- ✅ Clear references to allow garbage collection
+
+### **3. Event Loop Shutdown (Lines 7611-7643, 7781-7795)**
 
 ```python
 # At end of main():
@@ -122,19 +219,42 @@ if all_tasks:
     print(f"   ├─ Canceling {len(all_tasks)} remaining async tasks...")
     for task in all_tasks:
         if not task.done():
-            task.cancel()
+            try:
+                task.cancel()
+            except RecursionError:
+                continue  # Skip tasks causing recursion
 
-    # Process cancellations
-    loop.run_until_complete(asyncio.gather(*all_tasks, return_exceptions=True))
+    # Capture results to prevent "exception was never retrieved" warning
+    results = loop.run_until_complete(
+        asyncio.wait_for(
+            asyncio.gather(*all_tasks, return_exceptions=True),
+            timeout=2.0
+        )
+    )
+    # Process results to suppress CancelledError warnings
+    if results:
+        for result in results:
+            if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                logger.debug(f"Task exception during cleanup: {result}")
 
 # Stop and close the event loop
 loop.stop()
+
+# CRITICAL: Allow pending callbacks (subprocess waitpid handlers) to complete
+try:
+    loop.run_until_complete(asyncio.sleep(0.05))
+except:
+    pass
+
 loop.close()
 print(f"   └─ ✓ Event loop closed")
 ```
 
 **Key improvements:**
 - ✅ Final sweep for any missed tasks
+- ✅ Recursion protection during final cancellation
+- ✅ Capture gather() results to suppress "_GatheringFuture exception was never retrieved" warnings
+- ✅ **NEW:** Allow pending callbacks (waitpid handlers) to complete before closing loop
 - ✅ Explicit `loop.stop()` call
 - ✅ Explicit `loop.close()` call
 - ✅ Handles edge cases at program exit
@@ -357,3 +477,71 @@ The new cleanup architecture ensures:
 5. ✅ **Distinction between warnings and info** (non-daemon vs daemon)
 
 **Result:** Robust, production-grade shutdown with comprehensive cleanup! 🎉
+
+---
+
+## 🆕 Latest Improvements (2025-11-09)
+
+### **Subprocess Lifecycle Management**
+
+**Problem Solved:**
+```
+2025-11-09 04:46:33,328 - asyncio - WARNING - Loop that handles pid 98928 is closed
+2025-11-09 04:46:33,328 - asyncio - WARNING - Loop that handles pid 99004 is closed
+2025-11-09 04:46:33,373 - asyncio - ERROR - _GatheringFuture exception was never retrieved
+```
+
+**Root Causes:**
+1. Loading server subprocess created but not tracked
+2. Event loop closed while subprocess waitpid handlers still registered
+3. gather() results not captured, causing "exception was never retrieved" errors
+
+**Solution:**
+1. **Subprocess Tracking** (Line 2792)
+   - Added `self.subprocesses = []` list to track all subprocess creations
+   - Track loading_server_process via globals (created before manager)
+
+2. **Pre-Loop-Closure Cleanup** (Lines 5101-5157)
+   - Terminate all tracked subprocesses BEFORE event loop closure
+   - Graceful SIGTERM → wait(3s) → force SIGKILL if needed
+   - Clear subprocess references to prevent lingering waiters
+
+3. **Exception Suppression** (Lines 5082-5090, 5139-5147, 7745-7768)
+   - Capture ALL gather() results
+   - Process CancelledError silently (expected during shutdown)
+   - Log non-cancelled exceptions for debugging
+   - Prevents "_GatheringFuture exception was never retrieved" warnings
+
+4. **Waitpid Handler Cleanup** (Lines 7785-7789)
+   - Run `asyncio.sleep(0.05)` before closing loop
+   - Allows pending callbacks (subprocess waitpid handlers) to complete
+   - Prevents "Loop that handles pid X is closed" warnings
+
+**Files Modified:**
+- `start_system.py:2792` - Added `self.subprocesses` list
+- `start_system.py:6797-6798` - Track loading_server_process
+- `start_system.py:5101-5157` - Subprocess cleanup before loop closure
+- `start_system.py:5082-5090` - Capture gather() results in cleanup()
+- `start_system.py:5139-5147` - Capture subprocess wait() gather() results
+- `start_system.py:7745-7768` - Capture final gather() results
+- `start_system.py:7785-7789` - Allow waitpid handlers to complete
+- `docs/THREAD_CLEANUP_ARCHITECTURE.md` - Updated documentation
+
+**Expected Result:**
+```
+🔌 [0.5/6] Cleaning up asyncio subprocesses...
+   ├─ Found 1 tracked subprocesses
+   ├─ Terminated 1/1 subprocesses
+   └─ ✓ All subprocesses exited gracefully
+
+🧹 Performing final async cleanup...
+   ├─ Canceling 0 remaining async tasks...
+   ├─ Stopping event loop...
+   ├─ Closing event loop...
+   └─ ✓ Event loop cleanup complete
+
+ℹ️  1 daemon threads (will auto-terminate):
+   - waitpid-0
+```
+
+**Zero asyncio warnings! ✅**

@@ -2789,6 +2789,7 @@ class AsyncSystemManager:
 
     def __init__(self):
         self.processes = []
+        self.subprocesses = []  # Track asyncio subprocesses for proper cleanup (prevent "handles pid" warnings)
         self.open_files = []  # Track open file handles for cleanup
         self.background_tasks = []  # Track asyncio tasks for proper cleanup
         self.backend_dir = Path("backend")
@@ -5077,14 +5078,21 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
                 # Wait for cancellation to complete with timeout
                 try:
-                    # Use wait_for to prevent hanging
-                    await asyncio.wait_for(
+                    # Use wait_for to prevent hanging, capture results to suppress warnings
+                    results = await asyncio.wait_for(
                         asyncio.gather(*all_tasks, return_exceptions=True),
                         timeout=5.0
                     )
+                    # Process results to suppress CancelledError warnings
+                    if results:
+                        for result in results:
+                            if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                                logger.debug(f"Task exception during cleanup: {result}")
                     print(f"   └─ {Colors.GREEN}✓ All async tasks cancelled{Colors.ENDC}")
                 except asyncio.TimeoutError:
                     print(f"   └─ {Colors.YELLOW}⚠ Task cancellation timeout (some tasks may still be running){Colors.ENDC}")
+                except asyncio.CancelledError:
+                    print(f"   └─ {Colors.GREEN}✓ Cleanup cancelled (shutdown in progress){Colors.ENDC}")
                 except Exception as e:
                     print(f"   └─ {Colors.YELLOW}⚠ Task cancellation warning: {e}{Colors.ENDC}")
             else:
@@ -5096,6 +5104,63 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             self.background_tasks.clear()
         except Exception as e:
             print(f"   └─ {Colors.YELLOW}⚠ Could not enumerate tasks: {e}{Colors.ENDC}")
+
+        # Clean up tracked subprocesses (CRITICAL: Must happen before event loop closure)
+        print(f"\n{Colors.CYAN}🔌 [0.5/6] Cleaning up asyncio subprocesses...{Colors.ENDC}")
+        subprocess_cleanup_tasks = []
+
+        # Include loading server process if it exists
+        if '_loading_server_process' in globals():
+            loading_proc = globals()['_loading_server_process']
+            if loading_proc and loading_proc.returncode is None:
+                self.subprocesses.append(loading_proc)
+
+        if self.subprocesses:
+            print(f"   ├─ Found {len(self.subprocesses)} tracked subprocesses")
+            terminated_count = 0
+
+            for proc in self.subprocesses:
+                if proc and proc.returncode is None:
+                    try:
+                        proc.terminate()  # Graceful SIGTERM
+                        subprocess_cleanup_tasks.append(proc.wait())
+                        terminated_count += 1
+                    except ProcessLookupError:
+                        pass  # Process already dead
+                    except Exception as e:
+                        logger.warning(f"Failed to terminate subprocess {proc.pid}: {e}")
+
+            print(f"   ├─ Terminated {terminated_count}/{len(self.subprocesses)} subprocesses")
+
+            # Wait for graceful shutdown with timeout
+            if subprocess_cleanup_tasks:
+                try:
+                    # Capture results to suppress warnings
+                    results = await asyncio.wait_for(
+                        asyncio.gather(*subprocess_cleanup_tasks, return_exceptions=True),
+                        timeout=3.0
+                    )
+                    # Process results to handle any exceptions
+                    if results:
+                        for result in results:
+                            if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                                logger.debug(f"Subprocess wait exception: {result}")
+                    print(f"   └─ {Colors.GREEN}✓ All subprocesses exited gracefully{Colors.ENDC}")
+                except asyncio.TimeoutError:
+                    print(f"   ├─ {Colors.YELLOW}⚠ Timeout - force killing subprocesses...{Colors.ENDC}")
+                    killed_count = 0
+                    for proc in self.subprocesses:
+                        if proc and proc.returncode is None:
+                            try:
+                                proc.kill()  # Force SIGKILL
+                                killed_count += 1
+                            except ProcessLookupError:
+                                pass
+                    print(f"   └─ {Colors.GREEN}✓ Force killed {killed_count} subprocesses{Colors.ENDC}")
+
+            self.subprocesses.clear()
+        else:
+            print(f"   └─ {Colors.GREEN}✓ No tracked subprocesses to clean{Colors.ENDC}")
 
         # Stop hybrid coordinator first
         if self.hybrid_enabled and self.hybrid_coordinator:
@@ -5240,7 +5305,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await npm_kill.wait()
+            await npm_kill.wait()  # Properly awaited - no lingering waiters
 
             # Kill node processes running our apps
             print(f"   ├─ Killing Node.js processes (websocket, frontend)...")
@@ -5249,7 +5314,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await node_kill.wait()
+            await node_kill.wait()  # Properly awaited - no lingering waiters
 
             # Kill python processes running our backend (but not IDE-related processes)
             print(f"   ├─ Killing Python backend processes (skipping IDE extensions)...")
@@ -6793,6 +6858,8 @@ async def main():
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL
                 )
+                # Track globally for cleanup (created before manager instance)
+                globals()['_loading_server_process'] = loading_server_process
 
                 # Wait for server to be ready with retry logic
                 import aiohttp
@@ -7687,16 +7754,22 @@ if __name__ == "__main__":
                     # Run the loop briefly to process cancellations
                     if cancelled > 0:
                         try:
-                            loop.run_until_complete(
+                            # Capture results to prevent "exception was never retrieved" warning
+                            results = loop.run_until_complete(
                                 asyncio.wait_for(
                                     asyncio.gather(*all_tasks, return_exceptions=True),
                                     timeout=2.0
                                 )
                             )
-                        except (RecursionError, asyncio.TimeoutError):
-                            pass  # Ignore recursion/timeout during final cleanup
-                        except Exception:
-                            pass
+                            # Process results to suppress CancelledError warnings
+                            if results:
+                                for result in results:
+                                    if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                                        logger.debug(f"Task exception during cleanup: {result}")
+                        except (RecursionError, asyncio.TimeoutError, asyncio.CancelledError):
+                            pass  # Ignore recursion/timeout/cancelled during final cleanup
+                        except Exception as e:
+                            logger.debug(f"Cleanup gather exception: {e}")
 
                 # Stop and close the event loop
                 print(f"   ├─ Stopping event loop...")
@@ -7707,6 +7780,14 @@ if __name__ == "__main__":
 
                 print(f"   ├─ Closing event loop...")
                 try:
+                    # CRITICAL: Ensure all subprocess waiters are cleaned up before closing
+                    # This prevents "Loop that handles pid X is closed" warnings
+                    try:
+                        # Allow pending callbacks to complete (including subprocess waitpid handlers)
+                        loop.run_until_complete(asyncio.sleep(0.05))
+                    except:
+                        pass
+
                     loop.close()
                 except RecursionError:
                     pass  # Event loop may already be closed

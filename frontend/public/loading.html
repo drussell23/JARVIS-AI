@@ -101,10 +101,13 @@
 
         /* Arc Reactor */
         .arc-reactor {
-            width: 180px;
-            height: 180px;
+            width: 200px;
+            height: 200px;
             margin: 0 auto 50px;
             position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .reactor-ring {
@@ -112,52 +115,71 @@
             border: 3px solid;
             border-radius: 50%;
             animation: rotate linear infinite;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
 
         .reactor-ring:nth-child(1) {
-            width: 180px;
-            height: 180px;
+            width: 200px;
+            height: 200px;
             border-color: var(--jarvis-green) transparent transparent transparent;
             animation-duration: 3s;
+            box-shadow: 0 0 10px var(--jarvis-green-glow);
         }
 
         .reactor-ring:nth-child(2) {
-            width: 130px;
-            height: 130px;
-            top: 25px;
-            left: 25px;
+            width: 150px;
+            height: 150px;
             border-color: transparent var(--jarvis-green-dark) transparent transparent;
             animation-direction: reverse;
             animation-duration: 2s;
+            box-shadow: 0 0 8px var(--jarvis-green-glow);
         }
 
         .reactor-ring:nth-child(3) {
-            width: 80px;
-            height: 80px;
-            top: 50px;
-            left: 50px;
+            width: 100px;
+            height: 100px;
             border-color: transparent transparent var(--jarvis-green) transparent;
             animation-duration: 1.5s;
+            box-shadow: 0 0 6px var(--jarvis-green-glow);
         }
 
         .reactor-core {
             position: absolute;
-            width: 40px;
-            height: 40px;
-            top: 70px;
-            left: 70px;
-            background: radial-gradient(circle, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
+            width: 50px;
+            height: 50px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, var(--jarvis-green) 0%, var(--jarvis-green-dark) 70%, transparent 100%);
             border-radius: 50%;
             box-shadow:
-                0 0 30px var(--jarvis-green),
+                0 0 20px var(--jarvis-green),
+                0 0 40px var(--jarvis-green),
                 0 0 60px var(--jarvis-green-dark),
-                0 0 90px var(--jarvis-green-glow);
+                0 0 80px var(--jarvis-green-glow),
+                inset 0 0 20px var(--jarvis-green);
             animation: corePulse 1.5s ease-in-out infinite;
+            z-index: 10;
+        }
+
+        .reactor-core::before {
+            content: '';
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--jarvis-green);
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--jarvis-green);
         }
 
         @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
         @keyframes pulse {
@@ -167,11 +189,11 @@
 
         @keyframes corePulse {
             0%, 100% {
-                transform: scale(1);
+                transform: translate(-50%, -50%) scale(1);
                 box-shadow: 0 0 30px var(--jarvis-green), 0 0 60px var(--jarvis-green-dark);
             }
             50% {
-                transform: scale(1.15);
+                transform: translate(-50%, -50%) scale(1.15);
                 box-shadow: 0 0 50px var(--jarvis-green), 0 0 90px var(--jarvis-green-dark);
             }
         }
@@ -479,22 +501,16 @@
             .reactor-ring:nth-child(2) {
                 width: 100px;
                 height: 100px;
-                top: 20px;
-                left: 20px;
             }
 
             .reactor-ring:nth-child(3) {
                 width: 60px;
                 height: 60px;
-                top: 40px;
-                left: 40px;
             }
 
             .reactor-core {
                 width: 30px;
                 height: 30px;
-                top: 55px;
-                left: 55px;
             }
 
             .stages-container {
