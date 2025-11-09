@@ -294,48 +294,312 @@ class JARVISLoadingManager {
         this.state.targetProgress = 100;
         this.updateProgressBar();
 
-        // Smooth transition animation
-        const container = document.querySelector('.loading-container');
+        // 🎬 EPIC CINEMATIC COMPLETION SEQUENCE 🎬
+        this.playEpicCompletionAnimation(redirectUrl);
+    }
 
-        // 1. Pulse reactor
-        if (this.elements.reactor) {
-            this.elements.reactor.style.animation = 'pulse 0.5s ease-in-out 3';
+    async playEpicCompletionAnimation(redirectUrl) {
+        const container = document.querySelector('.loading-container');
+        const reactor = this.elements.reactor;
+        const progressBar = this.elements.progressBar;
+
+        // === PHASE 1: REACTOR POWER SURGE (0-800ms) ===
+        console.log('[Animation] Phase 1: Reactor power surge');
+
+        // Intense reactor pulse with expanding rings
+        if (reactor) {
+            reactor.style.transition = 'all 0.3s ease-out';
+            reactor.style.transform = 'scale(1.3)';
+            reactor.style.filter = 'drop-shadow(0 0 50px rgba(0, 255, 65, 1)) brightness(1.5)';
+
+            // Create expanding energy rings
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    const ring = document.createElement('div');
+                    ring.style.cssText = `
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        width: 300px;
+                        height: 300px;
+                        border: 3px solid #00ff41;
+                        border-radius: 50%;
+                        opacity: 1;
+                        animation: expandRing 1s ease-out forwards;
+                        pointer-events: none;
+                    `;
+                    reactor.parentElement.appendChild(ring);
+                    setTimeout(() => ring.remove(), 1000);
+                }, i * 200);
+            }
         }
 
-        // 2. Wait a moment
+        // Progress bar glow explosion
+        if (progressBar) {
+            progressBar.style.boxShadow = '0 0 40px rgba(0, 255, 65, 1), 0 0 80px rgba(0, 255, 65, 0.6)';
+            progressBar.style.transition = 'all 0.5s ease-out';
+        }
+
+        await this.sleep(800);
+
+        // === PHASE 2: VOICE ANNOUNCEMENT (800-3300ms) ===
+        console.log('[Animation] Phase 2: Voice announcement');
+
+        // Play JARVIS voice: "JARVIS is online. Ready for your command."
+        await this.playVoiceAnnouncement();
+
+        // Subtle reactor breathing during voice
+        if (reactor) {
+            reactor.style.transition = 'all 2s ease-in-out';
+            reactor.style.animation = 'reactorBreathing 2s ease-in-out infinite';
+        }
+
+        await this.sleep(2500);
+
+        // === PHASE 3: PARTICLE BURST (3300-4000ms) ===
+        console.log('[Animation] Phase 3: Particle burst');
+
+        // Create green particle explosion
+        this.createParticleBurst(reactor);
+
+        await this.sleep(700);
+
+        // === PHASE 4: HOLOGRAPHIC SCAN (4000-5500ms) ===
+        console.log('[Animation] Phase 4: Holographic scan');
+
+        // Vertical scan line effect
+        const scanLine = document.createElement('div');
+        scanLine.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                #00ff41 50%,
+                transparent 100%);
+            box-shadow: 0 0 20px #00ff41;
+            opacity: 1;
+            animation: scanDown 1.5s ease-in-out;
+            z-index: 10000;
+        `;
+        document.body.appendChild(scanLine);
+
+        // Add scan line animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes scanDown {
+                0% { top: 0; opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+            @keyframes expandRing {
+                0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+                100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+            }
+            @keyframes reactorBreathing {
+                0%, 100% { transform: scale(1.3); filter: drop-shadow(0 0 50px rgba(0, 255, 65, 1)); }
+                50% { transform: scale(1.4); filter: drop-shadow(0 0 70px rgba(0, 255, 65, 1)) brightness(1.8); }
+            }
+            @keyframes fadeOutUp {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                100% { opacity: 0; transform: translateY(-50px) scale(0.9); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        await this.sleep(1500);
+
+        // === PHASE 5: TRANSITION FADE (5500-7000ms) ===
+        console.log('[Animation] Phase 5: Transition to main app');
+
+        // Fade out container with upward motion
+        if (container) {
+            container.style.animation = 'fadeOutUp 1.5s ease-out forwards';
+        }
+
+        // Create epic green energy overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center,
+                #001a00 0%,
+                #003300 50%,
+                #000000 100%);
+            opacity: 0;
+            transition: opacity 1s ease-in;
+            z-index: 9999;
+        `;
+        document.body.appendChild(overlay);
+
+        // Trigger overlay fade
         setTimeout(() => {
-            // 3. Fade out
-            if (container) {
-                container.style.transition = 'opacity 1s ease-out, transform 1s ease-out';
-                container.style.opacity = '0';
-                container.style.transform = 'scale(0.95)';
+            overlay.style.opacity = '1';
+        }, 10);
+
+        // Add matrix-style code rain effect
+        const matrixCanvas = document.createElement('canvas');
+        matrixCanvas.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            opacity: 0.3;
+            pointer-events: none;
+        `;
+        document.body.appendChild(matrixCanvas);
+        this.startMatrixRain(matrixCanvas);
+
+        await this.sleep(1500);
+
+        // === PHASE 6: REDIRECT (7000ms) ===
+        console.log(`[Redirect] → ${redirectUrl}`);
+        window.location.href = redirectUrl;
+    }
+
+    async playVoiceAnnouncement() {
+        try {
+            // Create voice announcement using Web Speech API with UK Daniel voice
+            const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
+
+            // Try to get UK Daniel voice
+            const voices = speechSynthesis.getVoices();
+            const danielVoice = voices.find(voice =>
+                voice.name.includes('Daniel') ||
+                voice.name.includes('UK') ||
+                voice.lang === 'en-GB'
+            );
+
+            if (danielVoice) {
+                utterance.voice = danielVoice;
+                console.log(`[Voice] Using ${danielVoice.name}`);
+            } else {
+                // Fallback: Use any British English voice
+                const britishVoice = voices.find(voice => voice.lang.startsWith('en-GB'));
+                if (britishVoice) {
+                    utterance.voice = britishVoice;
+                    console.log(`[Voice] Fallback to ${britishVoice.name}`);
+                }
             }
 
-            // 4. Green gradient overlay
-            const overlay = document.createElement('div');
-            overlay.style.cssText = `
+            utterance.rate = 0.95;  // Slightly slower for dramatic effect
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            // Visual feedback during speech
+            utterance.onstart = () => {
+                console.log('[Voice] Speaking...');
+                this.elements.statusMessage.style.animation = 'pulse 0.5s ease-in-out infinite';
+            };
+
+            utterance.onend = () => {
+                console.log('[Voice] Complete');
+                this.elements.statusMessage.style.animation = '';
+            };
+
+            speechSynthesis.speak(utterance);
+
+            // Wait for speech to complete (approximate duration)
+            await this.sleep(2500);
+        } catch (error) {
+            console.error('[Voice] Error:', error);
+            // Continue animation even if voice fails
+        }
+    }
+
+    createParticleBurst(centerElement) {
+        const centerRect = centerElement.getBoundingClientRect();
+        const centerX = centerRect.left + centerRect.width / 2;
+        const centerY = centerRect.top + centerRect.height / 2;
+
+        // Create 30 particles bursting outward
+        for (let i = 0; i < 30; i++) {
+            const particle = document.createElement('div');
+            const angle = (Math.PI * 2 * i) / 30;
+            const velocity = 200 + Math.random() * 100;
+            const endX = Math.cos(angle) * velocity;
+            const endY = Math.sin(angle) * velocity;
+
+            particle.style.cssText = `
                 position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: linear-gradient(135deg, #000 0%, #003300 100%);
-                opacity: 0;
-                transition: opacity 0.5s ease-in;
-                z-index: 10000;
+                left: ${centerX}px;
+                top: ${centerY}px;
+                width: 4px;
+                height: 4px;
+                background: #00ff41;
+                border-radius: 50%;
+                box-shadow: 0 0 10px #00ff41;
+                transform: translate(-50%, -50%);
+                animation: particleBurst${i} 1s ease-out forwards;
+                pointer-events: none;
+                z-index: 10001;
             `;
-            document.body.appendChild(overlay);
 
-            setTimeout(() => {
-                overlay.style.opacity = '1';
-            }, 10);
+            // Create unique animation for each particle
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes particleBurst${i} {
+                    0% {
+                        transform: translate(-50%, -50%) translate(0, 0) scale(1);
+                        opacity: 1;
+                    }
+                    100% {
+                        transform: translate(-50%, -50%) translate(${endX}px, ${endY}px) scale(0);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
 
-            // 5. Redirect
+            document.body.appendChild(particle);
             setTimeout(() => {
-                console.log(`[Redirect] → ${redirectUrl}`);
-                window.location.href = redirectUrl;
-            }, 1500);
-        }, 1500);
+                particle.remove();
+                style.remove();
+            }, 1000);
+        }
+    }
+
+    startMatrixRain(canvas) {
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const columns = Math.floor(canvas.width / 20);
+        const drops = Array(columns).fill(0);
+
+        const matrix = 'JARVIS01';
+        ctx.font = '15px monospace';
+
+        const draw = () => {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff41';
+            drops.forEach((y, i) => {
+                const text = matrix[Math.floor(Math.random() * matrix.length)];
+                const x = i * 20;
+                ctx.fillText(text, x, y * 20);
+
+                if (y * 20 > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            });
+        };
+
+        const interval = setInterval(draw, 50);
+        setTimeout(() => clearInterval(interval), 2000);
+    }
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     showError(message) {
