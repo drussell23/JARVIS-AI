@@ -6496,15 +6496,8 @@ async def main():
                 print(f"    • parent_child: Process tree analysis")
                 print(f"    • command_line: Regex pattern matching")
 
-                # Create event loop if not exists
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
                 # Detect processes (dry run first to show what we found)
-                result = loop.run_until_complete(detect_and_kill_jarvis_processes(dry_run=True))
+                result = asyncio.run(detect_and_kill_jarvis_processes(dry_run=True))
 
                 jarvis_processes = result["processes"]
                 print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
