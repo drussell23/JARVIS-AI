@@ -303,15 +303,32 @@ class JARVISLoadingManager {
         const reactor = this.elements.reactor;
         const progressBar = this.elements.progressBar;
 
-        // Dynamic configuration for transition (no hardcoding!)
+        // Dynamic configuration - all values calculated based on total duration
+        const totalDuration = 4000; // 4 seconds total - balanced speed and visual quality
         const config = {
             phases: {
-                powerSurge: { duration: 800, rings: 5 },
-                voice: { duration: 2500 },
-                particleBurst: { duration: 700, particles: 50 },
-                holographicScan: { duration: 1500 },
-                matrixRain: { duration: 1500 },
-                totalDuration: 7000
+                powerSurge: {
+                    duration: totalDuration * 0.15,  // 15% of total time
+                    rings: 3
+                },
+                preload: {
+                    duration: totalDuration * 0.25,  // 25% - iframe preload happens during voice
+                    showProgress: true
+                },
+                voice: {
+                    duration: totalDuration * 0.25  // 25% of total time
+                },
+                particleBurst: {
+                    duration: totalDuration * 0.10,  // 10% of total time
+                    particles: 40
+                },
+                holographicScan: {
+                    duration: totalDuration * 0.15  // 15% of total time
+                },
+                fade: {
+                    duration: totalDuration * 0.20  // 20% of total time
+                },
+                totalDuration: totalDuration
             },
             reactor: {
                 powerUpScale: 1.5,
@@ -360,20 +377,29 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.powerSurge.duration);
 
-        // === PHASE 2: VOICE ANNOUNCEMENT ===
-        console.log('[Animation] Phase 2: Voice announcement');
+        // === PHASE 2: PRELOAD + VOICE (PARALLEL) ===
+        console.log('[Animation] Phase 2: Starting iframe preload + voice announcement');
+
+        // Start iframe preload in background (non-blocking)
+        const iframePromise = this.preloadMainPage(redirectUrl, config.phases.preload);
 
         // Keep reactor glowing and breathing during voice
         if (reactor && config.reactor.maintainBrightness) {
             reactor.style.transition = `all ${config.reactor.breathingSpeed}s ease-in-out`;
             reactor.style.animation = `reactorBreathing ${config.reactor.breathingSpeed}s ease-in-out infinite`;
-            reactor.style.opacity = '1'; // Maintain brightness
+            reactor.style.opacity = '1';
         }
 
-        // Play JARVIS voice: "JARVIS is online. Ready for your command."
-        await this.playVoiceAnnouncement();
+        // Play voice announcement (happens while iframe loads)
+        const voicePromise = this.playVoiceAnnouncement();
 
-        await this.sleep(config.phases.voice.duration);
+        // Wait for both voice and minimum preload time (whichever is longer)
+        await Promise.race([
+            voicePromise,
+            this.sleep(config.phases.voice.duration)
+        ]);
+
+        console.log('[Animation] Voice phase complete');
 
         // === PHASE 3: PARTICLE BURST ===
         console.log('[Animation] Phase 3: Particle burst');
@@ -405,8 +431,8 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.holographicScan.duration);
 
-        // === PHASE 5: MATRIX RAIN + TRANSITION ===
-        console.log('[Animation] Phase 5: Matrix rain and transition');
+        // === PHASE 5: SMOOTH FADE TRANSITION ===
+        console.log('[Animation] Phase 5: Smooth fade transition');
 
         // Keep reactor glowing even during fade!
         if (reactor && config.reactor.maintainBrightness) {
@@ -415,17 +441,18 @@ class JARVISLoadingManager {
         }
 
         // Fade out container with upward motion (but keep reactor visible!)
+        const fadeDuration = config.phases.fade.duration / 1000; // Convert to seconds
         if (container) {
             // Fade everything EXCEPT the reactor
             const children = Array.from(container.children).filter(child => !child.classList.contains('arc-reactor'));
             children.forEach(child => {
-                child.style.transition = 'opacity 1.5s ease-out';
+                child.style.transition = `opacity ${fadeDuration}s ease-out`;
                 child.style.opacity = '0';
             });
         }
 
         // Create epic green energy overlay
-        const overlay = this.createTransitionOverlay();
+        const overlay = this.createTransitionOverlay(fadeDuration);
 
         // Add matrix-style code rain effect
         const matrixCanvas = this.createMatrixCanvas();
@@ -436,93 +463,55 @@ class JARVISLoadingManager {
             overlay.style.opacity = '1';
         }, 10);
 
-        await this.sleep(config.phases.matrixRain.duration);
+        // Wait for overlay to fade in
+        await this.sleep(config.phases.fade.duration * 0.5);
 
         // === PHASE 6: SMOOTH CROSS-FADE TRANSITION (NO WHITE FLASH!) ===
-        console.log(`[Transition] → ${redirectUrl}`);
+        console.log(`[Transition] Waiting for iframe to finish loading...`);
 
-        // Create black background layer to prevent white flash
-        const blackBackground = document.createElement('div');
-        blackBackground.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000000;
-            z-index: 9998;
-        `;
-        document.body.insertBefore(blackBackground, document.body.firstChild);
+        // Wait for iframe to be ready (already started loading during voice phase)
+        const iframe = await iframePromise;
 
-        // Final reactor pulse before redirect
-        if (reactor) {
-            reactor.style.transition = 'all 0.3s ease-out';
-            reactor.style.transform = 'scale(2)';
-            reactor.style.opacity = '1';
-            reactor.style.zIndex = '10002'; // Keep reactor on top
-        }
+        console.log(`[Transition] Starting cross-fade to main page`);
 
-        // Preload main page in hidden iframe to avoid white flash
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            opacity: 0;
-            z-index: 10001;
-            background: #000000;
-        `;
-        iframe.src = redirectUrl;
-        document.body.appendChild(iframe);
-
-        // Wait for iframe to load
-        await new Promise((resolve) => {
-            iframe.onload = () => {
-                console.log('[Transition] Main page loaded in iframe');
-                resolve();
-            };
-            // Timeout after 3 seconds
-            setTimeout(resolve, 3000);
-        });
-
-        // Smooth cross-fade to main page
-        console.log('[Transition] Starting cross-fade...');
+        // Smooth cross-fade with dynamic timing
+        const crossFadeDuration = config.phases.fade.duration / 1000;
 
         // Fade out overlay and matrix
         if (overlay) {
-            overlay.style.transition = 'opacity 0.8s ease-out';
+            overlay.style.transition = `opacity ${crossFadeDuration}s ease-out`;
             overlay.style.opacity = '0';
         }
         if (matrixCanvas) {
-            matrixCanvas.style.transition = 'opacity 0.8s ease-out';
+            matrixCanvas.style.transition = `opacity ${crossFadeDuration}s ease-out`;
             matrixCanvas.style.opacity = '0';
         }
 
         // Fade out reactor with smooth scale down
         if (reactor) {
-            reactor.style.transition = 'all 0.8s ease-out';
+            reactor.style.transition = `all ${crossFadeDuration}s ease-out`;
             reactor.style.transform = 'scale(0)';
             reactor.style.opacity = '0';
         }
 
         // Fade out loading container
         if (container) {
-            container.style.transition = 'opacity 0.8s ease-out';
+            container.style.transition = `opacity ${crossFadeDuration}s ease-out`;
             container.style.opacity = '0';
         }
 
-        await this.sleep(400); // Halfway through fade
+        await this.sleep(config.phases.fade.duration * 0.5); // Halfway through fade
 
         // Fade in iframe (main page)
-        iframe.style.transition = 'opacity 0.8s ease-in';
-        iframe.style.opacity = '1';
+        if (iframe) {
+            iframe.style.transition = `opacity ${crossFadeDuration}s ease-in`;
+            iframe.style.opacity = '1';
+        }
 
-        await this.sleep(800); // Complete fade
+        await this.sleep(config.phases.fade.duration * 0.5); // Complete fade
 
         // Replace current page with iframe content (no white flash!)
+        console.log('[Transition] Redirecting to main page...');
         window.location.replace(redirectUrl);
     }
 
@@ -568,7 +557,59 @@ class JARVISLoadingManager {
         setTimeout(() => scanLine.remove(), duration);
     }
 
-    createTransitionOverlay() {
+    preloadMainPage(redirectUrl, config) {
+        return new Promise((resolve) => {
+            console.log('[Preload] Starting iframe preload in background...');
+
+            // Create black background layer to prevent white flash
+            const blackBackground = document.createElement('div');
+            blackBackground.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000000;
+                z-index: 9998;
+            `;
+            document.body.insertBefore(blackBackground, document.body.firstChild);
+
+            // Preload main page in hidden iframe
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                border: none;
+                opacity: 0;
+                z-index: 10001;
+                background: #000000;
+            `;
+            iframe.src = redirectUrl;
+            document.body.appendChild(iframe);
+
+            // Show loading progress if enabled
+            if (config.showProgress) {
+                this.elements.statusMessage.textContent = 'Loading main interface...';
+            }
+
+            // Wait for iframe to load
+            iframe.onload = () => {
+                console.log('[Preload] ✓ Main page loaded in iframe');
+                resolve(iframe);
+            };
+
+            // Fallback timeout
+            setTimeout(() => {
+                console.warn('[Preload] Timeout - proceeding anyway');
+                resolve(iframe);
+            }, 3000);
+        });
+    }
+
+    createTransitionOverlay(fadeDuration = 1) {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed;
@@ -581,7 +622,7 @@ class JARVISLoadingManager {
                 #003300 50%,
                 #000000 100%);
             opacity: 0;
-            transition: opacity 1s ease-in;
+            transition: opacity ${fadeDuration}s ease-in;
             z-index: 9999;
         `;
         document.body.appendChild(overlay);
