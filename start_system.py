@@ -5047,20 +5047,32 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         # Set a flag to suppress exit warnings
         self._shutting_down = True
 
-        # Cancel all background tasks first
-        if self.background_tasks:
-            print(f"{Colors.CYAN}🔄 [0/6] Canceling background tasks...{Colors.ENDC}")
-            print(f"   ├─ Found {len(self.background_tasks)} background tasks")
-            for task in self.background_tasks:
-                if not task.done():
-                    task.cancel()
-            # Wait for cancellation to complete
-            try:
-                await asyncio.gather(*self.background_tasks, return_exceptions=True)
-                print(f"   └─ {Colors.GREEN}✓ All background tasks cancelled{Colors.ENDC}")
-            except Exception as e:
-                print(f"   └─ {Colors.YELLOW}⚠ Task cancellation warning: {e}{Colors.ENDC}")
+        # Cancel ALL pending async tasks (both tracked and untracked)
+        print(f"{Colors.CYAN}🔄 [0/6] Canceling async tasks...{Colors.ENDC}")
+
+        # Get ALL tasks in the current event loop
+        try:
+            current_task = asyncio.current_task()
+            all_tasks = [task for task in asyncio.all_tasks() if task is not current_task]
+
+            if all_tasks:
+                print(f"   ├─ Found {len(all_tasks)} pending async tasks")
+                for task in all_tasks:
+                    if not task.done():
+                        task.cancel()
+
+                # Wait for cancellation to complete
+                try:
+                    await asyncio.gather(*all_tasks, return_exceptions=True)
+                    print(f"   └─ {Colors.GREEN}✓ All async tasks cancelled{Colors.ENDC}")
+                except Exception as e:
+                    print(f"   └─ {Colors.YELLOW}⚠ Task cancellation warning: {e}{Colors.ENDC}")
+            else:
+                print(f"   └─ {Colors.GREEN}✓ No pending async tasks{Colors.ENDC}")
+
             self.background_tasks.clear()
+        except Exception as e:
+            print(f"   └─ {Colors.YELLOW}⚠ Could not enumerate tasks: {e}{Colors.ENDC}")
 
         # Stop hybrid coordinator first
         if self.hybrid_enabled and self.hybrid_coordinator:
@@ -5905,8 +5917,9 @@ except Exception as e:
                 if backend_task.done():
                     print(f"  {Colors.GREEN}✅ Backend initialization complete! (took {int(time.time() - start_time)}s){Colors.ENDC}")
 
-            # Start ultra-dynamic tracker
-            asyncio.create_task(track_backend_progress())
+            # Start ultra-dynamic tracker and track it for cleanup
+            progress_tracker = asyncio.create_task(track_backend_progress())
+            self.background_tasks.append(progress_tracker)
 
             # Wait for both with proper error handling
             backend_result, frontend_result = await asyncio.gather(
@@ -7595,37 +7608,59 @@ if __name__ == "__main__":
         sys.stdout.flush()
         sys.stderr.flush()
 
-        # Debug: Check for remaining threads
-        import threading
-
-        remaining_threads = [t for t in threading.enumerate() if t != threading.main_thread()]
-        if remaining_threads:
-            print(
-                f"\n{Colors.YELLOW}⚠️  {len(remaining_threads)} threads still running:{Colors.ENDC}"
-            )
-            for thread in remaining_threads:
-                daemon_str = "daemon" if thread.daemon else "non-daemon"
-                print(f"   - {thread.name} ({daemon_str})")
-                logger.warning(f"Thread still running: {thread.name} (daemon={thread.daemon})")
-
-        # Debug: Check for remaining async tasks
+        # Aggressively clean up async tasks and event loop
+        print(f"\n{Colors.CYAN}🧹 Performing final async cleanup...{Colors.ENDC}")
         try:
             import asyncio
 
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                # No running loop, create a new one (Python 3.10+ compatible)
                 loop = None
 
             if loop and not loop.is_closed():
+                # Cancel all remaining tasks
                 all_tasks = asyncio.all_tasks(loop)
                 if all_tasks:
-                    print(
-                        f"\n{Colors.YELLOW}⚠️  {len(all_tasks)} async tasks still pending:{Colors.ENDC}"
-                    )
+                    print(f"   ├─ Canceling {len(all_tasks)} remaining async tasks...")
                     for task in all_tasks:
-                        print(f"   - {task.get_name()}: {task}")
-                        logger.warning(f"Async task still pending: {task.get_name()}")
+                        if not task.done():
+                            task.cancel()
+
+                    # Run the loop briefly to process cancellations
+                    try:
+                        loop.run_until_complete(asyncio.gather(*all_tasks, return_exceptions=True))
+                    except Exception:
+                        pass  # Ignore errors during final cleanup
+
+                # Stop and close the event loop
+                print(f"   ├─ Stopping event loop...")
+                loop.stop()
+                print(f"   ├─ Closing event loop...")
+                loop.close()
+                print(f"   └─ {Colors.GREEN}✓ Event loop closed{Colors.ENDC}")
         except Exception as e:
-            logger.debug(f"Could not check async tasks: {e}")
+            print(f"   └─ {Colors.YELLOW}⚠ Event loop cleanup warning: {e}{Colors.ENDC}")
+
+        # Check for remaining threads (informational only)
+        import threading
+
+        remaining_threads = [t for t in threading.enumerate() if t != threading.main_thread()]
+        if remaining_threads:
+            # Filter out daemon threads (they're okay to leave running)
+            non_daemon_threads = [t for t in remaining_threads if not t.daemon]
+
+            if non_daemon_threads:
+                print(
+                    f"\n{Colors.YELLOW}⚠️  {len(non_daemon_threads)} non-daemon threads still running:{Colors.ENDC}"
+                )
+                for thread in non_daemon_threads:
+                    print(f"   - {thread.name}")
+                    logger.warning(f"Non-daemon thread still running: {thread.name}")
+
+            # Daemon threads are okay
+            daemon_threads = [t for t in remaining_threads if t.daemon]
+            if daemon_threads:
+                print(f"\n{Colors.CYAN}ℹ️  {len(daemon_threads)} daemon threads (will auto-terminate):{Colors.ENDC}")
+                for thread in daemon_threads:
+                    print(f"   - {thread.name}")
