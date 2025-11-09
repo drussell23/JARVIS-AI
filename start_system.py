@@ -5850,6 +5850,13 @@ except Exception as e:
                     f"{Colors.YELLOW}⚠️  Backend health check timeout - opening browser anyway{Colors.ENDC}"
                 )
 
+            # Broadcast startup completion if in restart mode
+            if hasattr(self, '_startup_progress') and self._startup_progress:
+                await self._startup_progress.broadcast_complete(
+                    success=True,
+                    redirect_url=f"http://localhost:{self.ports['frontend']}"
+                )
+
             await asyncio.sleep(1)  # Brief pause before opening
             await self.open_browser_smart()
 
@@ -6489,6 +6496,17 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
+            # Initialize startup progress manager for real-time UI updates
+            startup_progress = None
+            try:
+                from api.startup_progress_api import get_startup_progress_manager
+                startup_progress = get_startup_progress_manager()
+                await startup_progress.broadcast_progress(
+                    "detecting", "Detecting existing JARVIS processes...", 5
+                )
+            except Exception as e:
+                print(f"  {Colors.WARNING}⚠️ Startup progress UI unavailable: {e}{Colors.ENDC}")
+
             # Step 1: Advanced JARVIS process detection with multiple strategies
             print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
 
@@ -6582,6 +6600,14 @@ async def main():
                     )
                     print(f"  {idx}. PID {proc['pid']} ({proc['type']}, {age_str})")
 
+                if startup_progress:
+                    await startup_progress.broadcast_progress(
+                        "killing",
+                        f"Terminating {len(jarvis_processes)} existing process(es)...",
+                        15,
+                        {"count": len(jarvis_processes)}
+                    )
+
                 print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
 
                 killed_count = 0
@@ -6636,8 +6662,17 @@ async def main():
                     print(
                         f"{Colors.GREEN}✓ All {killed_count} process(es) terminated successfully{Colors.ENDC}"
                     )
+
+                if startup_progress:
+                    await startup_progress.broadcast_progress(
+                        "cleanup", "Processes terminated, cleaning up resources...", 30
+                    )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
+                if startup_progress:
+                    await startup_progress.broadcast_progress(
+                        "cleanup", "No existing processes found, proceeding...", 25
+                    )
 
             # Step 1.5: Clean up VM creation lock file (prevent lock conflicts)
             print(f"\n{Colors.YELLOW}🔒 Checking VM creation lock file...{Colors.ENDC}")
@@ -6767,10 +6802,19 @@ async def main():
             )
             print(f"{'='*50}\n")
 
+            if startup_progress:
+                await startup_progress.broadcast_progress(
+                    "starting", "Starting fresh JARVIS instance...", 50
+                )
+
             # Fall through to normal startup - backend will start fresh
 
         except Exception as e:
             print(f"{Colors.FAIL}Restart failed: {e}{Colors.ENDC}")
+            if startup_progress:
+                await startup_progress.broadcast_progress(
+                    "failed", f"Restart failed: {str(e)}", 0
+                )
             import traceback
 
             traceback.print_exc()
@@ -6778,6 +6822,10 @@ async def main():
 
     # Create manager
     _manager = AsyncSystemManager()
+
+    # Store startup progress manager for completion notification
+    if args.restart and 'startup_progress' in locals():
+        _manager._startup_progress = startup_progress
     _manager.no_browser = args.no_browser
     _manager.backend_only = args.backend_only
     _manager.frontend_only = args.frontend_only

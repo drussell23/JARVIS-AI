@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS - System Restart</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <link rel="stylesheet" href="css/holographic.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #00d4ff;
+            font-family: 'Rajdhani', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .loading-container {
+            text-align: center;
+            z-index: 10;
+            max-width: 800px;
+            width: 90%;
+        }
+
+        .logo-container {
+            margin-bottom: 40px;
+        }
+
+        .jarvis-logo {
+            font-family: 'Orbitron', monospace;
+            font-size: 4rem;
+            font-weight: 900;
+            color: #00d4ff;
+            text-shadow:
+                0 0 10px #00d4ff,
+                0 0 20px #00d4ff,
+                0 0 30px #0099cc,
+                0 0 40px #0099cc;
+            animation: pulse 2s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #0099cc;
+            margin-bottom: 50px;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            width: 100%;
+            height: 40px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 2px solid #00d4ff;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            box-shadow:
+                0 0 10px rgba(0, 212, 255, 0.3),
+                inset 0 0 10px rgba(0, 212, 255, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg,
+                #00d4ff 0%,
+                #0099cc 50%,
+                #00d4ff 100%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite linear;
+            width: 0%;
+            transition: width 0.5s ease-out;
+            position: relative;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent);
+            animation: slide 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @keyframes slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-text {
+            font-size: 1.1rem;
+            margin: 15px 0;
+            min-height: 30px;
+            color: #fff;
+            text-shadow: 0 0 5px #00d4ff;
+        }
+
+        .progress-percentage {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-family: 'Orbitron', monospace;
+        }
+
+        /* Status stages */
+        .status-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px;
+            margin: 5px;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .status-item.active {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: #00d4ff;
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+        }
+
+        .status-item.complete {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: #00ff88;
+        }
+
+        .status-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .status-label {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        /* Arc Reactor Animation */
+        .arc-reactor-loading {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 40px;
+            position: relative;
+        }
+
+        .reactor-ring {
+            position: absolute;
+            border: 3px solid #00d4ff;
+            border-radius: 50%;
+            animation: rotate 3s linear infinite;
+        }
+
+        .reactor-ring:nth-child(1) {
+            width: 150px;
+            height: 150px;
+            top: 0;
+            left: 0;
+            border-color: #00d4ff transparent transparent transparent;
+        }
+
+        .reactor-ring:nth-child(2) {
+            width: 110px;
+            height: 110px;
+            top: 20px;
+            left: 20px;
+            border-color: transparent #0099cc transparent transparent;
+            animation-direction: reverse;
+            animation-duration: 2s;
+        }
+
+        .reactor-ring:nth-child(3) {
+            width: 70px;
+            height: 70px;
+            top: 40px;
+            left: 40px;
+            border-color: transparent transparent #00d4ff transparent;
+            animation-duration: 1.5s;
+        }
+
+        .reactor-core {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            top: 60px;
+            left: 60px;
+            background: #00d4ff;
+            border-radius: 50%;
+            box-shadow:
+                0 0 20px #00d4ff,
+                0 0 40px #0099cc;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        /* Error state */
+        .error-state {
+            display: none;
+            color: #ff4444;
+        }
+
+        .error-state.show {
+            display: block;
+        }
+
+        /* Details section */
+        .details-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 10px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .detail-item {
+            font-size: 0.9rem;
+            color: #0099cc;
+            margin: 5px 0;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <!-- Particle Background -->
+    <div id="particles-js"></div>
+
+    <!-- Loading Container -->
+    <div class="loading-container">
+        <div class="logo-container">
+            <div class="jarvis-logo">J.A.R.V.I.S.</div>
+            <div class="subtitle">System Restart in Progress</div>
+        </div>
+
+        <!-- Arc Reactor Animation -->
+        <div class="arc-reactor-loading">
+            <div class="reactor-ring"></div>
+            <div class="reactor-ring"></div>
+            <div class="reactor-ring"></div>
+            <div class="reactor-core"></div>
+        </div>
+
+        <!-- Progress Percentage -->
+        <div class="progress-percentage" id="progress-percentage">0%</div>
+
+        <!-- Progress Bar -->
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+
+        <!-- Progress Text -->
+        <div class="progress-text" id="progress-text">Initializing system restart...</div>
+
+        <!-- Status Stages -->
+        <div class="status-container">
+            <div class="status-item" id="status-detecting">
+                <div class="status-icon">🔍</div>
+                <div class="status-label">Detecting</div>
+            </div>
+            <div class="status-item" id="status-killing">
+                <div class="status-icon">⚔️</div>
+                <div class="status-label">Terminating</div>
+            </div>
+            <div class="status-item" id="status-cleanup">
+                <div class="status-icon">🧹</div>
+                <div class="status-label">Cleanup</div>
+            </div>
+            <div class="status-item" id="status-starting">
+                <div class="status-icon">🚀</div>
+                <div class="status-label">Starting</div>
+            </div>
+            <div class="status-item" id="status-complete">
+                <div class="status-icon">✅</div>
+                <div class="status-label">Complete</div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div class="error-state" id="error-state">
+            <h2>⚠️ Startup Failed</h2>
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Details Section -->
+        <div class="details-section" id="details-section" style="display: none;">
+            <div id="details-content"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="js/particles-config.js"></script>
+
+    <script>
+        // WebSocket connection for real-time progress
+        let ws;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.hostname}:8010/ws/startup-progress`;
+
+            console.log('Connecting to:', wsUrl);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                reconnectAttempts = 0;
+
+                // Send ping every 10 seconds to keep connection alive
+                setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send('ping');
+                    }
+                }, 10000);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Progress update:', data);
+
+                    if (data.type === 'pong') {
+                        return; // Ignore pong messages
+                    }
+
+                    updateProgress(data);
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+
+                // Try to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    console.log(`Reconnecting... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                    setTimeout(connectWebSocket, 2000);
+                } else {
+                    showError('Lost connection to server. Please refresh the page.');
+                }
+            };
+        }
+
+        function updateProgress(data) {
+            const { stage, message, progress, details, success, redirect_url } = data;
+
+            // Update progress bar
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercentage = document.getElementById('progress-percentage');
+            const progressText = document.getElementById('progress-text');
+
+            progressBar.style.width = `${progress}%`;
+            progressPercentage.textContent = `${progress}%`;
+            progressText.textContent = message;
+
+            // Update status items
+            const stages = ['detecting', 'killing', 'cleanup', 'starting', 'complete'];
+            stages.forEach(s => {
+                const element = document.getElementById(`status-${s}`);
+                element.classList.remove('active', 'complete');
+
+                if (s === stage) {
+                    element.classList.add('active');
+                } else if (stages.indexOf(s) < stages.indexOf(stage)) {
+                    element.classList.add('complete');
+                }
+            });
+
+            // Show details if available
+            if (details) {
+                const detailsSection = document.getElementById('details-section');
+                const detailsContent = document.getElementById('details-content');
+
+                detailsSection.style.display = 'block';
+
+                let detailsHtml = '';
+                for (const [key, value] of Object.entries(details)) {
+                    detailsHtml += `<div class="detail-item">${key}: ${value}</div>`;
+                }
+                detailsContent.innerHTML = detailsHtml;
+            }
+
+            // Handle completion
+            if (stage === 'complete' && success) {
+                setTimeout(() => {
+                    if (redirect_url) {
+                        window.location.href = redirect_url;
+                    }
+                }, 2000);
+            } else if (stage === 'failed' || (stage === 'complete' && !success)) {
+                showError(message);
+            }
+        }
+
+        function showError(message) {
+            const errorState = document.getElementById('error-state');
+            const errorMessage = document.getElementById('error-message');
+
+            errorState.classList.add('show');
+            errorMessage.textContent = message;
+        }
+
+        // Connect when page loads
+        window.addEventListener('load', () => {
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>

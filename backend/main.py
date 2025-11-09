@@ -2621,6 +2621,14 @@ def mount_routers():
     if voice_unlock and voice_unlock.get("router"):
         app.include_router(voice_unlock["router"], tags=["voice_unlock"])
         logger.info("✅ Voice Unlock API mounted")
+
+    # Startup Progress API (for loading page)
+    try:
+        from api.startup_progress_api import router as startup_progress_router
+        app.include_router(startup_progress_router, tags=["startup"])
+        logger.info("✅ Startup Progress API mounted at /ws/startup-progress")
+    except ImportError as e:
+        logger.warning(f"Could not import startup progress router: {e}")
         if voice_unlock.get("initialized"):
             app.state.voice_unlock = voice_unlock
             logger.info("✅ Voice Unlock service ready")
