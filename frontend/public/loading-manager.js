@@ -303,42 +303,41 @@ class JARVISLoadingManager {
         const reactor = this.elements.reactor;
         const progressBar = this.elements.progressBar;
 
-        // Simplified, faster configuration for reliable transition
-        const totalDuration = 2500; // 2.5 seconds - fast and smooth
+        // Configuration with matrix transition
+        const totalDuration = 3500; // 3.5 seconds total
         const config = {
             phases: {
                 powerSurge: {
-                    duration: 600,  // Fixed timing for consistency
+                    duration: 600,
                     rings: 3
                 },
+                matrix: {
+                    duration: 1500  // Matrix rain effect
+                },
                 fade: {
-                    duration: 1000  // 1 second smooth fade
+                    duration: 800
                 },
                 totalDuration: totalDuration
             },
             reactor: {
                 powerUpScale: 1.5,
                 glowIntensity: 80,
-                breathingSpeed: 2,
-                maintainBrightness: true // Keep reactor glowing!
+                maintainBrightness: true
             },
             effects: {
                 ringColor: '#00ff41',
-                ringCount: 5,
-                particleVelocityMin: 200,
-                particleVelocityMax: 400,
-                scanLineHeight: 3,
-                matrixColumns: Math.floor(window.innerWidth / 20)
+                matrixColumns: Math.floor(window.innerWidth / 20),
+                matrixSpeed: 50
             }
         };
 
         // === PHASE 1: REACTOR POWER SURGE ===
-        console.log('[Animation] Phase 1: Quick reactor pulse');
+        console.log('[Animation] Phase 1: Reactor power surge');
 
         // Reactor pulse
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
-            reactor.style.transform = 'scale(1.5)';
+            reactor.style.transform = 'translate(-50%, -50%) scale(1.5)';
             reactor.style.filter = 'drop-shadow(0 0 80px rgba(0, 255, 65, 1)) brightness(2)';
             reactor.style.opacity = '1';
 
@@ -358,24 +357,42 @@ class JARVISLoadingManager {
 
         await this.sleep(config.phases.powerSurge.duration);
 
-        // === PHASE 2: SMOOTH FADE TO BLACK ===
-        console.log('[Animation] Phase 2: Fading to black');
+        // === PHASE 2: MATRIX TRANSITION ===
+        console.log('[Animation] Phase 2: Matrix code rain');
 
-        // Fade everything to black smoothly
-        const fadeDuration = config.phases.fade.duration / 1000;
-
+        // Start fading out the container and scale reactor
         if (container) {
-            container.style.transition = `opacity ${fadeDuration}s ease-out`;
+            container.style.transition = 'opacity 1s ease-out';
             container.style.opacity = '0';
         }
 
         if (reactor) {
-            reactor.style.transition = `all ${fadeDuration}s ease-out`;
-            reactor.style.transform = 'scale(2)';
+            reactor.style.transition = 'all 1s ease-out';
+            reactor.style.transform = 'translate(-50%, -50%) scale(2)';
             reactor.style.opacity = '0';
         }
 
-        // Create black overlay for smooth transition
+        // Create matrix rain canvas
+        const matrixCanvas = this.createMatrixCanvas();
+        matrixCanvas.style.opacity = '1';
+
+        // Start matrix animation
+        const matrixInterval = this.startMatrixRain(matrixCanvas, config.effects.matrixColumns);
+
+        // Wait for matrix effect
+        await this.sleep(config.phases.matrix.duration);
+
+        // Stop matrix animation
+        clearInterval(matrixInterval);
+
+        // === PHASE 3: FADE TO BLACK ===
+        console.log('[Animation] Phase 3: Final fade');
+
+        // Fade out matrix
+        matrixCanvas.style.transition = `opacity ${config.phases.fade.duration / 1000}s ease-out`;
+        matrixCanvas.style.opacity = '0';
+
+        // Create black overlay
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed;
@@ -385,8 +402,8 @@ class JARVISLoadingManager {
             height: 100%;
             background: #000000;
             opacity: 0;
-            transition: opacity ${fadeDuration}s ease-in;
-            z-index: 10000;
+            transition: opacity ${config.phases.fade.duration / 1000}s ease-in;
+            z-index: 10001;
         `;
         document.body.appendChild(overlay);
 
@@ -398,10 +415,10 @@ class JARVISLoadingManager {
         // Wait for fade to complete
         await this.sleep(config.phases.fade.duration);
 
-        // === PHASE 3: NAVIGATE TO MAIN PAGE ===
+        // === PHASE 4: NAVIGATE TO MAIN PAGE ===
         console.log(`[Transition] Navigating to ${redirectUrl}`);
 
-        // Clean navigation - let browser handle the transition
+        // Clean navigation
         window.location.href = redirectUrl;
     }
 
@@ -679,24 +696,33 @@ class JARVISLoadingManager {
         canvas.height = window.innerHeight;
 
         const columns = columnCount || Math.floor(canvas.width / 20);
-        const drops = Array(columns).fill(0);
+        const drops = Array(columns).fill(0).map(() => Math.random() * -100);
 
-        const matrix = 'JARVIS01';
-        const fontSize = 15;
+        const matrix = 'JARVIS01アイウエオカキクケコサシスセソ';
+        const fontSize = 16;
         const columnWidth = canvas.width / columns;
         ctx.font = `${fontSize}px monospace`;
 
         const draw = () => {
             // Fade effect for trail
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Draw matrix characters
-            ctx.fillStyle = '#00ff41';
             drops.forEach((y, i) => {
                 const text = matrix[Math.floor(Math.random() * matrix.length)];
                 const x = i * columnWidth;
+
+                // Brighter color for leading character
+                ctx.fillStyle = '#00ff41';
                 ctx.fillText(text, x, y * fontSize);
+
+                // Dimmer trail
+                ctx.fillStyle = 'rgba(0, 255, 65, 0.5)';
+                if (y > 1) {
+                    const trailText = matrix[Math.floor(Math.random() * matrix.length)];
+                    ctx.fillText(trailText, x, (y - 1) * fontSize);
+                }
 
                 // Reset drop to top with random chance
                 if (y * fontSize > canvas.height && Math.random() > 0.975) {
@@ -706,8 +732,7 @@ class JARVISLoadingManager {
             });
         };
 
-        const interval = setInterval(draw, 50);
-        setTimeout(() => clearInterval(interval), 2000);
+        return setInterval(draw, 50);
     }
 
     sleep(ms) {

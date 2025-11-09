@@ -117,8 +117,8 @@
             opacity: 0.9;
         }
 
-        /* Arc Reactor */
-        .arc-reactor {
+        /* Arc Reactor Wrapper */
+        .arc-reactor-wrapper {
             width: 200px;
             height: 200px;
             margin: 0 auto 50px;
@@ -126,6 +126,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        /* Arc Reactor */
+        .arc-reactor {
+            width: 200px;
+            height: 200px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             transform-origin: center center;
         }
 
@@ -504,6 +514,11 @@
                 font-size: 1rem;
             }
 
+            .arc-reactor-wrapper {
+                width: 140px;
+                height: 140px;
+            }
+
             .arc-reactor {
                 width: 140px;
                 height: 140px;
@@ -565,11 +580,13 @@
         <div class="subtitle" id="subtitle">System Initialization</div>
 
         <!-- Arc Reactor -->
-        <div class="arc-reactor">
-            <div class="reactor-ring"></div>
-            <div class="reactor-ring"></div>
-            <div class="reactor-ring"></div>
-            <div class="reactor-core"></div>
+        <div class="arc-reactor-wrapper">
+            <div class="arc-reactor">
+                <div class="reactor-ring"></div>
+                <div class="reactor-ring"></div>
+                <div class="reactor-ring"></div>
+                <div class="reactor-core"></div>
+            </div>
         </div>
 
         <!-- Progress percentage -->
