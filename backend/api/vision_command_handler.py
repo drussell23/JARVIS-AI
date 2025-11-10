@@ -578,31 +578,25 @@ class VisionCommandHandler:
                 details="Screen capture timed out or failed. This may be due to screen recording permissions or system resources."
             )
             
-        # Fallback to old logic
-        # First check if it's an activity reporting command (faster than Claude)
-        if is_activity_reporting_command(command_text):
-            is_monitoring_command = True
-        # Quick check for common monitoring phrases
-        elif any(
-            phrase in command_text.lower()
-            for phrase in [
-                "start monitoring",
-                "enable monitoring",
-                "monitor my screen",
-                "enable screen monitoring",
-                "monitoring capabilities",
-                "turn on monitoring",
-                "activate monitoring",
-                "begin monitoring",
-            ]
-        ):
-            is_monitoring_command = True
-            logger.info(f"Quick match: '{command_text}' is a monitoring command")
+        # FAST PATH: Check for monitoring commands using keywords ONLY (no Claude call)
+        # This prevents unnecessary API calls for 99% of vision queries
+        monitoring_keywords = [
+            "start monitoring", "enable monitoring", "monitor my screen",
+            "enable screen monitoring", "monitoring capabilities", "turn on monitoring",
+            "activate monitoring", "begin monitoring", "stop monitoring", "disable monitoring",
+            "turn off monitoring", "deactivate monitoring", "stop watching"
+        ]
+
+        command_lower = command_text.lower()
+        is_monitoring_command = (
+            is_activity_reporting_command(command_text) or
+            any(keyword in command_lower for keyword in monitoring_keywords)
+        )
+
+        if is_monitoring_command:
+            logger.info(f"[VISION] ✅ Fast match: Monitoring command detected")
         else:
-            # Determine if this is a monitoring command through Claude
-            is_monitoring_command = await self._is_monitoring_command(
-                command_text, screenshot
-            )
+            logger.info(f"[VISION] ✅ Fast match: Regular vision query (skipping monitoring check)")
 
         if is_monitoring_command:
             return await self._handle_monitoring_command(command_text, screenshot)

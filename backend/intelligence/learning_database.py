@@ -2919,6 +2919,11 @@ class JARVISLearningDatabase:
             import hashlib
 
             speaker_id = await self.get_or_create_speaker_profile(speaker_name)
+
+            if speaker_id == -1:
+                logger.error(f"Failed to get/create speaker profile for {speaker_name}")
+                return -1
+
             audio_hash = hashlib.sha256(audio_data).hexdigest()[:16]
 
             # Extract acoustic features (if librosa available)
@@ -2960,28 +2965,66 @@ class JARVISLearningDatabase:
             except Exception as e:
                 logger.warning(f"Failed to extract acoustic features: {e}")
 
+            # Store to BOTH SQLite and Cloud SQL for synchronization
+
+            # 1. Store to database (SQLite or Cloud SQL)
             async with self.db.cursor() as cursor:
-                await cursor.execute(
-                    """
-                    INSERT INTO voice_samples
-                    (speaker_id, audio_hash, audio_data, mfcc_features, duration_ms, transcription,
-                     pitch_mean, pitch_std, energy_mean, recording_timestamp, quality_score)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        speaker_id,
-                        audio_hash,
-                        audio_data,  # Store raw audio for embedding reconstruction
-                        mfcc_features,
-                        audio_duration_ms,
-                        transcription,
-                        pitch_mean,
-                        pitch_std,
-                        energy_mean,
-                        datetime.now(),
-                        quality_score,
-                    ),
-                )
+
+                # Check if we're using PostgreSQL (Cloud SQL) or SQLite
+                if isinstance(self.db, DatabaseConnectionWrapper):
+                    # PostgreSQL - use RETURNING clause with proper placeholders
+                    await cursor.execute(
+                        """
+                        INSERT INTO voice_samples
+                        (speaker_id, audio_hash, audio_data, mfcc_features, duration_ms, transcription,
+                         pitch_mean, pitch_std, energy_mean, recording_timestamp, quality_score)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING sample_id
+                    """,
+                        (
+                            speaker_id,
+                            audio_hash,
+                            audio_data,  # Store raw audio for embedding reconstruction
+                            mfcc_features,
+                            audio_duration_ms,
+                            transcription,
+                            pitch_mean,
+                            pitch_std,
+                            energy_mean,
+                            datetime.now(),
+                            quality_score,
+                        ),
+                    )
+                    row = await cursor.fetchone()
+                    if row:
+                        # Row might be dict-like or tuple
+                        sample_id = row['sample_id'] if hasattr(row, '__getitem__') and 'sample_id' in row else row[0]
+                    else:
+                        sample_id = None
+                else:
+                    # SQLite - use ? placeholders without RETURNING
+                    await cursor.execute(
+                        """
+                        INSERT INTO voice_samples
+                        (speaker_id, audio_hash, audio_data, mfcc_features, duration_ms, transcription,
+                         pitch_mean, pitch_std, energy_mean, recording_timestamp, quality_score)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            speaker_id,
+                            audio_hash,
+                            audio_data,  # Store raw audio for embedding reconstruction
+                            mfcc_features,
+                            audio_duration_ms,
+                            transcription,
+                            pitch_mean,
+                            pitch_std,
+                            energy_mean,
+                            datetime.now(),
+                            quality_score,
+                        ),
+                    )
+                    sample_id = cursor.lastrowid
 
                 # Update speaker profile stats
                 await cursor.execute(
@@ -2999,11 +3042,47 @@ class JARVISLearningDatabase:
                 )
 
                 await self.db.commit()
-                sample_id = cursor.lastrowid
 
-                logger.debug(f"🎤 Recorded voice sample {sample_id} for {speaker_name}")
+            # 2. ALSO store to Cloud SQL (persistent storage)
+            if hasattr(self, 'adapter') and self.adapter:
+                try:
+                    # PostgreSQL uses $1, $2 placeholders and BYTEA for binary data
+                    cloud_query = """
+                        INSERT INTO voice_samples
+                        (speaker_id, audio_hash, audio_data, mfcc_features, duration_ms,
+                         transcription, pitch_mean, pitch_std, energy_mean,
+                         recording_timestamp, quality_score, sample_rate)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        RETURNING sample_id
+                    """
 
-                return sample_id
+                    result = await self.adapter.fetch(
+                        cloud_query,
+                        speaker_id,
+                        audio_hash,
+                        audio_data,  # PostgreSQL will handle BYTEA conversion
+                        mfcc_features if mfcc_features else None,
+                        int(audio_duration_ms) if audio_duration_ms else 0,
+                        transcription or '',
+                        pitch_mean,
+                        pitch_std,
+                        energy_mean,
+                        datetime.now(),
+                        float(quality_score) if quality_score else 0.0,
+                        16000  # Default sample rate
+                    )
+
+                    if result:
+                        cloud_sample_id = result[0]['sample_id']
+                        logger.info(f"✅ Voice sample stored to Cloud SQL (ID: {cloud_sample_id})")
+
+                except Exception as e:
+                    logger.error(f"Failed to store voice sample to Cloud SQL: {e}")
+                    # Continue - don't fail if Cloud SQL fails, SQLite is the backup
+
+            logger.debug(f"🎤 Recorded voice sample {sample_id} for {speaker_name}")
+
+            return sample_id
 
         except Exception as e:
             logger.error(f"Failed to record voice sample: {e}")
@@ -3012,6 +3091,7 @@ class JARVISLearningDatabase:
     async def get_voice_samples_for_speaker(self, speaker_id: int, limit: int = 10) -> list:
         """
         Retrieve stored voice samples for a speaker.
+        Tries Cloud SQL first (persistent), falls back to SQLite if needed.
 
         Args:
             speaker_id: Database ID of the speaker
@@ -3020,6 +3100,47 @@ class JARVISLearningDatabase:
         Returns:
             List of sample dictionaries with audio_data and metadata
         """
+        samples = []
+
+        # Try Cloud SQL first (it has the persistent data)
+        if hasattr(self, 'adapter') and self.adapter:
+            try:
+                cloud_query = """
+                    SELECT sample_id, audio_hash, audio_data, mfcc_features, duration_ms,
+                           transcription, pitch_mean, pitch_std, energy_mean,
+                           recording_timestamp, quality_score, sample_rate
+                    FROM voice_samples
+                    WHERE speaker_id = $1
+                    ORDER BY quality_score DESC NULLS LAST, recording_timestamp DESC
+                    LIMIT $2
+                """
+
+                rows = await self.adapter.fetch(cloud_query, speaker_id, limit)
+
+                for row in rows:
+                    samples.append({
+                        "sample_id": row["sample_id"],
+                        "audio_hash": row["audio_hash"],
+                        "audio_data": row["audio_data"],  # BYTEA from PostgreSQL
+                        "mfcc_features": row["mfcc_features"],
+                        "duration_ms": row["duration_ms"],
+                        "transcription": row["transcription"],
+                        "pitch_mean": row["pitch_mean"],
+                        "pitch_std": row["pitch_std"],
+                        "energy_mean": row["energy_mean"],
+                        "recording_timestamp": row["recording_timestamp"],
+                        "quality_score": row["quality_score"],
+                        "sample_rate": row["sample_rate"],
+                    })
+
+                if samples:
+                    logger.info(f"✅ Retrieved {len(samples)} voice samples from Cloud SQL for speaker {speaker_id}")
+                    return samples
+
+            except Exception as e:
+                logger.warning(f"Failed to retrieve from Cloud SQL, trying SQLite: {e}")
+
+        # Fallback to SQLite if Cloud SQL fails or no samples found
         try:
             async with self.db.cursor() as cursor:
                 await cursor.execute(
@@ -3038,7 +3159,6 @@ class JARVISLearningDatabase:
                 rows = await cursor.fetchall()
 
                 # Return samples with raw audio data for embedding reconstruction
-                samples = []
                 for row in rows:
                     samples.append({
                         "audio_hash": row[0],
@@ -3053,12 +3173,13 @@ class JARVISLearningDatabase:
                         "quality_score": row[9],
                     })
 
-                logger.debug(f"Retrieved {len(samples)} voice samples for speaker {speaker_id}")
-                return samples
+                if samples:
+                    logger.info(f"Retrieved {len(samples)} voice samples from SQLite for speaker {speaker_id}")
 
         except Exception as e:
             logger.error(f"Failed to retrieve voice samples for speaker {speaker_id}: {e}")
-            return []
+
+        return samples
 
     async def record_query_retry(
         self,
