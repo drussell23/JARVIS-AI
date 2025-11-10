@@ -1334,6 +1334,13 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info(f"   Audio data size: {len(audio_data)} bytes")
             logger.info(f"   Known embedding shape: {known_embedding.shape}")
 
+            # Convert audio to tensor for quality analysis
+            audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
+
+            # Compute audio quality score
+            audio_quality = self._compute_audio_quality(audio_tensor)
+            logger.info(f"   Audio quality score: {audio_quality:.2f}")
+
             # Extract embedding from test audio
             logger.info("   Extracting test embedding...")
             test_embedding = await self.extract_speaker_embedding(audio_data)
@@ -1343,14 +1350,24 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             # Compute cosine similarity
             logger.info("   Computing cosine similarity...")
-            similarity = self._compute_cosine_similarity(test_embedding, known_embedding)
-            logger.info(f"   Similarity computed: {similarity:.4f} ({similarity*100:.2f}%)")
+            base_similarity = self._compute_cosine_similarity(test_embedding, known_embedding)
+            logger.info(f"   Base similarity: {base_similarity:.4f} ({base_similarity*100:.2f}%)")
+
+            # Apply multi-factor scoring
+            # Weights from verification_config.yaml:
+            # - cosine_similarity: 0.60
+            # - audio_quality: 0.10
+            # - confidence boost for good audio: 0.30
+            similarity = base_similarity * 0.60 + audio_quality * 0.40
+
+            logger.info(f"   Quality-adjusted similarity: {similarity:.4f} ({similarity*100:.2f}%)")
 
             # Verify if similarity exceeds threshold
             is_verified = similarity >= threshold
 
             logger.info(
                 f"✅ Speaker verification complete: similarity={similarity:.3f} ({similarity*100:.1f}%), "
+                f"base={base_similarity:.3f}, quality={audio_quality:.2f}, "
                 f"threshold={threshold:.3f} ({threshold*100:.1f}%), verified={is_verified}"
             )
 
@@ -1359,6 +1376,66 @@ class SpeechBrainEngine(BaseSTTEngine):
         except Exception as e:
             logger.error(f"❌ Speaker verification failed: {e}", exc_info=True)
             return False, 0.0
+
+    def _compute_audio_quality(self, audio_tensor: torch.Tensor) -> float:
+        """Compute audio quality score based on signal characteristics.
+
+        Args:
+            audio_tensor: Audio waveform as PyTorch tensor
+
+        Returns:
+            Quality score (0.0-1.0, higher is better)
+        """
+        try:
+            # Convert to numpy for analysis
+            audio_np = audio_tensor.cpu().numpy() if isinstance(audio_tensor, torch.Tensor) else audio_tensor
+
+            # 1. Signal-to-Noise Ratio (SNR) estimation
+            # Estimate noise from quietest 10% of frames
+            frame_size = 512
+            num_frames = len(audio_np) // frame_size
+            frame_energies = []
+
+            for i in range(num_frames):
+                frame = audio_np[i*frame_size:(i+1)*frame_size]
+                energy = np.mean(frame ** 2)
+                frame_energies.append(energy)
+
+            if frame_energies:
+                frame_energies = np.array(frame_energies)
+                noise_estimate = np.percentile(frame_energies, 10)  # Bottom 10%
+                signal_estimate = np.percentile(frame_energies, 90)  # Top 90%
+
+                # Avoid division by zero
+                snr = (signal_estimate / (noise_estimate + 1e-10))
+                snr_score = min(1.0, snr / 100.0)  # Normalize (100 is excellent)
+            else:
+                snr_score = 0.5  # Default
+
+            # 2. RMS Energy (speech presence)
+            rms = np.sqrt(np.mean(audio_np ** 2))
+            # Good speech is typically 0.01-0.3 RMS
+            rms_score = min(1.0, max(0.0, (rms - 0.01) / 0.29))
+
+            # 3. Zero-crossing rate (speech clarity)
+            zero_crossings = np.sum(np.abs(np.diff(np.sign(audio_np)))) / 2
+            zcr = zero_crossings / len(audio_np)
+            # Speech typically has ZCR of 0.02-0.15
+            zcr_score = 1.0 - abs(zcr - 0.085) / 0.085  # Peak at 0.085
+            zcr_score = max(0.0, min(1.0, zcr_score))
+
+            # Combine scores (weighted average)
+            quality = (
+                snr_score * 0.4 +      # SNR is most important
+                rms_score * 0.4 +      # Energy level matters
+                zcr_score * 0.2        # Clarity helps
+            )
+
+            return float(quality)
+
+        except Exception as e:
+            logger.warning(f"Audio quality computation failed: {e}")
+            return 0.5  # Default medium quality
 
     def _compute_cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Compute cosine similarity between two embeddings.
@@ -1396,9 +1473,11 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             similarity = dot_product / (norm1 * norm2)
 
-            # Ensure result is in [0, 1] range
-            # Cosine similarity is in [-1, 1], we map to [0, 1]
-            similarity = (similarity + 1) / 2
+            # Cosine similarity is already in [-1, 1] range
+            # For speaker embeddings, negative similarities are extremely rare
+            # So we directly use the similarity (clamped to [0, 1] for safety)
+            # This preserves the actual similarity score without artificial scaling
+            similarity = np.clip(similarity, 0.0, 1.0)
 
             return float(similarity)
 

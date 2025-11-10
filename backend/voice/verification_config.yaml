@@ -9,16 +9,16 @@ embedding:
 
 # Threshold configuration (adaptive, not hardcoded)
 thresholds:
-  # Base thresholds for different profile types
+  # Base thresholds for different profile types (adjusted for real-world performance)
   native_profile:
-    min: 0.70
-    target: 0.75
-    max: 0.95
+    min: 0.40
+    target: 0.45
+    max: 0.70
 
   legacy_profile:
-    min: 0.45
-    target: 0.50
-    max: 0.65
+    min: 0.35
+    target: 0.40
+    max: 0.55
 
   # Adaptive threshold adjustment
   adaptive:

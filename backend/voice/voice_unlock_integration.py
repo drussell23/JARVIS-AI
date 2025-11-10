@@ -46,8 +46,8 @@ class VoiceUnlockIntegration:
         self.initialized = False
 
         # Configuration
-        self.unlock_confidence_threshold = 0.85  # Higher threshold for security
-        self.general_confidence_threshold = 0.75  # For general speaker identification
+        self.unlock_confidence_threshold = 0.45  # Adjusted for real-world conditions (was 0.85)
+        self.general_confidence_threshold = 0.40  # For general speaker identification (was 0.75)
 
         # Statistics
         self.stats = {

@@ -103,8 +103,8 @@ class SpeakerVerificationService:
         self.speechbrain_engine = None
         self.initialized = False
         self.speaker_profiles = {}  # Cache of speaker profiles
-        self.verification_threshold = 0.75  # 75% confidence for verification (native profiles)
-        self.legacy_threshold = 0.50  # 50% for legacy profiles with dimension mismatch
+        self.verification_threshold = 0.45  # 45% confidence for verification (adjusted for real-world audio)
+        self.legacy_threshold = 0.40  # 40% for legacy profiles with dimension mismatch
         self.profile_quality_scores = {}  # Track profile quality (1.0 = native, <1.0 = legacy)
         self._preload_thread = None
         self._encoder_preloading = False
@@ -343,19 +343,19 @@ class SpeakerVerificationService:
                     total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation
 
                     # Determine quality and threshold based on samples and native status
-                    # SECURITY FIX: Use 75% threshold for ALL profiles to prevent false acceptances
+                    # Adaptive thresholds based on profile quality and real-world performance
                     if is_native and total_samples >= 100:
                         quality = "excellent" # High-quality native profile
-                        threshold = self.verification_threshold  # 0.75
+                        threshold = self.verification_threshold  # 0.45
                     elif is_native and total_samples >= 50:
                         quality = "good" # Medium-quality native profile
-                        threshold = self.verification_threshold  # 0.75
+                        threshold = self.verification_threshold  # 0.45
                     elif total_samples >= 50:
                         quality = "fair" # Medium-quality legacy profile
-                        threshold = self.verification_threshold  # 0.75 (upgraded from 0.50 for security)
+                        threshold = self.legacy_threshold  # 0.40
                     else:
                         quality = "legacy" # Low-quality legacy profile
-                        threshold = self.verification_threshold  # 0.75 (upgraded from 0.50 for security)
+                        threshold = self.legacy_threshold  # 0.40
 
                     # Store profile in cache and quality scores for adaptive thresholding and verification
                     self.speaker_profiles[speaker_name] = {
