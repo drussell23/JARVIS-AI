@@ -570,8 +570,13 @@ class VisionCommandHandler:
             screenshot = await self._capture_screen()
             
         if not screenshot:
-            # Even error messages come from Claude
-            return await self._get_error_response("screenshot_failed", command_text)
+            # Even error messages come from Claude - but be more specific about timeout
+            logger.error(f"[VISION-CAPTURE] ❌ Screenshot capture returned None for command: '{command_text}'")
+            return await self._get_error_response(
+                "screenshot_failed",
+                command_text,
+                details="Screen capture timed out or failed. This may be due to screen recording permissions or system resources."
+            )
             
         # Fallback to old logic
         # First check if it's an activity reporting command (faster than Claude)
@@ -2123,60 +2128,72 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
     ) -> Optional[Any]:
         """
         Capture screen(s) with multi-space support
-        
+
         Args:
             multi_space: If True, capture all desktop spaces
             space_number: If provided, capture specific space
-            
+
         Returns:
             Single screenshot or Dict[int, screenshot] for multi-space
         """
         try:
             # Initialize vision manager if needed
             await self._ensure_vision_manager()
-            
+
             if (
                 self.vision_manager
                 and hasattr(self.vision_manager, "vision_analyzer")
                 and self.vision_manager.vision_analyzer
             ):
-                # Use enhanced capture with multi-space support
-                screenshot = await self.vision_manager.vision_analyzer.capture_screen(
-                    multi_space=multi_space, space_number=space_number
-                )
-                return screenshot
+                # Use enhanced capture with multi-space support WITH TIMEOUT
+                logger.info(f"[VISION-CAPTURE] Starting screen capture (multi_space={multi_space}, space_number={space_number})")
+                try:
+                    screenshot = await asyncio.wait_for(
+                        self.vision_manager.vision_analyzer.capture_screen(
+                            multi_space=multi_space, space_number=space_number
+                        ),
+                        timeout=15.0  # 15 second timeout for screen capture
+                    )
+                    logger.info(f"[VISION-CAPTURE] ✅ Screen capture completed successfully")
+                    return screenshot
+                except asyncio.TimeoutError:
+                    logger.error(f"[VISION-CAPTURE] ❌ Screen capture timed out after 15 seconds")
+                    return None
             else:
                 # Try to capture screen directly as fallback
-                logger.info("[VISION] Attempting direct screen capture...")
+                logger.info("[VISION-CAPTURE] Attempting direct screen capture fallback...")
                 try:
-                    # Try macOS screencapture
+                    # Try macOS screencapture WITH TIMEOUT
                     import subprocess
                     import tempfile
                     from PIL import Image
-                    
+
                     with tempfile.NamedTemporaryFile(
                         suffix=".png", delete=False
                     ) as tmp:
                         tmp_path = tmp.name
-                    
-                    # Capture screen
+
+                    # Capture screen with timeout
                     result = subprocess.run(
                         ["screencapture", "-x", tmp_path],
                         capture_output=True,
                         text=True,
+                        timeout=10.0  # 10 second timeout for direct capture
                     )
-                    
+
                     if result.returncode == 0:
                         # Load and return image
                         screenshot = Image.open(tmp_path)
                         os.unlink(tmp_path)  # Clean up
-                        logger.info("[VISION] Direct screen capture successful")
+                        logger.info("[VISION-CAPTURE] ✅ Direct screen capture successful")
                         return screenshot
                     else:
-                        logger.error(f"screencapture failed: {result.stderr}")
-                        
+                        logger.error(f"[VISION-CAPTURE] ❌ screencapture command failed: {result.stderr}")
+
+                except subprocess.TimeoutExpired:
+                    logger.error(f"[VISION-CAPTURE] ❌ Direct capture timed out after 10 seconds")
                 except Exception as e:
-                    logger.error(f"Direct capture failed: {e}")
+                    logger.error(f"[VISION-CAPTURE] ❌ Direct capture failed: {e}")
                     
         except Exception as e:
             logger.error(f"Screen capture error: {e}")
@@ -2265,7 +2282,14 @@ Never use generic error messages or technical jargon.
         else:
             # Natural fallback
             if error_type == "screenshot_failed":
-                error_message = "I'm having trouble accessing your screen right now, Sir. Let me check the vision system configuration."
+                if "timed out" in details.lower():
+                    error_message = (
+                        "The screen capture is taking longer than expected, Sir. "
+                        "This might be due to system resource constraints or screen recording permissions. "
+                        "Please ensure JARVIS has Screen Recording permissions in System Settings > Privacy & Security."
+                    )
+                else:
+                    error_message = "I'm having trouble accessing your screen right now, Sir. Let me check the vision system configuration."
             elif error_type == "intelligence_error":
                 error_message = "I encountered an issue processing that request. Let me recalibrate the vision systems."
             else:
