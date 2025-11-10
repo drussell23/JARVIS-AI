@@ -1437,6 +1437,80 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.warning(f"Audio quality computation failed: {e}")
             return 0.5  # Default medium quality
 
+    def _compute_cross_model_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """
+        Compute similarity between embeddings from potentially different models.
+
+        Handles dimension mismatches intelligently without requiring migration.
+
+        Args:
+            embedding1: First embedding (any dimension)
+            embedding2: Second embedding (any dimension)
+
+        Returns:
+            Similarity score (0.0-1.0)
+        """
+        dim1 = embedding1.shape[0]
+        dim2 = embedding2.shape[0]
+
+        if dim1 == dim2:
+            # Same dimension - use standard cosine similarity
+            return self._compute_cosine_similarity(embedding1, embedding2)
+
+        logger.info(f"🔄 Cross-model similarity: {dim1}D vs {dim2}D")
+
+        try:
+            # Method 1: Project to common subspace
+            common_dim = min(dim1, dim2)
+
+            # For the larger embedding, use PCA-like reduction
+            if dim1 > dim2:
+                # Reduce embedding1 to match embedding2
+                # Use block averaging for dimension reduction
+                ratio = dim1 // dim2
+                if ratio * dim2 == dim1:
+                    # Perfect divisor
+                    reduced1 = embedding1.reshape(dim2, ratio).mean(axis=1)
+                else:
+                    # Interpolate
+                    from scipy import signal
+                    reduced1 = signal.resample(embedding1, dim2)
+                reduced2 = embedding2
+            elif dim2 > dim1:
+                # Reduce embedding2 to match embedding1
+                ratio = dim2 // dim1
+                if ratio * dim1 == dim2:
+                    reduced2 = embedding2.reshape(dim1, ratio).mean(axis=1)
+                else:
+                    from scipy import signal
+                    reduced2 = signal.resample(embedding2, dim1)
+                reduced1 = embedding1
+            else:
+                reduced1 = embedding1[:common_dim]
+                reduced2 = embedding2[:common_dim]
+
+            # Compute similarity in common space
+            similarity = self._compute_cosine_similarity(reduced1, reduced2)
+
+            # Apply cross-model penalty (different models have inherent mismatch)
+            # Smaller penalty for closer dimensions
+            dimension_ratio = min(dim1, dim2) / max(dim1, dim2)
+            penalty_factor = 0.7 + 0.3 * dimension_ratio  # 70-100% based on dimension similarity
+
+            adjusted_similarity = similarity * penalty_factor
+
+            logger.info(f"  Base similarity: {similarity:.3f}, Adjusted: {adjusted_similarity:.3f}")
+            return adjusted_similarity
+
+        except Exception as e:
+            logger.error(f"Cross-model similarity failed: {e}")
+            # Fallback to simple truncation
+            common_dim = min(dim1, dim2)
+            return self._compute_cosine_similarity(
+                embedding1[:common_dim],
+                embedding2[:common_dim]
+            )
+
     def _compute_cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Compute cosine similarity between two embeddings.
 
