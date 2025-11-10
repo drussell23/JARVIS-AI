@@ -1330,7 +1330,7 @@ class SpeakerVerificationService:
             async with self.learning_db.db.cursor() as cursor:
                 await cursor.execute(
                     """
-                    SELECT speaker_name, speaker_id, updated_at, total_samples,
+                    SELECT speaker_name, speaker_id, last_updated, total_samples,
                            enrollment_quality_score, feature_extraction_version
                     FROM speaker_profiles
                     """
@@ -1340,7 +1340,7 @@ class SpeakerVerificationService:
                 for profile in profiles:
                     speaker_name = profile['speaker_name'] if isinstance(profile, dict) else profile[0]
                     speaker_id = profile['speaker_id'] if isinstance(profile, dict) else profile[1]
-                    updated_at = profile['updated_at'] if isinstance(profile, dict) else profile[2]
+                    updated_at = profile['last_updated'] if isinstance(profile, dict) else profile[2]
                     total_samples = profile['total_samples'] if isinstance(profile, dict) else profile[3]
                     quality_score = profile['enrollment_quality_score'] if isinstance(profile, dict) else profile[4]
                     feature_version = profile['feature_extraction_version'] if isinstance(profile, dict) else profile[5]

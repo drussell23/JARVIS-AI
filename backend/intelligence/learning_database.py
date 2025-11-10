@@ -5117,6 +5117,7 @@ class JARVISLearningDatabase:
         Get all speaker profiles from database for speaker recognition.
 
         Returns list of profile dicts with embeddings and metadata.
+        INCLUDES: All acoustic features for BEAST MODE verification.
         """
         try:
             async with self.db.cursor() as cursor:
@@ -5124,7 +5125,22 @@ class JARVISLearningDatabase:
                     """
                     SELECT speaker_id, speaker_name, voiceprint_embedding,
                            total_samples, average_pitch_hz, recognition_confidence,
-                           is_primary_user, security_level, created_at, last_updated
+                           is_primary_user, security_level, created_at, last_updated,
+                           -- BEAST MODE: Acoustic features
+                           pitch_mean_hz, pitch_std_hz, pitch_range_hz, pitch_min_hz, pitch_max_hz,
+                           formant_f1_hz, formant_f1_std, formant_f2_hz, formant_f2_std,
+                           formant_f3_hz, formant_f3_std, formant_f4_hz, formant_f4_std,
+                           spectral_centroid_hz, spectral_centroid_std, spectral_rolloff_hz, spectral_rolloff_std,
+                           spectral_flux, spectral_flux_std, spectral_entropy, spectral_entropy_std,
+                           spectral_flatness, spectral_bandwidth_hz,
+                           speaking_rate_wpm, speaking_rate_std, pause_ratio, pause_ratio_std,
+                           syllable_rate, articulation_rate,
+                           energy_mean, energy_std, energy_dynamic_range_db,
+                           jitter_percent, jitter_std, shimmer_percent, shimmer_std,
+                           harmonic_to_noise_ratio_db, hnr_std,
+                           feature_covariance_matrix, feature_statistics,
+                           enrollment_quality_score, feature_extraction_version,
+                           embedding_dimension
                     FROM speaker_profiles
                 """
                 )
@@ -5142,20 +5158,84 @@ class JARVISLearningDatabase:
 
                 profiles = []
                 for row in rows:
-                    profiles.append(
-                        {
-                            "speaker_id": row["speaker_id"],
-                            "speaker_name": row["speaker_name"],
-                            "voiceprint_embedding": row["voiceprint_embedding"],
-                            "total_samples": row["total_samples"],
-                            "average_pitch_hz": row["average_pitch_hz"],
-                            "recognition_confidence": row["recognition_confidence"],
-                            "is_primary_user": bool(row["is_primary_user"]),
-                            "security_level": row["security_level"] or "standard",
-                            "created_at": row["created_at"],
-                            "last_updated": row["last_updated"],
-                        }
-                    )
+                    profile = {
+                        "speaker_id": row["speaker_id"],
+                        "speaker_name": row["speaker_name"],
+                        "voiceprint_embedding": row["voiceprint_embedding"],
+                        "total_samples": row["total_samples"],
+                        "average_pitch_hz": row["average_pitch_hz"],
+                        "recognition_confidence": row["recognition_confidence"],
+                        "is_primary_user": bool(row["is_primary_user"]),
+                        "security_level": row["security_level"] or "standard",
+                        "created_at": row["created_at"],
+                        "last_updated": row["last_updated"],
+                        "embedding_dimension": row.get("embedding_dimension"),
+                        "updated_at": row["last_updated"],  # Map last_updated to updated_at for compatibility
+                        "enrollment_quality_score": row.get("enrollment_quality_score"),
+                        "feature_extraction_version": row.get("feature_extraction_version"),
+
+                        # BEAST MODE: Add all acoustic features
+                        "pitch_mean_hz": row.get("pitch_mean_hz"),
+                        "pitch_std_hz": row.get("pitch_std_hz"),
+                        "pitch_range_hz": row.get("pitch_range_hz"),
+                        "pitch_min_hz": row.get("pitch_min_hz"),
+                        "pitch_max_hz": row.get("pitch_max_hz"),
+
+                        "formant_f1_hz": row.get("formant_f1_hz"),
+                        "formant_f1_std": row.get("formant_f1_std"),
+                        "formant_f2_hz": row.get("formant_f2_hz"),
+                        "formant_f2_std": row.get("formant_f2_std"),
+                        "formant_f3_hz": row.get("formant_f3_hz"),
+                        "formant_f3_std": row.get("formant_f3_std"),
+                        "formant_f4_hz": row.get("formant_f4_hz"),
+                        "formant_f4_std": row.get("formant_f4_std"),
+
+                        "spectral_centroid_hz": row.get("spectral_centroid_hz"),
+                        "spectral_centroid_std": row.get("spectral_centroid_std"),
+                        "spectral_rolloff_hz": row.get("spectral_rolloff_hz"),
+                        "spectral_rolloff_std": row.get("spectral_rolloff_std"),
+                        "spectral_flux": row.get("spectral_flux"),
+                        "spectral_flux_std": row.get("spectral_flux_std"),
+                        "spectral_entropy": row.get("spectral_entropy"),
+                        "spectral_entropy_std": row.get("spectral_entropy_std"),
+                        "spectral_flatness": row.get("spectral_flatness"),
+                        "spectral_bandwidth_hz": row.get("spectral_bandwidth_hz"),
+
+                        "speaking_rate_wpm": row.get("speaking_rate_wpm"),
+                        "speaking_rate_std": row.get("speaking_rate_std"),
+                        "pause_ratio": row.get("pause_ratio"),
+                        "pause_ratio_std": row.get("pause_ratio_std"),
+                        "syllable_rate": row.get("syllable_rate"),
+                        "articulation_rate": row.get("articulation_rate"),
+
+                        "energy_mean": row.get("energy_mean"),
+                        "energy_std": row.get("energy_std"),
+                        "energy_dynamic_range_db": row.get("energy_dynamic_range_db"),
+
+                        "jitter_percent": row.get("jitter_percent"),
+                        "jitter_std": row.get("jitter_std"),
+                        "shimmer_percent": row.get("shimmer_percent"),
+                        "shimmer_std": row.get("shimmer_std"),
+                        "harmonic_to_noise_ratio_db": row.get("harmonic_to_noise_ratio_db"),
+                        "hnr_std": row.get("hnr_std"),
+
+                        "feature_covariance_matrix": row.get("feature_covariance_matrix"),
+                        "feature_statistics": row.get("feature_statistics"),
+                    }
+
+                    # Log if acoustic features are present
+                    has_acoustic = any([
+                        profile.get("pitch_mean_hz"),
+                        profile.get("formant_f1_hz"),
+                        profile.get("spectral_centroid_hz")
+                    ])
+
+                    if has_acoustic:
+                        logger.info(f"✅ Profile '{profile['speaker_name']}' has BEAST MODE acoustic features")
+                    else:
+                        logger.warning(f"⚠️  Profile '{profile['speaker_name']}' missing acoustic features")
+
+                    profiles.append(profile)
 
                 return profiles
 
