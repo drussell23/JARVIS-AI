@@ -1829,24 +1829,94 @@ class JARVISLearningDatabase:
             )
 
             # Speaker/Voiceprint recognition (Derek J. Russell)
+            # 🔬 BEAST MODE: Comprehensive biometric features for multi-modal verification
             await cursor.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS speaker_profiles (
                     {auto_increment('speaker_id')},
                     speaker_name TEXT NOT NULL UNIQUE,
                     voiceprint_embedding {blob_type()},
+                    embedding_dimension INTEGER,
                     total_samples INTEGER DEFAULT 0,
+
+                    -- Legacy features (kept for backward compatibility)
                     average_pitch_hz REAL,
                     speech_rate_wpm REAL,
                     accent_profile TEXT,
                     common_phrases JSON,
                     vocabulary_preferences JSON,
                     pronunciation_patterns JSON,
+
+                    -- 🎵 Advanced Pitch Features (fundamental frequency)
+                    pitch_mean_hz REAL,
+                    pitch_std_hz REAL,
+                    pitch_range_hz REAL,
+                    pitch_min_hz REAL,
+                    pitch_max_hz REAL,
+
+                    -- 🎼 Formant Features (vocal tract resonances)
+                    formant_f1_hz REAL,
+                    formant_f1_std REAL,
+                    formant_f2_hz REAL,
+                    formant_f2_std REAL,
+                    formant_f3_hz REAL,
+                    formant_f3_std REAL,
+                    formant_f4_hz REAL,
+                    formant_f4_std REAL,
+
+                    -- 📊 Spectral Features (frequency distribution)
+                    spectral_centroid_hz REAL,
+                    spectral_centroid_std REAL,
+                    spectral_rolloff_hz REAL,
+                    spectral_rolloff_std REAL,
+                    spectral_flux REAL,
+                    spectral_flux_std REAL,
+                    spectral_entropy REAL,
+                    spectral_entropy_std REAL,
+                    spectral_flatness REAL,
+                    spectral_bandwidth_hz REAL,
+
+                    -- ⏱️ Temporal Features (speaking patterns)
+                    speaking_rate_wpm REAL,
+                    speaking_rate_std REAL,
+                    pause_ratio REAL,
+                    pause_ratio_std REAL,
+                    syllable_rate REAL,
+                    articulation_rate REAL,
+
+                    -- 🎚️ Energy Features (loudness patterns)
+                    energy_mean REAL,
+                    energy_std REAL,
+                    energy_dynamic_range_db REAL,
+
+                    -- 🔊 Voice Quality Features (vocal cord characteristics)
+                    jitter_percent REAL,
+                    jitter_std REAL,
+                    shimmer_percent REAL,
+                    shimmer_std REAL,
+                    harmonic_to_noise_ratio_db REAL,
+                    hnr_std REAL,
+
+                    -- 📈 Statistical Features (variance and covariance)
+                    feature_covariance_matrix {blob_type()},
+                    feature_statistics JSON,
+
+                    -- 🎯 Quality Metrics
+                    enrollment_quality_score REAL,
+                    feature_extraction_version TEXT DEFAULT 'v1.0',
                     recognition_confidence REAL DEFAULT 0.0,
+
+                    -- 🔐 Security
                     is_primary_user BOOLEAN DEFAULT {bool_default(0)},
                     security_level TEXT DEFAULT 'standard',
+                    verification_count INTEGER DEFAULT 0,
+                    successful_verifications INTEGER DEFAULT 0,
+                    failed_verifications INTEGER DEFAULT 0,
+
+                    -- 📅 Timestamps
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_verified TIMESTAMP
                 )
             """
             )
