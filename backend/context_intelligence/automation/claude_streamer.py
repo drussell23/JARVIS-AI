@@ -896,3 +896,22 @@ class ClaudeContentStreamer:
                     sections.append(current_section)
 
                 section_name = line.lstrip("#").lstrip("0123456789. ").strip
+
+# Singleton instance
+_claude_streamer_instance = None
+
+def get_claude_streamer() -> ClaudeContentStreamer:
+    """Get or create singleton ClaudeContentStreamer instance.
+    
+    Returns:
+        ClaudeContentStreamer: Singleton instance
+    """
+    global _claude_streamer_instance
+    
+    if _claude_streamer_instance is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.warning("ANTHROPIC_API_KEY not set - ClaudeContentStreamer will not work")
+        _claude_streamer_instance = ClaudeContentStreamer(api_key=api_key)
+    
+    return _claude_streamer_instance

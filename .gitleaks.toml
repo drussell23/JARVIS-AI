@@ -91,6 +91,7 @@ paths = [
   '''SECURITY_CLEANUP_PLAN.md''',
   '''LONG_TERM_SECRET_MANAGEMENT.md''',
   '''SECRET_MANAGEMENT_IMPLEMENTATION.md''',
+  '''SECRET_MIGRATION_COMPLETE.md''',
   '''CLOUD_SQL_PROXY_SETUP.md''',
   '''VOICE_UNLOCK_OPTIMIZATION.md''',
   '''.gitleaks.toml''',

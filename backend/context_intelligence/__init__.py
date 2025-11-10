@@ -6,7 +6,9 @@ Provides intelligent task execution and automation capabilities.
 """
 
 from .executors import get_document_writer, parse_document_request, DocumentRequest
-from .automation import get_browser_controller, get_google_docs_client, get_claude_streamer
+from .automation import get_browser_controller, get_google_docs_client
+# get_claude_streamer causes import hangs - import directly when needed
+# from .automation import get_claude_streamer
 from .managers import (
     get_space_state_manager,
     initialize_space_state_manager,
