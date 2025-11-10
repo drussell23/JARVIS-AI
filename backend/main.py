@@ -1890,6 +1890,61 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Cost tracking initialization failed: {e}")
 
+    # ═══════════════════════════════════════════════════════════════
+    # CLOUD SQL PROXY + VOICE VERIFICATION HEALTH CHECKS
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        logger.info("🔐 Initializing Cloud SQL Proxy + Voice Verification...")
+        from intelligence.cloud_database_adapter import get_database_adapter
+        from voice.speaker_verification_service import SpeakerVerificationService
+
+        # Initialize database (will auto-start Cloud SQL proxy if needed)
+        db_adapter = await get_database_adapter()
+        app.state.db_adapter = db_adapter
+
+        if db_adapter.is_cloud:
+            logger.info("✅ Cloud SQL proxy started and database connected")
+            logger.info(f"   • Connection: {db_adapter.config.connection_name}")
+            logger.info(f"   • Database: {db_adapter.config.db_name}")
+            logger.info(f"   • Host: {db_adapter.config.db_host}:{db_adapter.config.db_port}")
+        else:
+            logger.info("✅ Using local SQLite database")
+            logger.info(f"   • Path: {db_adapter.config.sqlite_path}")
+
+        # Initialize voice verification service
+        voice_verification = SpeakerVerificationService()
+        await voice_verification.initialize()
+        app.state.voice_verification = voice_verification
+
+        # Validate profiles and dimensions
+        profile_count = len(voice_verification.speaker_profiles)
+        model_dim = voice_verification.current_model_dimension
+
+        if profile_count > 0:
+            logger.info(f"✅ Voice Verification initialized successfully")
+            logger.info(f"   • Loaded profiles: {profile_count}")
+            logger.info(f"   • Model dimension: {model_dim}D")
+
+            # Validate each profile
+            for name, profile in voice_verification.speaker_profiles.items():
+                import numpy as np
+                emb_shape = np.array(profile['embedding']).shape
+                emb_dim = emb_shape[0] if len(emb_shape) == 1 else emb_shape[1]
+
+                if emb_dim == model_dim:
+                    logger.info(f"   • {name}: {emb_dim}D ✅ (matches model)")
+                else:
+                    logger.warning(f"   • {name}: {emb_dim}D ⚠️ (expected {model_dim}D)")
+        else:
+            logger.warning("⚠️ No voice profiles loaded - voice unlock disabled")
+            logger.warning("   → Enroll a voice profile to enable biometric authentication")
+
+    except Exception as e:
+        logger.error(f"❌ Cloud SQL/Voice Verification initialization failed: {e}", exc_info=True)
+        logger.warning("   → Voice unlock features will be disabled")
+        app.state.db_adapter = None
+        app.state.voice_verification = None
+
     yield
 
     # Cleanup
@@ -1905,6 +1960,17 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(0.5)
     except Exception as e:
         logger.warning(f"Failed to broadcast shutdown notification: {e}")
+
+    # Cleanup Cloud SQL database connections
+    try:
+        if hasattr(app.state, "db_adapter") and app.state.db_adapter:
+            logger.info("🔐 Closing Cloud SQL database connections...")
+            from intelligence.cloud_database_adapter import close_database_adapter
+
+            await close_database_adapter()
+            logger.info("✅ Database connections closed")
+    except Exception as e:
+        logger.error(f"Failed to close database connections: {e}")
 
     # Cleanup GCP VM Manager (before cost tracker to finalize costs)
     try:

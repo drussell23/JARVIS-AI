@@ -3591,6 +3591,30 @@ class AsyncSystemManager:
             await speaker_service.initialize()
             print(f"{Colors.GREEN}      ✓ Speaker verification service ready{Colors.ENDC}")
 
+            # ROBUSTNESS: Validate model and profile dimensions
+            model_dim = speaker_service.current_model_dimension
+            profile_count = len(speaker_service.speaker_profiles)
+            print(f"{Colors.CYAN}   └─ Validating voice profiles...{Colors.ENDC}")
+            print(f"{Colors.CYAN}      ├─ Model dimension: {model_dim}D{Colors.ENDC}")
+            print(f"{Colors.CYAN}      ├─ Loaded profiles: {profile_count}{Colors.ENDC}")
+
+            # Validate each profile dimension
+            import numpy as np
+            mismatched_profiles = []
+            for name, profile in speaker_service.speaker_profiles.items():
+                emb_shape = np.array(profile['embedding']).shape
+                emb_dim = emb_shape[0] if len(emb_shape) == 1 else emb_shape[1]
+                if emb_dim != model_dim:
+                    mismatched_profiles.append((name, emb_dim))
+                    print(f"{Colors.YELLOW}      ├─ {name}: {emb_dim}D ⚠️  (dimension mismatch){Colors.ENDC}")
+                else:
+                    print(f"{Colors.GREEN}      ├─ {name}: {emb_dim}D ✅{Colors.ENDC}")
+
+            if mismatched_profiles:
+                print(f"{Colors.YELLOW}      └─ ⚠️  {len(mismatched_profiles)} profile(s) need re-enrollment{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}      └─ ✅ All profiles validated{Colors.ENDC}")
+
             # Check for Derek's profile (could be "Derek" or "Derek J. Russell")
             derek_found = any("Derek" in name for name in speaker_service.speaker_profiles.keys())
 
@@ -3780,6 +3804,21 @@ class AsyncSystemManager:
                     print(
                         f"{Colors.GREEN}   ✓ Listening on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}{Colors.ENDC}"
                     )
+
+                    # ROBUSTNESS: Verify proxy is actually accepting connections
+                    import socket
+                    print(f"{Colors.CYAN}   └─ Verifying proxy connectivity...{Colors.ENDC}")
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(2)
+                        result = sock.connect_ex(('127.0.0.1', proxy_manager.config['cloud_sql']['port']))
+                        sock.close()
+                        if result == 0:
+                            print(f"{Colors.GREEN}   ✓ Proxy accepting connections{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}   ⚠️  Proxy started but not accepting connections (may need a moment){Colors.ENDC}")
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️  Connection test failed: {e}{Colors.ENDC}")
                 else:
                     print(
                         f"{Colors.YELLOW}   ⚠️  Cloud SQL proxy failed to start - will use SQLite fallback{Colors.ENDC}"
@@ -3787,12 +3826,32 @@ class AsyncSystemManager:
             else:
                 print(f"{Colors.GREEN}   ✓ Cloud SQL proxy already running{Colors.ENDC}")
 
+                # ROBUSTNESS: Verify existing proxy is healthy
+                import socket
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(2)
+                    result = sock.connect_ex(('127.0.0.1', proxy_manager.config['cloud_sql']['port']))
+                    sock.close()
+                    if result == 0:
+                        print(f"{Colors.GREEN}   ✓ Proxy is healthy and accepting connections{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.YELLOW}   ⚠️  Proxy process exists but not responding - restarting...{Colors.ENDC}")
+                        await proxy_manager.start(force_restart=True)
+                except Exception as e:
+                    print(f"{Colors.YELLOW}   ⚠️  Health check failed, restarting proxy: {e}{Colors.ENDC}")
+                    await proxy_manager.start(force_restart=True)
+
             # Start health monitor in background (auto-recovery)
             print(f"{Colors.CYAN}🔄 Starting proxy health monitor...{Colors.ENDC}")
             asyncio.create_task(proxy_manager.monitor(check_interval=60))
             print(
                 f"{Colors.GREEN}   ✓ Health monitor active (60s interval, auto-recovery enabled){Colors.ENDC}"
             )
+
+            # ROBUSTNESS: Store proxy manager for cleanup and monitoring
+            self.cloud_sql_proxy_manager = proxy_manager
+            print(f"{Colors.GREEN}   ✓ Proxy manager registered for lifecycle management{Colors.ENDC}")
 
         except FileNotFoundError as e:
             print(f"{Colors.YELLOW}⚠️  Cloud SQL proxy not configured: {e}{Colors.ENDC}")
