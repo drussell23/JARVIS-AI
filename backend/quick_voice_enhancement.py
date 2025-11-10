@@ -1269,18 +1269,25 @@ class QuickVoiceEnhancement:
         print(f"   Consonants covered: {len(self.progress.phonetic_coverage.consonants)}")
         print(f"   Phoneme pairs: {len(self.progress.phonetic_coverage.phoneme_pairs)}")
 
-        # Update speaker profile
-        print(f"\n💾 Updating speaker profile...")
+        # 🔬 Compute comprehensive aggregate acoustic features
+        print(f"\n🔬 Computing comprehensive acoustic features...")
+        acoustic_features = await self._compute_aggregate_acoustic_features()
+
+        # Update speaker profile with embedding AND acoustic features
+        print(f"\n💾 Updating speaker profile with biometric features...")
         embedding_bytes = avg_embedding.tobytes()
 
-        await self.db.update_speaker_embedding(
+        await self._update_speaker_profile_comprehensive(
             speaker_id=self.speaker_id,
             embedding=embedding_bytes,
+            embedding_dimension=len(avg_embedding),
             confidence=confidence,
-            is_primary_user=True
+            acoustic_features=acoustic_features,
+            enrollment_quality=avg_quality
         )
 
-        print("   ✅ Profile updated successfully!")
+        print("   ✅ Profile updated with FULL biometric features!")
+        print(f"   📊 Stored: {len(acoustic_features)} acoustic parameters")
 
         print("\n" + "=" * 80)
         print("✨ ENHANCEMENT COMPLETE!")
@@ -1292,6 +1299,233 @@ class QuickVoiceEnhancement:
         print(f"   • Phonetic coverage: {self.progress.phonetic_coverage.coverage_score:.1%}")
         print("\n✅ Advanced embedding reconstruction is now ENABLED!")
         print("=" * 80 + "\n")
+
+    async def _compute_aggregate_acoustic_features(self) -> dict:
+        """
+        🔬 Compute comprehensive aggregate acoustic features from all samples
+
+        Returns statistical summaries (mean, std) of all biometric features
+        """
+        import json
+
+        # Extract all features from samples
+        pitch_means = []
+        pitch_stds = []
+        pitch_ranges = []
+
+        formant_f1s = []
+        formant_f2s = []
+        formant_f3s = []
+        formant_f4s = []
+
+        spectral_centroids = []
+        spectral_rolloffs = []
+        spectral_fluxes = []
+        spectral_entropies = []
+
+        speaking_rates = []
+        pause_ratios = []
+
+        jitters = []
+        shimmers = []
+        hnrs = []
+
+        energies = []
+
+        for sample in self.samples:
+            vc = sample.voice_characteristics
+
+            # Pitch
+            pitch_means.append(vc.pitch_mean_hz)
+            pitch_stds.append(vc.pitch_std_hz)
+            pitch_ranges.append(vc.pitch_range_hz)
+
+            # Formants
+            formant_f1s.append(vc.formant_f1)
+            formant_f2s.append(vc.formant_f2)
+            formant_f3s.append(vc.formant_f3)
+            formant_f4s.append(vc.formant_f4)
+
+            # Spectral
+            spectral_centroids.append(vc.spectral_centroid)
+            spectral_rolloffs.append(vc.spectral_rolloff)
+            spectral_fluxes.append(vc.spectral_flux)
+            spectral_entropies.append(vc.spectral_entropy)
+
+            # Temporal
+            speaking_rates.append(vc.speaking_rate)
+            pause_ratios.append(vc.pause_ratio)
+
+            # Voice quality
+            jitters.append(vc.jitter)
+            shimmers.append(vc.shimmer)
+            hnrs.append(vc.harmonic_to_noise_ratio)
+
+            # Energy
+            energies.append(vc.energy_mean)
+
+        # Compute aggregate statistics
+        features = {
+            # Pitch features
+            'pitch_mean_hz': float(np.mean(pitch_means)),
+            'pitch_std_hz': float(np.std(pitch_means)),
+            'pitch_range_hz': float(np.mean(pitch_ranges)),
+            'pitch_min_hz': float(np.min(pitch_means)),
+            'pitch_max_hz': float(np.max(pitch_means)),
+
+            # Formant features (mean and variance across samples)
+            'formant_f1_hz': float(np.mean(formant_f1s)),
+            'formant_f1_std': float(np.std(formant_f1s)),
+            'formant_f2_hz': float(np.mean(formant_f2s)),
+            'formant_f2_std': float(np.std(formant_f2s)),
+            'formant_f3_hz': float(np.mean(formant_f3s)),
+            'formant_f3_std': float(np.std(formant_f3s)),
+            'formant_f4_hz': float(np.mean(formant_f4s)),
+            'formant_f4_std': float(np.std(formant_f4s)),
+
+            # Spectral features
+            'spectral_centroid_hz': float(np.mean(spectral_centroids)),
+            'spectral_centroid_std': float(np.std(spectral_centroids)),
+            'spectral_rolloff_hz': float(np.mean(spectral_rolloffs)),
+            'spectral_rolloff_std': float(np.std(spectral_rolloffs)),
+            'spectral_flux': float(np.mean(spectral_fluxes)),
+            'spectral_flux_std': float(np.std(spectral_fluxes)),
+            'spectral_entropy': float(np.mean(spectral_entropies)),
+            'spectral_entropy_std': float(np.std(spectral_entropies)),
+            'spectral_flatness': float(np.mean([s.voice_characteristics.spectral_flatness for s in self.samples])),
+            'spectral_bandwidth_hz': float(np.std(spectral_centroids) * 2),  # Approximate bandwidth
+
+            # Temporal features
+            'speaking_rate_wpm': float(np.mean(speaking_rates)),
+            'speaking_rate_std': float(np.std(speaking_rates)),
+            'pause_ratio': float(np.mean(pause_ratios)),
+            'pause_ratio_std': float(np.std(pause_ratios)),
+            'syllable_rate': float(np.mean(speaking_rates) / 60.0 * 2.5),  # Approximate syllables
+            'articulation_rate': float(np.mean(speaking_rates) / (1.0 - np.mean(pause_ratios)) if np.mean(pause_ratios) < 1.0 else 0.0),
+
+            # Energy features
+            'energy_mean': float(np.mean(energies)),
+            'energy_std': float(np.std(energies)),
+            'energy_dynamic_range_db': float(20 * np.log10((np.max(energies) / (np.min(energies) + 1e-10)) + 1e-10)),
+
+            # Voice quality features
+            'jitter_percent': float(np.mean(jitters) * 100),
+            'jitter_std': float(np.std(jitters) * 100),
+            'shimmer_percent': float(np.mean(shimmers) * 100),
+            'shimmer_std': float(np.std(shimmers) * 100),
+            'harmonic_to_noise_ratio_db': float(np.mean(hnrs)),
+            'hnr_std': float(np.std(hnrs)),
+        }
+
+        # Compute covariance matrix for Mahalanobis distance
+        # Extract feature vectors for covariance computation
+        feature_vectors = []
+        for sample in self.samples:
+            vc = sample.voice_characteristics
+            vec = [
+                vc.pitch_mean_hz, vc.formant_f1, vc.formant_f2, vc.formant_f3,
+                vc.spectral_centroid, vc.spectral_rolloff, vc.jitter, vc.shimmer, vc.harmonic_to_noise_ratio
+            ]
+            feature_vectors.append(vec)
+
+        feature_matrix = np.array(feature_vectors)
+        covariance_matrix = np.cov(feature_matrix.T)
+
+        # Store covariance matrix as bytes
+        features['feature_covariance_matrix_bytes'] = covariance_matrix.tobytes()
+        features['feature_covariance_matrix_shape'] = covariance_matrix.shape
+
+        # Additional statistics as JSON
+        features['feature_statistics_json'] = json.dumps({
+            'sample_count': len(self.samples),
+            'feature_dimensions': len(feature_vectors[0]),
+            'voice_type': self.samples[0].voice_characteristics.voice_type,
+            'phonetic_coverage': self.progress.phonetic_coverage.coverage_score,
+            'avg_duration_seconds': float(np.mean([s.voice_characteristics.duration_seconds for s in self.samples])),
+        })
+
+        return features
+
+    async def _update_speaker_profile_comprehensive(
+        self,
+        speaker_id: int,
+        embedding: bytes,
+        embedding_dimension: int,
+        confidence: float,
+        acoustic_features: dict,
+        enrollment_quality: float
+    ):
+        """
+        Update speaker profile with comprehensive biometric features
+
+        Fully dynamic SQL generation - no hardcoding
+        """
+        try:
+            # Build dynamic UPDATE statement
+            update_fields = []
+            values = []
+
+            # Core fields
+            update_fields.append("voiceprint_embedding = ?")
+            values.append(embedding)
+
+            update_fields.append("embedding_dimension = ?")
+            values.append(embedding_dimension)
+
+            update_fields.append("recognition_confidence = ?")
+            values.append(confidence)
+
+            update_fields.append("enrollment_quality_score = ?")
+            values.append(enrollment_quality)
+
+            update_fields.append("total_samples = total_samples + ?")
+            values.append(len(self.samples))
+
+            update_fields.append("is_primary_user = ?")
+            values.append(True)
+
+            update_fields.append("last_updated = CURRENT_TIMESTAMP")
+
+            update_fields.append("feature_extraction_version = ?")
+            values.append('v1.0')
+
+            # Add all acoustic features dynamically
+            for key, value in acoustic_features.items():
+                if key.endswith('_bytes'):
+                    # Store binary data (covariance matrix)
+                    update_fields.append(f"{key.replace('_bytes', '')} = ?")
+                    values.append(value)
+                elif key.endswith('_json'):
+                    # Store JSON data
+                    update_fields.append(f"{key.replace('_json', '')} = ?")
+                    values.append(value)
+                elif key.endswith('_shape'):
+                    # Skip shape metadata (already encoded in matrix)
+                    continue
+                else:
+                    # Store numeric features
+                    update_fields.append(f"{key} = ?")
+                    values.append(value)
+
+            # Add speaker_id for WHERE clause
+            values.append(speaker_id)
+
+            # Build final SQL
+            sql = f"UPDATE speaker_profiles SET {', '.join(update_fields)} WHERE speaker_id = ?"
+
+            async with self.db.db.cursor() as cursor:
+                await cursor.execute(sql, values)
+                await self.db.db.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to update comprehensive speaker profile: {e}", exc_info=True)
+            # Fallback to basic update
+            await self.db.update_speaker_embedding(
+                speaker_id=speaker_id,
+                embedding=embedding,
+                confidence=confidence,
+                is_primary_user=True
+            )
 
     def _to_wav_bytes(self, audio: np.ndarray) -> bytes:
         """Convert numpy audio to WAV bytes"""

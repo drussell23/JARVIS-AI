@@ -904,10 +904,11 @@ class SpeakerVerificationService:
                         quality = "legacy"
                         threshold = self.legacy_threshold
 
-                    # Store profile
+                    # Store profile with comprehensive acoustic features
                     self.speaker_profiles[speaker_name] = {
                         "speaker_id": speaker_id,
                         "embedding": embedding,
+                        "embedding_dimension": profile.get("embedding_dimension", embedding.shape[0]),
                         "confidence": profile.get("recognition_confidence", 0.0),
                         "is_primary_user": profile.get("is_primary_user", False),
                         "security_level": profile.get("security_level", "standard"),
@@ -915,6 +916,67 @@ class SpeakerVerificationService:
                         "is_native": is_native,
                         "quality": quality,
                         "threshold": threshold,
+
+                        # 🔬 Acoustic biometric features
+                        "acoustic_features": {
+                            # Pitch
+                            "pitch_mean_hz": profile.get("pitch_mean_hz"),
+                            "pitch_std_hz": profile.get("pitch_std_hz"),
+                            "pitch_range_hz": profile.get("pitch_range_hz"),
+                            "pitch_min_hz": profile.get("pitch_min_hz"),
+                            "pitch_max_hz": profile.get("pitch_max_hz"),
+
+                            # Formants
+                            "formant_f1_hz": profile.get("formant_f1_hz"),
+                            "formant_f1_std": profile.get("formant_f1_std"),
+                            "formant_f2_hz": profile.get("formant_f2_hz"),
+                            "formant_f2_std": profile.get("formant_f2_std"),
+                            "formant_f3_hz": profile.get("formant_f3_hz"),
+                            "formant_f3_std": profile.get("formant_f3_std"),
+                            "formant_f4_hz": profile.get("formant_f4_hz"),
+                            "formant_f4_std": profile.get("formant_f4_std"),
+
+                            # Spectral
+                            "spectral_centroid_hz": profile.get("spectral_centroid_hz"),
+                            "spectral_centroid_std": profile.get("spectral_centroid_std"),
+                            "spectral_rolloff_hz": profile.get("spectral_rolloff_hz"),
+                            "spectral_rolloff_std": profile.get("spectral_rolloff_std"),
+                            "spectral_flux": profile.get("spectral_flux"),
+                            "spectral_flux_std": profile.get("spectral_flux_std"),
+                            "spectral_entropy": profile.get("spectral_entropy"),
+                            "spectral_entropy_std": profile.get("spectral_entropy_std"),
+                            "spectral_flatness": profile.get("spectral_flatness"),
+                            "spectral_bandwidth_hz": profile.get("spectral_bandwidth_hz"),
+
+                            # Temporal
+                            "speaking_rate_wpm": profile.get("speaking_rate_wpm"),
+                            "speaking_rate_std": profile.get("speaking_rate_std"),
+                            "pause_ratio": profile.get("pause_ratio"),
+                            "pause_ratio_std": profile.get("pause_ratio_std"),
+                            "syllable_rate": profile.get("syllable_rate"),
+                            "articulation_rate": profile.get("articulation_rate"),
+
+                            # Energy
+                            "energy_mean": profile.get("energy_mean"),
+                            "energy_std": profile.get("energy_std"),
+                            "energy_dynamic_range_db": profile.get("energy_dynamic_range_db"),
+
+                            # Voice quality
+                            "jitter_percent": profile.get("jitter_percent"),
+                            "jitter_std": profile.get("jitter_std"),
+                            "shimmer_percent": profile.get("shimmer_percent"),
+                            "shimmer_std": profile.get("shimmer_std"),
+                            "harmonic_to_noise_ratio_db": profile.get("harmonic_to_noise_ratio_db"),
+                            "hnr_std": profile.get("hnr_std"),
+
+                            # Statistical
+                            "feature_covariance_matrix": profile.get("feature_covariance_matrix"),
+                            "feature_statistics": profile.get("feature_statistics"),
+                        },
+
+                        # Quality metrics
+                        "enrollment_quality_score": profile.get("enrollment_quality_score"),
+                        "feature_extraction_version": profile.get("feature_extraction_version"),
                     }
 
                     self.profile_quality_scores[speaker_name] = {
@@ -1004,7 +1066,8 @@ class SpeakerVerificationService:
 
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
                     audio_data, known_embedding, threshold=adaptive_threshold,
-                    speaker_name=speaker_name, transcription=""
+                    speaker_name=speaker_name, transcription="",
+                    enrolled_profile=profile  # Pass full profile with acoustic features
                 )
 
                 logger.info(f"🔍 DEBUG: Verification result - Confidence: {confidence:.2%}, Verified: {is_verified}")
@@ -1038,7 +1101,8 @@ class SpeakerVerificationService:
                 profile_threshold = profile.get("threshold", self.verification_threshold)
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
                     audio_data, known_embedding, threshold=profile_threshold,
-                    speaker_name=profile_name, transcription=""
+                    speaker_name=profile_name, transcription="",
+                    enrolled_profile=profile  # Pass full profile with acoustic features
                 )
 
                 if confidence > best_confidence:

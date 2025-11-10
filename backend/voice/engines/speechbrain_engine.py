@@ -1607,7 +1607,8 @@ class SpeechBrainEngine(BaseSTTEngine):
 
     async def verify_speaker(
         self, audio_data: bytes, known_embedding: np.ndarray, threshold: float = 0.25,
-        speaker_name: str = "Unknown", transcription: str = ""
+        speaker_name: str = "Unknown", transcription: str = "",
+        enrolled_profile: dict = None
     ) -> tuple:
         """
         🎯 BEAST MODE speaker verification with advanced biometric analysis.
@@ -1663,33 +1664,77 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info(f"   ✅ Test features extracted: pitch={test_features.pitch_mean:.1f}Hz, "
                        f"F1={test_features.formant_f1:.0f}Hz, duration={test_features.duration_seconds:.2f}s")
 
-            # Create enrolled features (legacy compatibility)
-            # In future, we'll fetch these from database with all acoustic features
+            # 🔬 Construct enrolled features from database profile
             logger.info("   📦 Constructing enrolled profile features...")
-            enrolled_features = VoiceBiometricFeatures(
-                embedding=known_embedding,
-                embedding_confidence=0.9,  # High confidence for enrolled profile
-                # Use test features as baseline (will be replaced with DB values later)
-                pitch_mean=test_features.pitch_mean,
-                pitch_std=test_features.pitch_std,
-                pitch_range=test_features.pitch_range,
-                formant_f1=test_features.formant_f1,
-                formant_f2=test_features.formant_f2,
-                formant_f3=test_features.formant_f3,
-                formant_f4=test_features.formant_f4,
-                spectral_centroid=test_features.spectral_centroid,
-                spectral_rolloff=test_features.spectral_rolloff,
-                spectral_flux=test_features.spectral_flux,
-                spectral_entropy=test_features.spectral_entropy,
-                speaking_rate=test_features.speaking_rate,
-                pause_ratio=test_features.pause_ratio,
-                energy_contour=test_features.energy_contour,
-                jitter=test_features.jitter,
-                shimmer=test_features.shimmer,
-                harmonic_to_noise_ratio=test_features.harmonic_to_noise_ratio,
-                duration_seconds=test_features.duration_seconds,
-                sample_rate=sample_rate
-            )
+
+            if enrolled_profile and enrolled_profile.get("acoustic_features"):
+                # USE REAL ENROLLED FEATURES from database
+                af = enrolled_profile["acoustic_features"]
+                logger.info("   ✅ Using REAL acoustic features from database!")
+
+                enrolled_features = VoiceBiometricFeatures(
+                    embedding=known_embedding,
+                    embedding_confidence=enrolled_profile.get("enrollment_quality_score", 0.9),
+
+                    # Real pitch features from enrollment
+                    pitch_mean=af.get("pitch_mean_hz") or test_features.pitch_mean,
+                    pitch_std=af.get("pitch_std_hz") or test_features.pitch_std,
+                    pitch_range=af.get("pitch_range_hz") or test_features.pitch_range,
+
+                    # Real formant features
+                    formant_f1=af.get("formant_f1_hz") or test_features.formant_f1,
+                    formant_f2=af.get("formant_f2_hz") or test_features.formant_f2,
+                    formant_f3=af.get("formant_f3_hz") or test_features.formant_f3,
+                    formant_f4=af.get("formant_f4_hz") or test_features.formant_f4,
+
+                    # Real spectral features
+                    spectral_centroid=af.get("spectral_centroid_hz") or test_features.spectral_centroid,
+                    spectral_rolloff=af.get("spectral_rolloff_hz") or test_features.spectral_rolloff,
+                    spectral_flux=af.get("spectral_flux") or test_features.spectral_flux,
+                    spectral_entropy=af.get("spectral_entropy") or test_features.spectral_entropy,
+
+                    # Real temporal features
+                    speaking_rate=af.get("speaking_rate_wpm") or test_features.speaking_rate,
+                    pause_ratio=af.get("pause_ratio") or test_features.pause_ratio,
+                    energy_contour=test_features.energy_contour,  # Use test (dynamic)
+
+                    # Real voice quality features
+                    jitter=af.get("jitter_percent", 0.0) / 100.0 if af.get("jitter_percent") else test_features.jitter,
+                    shimmer=af.get("shimmer_percent", 0.0) / 100.0 if af.get("shimmer_percent") else test_features.shimmer,
+                    harmonic_to_noise_ratio=af.get("harmonic_to_noise_ratio_db") or test_features.harmonic_to_noise_ratio,
+
+                    duration_seconds=test_features.duration_seconds,  # Use test duration
+                    sample_rate=sample_rate
+                )
+                logger.info(f"   📊 Enrolled pitch: {af.get('pitch_mean_hz', 0):.1f}Hz, "
+                           f"F1: {af.get('formant_f1_hz', 0):.0f}Hz")
+            else:
+                # Legacy fallback: use test features as baseline
+                logger.warning("   ⚠️  No acoustic features in profile, using test features as baseline")
+                enrolled_features = VoiceBiometricFeatures(
+                    embedding=known_embedding,
+                    embedding_confidence=0.9,
+                    pitch_mean=test_features.pitch_mean,
+                    pitch_std=test_features.pitch_std,
+                    pitch_range=test_features.pitch_range,
+                    formant_f1=test_features.formant_f1,
+                    formant_f2=test_features.formant_f2,
+                    formant_f3=test_features.formant_f3,
+                    formant_f4=test_features.formant_f4,
+                    spectral_centroid=test_features.spectral_centroid,
+                    spectral_rolloff=test_features.spectral_rolloff,
+                    spectral_flux=test_features.spectral_flux,
+                    spectral_entropy=test_features.spectral_entropy,
+                    speaking_rate=test_features.speaking_rate,
+                    pause_ratio=test_features.pause_ratio,
+                    energy_contour=test_features.energy_contour,
+                    jitter=test_features.jitter,
+                    shimmer=test_features.shimmer,
+                    harmonic_to_noise_ratio=test_features.harmonic_to_noise_ratio,
+                    duration_seconds=test_features.duration_seconds,
+                    sample_rate=sample_rate
+                )
+
             logger.info("   ✅ Enrolled profile features constructed")
 
             # Initialize advanced verifier
