@@ -2807,6 +2807,7 @@ class AsyncSystemManager:
         self.no_browser = False
         self.backend_only = False
         self.frontend_only = False
+        self.is_restart = False  # Track if this is a restart
         self.use_optimized = True  # Use optimized backend by default
         self.auto_cleanup = True  # Auto cleanup without prompting (enabled by default)
         self.resource_coordinator = None
@@ -4613,53 +4614,195 @@ if (typeof localStorage !== 'undefined') {
         else:
             url = f"http://localhost:{self.ports['main_api']}/docs"
 
+        # On restart, give browsers a moment to settle
+        if self.is_restart:
+            await asyncio.sleep(0.5)
+
         # Try to reuse existing tab on macOS using AppleScript
         if platform.system() == "Darwin":
+            # List of URL patterns that indicate JARVIS tabs
+            jarvis_patterns = [
+                f"localhost:{self.ports['frontend']}",
+                f"127.0.0.1:{self.ports['frontend']}",
+                f"localhost:{self.ports['main_api']}",
+                "JARVIS",
+                "J.A.R.V.I.S"
+            ]
+
+            # If it's a restart, add more aggressive patterns to find any JARVIS-related tab
+            if self.is_restart:
+                jarvis_patterns.extend([
+                    "localhost:3000",  # Default frontend port
+                    "127.0.0.1:3000",
+                    "loading",  # Loading page
+                    "initializing"  # Initializing page
+                ])
+
+            # Log what we're looking for
+            action = "restart" if self.is_restart else "startup"
+            logger.info(f"🔍 Looking for existing JARVIS tabs on {action} with patterns: {jarvis_patterns}")
+
+            # Build AppleScript conditions for checking URLs
+            url_conditions = " or ".join([f'(URL of t contains "{pattern}")' for pattern in jarvis_patterns])
+
             # AppleScript to open URL in existing tab or new tab if not found
             applescript = f"""
             tell application "System Events"
+                set foundTab to false
                 set browserList to {{}}
+
+                -- Check which browsers are running
                 if exists process "Google Chrome" then set end of browserList to "Google Chrome"
                 if exists process "Safari" then set end of browserList to "Safari"
                 if exists process "Firefox" then set end of browserList to "Firefox"
+                if exists process "Arc" then set end of browserList to "Arc"
+                if exists process "Brave Browser" then set end of browserList to "Brave Browser"
+                if exists process "Microsoft Edge" then set end of browserList to "Microsoft Edge"
 
+                -- First pass: Look for existing JARVIS tabs
                 repeat with browserName in browserList
-                    tell application browserName
-                        set windowList to windows
-                        repeat with w in windowList
-                            set tabList to tabs of w
-                            repeat with t in tabList
-                                if URL of t contains "{self.ports['frontend']}" then
-                                    set URL of t to "{url}"
-                                    set current tab of w to t
-                                    set index of w to 1
-                                    activate
-                                    return
-                                end if
+                    if browserName is "Google Chrome" then
+                        tell application "Google Chrome"
+                            set windowList to windows
+                            repeat with w in windowList
+                                set tabList to tabs of w
+                                repeat with t in tabList
+                                    try
+                                        if {url_conditions} then
+                                            -- Found existing JARVIS tab, update it
+                                            log "REUSING_TAB: Found existing JARVIS tab in Google Chrome"
+                                            set URL of t to "{url}"
+                                            set active tab index of w to index of t
+                                            set index of w to 1
+                                            activate
+                                            set foundTab to true
+                                            return "REUSED_TAB_CHROME"
+                                        end if
+                                    end try
+                                end repeat
                             end repeat
-                        end repeat
-                    end tell
+                        end tell
+                    else if browserName is "Safari" then
+                        tell application "Safari"
+                            set windowList to windows
+                            repeat with w in windowList
+                                set tabList to tabs of w
+                                repeat with t in tabList
+                                    try
+                                        if {url_conditions} then
+                                            -- Found existing JARVIS tab, update it
+                                            log "REUSING_TAB: Found existing JARVIS tab in Safari"
+                                            set URL of t to "{url}"
+                                            set current tab of w to t
+                                            set index of w to 1
+                                            activate
+                                            set foundTab to true
+                                            return "REUSED_TAB_SAFARI"
+                                        end if
+                                    end try
+                                end repeat
+                            end repeat
+                        end tell
+                    else if browserName is "Arc" then
+                        tell application "Arc"
+                            set windowList to windows
+                            repeat with w in windowList
+                                set tabList to tabs of w
+                                repeat with t in tabList
+                                    try
+                                        if {url_conditions} then
+                                            -- Found existing JARVIS tab, update it
+                                            log "REUSING_TAB: Found existing JARVIS tab in Arc"
+                                            tell t to reload
+                                            set URL of t to "{url}"
+                                            set index of w to 1
+                                            activate
+                                            set foundTab to true
+                                            return "REUSED_TAB_ARC"
+                                        end if
+                                    end try
+                                end repeat
+                            end repeat
+                        end tell
+                    end if
                 end repeat
-            end tell
 
-            -- If no existing tab found, open new one
-            open location "{url}"
+                -- If no existing tab found, open in the first available browser
+                if not foundTab then
+                    log "NEW_TAB: No existing JARVIS tab found, creating new tab"
+                    if (count of browserList) > 0 then
+                        set preferredBrowser to item 1 of browserList
+                        tell application preferredBrowser
+                            if preferredBrowser is "Google Chrome" then
+                                if (count of windows) = 0 then
+                                    make new window
+                                end if
+                                tell window 1
+                                    set newTab to make new tab with properties {{URL:"{url}"}}
+                                    set active tab index to index of newTab
+                                end tell
+                                return "NEW_TAB_CHROME"
+                            else if preferredBrowser is "Safari" then
+                                if (count of windows) = 0 then
+                                    make new document
+                                end if
+                                tell window 1
+                                    set current tab to make new tab with properties {{URL:"{url}"}}
+                                end tell
+                                return "NEW_TAB_SAFARI"
+                            else if preferredBrowser is "Arc" then
+                                if (count of windows) = 0 then
+                                    make new window
+                                end if
+                                tell window 1
+                                    make new tab with properties {{URL:"{url}"}}
+                                end tell
+                                return "NEW_TAB_ARC"
+                            end if
+                            activate
+                        end tell
+                    else
+                        -- No browser running, use system default
+                        log "NEW_TAB: Opening with system default browser"
+                        open location "{url}"
+                        return "NEW_TAB_DEFAULT"
+                    end if
+                end if
+            end tell
             """
 
             try:
-                # Run AppleScript silently
+                # Run AppleScript with better error handling
                 process = await asyncio.create_subprocess_exec(
                     "osascript",
                     "-e",
                     applescript,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                await process.wait()
+                stdout, stderr = await process.communicate()
+
+                if process.returncode != 0 and stderr:
+                    logger.debug(f"AppleScript warning (non-fatal): {stderr.decode()}")
+
+                # Log successful operation and whether we reused or created a tab
+                if stdout:
+                    result = stdout.decode().strip()
+                    if "REUSED_TAB" in result:
+                        browser = result.split("_")[-1]
+                        logger.info(f"✅ Reused existing JARVIS tab in {browser}")
+                        print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser}{Colors.ENDC}")
+                    elif "NEW_TAB" in result:
+                        browser = result.split("_")[-1]
+                        logger.info(f"🌐 Created new tab in {browser}")
+                        print(f"{Colors.BLUE}➕ Created new JARVIS tab in {browser}{Colors.ENDC}")
+                    else:
+                        logger.info(f"Browser tab operation completed: {result}")
+
                 return
-            except Exception:
+            except Exception as e:
                 # Fall back to webbrowser if AppleScript fails
-                pass
+                logger.debug(f"AppleScript failed (using fallback): {e}")
 
         # Fallback for other platforms or if AppleScript fails
         webbrowser.open(url)
@@ -7396,6 +7539,7 @@ async def main():
     _manager.no_browser = args.no_browser
     _manager.backend_only = args.backend_only
     _manager.frontend_only = args.frontend_only
+    _manager.is_restart = args.restart  # Track if this is a restart
     _manager.use_optimized = not args.standard
     _manager.auto_cleanup = not args.no_auto_cleanup
 
