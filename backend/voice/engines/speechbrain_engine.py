@@ -1765,15 +1765,18 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info(f"\n   📊 Component Scores:")
             logger.info(f"      Embedding similarity: {result.embedding_similarity:.1%}")
             logger.info(f"      Mahalanobis distance: {result.mahalanobis_distance:.3f}")
-            logger.info(f"      Acoustic match: {result.acoustic_score:.1%}")
-            logger.info(f"      Physics plausibility: {result.physics_score:.1%}")
-            logger.info(f"      Anti-spoofing: {result.spoofing_score:.1%}")
+            logger.info(f"      Acoustic match: {result.acoustic_match_score:.1%}")
+            logger.info(f"      Physics plausibility: {result.physics_plausibility:.1%}")
+            logger.info(f"      Anti-spoofing: {result.anti_spoofing_score:.1%}")
             logger.info(f"\n   🎚️ Fusion Weights:")
             for key, value in result.fusion_weights.items():
                 logger.info(f"      {key}: {value:.3f}")
 
             if not result.verified:
-                logger.info(f"\n   ⚠️ Rejection Reason: {result.rejection_reason}")
+                if result.warnings:
+                    logger.info(f"\n   ⚠️ Warnings: {', '.join(result.warnings)}")
+                if result.decision_factors:
+                    logger.info(f"   📌 Decision factors: {', '.join(result.decision_factors)}")
 
             logger.info(f"{'='*80}\n")
 
