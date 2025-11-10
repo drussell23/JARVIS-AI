@@ -122,7 +122,7 @@ class NetworkRecoveryManager {
     async strategy_dnsFlush(error, recognition, context) {
         // Signal backend to help with network diagnostics
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
             const response = await fetch(`${apiUrl}/network/diagnose`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -258,8 +258,8 @@ class NetworkRecoveryManager {
         console.log('🤖 Requesting ML backend assistance...');
 
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
-            const response = await fetch(`${apiUrl}/audio/ml/advanced-recovery`, {
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const response = await fetch(`${apiUrl}/network/ml/advanced-recovery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -441,8 +441,8 @@ class NetworkRecoveryManager {
 
     async logRecoverySuccess(strategy, result) {
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
-            await fetch(`${apiUrl}/audio/ml/recovery-success`, {
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const response = await fetch(`${apiUrl}/network/ml/recovery-success`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -450,10 +450,18 @@ class NetworkRecoveryManager {
                     result,
                     connectionHealth: this.connectionHealth,
                     timestamp: Date.now()
-                })
+                }),
+                signal: AbortSignal.timeout(3000) // 3 second timeout
             });
+
+            if (!response.ok) {
+                console.warn(`⚠️ Recovery logging failed: ${response.status} ${response.statusText}`);
+            } else {
+                console.debug('✅ Recovery logged successfully');
+            }
         } catch (e) {
-            // Logging is non-critical
+            // Logging is non-critical, fail silently
+            console.debug('Recovery logging error:', e.message);
         }
     }
 
