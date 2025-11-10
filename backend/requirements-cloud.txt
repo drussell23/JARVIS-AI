@@ -37,7 +37,7 @@ aiofiles==23.2.1
 wandb==0.16.2
 tensorboard==2.20.0
 datasets==2.16.1
-evaluate==0.4.1
+evaluate==0.4.6
 rouge-score==0.1.2
 
 # Memory management dependencies
