@@ -39,7 +39,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 3rem;
+  gap: 2rem;
   /* Consistent spacing between all sections */
   height: 100vh;
   width: 100%;
@@ -438,11 +438,12 @@
 .jarvis-transcript {
   width: 100%;
   max-width: 1000px;
-  min-height: 300px;
-  max-height: 450px;
+  min-height: 200px;
+  max-height: 400px;
   /* Allow flexible height up to max */
-  margin: 0 auto;
-  padding: 2rem;
+  margin: auto 0;
+  /* Center vertically in available space */
+  padding: 2rem 2.5rem;
   box-sizing: border-box;
   z-index: 10;
   flex-shrink: 0;
@@ -451,19 +452,26 @@
   /* Allow internal scrolling */
   background: none;
   border: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Center content vertically */
   border-radius: 0;
   box-shadow: none;
 }
 
 .user-message,
 .jarvis-message {
-  margin: 0 0 2.5rem 0;
-  /* Increased spacing between messages */
-  padding: 0.8rem 0;
+  margin: 0 0 1.5rem 0;
+  /* Spacing between messages */
+  padding: 0.5rem 0;
   border-radius: 0;
   background: none;
   border-left: none;
   animation: messageFadeIn 0.5s ease-out;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .user-message:last-child,
@@ -494,13 +502,13 @@
 
 .message-label {
   display: block;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  margin-bottom: 0.8rem;
-  /* Increased spacing between label and text */
-  opacity: 0.7;
+  margin-bottom: 0.5rem;
+  /* Spacing between label and text */
+  opacity: 0.8;
 }
 
 .user-message .message-label {
@@ -513,8 +521,9 @@
 
 .message-text {
   color: var(--text-primary);
-  font-size: 1.4rem;
-  line-height: 1.8;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  width: 100%;
 }
 
 .processing-indicator {
