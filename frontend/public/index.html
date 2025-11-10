@@ -62,6 +62,62 @@
       To create a production bundle, use `npm run build` or `yarn build`.
     -->
   <script src="/clear-stale-cache.js"></script>
+
+  <!-- Global error handlers for Chrome extension conflicts and uncaught promises -->
+  <script>
+    // Handle uncaught promise rejections (e.g., from Chrome extensions)
+    window.addEventListener('unhandledrejection', function(event) {
+      // Check if it's a Chrome extension error (403, message port closed, etc.)
+      const error = event.reason;
+
+      if (error && (
+        error.code === 403 ||
+        error.message?.includes('message port') ||
+        error.message?.includes('Extension context') ||
+        error.httpError === false
+      )) {
+        // Silently ignore Chrome extension errors - they don't affect JARVIS functionality
+        console.debug('Chrome extension error suppressed:', error.message || error.code);
+        event.preventDefault();
+        return;
+      }
+
+      // Log other unhandled rejections for debugging
+      console.error('Unhandled promise rejection:', error);
+    });
+
+    // Handle runtime errors from Chrome extensions
+    window.addEventListener('error', function(event) {
+      if (event.message?.includes('Extension context') ||
+          event.message?.includes('message port')) {
+        console.debug('Chrome extension error suppressed:', event.message);
+        event.preventDefault();
+        return;
+      }
+    });
+
+    // Suppress Chrome extension lastError warnings
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      const originalRuntime = chrome.runtime;
+      Object.defineProperty(chrome, 'runtime', {
+        get: function() {
+          return new Proxy(originalRuntime, {
+            get: function(target, prop) {
+              if (prop === 'lastError') {
+                // Access lastError to clear it, but don't throw
+                const lastError = target[prop];
+                if (lastError) {
+                  console.debug('Chrome runtime.lastError suppressed:', lastError.message);
+                }
+                return undefined;
+              }
+              return target[prop];
+            }
+          });
+        }
+      });
+    }
+  </script>
   </body>
 
 </html>
