@@ -115,9 +115,11 @@ class CloudSQLProxyManager:
 
         Searches in order:
         1. $PATH (via which/where)
-        2. ~/google-cloud-sdk/bin/cloud-sql-proxy
-        3. /usr/local/bin/cloud-sql-proxy
-        4. ~/bin/cloud-sql-proxy
+        2. ~/.local/bin/cloud-sql-proxy (common install location)
+        3. ~/google-cloud-sdk/bin/cloud-sql-proxy
+        4. /usr/local/bin/cloud-sql-proxy
+        5. ~/bin/cloud-sql-proxy
+        6. /opt/homebrew/bin/cloud-sql-proxy (Apple Silicon)
         """
         # Try PATH first
         binary = shutil.which("cloud-sql-proxy")
@@ -125,11 +127,13 @@ class CloudSQLProxyManager:
             logger.info(f"📍 Found proxy binary in PATH: {binary}")
             return binary
 
-        # Try common locations
+        # Try common locations (ENHANCED - includes ~/.local/bin first!)
         search_paths = [
+            Path.home() / ".local" / "bin" / "cloud-sql-proxy",  # Most common
             Path.home() / "google-cloud-sdk" / "bin" / "cloud-sql-proxy",
             Path("/usr/local/bin/cloud-sql-proxy"),
             Path.home() / "bin" / "cloud-sql-proxy",
+            Path("/opt/homebrew/bin/cloud-sql-proxy"),  # Apple Silicon Homebrew
         ]
 
         for path in search_paths:
@@ -137,11 +141,18 @@ class CloudSQLProxyManager:
                 logger.info(f"📍 Found proxy binary: {path}")
                 return str(path)
 
-        raise FileNotFoundError(
-            "cloud-sql-proxy binary not found. Install with:\n"
-            "  gcloud components install cloud-sql-proxy\n"
-            "Or download from: https://cloud.google.com/sql/docs/mysql/connect-admin-proxy"
+        # Enhanced error message with install instructions
+        error_msg = (
+            "❌ cloud-sql-proxy binary not found!\n\n"
+            "Install options:\n"
+            "  1. Download directly:\n"
+            "     curl -o ~/.local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.2/cloud-sql-proxy.darwin.amd64\n"
+            "     chmod +x ~/.local/bin/cloud-sql-proxy\n\n"
+            "  2. Using gcloud:\n"
+            "     gcloud components install cloud-sql-proxy\n\n"
+            f"Searched locations: {[str(p) for p in search_paths]}"
         )
+        raise FileNotFoundError(error_msg)
 
     def _is_port_in_use(self, port: int) -> bool:
         """Check if port is already in use."""
@@ -231,75 +242,124 @@ class CloudSQLProxyManager:
         else:
             logger.error(f"❌ Failed to free port {port}")
 
-    async def start(self, force_restart: bool = False) -> bool:
+    async def start(self, force_restart: bool = False, max_retries: int = 3) -> bool:
         """
-        Start Cloud SQL proxy with health monitoring.
+        Start Cloud SQL proxy with health monitoring and auto-recovery.
 
         Args:
             force_restart: Kill existing processes and start fresh
+            max_retries: Maximum number of startup attempts
 
         Returns:
             True if started successfully, False otherwise
         """
-        try:
-            # Check if already running
-            if self.is_running() and not force_restart:
-                logger.info("✅ Cloud SQL proxy already running")
-                return True
+        last_error = None
 
-            # Kill conflicting processes if needed
-            if force_restart:
-                self._kill_conflicting_processes()
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.info(f"🔄 Retry attempt {attempt + 1}/{max_retries}...")
+                    await asyncio.sleep(2)  # Wait before retry
 
-            # Build proxy command (no hardcoding!)
-            cloud_sql = self.config["cloud_sql"]
-            port = cloud_sql["port"]
-            connection_name = cloud_sql["connection_name"]
-
-            cmd = [
-                self.proxy_binary,
-                connection_name,
-                f"--port={port}",
-            ]
-
-            # Add optional auth if specified in config
-            if "auth_method" in cloud_sql:
-                if cloud_sql["auth_method"] == "service_account":
-                    if "service_account_key" in cloud_sql:
-                        cmd.append(f"--credentials-file={cloud_sql['service_account_key']}")
-
-            logger.info(f"🚀 Starting Cloud SQL proxy...")
-            logger.info(f"   Connection: {connection_name}")
-            logger.info(f"   Port: {port}")
-            logger.info(f"   Log: {self.log_path}")
-
-            # Start proxy process (truncate log file for fresh start)
-            log_file = open(self.log_path, "w")  # Use "w" to truncate old logs
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,  # Detach from parent
-            )
-
-            # Write PID file
-            with open(self.pid_path, "w") as f:
-                f.write(str(self.process.pid))
-
-            # Wait for proxy to be ready (max 10 seconds) - ASYNC!
-            logger.info(f"⏳ Waiting for proxy to be ready...")
-            for i in range(20):
-                await asyncio.sleep(0.5)  # Non-blocking async sleep
-                if self._is_port_in_use(port):
-                    logger.info(f"✅ Cloud SQL proxy ready on port {port}")
+                # Check if already running
+                if self.is_running() and not force_restart:
+                    logger.info("✅ Cloud SQL proxy already running")
                     return True
 
-            logger.error(f"❌ Proxy failed to start within 10 seconds")
-            return False
+                # Kill conflicting processes if needed
+                if force_restart or attempt > 0:
+                    self._kill_conflicting_processes()
 
-        except Exception as e:
-            logger.error(f"❌ Failed to start Cloud SQL proxy: {e}", exc_info=True)
-            return False
+                # Build proxy command (no hardcoding!)
+                cloud_sql = self.config["cloud_sql"]
+                port = cloud_sql["port"]
+                connection_name = cloud_sql["connection_name"]
+
+                cmd = [
+                    self.proxy_binary,
+                    connection_name,
+                    f"--port={port}",
+                ]
+
+                # Add optional auth if specified in config
+                if "auth_method" in cloud_sql:
+                    if cloud_sql["auth_method"] == "service_account":
+                        if "service_account_key" in cloud_sql:
+                            cmd.append(f"--credentials-file={cloud_sql['service_account_key']}")
+
+                logger.info(f"🚀 Starting Cloud SQL proxy (attempt {attempt + 1}/{max_retries})...")
+                logger.info(f"   Binary: {self.proxy_binary}")
+                logger.info(f"   Connection: {connection_name}")
+                logger.info(f"   Port: {port}")
+                logger.info(f"   Log: {self.log_path}")
+                logger.info(f"   Command: {' '.join(cmd)}")
+
+                # Ensure log directory exists
+                self.log_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Start proxy process (truncate log file for fresh start)
+                log_file = open(self.log_path, "w")  # Use "w" to truncate old logs
+                self.process = subprocess.Popen(
+                    cmd,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,  # Detach from parent
+                )
+
+                # Write PID file
+                with open(self.pid_path, "w") as f:
+                    f.write(str(self.process.pid))
+
+                logger.info(f"   PID: {self.process.pid}")
+
+                # Wait for proxy to be ready (max 15 seconds) - ASYNC!
+                logger.info(f"⏳ Waiting for proxy to be ready...")
+                for i in range(30):
+                    await asyncio.sleep(0.5)  # Non-blocking async sleep
+
+                    # Check if process crashed
+                    if self.process.poll() is not None:
+                        log_content = self.log_path.read_text() if self.log_path.exists() else "No log"
+                        error_msg = f"Proxy process crashed (exit code: {self.process.returncode})\nLog:\n{log_content}"
+                        logger.error(f"❌ {error_msg}")
+                        last_error = error_msg
+                        break
+
+                    if self._is_port_in_use(port):
+                        logger.info(f"✅ Cloud SQL proxy ready on port {port} (took {i * 0.5:.1f}s)")
+                        return True
+
+                # If we got here, proxy didn't start in time
+                if self.process.poll() is None:
+                    logger.error(f"❌ Proxy failed to start within 15 seconds")
+                    last_error = "Startup timeout"
+                    # Kill the slow process
+                    self.process.terminate()
+
+            except FileNotFoundError as e:
+                logger.error(f"❌ Proxy binary not found: {e}")
+                last_error = str(e)
+                break  # No point retrying if binary doesn't exist
+
+            except Exception as e:
+                logger.error(f"❌ Failed to start Cloud SQL proxy: {e}", exc_info=True)
+                last_error = str(e)
+
+        # All retries failed
+        logger.error(f"❌ Cloud SQL proxy failed to start after {max_retries} attempts")
+        if last_error:
+            logger.error(f"   Last error: {last_error}")
+
+        # Show log file for debugging
+        if self.log_path.exists():
+            logger.error(f"   Check log file: {self.log_path}")
+            try:
+                log_tail = self.log_path.read_text().split("\n")[-20:]
+                logger.error(f"   Last 20 lines of log:\n" + "\n".join(log_tail))
+            except Exception:
+                pass
+
+        return False
 
     async def stop(self) -> bool:
         """Stop Cloud SQL proxy gracefully."""
@@ -339,25 +399,66 @@ class CloudSQLProxyManager:
         await asyncio.sleep(1)
         return await self.start(force_restart=True)
 
-    async def monitor(self, check_interval: int = 30):
+    async def monitor(self, check_interval: int = 30, max_recovery_attempts: int = 3):
         """
         Monitor proxy health and auto-recover if needed.
 
         Args:
             check_interval: Seconds between health checks
+            max_recovery_attempts: Maximum consecutive recovery attempts before giving up
         """
         logger.info(f"🔍 Starting proxy health monitor (interval: {check_interval}s)")
+
+        consecutive_failures = 0
+        last_check_time = time.time()
 
         while True:
             try:
                 await asyncio.sleep(check_interval)
 
-                if not self.is_running():
-                    logger.warning("⚠️  Cloud SQL proxy unhealthy, attempting recovery...")
-                    if self.start(force_restart=True):
-                        logger.info("✅ Proxy recovered successfully")
+                # Health check
+                is_healthy = self.is_running()
+                current_time = time.time()
+                elapsed = current_time - last_check_time
+                last_check_time = current_time
+
+                if not is_healthy:
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"⚠️  Cloud SQL proxy unhealthy "
+                        f"(consecutive failures: {consecutive_failures}/{max_recovery_attempts})"
+                    )
+
+                    if consecutive_failures <= max_recovery_attempts:
+                        logger.info(f"🔄 Attempting automatic recovery (attempt {consecutive_failures})...")
+                        success = await self.start(force_restart=True)
+
+                        if success:
+                            logger.info("✅ Proxy recovered successfully")
+                            consecutive_failures = 0  # Reset counter on success
+                        else:
+                            logger.error(f"❌ Proxy recovery attempt {consecutive_failures} failed")
+
+                            # If max attempts reached, alert and wait longer
+                            if consecutive_failures >= max_recovery_attempts:
+                                logger.error(
+                                    f"❌ Proxy recovery failed after {max_recovery_attempts} attempts"
+                                )
+                                logger.error("   Voice authentication will be unavailable")
+                                logger.error("   Will continue monitoring and retry in 5 minutes...")
+                                await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                                consecutive_failures = 0  # Reset to try again
                     else:
-                        logger.error("❌ Proxy recovery failed")
+                        logger.error("❌ Max recovery attempts exceeded, waiting before retry...")
+                else:
+                    # Proxy is healthy
+                    if consecutive_failures > 0:
+                        logger.info("✅ Proxy health restored")
+                        consecutive_failures = 0
+
+                    # Log periodic health status
+                    if int(current_time) % 300 == 0:  # Every 5 minutes
+                        logger.debug(f"✅ Cloud SQL proxy healthy (uptime: {elapsed:.0f}s)")
 
             except asyncio.CancelledError:
                 logger.info("Health monitor stopped")

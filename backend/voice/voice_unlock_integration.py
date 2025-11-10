@@ -90,14 +90,14 @@ class VoiceUnlockIntegration:
             raise
 
     async def verify_and_unlock(
-        self, audio_data: bytes, speaker_name: str, command_text: Optional[str] = None
+        self, audio_data: bytes, speaker_name: Optional[str] = None, command_text: Optional[str] = None
     ) -> Tuple[bool, str, float]:
         """
         Verify speaker and unlock screen if authorized
 
         Args:
             audio_data: Audio bytes from microphone
-            speaker_name: Expected speaker name (e.g., "Derek J. Russell")
+            speaker_name: Expected speaker name (if None, uses primary user from profiles)
             command_text: Optional command text that triggered unlock
 
         Returns:
@@ -115,7 +115,24 @@ class VoiceUnlockIntegration:
                 self.stats["screen_already_unlocked"] += 1
                 return True, "Screen is already unlocked", 1.0
 
-            # Step 2: Verify speaker identity
+            # Step 2: Determine speaker name (use primary user if not specified)
+            if not speaker_name:
+                # Find primary user from speaker profiles
+                for name, profile in self.speaker_verification.speaker_profiles.items():
+                    if profile.get("is_primary_user", False):
+                        speaker_name = name
+                        logger.info(f"🔍 Using primary user for verification: {speaker_name}")
+                        break
+
+                if not speaker_name:
+                    # No primary user found, try to identify from audio
+                    logger.info("🔍 No speaker specified and no primary user - identifying from audio")
+                    result = await self.speaker_verification.verify_speaker(audio_data, None)
+                    speaker_name = result.get("speaker_name", "unknown")
+                    if speaker_name == "unknown":
+                        return False, "No voice profile found. Please enroll your voice first.", 0.0
+
+            # Step 3: Verify speaker identity
             logger.info(f"🎤 Verifying speaker: {speaker_name}")
             result = await self.speaker_verification.verify_speaker(
                 audio_data, speaker_name
