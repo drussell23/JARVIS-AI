@@ -11,6 +11,8 @@ Your JARVIS AI now has a **state-of-the-art multi-modal probabilistic voice biom
 - **Anti-spoofing detection** (replay, synthesis, voice conversion)
 - **Adaptive threshold learning** (zero hardcoded values)
 - **Comprehensive acoustic features** (50+ biometric parameters)
+- **🆕 Hot reload capability** (auto-detects profile updates, no restart needed)
+- **🆕 API-triggered reload** (manual reload via REST endpoint)
 
 ## 🚀 Deployment Steps
 
@@ -65,7 +67,29 @@ This will:
 ✨ ENHANCEMENT COMPLETE!
 ```
 
-### Step 3: Test Voice Authentication
+### Step 3: Automatic Profile Reload (NEW!)
+
+**No restart needed!** The system now automatically detects when profiles are updated:
+
+- **Auto-reload**: Checks database every 30 seconds for profile changes
+- **Automatic detection**: Monitors timestamps, sample counts, quality scores
+- **Seamless updates**: Reloads profiles in background without interrupting service
+
+You'll see logs like:
+```
+🔄 Starting profile auto-reload (check every 30s)...
+✅ Profile hot reload enabled - updates will be detected automatically
+🔄 Detected update for profile 'Derek J. Russell'
+🔄 Reloading profiles due to updates: Derek J. Russell
+✅ Profiles reloaded successfully with latest data from database
+```
+
+**Manual reload option** (if you prefer):
+```bash
+curl -X POST http://localhost:8010/api/voice-unlock/profiles/reload
+```
+
+### Step 4: Test Voice Authentication
 
 Try unlocking your screen:
 
@@ -141,6 +165,64 @@ Try unlocking your screen:
 - `feature_covariance_matrix` (BLOB - 9x9 matrix for Mahalanobis)
 - `feature_statistics` (JSON - metadata)
 
+**Profile Versioning (Hot Reload):**
+- `updated_at` (timestamp of last profile update)
+- `total_samples` (tracks enrollment changes)
+- `enrollment_quality_score` (quality metric changes)
+- `feature_extraction_version` (algorithm version tracking)
+
+### Hot Reload System (NEW!)
+
+The system now automatically detects and reloads profiles without requiring restarts:
+
+```
+┌─────────────────────────────────────────────┐
+│   Background Profile Monitor (async task)  │
+│   • Runs every 30 seconds                  │
+│   • Queries database for profile versions  │
+│   • Compares with cached fingerprints      │
+└─────────────────────────────────────────────┘
+                    ↓
+            [Change Detected?]
+                    ↓
+        ┌───────────┴───────────┐
+        │                       │
+       YES                     NO
+        │                       │
+        ↓                       ↓
+  [Reload Profiles]        [Continue]
+        │
+        ↓
+  [Update Cache]
+        │
+        ↓
+  [Log Success]
+```
+
+**Version Fingerprint:**
+```python
+{
+  'updated_at': '2025-11-10 03:16:30',
+  'total_samples': 30,
+  'quality_score': 0.85,
+  'feature_version': '1.0.0'
+}
+```
+
+**API Endpoint:**
+```bash
+POST /api/voice-unlock/profiles/reload
+
+Response:
+{
+  "success": true,
+  "message": "Profiles reloaded successfully",
+  "profiles_before": 1,
+  "profiles_after": 1,
+  "timestamp": "2025-11-10T03:16:30.123456"
+}
+```
+
 ### Verification Pipeline
 
 ```
@@ -210,18 +292,37 @@ Decision: VERIFIED / REJECTED (with confidence & uncertainty)
 ### Issue: Migration fails with "column already exists"
 **Solution**: This is normal - the migration script checks before adding. The migration is idempotent.
 
-### Issue: Verification uses "test features as baseline"
-**Symptom**: Log shows "⚠️ No acoustic features in profile"
-**Solution**: Re-run enrollment: `python3 backend/quick_voice_enhancement.py`
+### Issue: Verification uses "test features as baseline" (FIXED!)
+**Old Behavior**: Required manual backend restart after enrollment
+**New Behavior**: Profiles auto-reload within 30 seconds of enrollment completion
+**Manual Trigger**: `curl -X POST http://localhost:8010/api/voice-unlock/profiles/reload`
+
+**Startup Warning Detection**: On service start, you'll now see:
+```
+✅ Loaded: Derek J. Russell (ID: 1, 192D, Samples: 30) 🔬 BEAST MODE
+```
+Or if acoustic features are missing:
+```
+⚠️  Loaded: Derek J. Russell (ID: 1, 192D, Samples: 30) - NO ACOUSTIC FEATURES (basic mode only)
+   💡 To enable BEAST MODE for Derek J. Russell, run: python3 backend/quick_voice_enhancement.py
+```
 
 ### Issue: Low confidence after re-enrollment
 **Solution**:
 1. Ensure you recorded in a quiet environment
 2. Check quality scores (should be >65%)
 3. Re-record if needed
+4. **NEW**: Wait 30s for auto-reload or trigger manual reload
 
 ### Issue: "Format not recognised" during verification
 **Solution**: The bulletproof decoder should handle this automatically. Check logs for which decoder stage succeeded.
+
+### Issue: Profile updates not detected
+**Check**: Verify auto-reload is enabled in logs:
+```
+✅ Profile hot reload enabled - updates will be detected automatically
+```
+**Manual fix**: Restart backend or call `/api/voice-unlock/profiles/reload` endpoint
 
 ## 🎓 Technical Deep Dive
 

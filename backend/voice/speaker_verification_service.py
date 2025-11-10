@@ -123,6 +123,12 @@ class SpeakerVerificationService:
         self.supported_dimensions = [192, 768, 96]  # Common embedding dimensions
         self.enable_auto_migration = True  # Auto-migrate incompatible profiles
 
+        # Hot reload configuration
+        self.profile_version_cache = {}  # Track profile versions/timestamps for change detection
+        self.auto_reload_enabled = True  # Enable automatic profile reloading
+        self.reload_check_interval = 30  # Check for updates every 30 seconds
+        self._reload_task = None  # Background task for checking updates
+
     async def initialize_fast(self):
         """
         Fast initialization with background encoder pre-loading.
@@ -167,6 +173,12 @@ class SpeakerVerificationService:
         # Start background pre-loading of encoder
         logger.info("🔄 Pre-loading speaker encoder in background...")
         self._start_background_preload()
+
+        # Start background profile reload monitoring
+        if self.auto_reload_enabled:
+            logger.info(f"🔄 Starting profile auto-reload (check every {self.reload_check_interval}s)...")
+            self._reload_task = asyncio.create_task(self._profile_reload_monitor())
+            logger.info("✅ Profile hot reload enabled - updates will be detected automatically")
 
     def _start_background_preload(self):
         """Start background thread to pre-load speaker encoder with proper cleanup"""
@@ -986,12 +998,31 @@ class SpeakerVerificationService:
                         "samples": total_samples,
                     }
 
-                    logger.info(
-                        f"✅ Loaded: {speaker_name} "
-                        f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)}, "
-                        f"{embedding.shape[0]}D, Quality: {quality}, "
-                        f"Threshold: {threshold*100:.0f}%, Samples: {total_samples})"
+                    # Validate acoustic features (BEAST MODE check)
+                    acoustic_features = self.speaker_profiles[speaker_name]["acoustic_features"]
+                    has_acoustic_features = any(
+                        v is not None for v in acoustic_features.values()
                     )
+
+                    if has_acoustic_features:
+                        logger.info(
+                            f"✅ Loaded: {speaker_name} "
+                            f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)}, "
+                            f"{embedding.shape[0]}D, Quality: {quality}, "
+                            f"Threshold: {threshold*100:.0f}%, Samples: {total_samples}) "
+                            f"🔬 BEAST MODE"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️  Loaded: {speaker_name} "
+                            f"(ID: {speaker_id}, {embedding.shape[0]}D, Samples: {total_samples}) "
+                            f"- NO ACOUSTIC FEATURES (basic mode only)"
+                        )
+                        logger.info(
+                            f"   💡 To enable BEAST MODE for {speaker_name}, run: "
+                            f"python3 backend/quick_voice_enhancement.py"
+                        )
+
                     loaded_count += 1
 
                 except Exception as profile_error:
@@ -1282,12 +1313,160 @@ class SpeakerVerificationService:
                 f"{success_rate:.1f}% success rate"
             )
 
+    async def _check_profile_updates(self) -> dict:
+        """
+        Check if any speaker profiles have been updated in the database.
+
+        Returns:
+            dict: Mapping of speaker_name -> has_updates (bool)
+        """
+        try:
+            if not self.learning_db:
+                return {}
+
+            updates = {}
+
+            # Query database for current profile timestamps/versions
+            async with self.learning_db.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT speaker_name, speaker_id, updated_at, total_samples,
+                           enrollment_quality_score, feature_extraction_version
+                    FROM speaker_profiles
+                    """
+                )
+                profiles = await cursor.fetchall()
+
+                for profile in profiles:
+                    speaker_name = profile['speaker_name'] if isinstance(profile, dict) else profile[0]
+                    speaker_id = profile['speaker_id'] if isinstance(profile, dict) else profile[1]
+                    updated_at = profile['updated_at'] if isinstance(profile, dict) else profile[2]
+                    total_samples = profile['total_samples'] if isinstance(profile, dict) else profile[3]
+                    quality_score = profile['enrollment_quality_score'] if isinstance(profile, dict) else profile[4]
+                    feature_version = profile['feature_extraction_version'] if isinstance(profile, dict) else profile[5]
+
+                    # Create version fingerprint
+                    current_fingerprint = {
+                        'updated_at': str(updated_at) if updated_at else None,
+                        'total_samples': total_samples,
+                        'quality_score': quality_score,
+                        'feature_version': feature_version,
+                    }
+
+                    # Check if we've seen this profile before
+                    if speaker_name not in self.profile_version_cache:
+                        # New profile detected
+                        self.profile_version_cache[speaker_name] = current_fingerprint
+                        updates[speaker_name] = True
+                    else:
+                        # Check if profile changed
+                        cached_fingerprint = self.profile_version_cache[speaker_name]
+                        has_changed = (
+                            cached_fingerprint['updated_at'] != current_fingerprint['updated_at'] or
+                            cached_fingerprint['total_samples'] != current_fingerprint['total_samples'] or
+                            cached_fingerprint['quality_score'] != current_fingerprint['quality_score'] or
+                            cached_fingerprint['feature_version'] != current_fingerprint['feature_version']
+                        )
+
+                        if has_changed:
+                            logger.info(f"🔄 Detected update for profile '{speaker_name}'")
+                            logger.debug(f"   Old: {cached_fingerprint}")
+                            logger.debug(f"   New: {current_fingerprint}")
+                            self.profile_version_cache[speaker_name] = current_fingerprint
+                            updates[speaker_name] = True
+                        else:
+                            updates[speaker_name] = False
+
+            return updates
+
+        except Exception as e:
+            logger.error(f"❌ Error checking profile updates: {e}", exc_info=True)
+            return {}
+
+    async def _profile_reload_monitor(self):
+        """
+        Background task that monitors for profile updates and reloads automatically.
+        Runs continuously until service shutdown.
+        """
+        logger.info("🔄 Profile reload monitor started")
+
+        try:
+            while not self._shutdown_event.is_set():
+                try:
+                    # Check for updates
+                    updates = await self._check_profile_updates()
+
+                    # If any profiles updated, reload all
+                    if any(updates.values()):
+                        updated_profiles = [name for name, has_update in updates.items() if has_update]
+                        logger.info(f"🔄 Reloading profiles due to updates: {', '.join(updated_profiles)}")
+                        await self.refresh_profiles()
+                        logger.info("✅ Profiles reloaded successfully with latest data from database")
+
+                    # Wait before next check
+                    await asyncio.sleep(self.reload_check_interval)
+
+                except asyncio.CancelledError:
+                    logger.info("🛑 Profile reload monitor cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Error in profile reload monitor: {e}", exc_info=True)
+                    # Continue monitoring even after error
+                    await asyncio.sleep(self.reload_check_interval)
+
+        except Exception as e:
+            logger.error(f"❌ Profile reload monitor crashed: {e}", exc_info=True)
+        finally:
+            logger.info("🛑 Profile reload monitor stopped")
+
+    async def manual_reload_profiles(self) -> dict:
+        """
+        Manually trigger profile reload (for API endpoint).
+
+        Returns:
+            dict: Status information about the reload
+        """
+        try:
+            logger.info("🔄 Manual profile reload triggered")
+            profiles_before = len(self.speaker_profiles)
+
+            await self.refresh_profiles()
+
+            profiles_after = len(self.speaker_profiles)
+
+            return {
+                "success": True,
+                "message": "Profiles reloaded successfully",
+                "profiles_before": profiles_before,
+                "profiles_after": profiles_after,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception as e:
+            logger.error(f"❌ Manual profile reload failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Reload failed: {str(e)}",
+                "timestamp": datetime.now().isoformat(),
+            }
+
     async def cleanup(self):
         """Cleanup resources and terminate background threads"""
         logger.info("🧹 Cleaning up Speaker Verification Service...")
 
         # Signal shutdown to background threads
         self._shutdown_event.set()
+
+        # Cancel profile reload monitor task
+        if self._reload_task and not self._reload_task.done():
+            logger.debug("   Cancelling profile reload monitor...")
+            self._reload_task.cancel()
+            try:
+                await asyncio.wait_for(self._reload_task, timeout=2.0)
+                logger.debug("   ✅ Profile reload monitor cancelled")
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("   ✅ Profile reload monitor terminated")
+            except Exception as e:
+                logger.warning(f"   ⚠ Profile reload monitor cleanup error: {e}")
 
         # Wait for preload thread to complete (with timeout)
         if self._preload_thread and self._preload_thread.is_alive():

@@ -431,16 +431,16 @@ async def update_configuration(section: str, updates: Dict[str, Any]):
     """Update voice unlock configuration"""
     try:
         config = get_config()
-        
+
         if not hasattr(config, section):
             raise HTTPException(status_code=400, detail=f"Invalid config section: {section}")
-            
+
         # Update configuration
         config.update_from_dict({section: updates})
-        
+
         # Save to file
         config.save_to_file()
-        
+
         return {
             "success": True,
             "message": f"Configuration section '{section}' updated"
@@ -448,6 +448,46 @@ async def update_configuration(section: str, updates: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Config update error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/profiles/reload")
+async def reload_speaker_profiles():
+    """
+    Manually trigger speaker profile reload from database.
+
+    Useful after:
+    - Completing voice enrollment
+    - Updating acoustic features
+    - Database migrations
+
+    Returns:
+        Status information about the reload operation
+    """
+    try:
+        # Get the speaker verification service from the global voice unlock system
+        from voice.speaker_verification_service import _global_speaker_service
+
+        if _global_speaker_service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Speaker verification service not initialized"
+            )
+
+        # Trigger manual reload
+        result = await _global_speaker_service.manual_reload_profiles()
+
+        if result["success"]:
+            logger.info(f"✅ Manual profile reload successful: {result['profiles_after']} profiles loaded")
+            return JSONResponse(content=result)
+        else:
+            logger.error(f"❌ Manual profile reload failed: {result['message']}")
+            raise HTTPException(status_code=500, detail=result["message"])
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile reload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Profile reload failed: {str(e)}")
 
 
 # Initialize on import if in main JARVIS context
