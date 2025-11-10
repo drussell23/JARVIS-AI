@@ -301,7 +301,16 @@ class SpeakerVerificationService:
 
             # Extract test embedding
             test_embedding = await self.speechbrain_engine.extract_speaker_embedding(test_audio_bytes)
-            self.current_model_dimension = test_embedding.shape[0]
+
+            # Handle 2D embeddings (batch dimension)
+            if test_embedding.ndim == 2:
+                # Shape is (1, dim) - get the actual dimension
+                self.current_model_dimension = test_embedding.shape[1]
+                logger.info(f"🔍 Detected 2D embedding shape: {test_embedding.shape}, using dimension: {self.current_model_dimension}D")
+            else:
+                # Shape is (dim,)
+                self.current_model_dimension = test_embedding.shape[0]
+                logger.info(f"🔍 Detected 1D embedding shape: {test_embedding.shape}, dimension: {self.current_model_dimension}D")
 
             logger.info(f"✅ Current model dimension: {self.current_model_dimension}D")
 
@@ -826,9 +835,14 @@ class SpeakerVerificationService:
                         embedding_bytes = profile.get("voiceprint_embedding")
                         if embedding_bytes:
                             test_embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                            logger.info(f"🔍 DEBUG: {speaker_name} - Current: {test_embedding.shape[0]}D, Model: {self.current_model_dimension}D")
                             if test_embedding.shape[0] != self.current_model_dimension:
-                                logger.info(f"🔄 Dimension mismatch detected for {speaker_name}, auto-migrating...")
+                                logger.warning(f"🔄 DIMENSION MISMATCH: {speaker_name} has {test_embedding.shape[0]}D but model expects {self.current_model_dimension}D")
+                                logger.info(f"🔄 Starting auto-migration for {speaker_name}...")
                                 profile = await self._auto_migrate_profile(profile, speaker_name)
+                                logger.info(f"✅ Auto-migration completed for {speaker_name}")
+                            else:
+                                logger.info(f"✅ {speaker_name} embedding dimension matches model ({self.current_model_dimension}D)")
 
                     # Process the selected profile
                     speaker_id = profile.get("speaker_id")
@@ -967,12 +981,20 @@ class SpeakerVerificationService:
                 profile = self.speaker_profiles[speaker_name]
                 known_embedding = profile["embedding"]
 
+                # DEBUG: Log embedding dimensions
+                logger.info(f"🔍 DEBUG: Verifying {speaker_name}")
+                logger.info(f"🔍 DEBUG: Stored embedding shape: {known_embedding.shape if hasattr(known_embedding, 'shape') else len(known_embedding)}")
+                logger.info(f"🔍 DEBUG: Stored embedding dimension in profile: {profile.get('embedding_dimension', 'unknown')}")
+
                 # Get adaptive threshold based on history
                 adaptive_threshold = await self._get_adaptive_threshold(speaker_name, profile)
+                logger.info(f"🔍 DEBUG: Adaptive threshold: {adaptive_threshold:.2%}")
 
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
                     audio_data, known_embedding, threshold=adaptive_threshold
                 )
+
+                logger.info(f"🔍 DEBUG: Verification result - Confidence: {confidence:.2%}, Verified: {is_verified}")
 
                 # Learn from this attempt
                 await self._record_verification_attempt(speaker_name, confidence, is_verified)
