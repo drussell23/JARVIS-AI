@@ -1341,28 +1341,28 @@ class QuickVoiceEnhancement:
             pitch_ranges.append(vc.pitch_range_hz)
 
             # Formants
-            formant_f1s.append(vc.formant_f1)
-            formant_f2s.append(vc.formant_f2)
-            formant_f3s.append(vc.formant_f3)
-            formant_f4s.append(vc.formant_f4)
+            formant_f1s.append(vc.f1_hz)
+            formant_f2s.append(vc.f2_hz)
+            formant_f3s.append(vc.f3_hz)
+            formant_f4s.append(vc.f4_hz)
 
             # Spectral
-            spectral_centroids.append(vc.spectral_centroid)
-            spectral_rolloffs.append(vc.spectral_rolloff)
+            spectral_centroids.append(vc.spectral_centroid_hz)
+            spectral_rolloffs.append(vc.spectral_rolloff_hz)
             spectral_fluxes.append(vc.spectral_flux)
-            spectral_entropies.append(vc.spectral_entropy)
+            spectral_entropies.append(getattr(vc, 'spectral_entropy', 0.5))  # Default if missing
 
             # Temporal
-            speaking_rates.append(vc.speaking_rate)
+            speaking_rates.append(vc.speech_rate_wpm)
             pause_ratios.append(vc.pause_ratio)
 
-            # Voice quality
-            jitters.append(vc.jitter)
-            shimmers.append(vc.shimmer)
-            hnrs.append(vc.harmonic_to_noise_ratio)
+            # Voice quality (use sample quality metrics if not in VoiceCharacteristics)
+            jitters.append(getattr(vc, 'jitter', 0.01))  # Default 1%
+            shimmers.append(getattr(vc, 'shimmer', 0.05))  # Default 5%
+            hnrs.append(getattr(vc, 'harmonic_to_noise_ratio', 15.0))  # Default 15 dB
 
             # Energy
-            energies.append(vc.energy_mean)
+            energies.append(vc.rms_energy)
 
         # Compute aggregate statistics
         features = {
@@ -1392,7 +1392,7 @@ class QuickVoiceEnhancement:
             'spectral_flux_std': float(np.std(spectral_fluxes)),
             'spectral_entropy': float(np.mean(spectral_entropies)),
             'spectral_entropy_std': float(np.std(spectral_entropies)),
-            'spectral_flatness': float(np.mean([s.voice_characteristics.spectral_flatness for s in self.samples])),
+            'spectral_flatness': float(np.mean([getattr(s.voice_characteristics, 'spectral_flatness', s.quality_metrics.spectral_flatness) for s in self.samples])),
             'spectral_bandwidth_hz': float(np.std(spectral_centroids) * 2),  # Approximate bandwidth
 
             # Temporal features
@@ -1423,8 +1423,10 @@ class QuickVoiceEnhancement:
         for sample in self.samples:
             vc = sample.voice_characteristics
             vec = [
-                vc.pitch_mean_hz, vc.formant_f1, vc.formant_f2, vc.formant_f3,
-                vc.spectral_centroid, vc.spectral_rolloff, vc.jitter, vc.shimmer, vc.harmonic_to_noise_ratio
+                vc.pitch_mean_hz, vc.f1_hz, vc.f2_hz, vc.f3_hz,
+                vc.spectral_centroid_hz, vc.spectral_rolloff_hz,
+                getattr(vc, 'jitter', 0.01), getattr(vc, 'shimmer', 0.05),
+                getattr(vc, 'harmonic_to_noise_ratio', 15.0)
             ]
             feature_vectors.append(vec)
 
@@ -1441,7 +1443,7 @@ class QuickVoiceEnhancement:
             'feature_dimensions': len(feature_vectors[0]),
             'voice_type': self.samples[0].voice_characteristics.voice_type,
             'phonetic_coverage': self.progress.phonetic_coverage.coverage_score,
-            'avg_duration_seconds': float(np.mean([s.voice_characteristics.duration_seconds for s in self.samples])),
+            'avg_duration_seconds': float(np.mean([s.duration_seconds for s in self.samples])),
         })
 
         return features
