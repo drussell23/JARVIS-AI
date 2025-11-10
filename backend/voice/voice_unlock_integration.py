@@ -12,6 +12,8 @@ This bridges:
 
 import asyncio
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
@@ -44,6 +46,12 @@ class VoiceUnlockIntegration:
         self.keychain_service = None
         self.learning_db = None
         self.initialized = False
+        self.enable_voice_feedback = True  # Enable spoken responses
+
+        # JARVIS Voice configuration (matching codebase standards)
+        self.jarvis_voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')  # British male voice
+        self.jarvis_voice_rate = int(os.getenv('JARVIS_VOICE_RATE_WPM', '175'))  # Words per minute
+        self.urgent_voice_rate = 200  # For urgent/important messages
 
         # Configuration - these are now base thresholds, actual will be adaptive
         self.base_unlock_threshold = 0.45  # Base threshold, adaptive system will adjust
@@ -170,6 +178,9 @@ class VoiceUnlockIntegration:
                     command_text=command_text,
                 )
 
+                # 🔊 SPEAK FAILURE MESSAGE
+                await self._speak_jarvis("Voice not recognized", urgent=True)
+
                 # Provide helpful message based on confidence level
                 if confidence < 0.10:
                     suggestion = result.get("suggestion", "")
@@ -200,6 +211,9 @@ class VoiceUnlockIntegration:
                     command_text=command_text,
                 )
 
+                # 🔊 SPEAK FAILURE MESSAGE
+                await self._speak_jarvis("Access denied", urgent=True)
+
                 return False, "Speaker verification failed", confidence
 
             # Step 4: Retrieve password from keychain
@@ -227,13 +241,21 @@ class VoiceUnlockIntegration:
                     command_text=command_text,
                 )
 
-                return True, f"Screen unlocked. Welcome, {speaker_name}!", confidence
+                # 🔊 SPEAK WELCOME MESSAGE WITH JARVIS VOICE
+                welcome_message = f"Welcome, {speaker_name}!"
+                await self._speak_jarvis(welcome_message, urgent=False)
+
+                return True, f"Screen unlocked. {welcome_message}", confidence
             else:
                 logger.error("❌ Unlock execution failed")
+                # Speak failure message
+                await self._speak_jarvis("Unlock failed", urgent=True)
                 return False, "Unlock execution failed", confidence
 
         except Exception as e:
             logger.error(f"Error during verify and unlock: {e}", exc_info=True)
+            # Speak error message
+            await self._speak_jarvis("Authentication error", urgent=True)
             return False, f"Error: {str(e)}", 0.0
 
     def _get_unlock_password(self) -> Optional[str]:
@@ -377,6 +399,40 @@ class VoiceUnlockIntegration:
                 else 0.0
             ),
         }
+
+    async def _speak_jarvis(self, message: str, urgent: bool = False) -> None:
+        """
+        Speak message using JARVIS voice (Daniel - British male voice)
+
+        Uses macOS 'say' command with the same voice configuration used throughout the codebase.
+        Runs asynchronously in the background to not block unlock operations.
+
+        Args:
+            message: Text to speak
+            urgent: If True, uses faster speech rate for important messages
+        """
+        if not self.enable_voice_feedback:
+            return
+
+        try:
+            # Use urgent rate for important messages, normal rate otherwise
+            rate = self.urgent_voice_rate if urgent else self.jarvis_voice_rate
+
+            # Run say command asynchronously in background (non-blocking)
+            proc = await asyncio.create_subprocess_exec(
+                'say',
+                '-v', self.jarvis_voice_name,
+                '-r', str(rate),
+                message,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+
+            # Don't wait for completion - let it speak in background
+            logger.info(f"🔊 [JARVIS VOICE] Speaking: '{message}' (voice={self.jarvis_voice_name}, rate={rate} WPM)")
+
+        except Exception as e:
+            logger.error(f"Failed to speak with JARVIS voice: {e}")
 
     async def cleanup(self):
         """Cleanup resources"""
