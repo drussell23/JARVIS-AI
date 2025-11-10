@@ -4646,22 +4646,11 @@ if (typeof localStorage !== 'undefined') {
             url_conditions = " or ".join([f'(tabURL contains "{pattern}")' for pattern in jarvis_patterns])
 
             # AppleScript to close duplicate JARVIS tabs and reuse one
+            # Simpler, more reliable approach
+            pattern_list = '", "'.join(jarvis_patterns)
             applescript = f"""
-            on isJarvisTab(tabURL)
-                -- Check if URL matches any JARVIS patterns
-                set patterns to {{{", ".join([f'"{p}"' for p in jarvis_patterns])}}}
-                repeat with pattern in patterns
-                    if tabURL contains pattern then
-                        return true
-                    end if
-                end repeat
-                return false
-            end isJarvisTab
-
             tell application "System Events"
                 set browserList to {{}}
-                set totalClosed to 0
-                set foundBrowser to ""
 
                 -- Check which browsers are running
                 if exists process "Google Chrome" then set end of browserList to "Google Chrome"
@@ -4672,35 +4661,51 @@ if (typeof localStorage !== 'undefined') {
                 repeat with browserName in browserList
                     if browserName is "Google Chrome" then
                         tell application "Google Chrome"
+                            set jarvisPatterns to {{"{pattern_list}"}}
                             set foundFirst to false
+                            set totalClosed to 0
+
                             repeat with w in windows
-                                set tabsToDelete to {{}}
-                                repeat with i from 1 to count of tabs of w
+                                set tabsToClose to {{}}
+                                set tabCount to count of tabs of w
+
+                                repeat with i from 1 to tabCount
                                     set t to tab i of w
                                     set tabURL to URL of t
-                                    if my isJarvisTab(tabURL) then
+                                    set isJarvis to false
+
+                                    -- Check if this is a JARVIS tab
+                                    repeat with pattern in jarvisPatterns
+                                        if tabURL contains pattern then
+                                            set isJarvis to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+
+                                    if isJarvis then
                                         if not foundFirst then
-                                            -- Keep this one
+                                            -- Keep this one and update to target URL
                                             set foundFirst to true
-                                            set foundBrowser to "CHROME"
                                             set URL of t to "{url}"
                                             set active tab index of w to i
                                             set index of w to 1
                                         else
-                                            -- Mark for deletion
-                                            set end of tabsToDelete to i
+                                            -- Mark for closure
+                                            set end of tabsToClose to i
                                         end if
                                     end if
                                 end repeat
 
-                                -- Close tabs in reverse order to avoid index issues
-                                repeat with i from (count of tabsToDelete) to 1 by -1
-                                    try
-                                        set tabIndex to item i of tabsToDelete
-                                        close tab tabIndex of w
-                                        set totalClosed to totalClosed + 1
-                                    end try
-                                end repeat
+                                -- Close marked tabs in reverse order
+                                if (count of tabsToClose) > 0 then
+                                    repeat with i from (count of tabsToClose) to 1 by -1
+                                        try
+                                            set tabIndex to item i of tabsToClose
+                                            close tab tabIndex of w
+                                            set totalClosed to totalClosed + 1
+                                        end try
+                                    end repeat
+                                end if
                             end repeat
 
                             if foundFirst then
@@ -4711,35 +4716,47 @@ if (typeof localStorage !== 'undefined') {
 
                     else if browserName is "Safari" then
                         tell application "Safari"
+                            set jarvisPatterns to {{"{pattern_list}"}}
                             set foundFirst to false
+                            set totalClosed to 0
+
                             repeat with w in windows
-                                set tabsToDelete to {{}}
-                                repeat with i from 1 to count of tabs of w
+                                set tabsToClose to {{}}
+                                set tabCount to count of tabs of w
+
+                                repeat with i from 1 to tabCount
                                     set t to tab i of w
                                     set tabURL to URL of t
-                                    if my isJarvisTab(tabURL) then
+                                    set isJarvis to false
+
+                                    repeat with pattern in jarvisPatterns
+                                        if tabURL contains pattern then
+                                            set isJarvis to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+
+                                    if isJarvis then
                                         if not foundFirst then
-                                            -- Keep this one
                                             set foundFirst to true
-                                            set foundBrowser to "SAFARI"
                                             set URL of t to "{url}"
                                             set current tab of w to t
                                             set index of w to 1
                                         else
-                                            -- Mark for deletion
-                                            set end of tabsToDelete to i
+                                            set end of tabsToClose to i
                                         end if
                                     end if
                                 end repeat
 
-                                -- Close tabs in reverse order
-                                repeat with i from (count of tabsToDelete) to 1 by -1
-                                    try
-                                        set tabIndex to item i of tabsToDelete
-                                        close tab tabIndex of w
-                                        set totalClosed to totalClosed + 1
-                                    end try
-                                end repeat
+                                if (count of tabsToClose) > 0 then
+                                    repeat with i from (count of tabsToClose) to 1 by -1
+                                        try
+                                            set tabIndex to item i of tabsToClose
+                                            close tab tabIndex of w
+                                            set totalClosed to totalClosed + 1
+                                        end try
+                                    end repeat
+                                end if
                             end repeat
 
                             if foundFirst then
@@ -4750,34 +4767,46 @@ if (typeof localStorage !== 'undefined') {
 
                     else if browserName is "Arc" then
                         tell application "Arc"
+                            set jarvisPatterns to {{"{pattern_list}"}}
                             set foundFirst to false
+                            set totalClosed to 0
+
                             repeat with w in windows
-                                set tabsToDelete to {{}}
-                                repeat with i from 1 to count of tabs of w
+                                set tabsToClose to {{}}
+                                set tabCount to count of tabs of w
+
+                                repeat with i from 1 to tabCount
                                     set t to tab i of w
                                     set tabURL to URL of t
-                                    if my isJarvisTab(tabURL) then
+                                    set isJarvis to false
+
+                                    repeat with pattern in jarvisPatterns
+                                        if tabURL contains pattern then
+                                            set isJarvis to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+
+                                    if isJarvis then
                                         if not foundFirst then
-                                            -- Keep this one
                                             set foundFirst to true
-                                            set foundBrowser to "ARC"
                                             set URL of t to "{url}"
                                             set index of w to 1
                                         else
-                                            -- Mark for deletion
-                                            set end of tabsToDelete to i
+                                            set end of tabsToClose to i
                                         end if
                                     end if
                                 end repeat
 
-                                -- Close tabs in reverse order
-                                repeat with i from (count of tabsToDelete) to 1 by -1
-                                    try
-                                        set tabIndex to item i of tabsToDelete
-                                        close tab tabIndex of w
-                                        set totalClosed to totalClosed + 1
-                                    end try
-                                end repeat
+                                if (count of tabsToClose) > 0 then
+                                    repeat with i from (count of tabsToClose) to 1 by -1
+                                        try
+                                            set tabIndex to item i of tabsToClose
+                                            close tab tabIndex of w
+                                            set totalClosed to totalClosed + 1
+                                        end try
+                                    end repeat
+                                end if
                             end repeat
 
                             if foundFirst then
@@ -4787,46 +4816,46 @@ if (typeof localStorage !== 'undefined') {
                         end tell
                     end if
                 end repeat
+            end tell
 
-                -- If no tab was found, create a new one
-                if foundBrowser is "" then
-                    if (count of browserList) > 0 then
-                        set preferredBrowser to item 1 of browserList
-                        tell application preferredBrowser
-                            if preferredBrowser is "Google Chrome" then
-                                if (count of windows) = 0 then
-                                    make new window
-                                end if
-                                tell window 1
-                                    set newTab to make new tab with properties {{URL:"{url}"}}
-                                    set active tab index to index of newTab
-                                end tell
-                                activate
-                                return "NEW_TAB_CHROME:0"
-                            else if preferredBrowser is "Safari" then
-                                if (count of windows) = 0 then
-                                    make new document
-                                end if
-                                tell window 1
-                                    set current tab to make new tab with properties {{URL:"{url}"}}
-                                end tell
-                                activate
-                                return "NEW_TAB_SAFARI:0"
-                            else if preferredBrowser is "Arc" then
-                                if (count of windows) = 0 then
-                                    make new window
-                                end if
-                                tell window 1
-                                    make new tab with properties {{URL:"{url}"}}
-                                end tell
-                                activate
-                                return "NEW_TAB_ARC:0"
+            -- If no tab was found in any browser, create a new one
+            tell application "System Events"
+                if (count of browserList) > 0 then
+                    set preferredBrowser to item 1 of browserList
+                    tell application preferredBrowser
+                        if preferredBrowser is "Google Chrome" then
+                            if (count of windows) = 0 then
+                                make new window
                             end if
-                        end tell
-                    else
-                        open location "{url}"
-                        return "NEW_TAB_DEFAULT:0"
-                    end if
+                            tell window 1
+                                set newTab to make new tab with properties {{URL:"{url}"}}
+                                set active tab index to index of newTab
+                            end tell
+                            activate
+                            return "NEW_TAB_CHROME:0"
+                        else if preferredBrowser is "Safari" then
+                            if (count of windows) = 0 then
+                                make new document
+                            end if
+                            tell window 1
+                                set current tab to make new tab with properties {{URL:"{url}"}}
+                            end tell
+                            activate
+                            return "NEW_TAB_SAFARI:0"
+                        else if preferredBrowser is "Arc" then
+                            if (count of windows) = 0 then
+                                make new window
+                            end if
+                            tell window 1
+                                make new tab with properties {{URL:"{url}"}}
+                            end tell
+                            activate
+                            return "NEW_TAB_ARC:0"
+                        end if
+                    end tell
+                else
+                    open location "{url}"
+                    return "NEW_TAB_DEFAULT:0"
                 end if
             end tell
             """
@@ -7092,12 +7121,80 @@ async def main():
                 if server_ready:
                     print(f"{Colors.GREEN}   ✓ Loading server started on {loading_server_url}{Colors.ENDC}")
 
-                    # Open loading page immediately
-                    print(f"{Colors.CYAN}🌐 Opening loading page...{Colors.ENDC}")
+                    # Clean up existing JARVIS tabs and redirect to loading page
+                    print(f"{Colors.CYAN}🌐 Redirecting to loading page...{Colors.ENDC}")
                     try:
-                        subprocess.Popen(["open", loading_server_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        # Use AppleScript to close duplicate tabs and show loading page
+                        cleanup_script = """
+                        tell application "Google Chrome"
+                            set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "localhost:8001", "localhost:8888", "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010", "127.0.0.1:8001", "127.0.0.1:8888"}
+                            set foundFirst to false
+                            set totalClosed to 0
+
+                            repeat with w in windows
+                                set tabsToClose to {}
+                                set tabCount to count of tabs of w
+
+                                repeat with i from 1 to tabCount
+                                    set t to tab i of w
+                                    set tabURL to URL of t
+                                    set isJarvis to false
+
+                                    -- Check if this is a JARVIS tab
+                                    repeat with pattern in jarvisPatterns
+                                        if tabURL contains pattern then
+                                            set isJarvis to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+
+                                    if isJarvis then
+                                        if not foundFirst then
+                                            -- Keep this one and redirect to loading page
+                                            set foundFirst to true
+                                            set URL of t to "http://localhost:3001/"
+                                            set active tab index of w to i
+                                            set index of w to 1
+                                        else
+                                            -- Mark for closure
+                                            set end of tabsToClose to i
+                                        end if
+                                    end if
+                                end repeat
+
+                                -- Close marked tabs in reverse order
+                                if (count of tabsToClose) > 0 then
+                                    repeat with i from (count of tabsToClose) to 1 by -1
+                                        try
+                                            set tabIndex to item i of tabsToClose
+                                            close tab tabIndex of w
+                                            set totalClosed to totalClosed + 1
+                                        end try
+                                    end repeat
+                                end if
+                            end repeat
+
+                            -- If no JARVIS tab was found, create one
+                            if not foundFirst then
+                                if (count of windows) = 0 then
+                                    make new window
+                                end if
+                                tell window 1
+                                    set newTab to make new tab with properties {URL:"http://localhost:3001/"}
+                                    set active tab index to index of newTab
+                                end tell
+                            end if
+
+                            activate
+                        end tell
+                        """
+                        subprocess.run(["osascript", "-e", cleanup_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
                     except:
-                        print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
+                        # Fallback to simple open if AppleScript fails
+                        try:
+                            subprocess.Popen(["open", loading_server_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except:
+                            print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  Loading server health check failed (server may still be starting){Colors.ENDC}")
                     print(f"{Colors.CYAN}   ℹ️  If needed, manually open: {loading_server_url}{Colors.ENDC}")
