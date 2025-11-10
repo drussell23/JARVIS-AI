@@ -45,9 +45,11 @@ class VoiceUnlockIntegration:
         self.learning_db = None
         self.initialized = False
 
-        # Configuration
-        self.unlock_confidence_threshold = 0.45  # Adjusted for real-world conditions (was 0.85)
-        self.general_confidence_threshold = 0.40  # For general speaker identification (was 0.75)
+        # Configuration - these are now base thresholds, actual will be adaptive
+        self.base_unlock_threshold = 0.45  # Base threshold, adaptive system will adjust
+        self.base_general_threshold = 0.40  # For general speaker identification
+        self.min_unlock_threshold = 0.25  # Minimum threshold (safety floor)
+        self.use_adaptive_thresholds = True  # Enable adaptive threshold system
 
         # Statistics
         self.stats = {
@@ -124,16 +126,21 @@ class VoiceUnlockIntegration:
             confidence = result["confidence"]
             speaker_id = result.get("speaker_id")
 
+            # Get adaptive threshold if available
+            adaptive_threshold = result.get("adaptive_threshold", self.base_unlock_threshold)
+
             logger.info(
                 f"🔐 Verification result: {speaker_name}, "
-                f"Confidence: {confidence:.2%}, Verified: {is_verified}"
+                f"Confidence: {confidence:.2%}, Verified: {is_verified}, "
+                f"Threshold: {adaptive_threshold:.2%}"
             )
 
             # Step 3: Check confidence threshold for unlock
-            if confidence < self.unlock_confidence_threshold:
+            unlock_threshold = adaptive_threshold if self.use_adaptive_thresholds else self.base_unlock_threshold
+
+            if confidence < unlock_threshold:
                 logger.warning(
-                    f"❌ Confidence too low for unlock: {confidence:.2%} < "
-                    f"{self.unlock_confidence_threshold:.2%}"
+                    f"❌ Confidence too low for unlock: {confidence:.2%} < {unlock_threshold:.2%}"
                 )
                 self.stats["rejected_low_confidence"] += 1
 
@@ -146,7 +153,22 @@ class VoiceUnlockIntegration:
                     command_text=command_text,
                 )
 
-                return False, f"Voice verification confidence too low: {confidence:.2%}", confidence
+                # Provide helpful message based on confidence level
+                if confidence < 0.10:
+                    suggestion = result.get("suggestion", "")
+                    message = (
+                        f"Voice verification failed (confidence: {confidence:.2%}). "
+                        f"{suggestion}. Try speaking more clearly or re-enroll your voice profile."
+                    )
+                elif confidence < 0.30:
+                    message = (
+                        f"Voice verification failed (confidence: {confidence:.2%}). "
+                        f"The system is learning your voice patterns. Please try again."
+                    )
+                else:
+                    message = f"Voice verification failed (confidence: {confidence:.2%}). Please try again."
+
+                return False, message, confidence
 
             if not is_verified:
                 logger.warning(f"❌ Speaker not verified: {speaker_name}")

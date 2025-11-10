@@ -13,6 +13,7 @@ Features:
 import asyncio
 import logging
 import threading
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -111,6 +112,11 @@ class SpeakerVerificationService:
         self._encoder_preloaded = False
         self._shutdown_event = threading.Event()  # For clean thread shutdown
         self._preload_loop = None  # Track event loop for cleanup
+
+        # Adaptive learning tracking
+        self.verification_history = {}  # Track verification attempts per speaker
+        self.learning_enabled = True
+        self.min_samples_for_update = 3  # Minimum attempts before adapting threshold
 
     async def initialize_fast(self):
         """
@@ -416,7 +422,7 @@ class SpeakerVerificationService:
 
     async def verify_speaker(self, audio_data: bytes, speaker_name: Optional[str] = None) -> dict:
         """
-        Verify speaker from audio
+        Verify speaker from audio with adaptive learning
 
         Args:
             audio_data: Audio bytes (WAV format)
@@ -429,6 +435,7 @@ class SpeakerVerificationService:
                 - speaker_name: str
                 - is_owner: bool
                 - security_level: str
+                - adaptive_threshold: float (current dynamic threshold)
         """
         if not self.initialized:
             await self.initialize()
@@ -438,20 +445,33 @@ class SpeakerVerificationService:
             if speaker_name and speaker_name in self.speaker_profiles:
                 profile = self.speaker_profiles[speaker_name]
                 known_embedding = profile["embedding"]
-                profile_threshold = profile.get("threshold", self.verification_threshold)
+
+                # Get adaptive threshold based on history
+                adaptive_threshold = await self._get_adaptive_threshold(speaker_name, profile)
 
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
-                    audio_data, known_embedding, threshold=profile_threshold
+                    audio_data, known_embedding, threshold=adaptive_threshold
                 )
 
-                return {
+                # Learn from this attempt
+                await self._record_verification_attempt(speaker_name, confidence, is_verified)
+
+                result = {
                     "verified": is_verified,
                     "confidence": confidence,
                     "speaker_name": speaker_name,
                     "speaker_id": profile["speaker_id"],
                     "is_owner": profile["is_primary_user"],
                     "security_level": profile["security_level"],
+                    "adaptive_threshold": adaptive_threshold,
                 }
+
+                # If confidence is very low, suggest re-enrollment
+                if confidence < 0.10:
+                    result["suggestion"] = "Voice profile may need re-enrollment"
+                    logger.warning(f"⚠️ Very low confidence ({confidence:.2%}) for {speaker_name} - consider re-enrollment")
+
+                return result
 
             # Otherwise, identify speaker from all profiles
             best_match = None
@@ -536,6 +556,110 @@ class SpeakerVerificationService:
         logger.info("🔄 Refreshing speaker profiles...")
         self.speaker_profiles.clear()
         await self._load_speaker_profiles()
+
+    async def _get_adaptive_threshold(self, speaker_name: str, profile: dict) -> float:
+        """
+        Calculate adaptive threshold based on verification history
+
+        Args:
+            speaker_name: Name of speaker
+            profile: Speaker profile dict
+
+        Returns:
+            Adaptive threshold value
+        """
+        base_threshold = profile.get("threshold", self.verification_threshold)
+
+        # If no history, use base threshold
+        if speaker_name not in self.verification_history:
+            return base_threshold
+
+        history = self.verification_history[speaker_name]
+        attempts = history.get("attempts", [])
+
+        # Need minimum samples for adaptation
+        if len(attempts) < self.min_samples_for_update:
+            return base_threshold
+
+        # Calculate average confidence from recent successful attempts
+        recent_attempts = attempts[-10:]  # Last 10 attempts
+        successful_confidences = [a["confidence"] for a in recent_attempts if a.get("verified", False)]
+
+        if not successful_confidences:
+            # No successful attempts recently - lower threshold to allow verification
+            avg_confidence = sum(a["confidence"] for a in recent_attempts) / len(recent_attempts)
+            if avg_confidence > 0.20:
+                # There's some similarity, lower threshold
+                adaptive_threshold = max(0.25, avg_confidence * 0.8)
+                logger.info(f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} (lowered from {base_threshold:.2%})")
+                return adaptive_threshold
+            return base_threshold
+
+        # Calculate statistics
+        avg_confidence = sum(successful_confidences) / len(successful_confidences)
+        min_confidence = min(successful_confidences)
+
+        # Set threshold slightly below minimum successful confidence
+        # This allows for natural variation in voice
+        adaptive_threshold = max(0.25, min(base_threshold, min_confidence * 0.90))
+
+        logger.info(
+            f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} "
+            f"(base: {base_threshold:.2%}, avg: {avg_confidence:.2%}, min: {min_confidence:.2%})"
+        )
+
+        return adaptive_threshold
+
+    async def _record_verification_attempt(self, speaker_name: str, confidence: float, verified: bool):
+        """
+        Record verification attempt for adaptive learning
+
+        Args:
+            speaker_name: Name of speaker
+            confidence: Confidence score
+            verified: Whether verification succeeded
+        """
+        if not self.learning_enabled:
+            return
+
+        # Initialize history for this speaker
+        if speaker_name not in self.verification_history:
+            self.verification_history[speaker_name] = {
+                "attempts": [],
+                "total_attempts": 0,
+                "successful_attempts": 0,
+                "failed_attempts": 0,
+            }
+
+        history = self.verification_history[speaker_name]
+
+        # Record attempt
+        attempt = {
+            "timestamp": datetime.now().isoformat(),
+            "confidence": confidence,
+            "verified": verified,
+        }
+
+        history["attempts"].append(attempt)
+        history["total_attempts"] += 1
+
+        if verified:
+            history["successful_attempts"] += 1
+        else:
+            history["failed_attempts"] += 1
+
+        # Keep only recent attempts (last 50)
+        if len(history["attempts"]) > 50:
+            history["attempts"] = history["attempts"][-50:]
+
+        # Log learning progress
+        if history["total_attempts"] % 5 == 0:
+            success_rate = history["successful_attempts"] / history["total_attempts"] * 100
+            logger.info(
+                f"📚 Learning progress for {speaker_name}: "
+                f"{history['total_attempts']} attempts, "
+                f"{success_rate:.1f}% success rate"
+            )
 
     async def cleanup(self):
         """Cleanup resources and terminate background threads"""
