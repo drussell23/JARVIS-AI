@@ -118,6 +118,10 @@ class SpeakerVerificationService:
         self.learning_enabled = True
         self.min_samples_for_update = 3  # Minimum attempts before adapting threshold
 
+        # Dynamic embedding dimension detection
+        self.current_model_dimension = None  # Will be detected automatically
+        self.supported_dimensions = [192, 768, 96]  # Common embedding dimensions
+
     async def initialize_fast(self):
         """
         Fast initialization with background encoder pre-loading.
@@ -261,16 +265,136 @@ class SpeakerVerificationService:
             f"✅ Speaker Verification Service ready ({len(self.speaker_profiles)} profiles loaded)"
         )
 
+    async def _detect_current_model_dimension(self):
+        """
+        Detect the current model's embedding dimension dynamically.
+        Makes system adaptive to any model without hardcoding dimensions.
+        """
+        if self.current_model_dimension is not None:
+            return self.current_model_dimension
+
+        try:
+            logger.info("🔍 Detecting current model embedding dimension...")
+
+            # Create realistic test audio (pink noise for better model response)
+            # Pink noise has more speech-like frequency distribution than white noise
+            duration = 1.0  # 1 second
+            sample_rate = 16000
+            num_samples = int(duration * sample_rate)
+
+            # Generate pink noise (1/f spectrum)
+            white_noise = np.random.randn(num_samples).astype(np.float32)
+            # Apply simple 1/f filter
+            fft = np.fft.rfft(white_noise)
+            frequencies = np.fft.rfftfreq(num_samples, 1/sample_rate)
+            # Avoid division by zero
+            pink_filter = 1 / np.sqrt(frequencies + 1)
+            fft_filtered = fft * pink_filter
+            pink_noise = np.fft.irfft(fft_filtered, num_samples).astype(np.float32)
+
+            # Normalize to prevent clipping
+            pink_noise = pink_noise / np.max(np.abs(pink_noise)) * 0.3
+
+            # Convert to bytes
+            test_audio_bytes = (pink_noise * 32767).astype(np.int16).tobytes()
+
+            # Extract test embedding
+            test_embedding = await self.speechbrain_engine.extract_speaker_embedding(test_audio_bytes)
+            self.current_model_dimension = test_embedding.shape[0]
+
+            logger.info(f"✅ Current model dimension: {self.current_model_dimension}D")
+
+            # Validate dimension is reasonable
+            if self.current_model_dimension < 10:
+                logger.warning(f"⚠️  Detected dimension ({self.current_model_dimension}D) seems too small, using fallback")
+                self.current_model_dimension = 192
+
+            return self.current_model_dimension
+
+        except Exception as e:
+            logger.error(f"❌ Failed to detect model dimension: {e}", exc_info=True)
+            self.current_model_dimension = 192  # Fallback
+            logger.warning(f"⚠️  Using fallback dimension: {self.current_model_dimension}D")
+            return self.current_model_dimension
+
+    def _select_best_profile_for_speaker(self, profiles_for_speaker: list) -> dict:
+        """
+        Intelligently select best profile when duplicates exist.
+
+        Prioritizes:
+        1. Native dimension matching current model (100 pts)
+        2. Higher total_samples (up to 50 pts)
+        3. Primary user status (30 pts)
+        4. Security level (up to 20 pts)
+        """
+        if len(profiles_for_speaker) == 1:
+            return profiles_for_speaker[0]
+
+        logger.info(f"🔍 Found {len(profiles_for_speaker)} profiles, selecting best...")
+
+        scored_profiles = []
+        for profile in profiles_for_speaker:
+            score = 0
+            embedding_bytes = profile.get("voiceprint_embedding")
+            if not embedding_bytes:
+                continue
+
+            try:
+                embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                dimension = embedding.shape[0]
+
+                # Dimension match - highest priority
+                if dimension == self.current_model_dimension:
+                    score += 100
+                    logger.info(f"   ✓ {profile.get('speaker_name')} matches dimension ({dimension}D)")
+                else:
+                    score -= 50
+                    logger.info(f"   ✗ {profile.get('speaker_name')} dimension mismatch ({dimension}D vs {self.current_model_dimension}D)")
+
+                # Total samples
+                total_samples = profile.get("total_samples", 0)
+                score += min(50, total_samples // 2)
+
+                # Primary user
+                if profile.get("is_primary_user", False):
+                    score += 30
+
+                # Security level
+                security = profile.get("security_level", "standard")
+                if security == "admin":
+                    score += 20
+                elif security == "high":
+                    score += 15
+
+                scored_profiles.append((score, profile, dimension))
+
+            except Exception as e:
+                logger.warning(f"⚠️  Error scoring profile: {e}")
+                continue
+
+        if not scored_profiles:
+            return profiles_for_speaker[0]
+
+        scored_profiles.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_profile, best_dim = scored_profiles[0]
+
+        logger.info(
+            f"✅ Selected: {best_profile.get('speaker_name')} "
+            f"(score: {best_score}, {best_dim}D, {best_profile.get('total_samples', 0)} samples)"
+        )
+
+        return best_profile
+
     async def _load_speaker_profiles(self):
         """
-        Load speaker profiles from learning database with enhanced error handling and validation.
+        Load speaker profiles with intelligent duplicate handling.
 
-        This method:
-        1. Retrieves all speaker profiles from the database
-        2. Validates and deserializes voiceprint embeddings
-        3. Assesses profile quality (excellent/good/fair/legacy)
-        4. Sets adaptive verification thresholds
-        5. Provides detailed diagnostics if profiles are missing
+        Enhanced features:
+        1. Auto-detects current model dimension
+        2. Groups profiles by speaker name
+        3. Selects best profile per speaker
+        4. Validates embeddings
+        5. Sets adaptive thresholds
         """
         loaded_count = 0
         skipped_count = 0
@@ -284,37 +408,38 @@ class SpeakerVerificationService:
 
             # Verify database connection
             if not self.learning_db or not self.learning_db._initialized:
-                logger.error("❌ Learning database not initialized - cannot load speaker profiles")
+                logger.error("❌ Learning database not initialized")
                 raise RuntimeError("Learning database not initialized")
 
+            # Detect current model dimension
+            await self._detect_current_model_dimension()
+
             profiles = await self.learning_db.get_all_speaker_profiles()
-            logger.info(f"📊 Found {len(profiles)} speaker profiles in database")
+            logger.info(f"📊 Found {len(profiles)} profile(s) in database")
 
-            # If no profiles found, provide helpful diagnostic information
-            if len(profiles) == 0:
-                logger.warning("⚠️ No speaker profiles found in database!")
-                logger.info("💡 To create a speaker profile, use voice commands like:")
-                logger.info("   - 'Learn my voice as Derek'")
-                logger.info("   - 'Create speaker profile for Derek'")
-                logger.info("   - Or run the voice enrollment workflow")
-
-                # Check if database table exists
-                try:
-                    async with self.learning_db.db.cursor() as cursor:
-                        # Try to describe the table
-                        await cursor.execute(
-                            "SELECT COUNT(*) as count FROM speaker_profiles"
-                        )
-                        result = await cursor.fetchone()
-                        logger.info(f"✅ speaker_profiles table exists (row count: {result['count'] if result else 0})")
-                except Exception as table_error:
-                    logger.error(f"❌ speaker_profiles table may not exist or is inaccessible: {table_error}")
-                    logger.info("💡 Run database migrations to create the speaker_profiles table")
-
+            # Group profiles by speaker name
+            profiles_by_speaker = {}
             for profile in profiles:
+                speaker_name = profile.get("speaker_name")
+                if speaker_name:
+                    if speaker_name not in profiles_by_speaker:
+                        profiles_by_speaker[speaker_name] = []
+                    profiles_by_speaker[speaker_name].append(profile)
+
+            logger.info(f"📊 Found {len(profiles_by_speaker)} unique speaker(s)")
+
+            # Process each speaker
+            for speaker_name, speaker_profiles in profiles_by_speaker.items():
                 try:
+                    # Select best profile if duplicates
+                    if len(speaker_profiles) > 1:
+                        logger.info(f"⚠️  {len(speaker_profiles)} profiles for {speaker_name}, selecting best...")
+                        profile = self._select_best_profile_for_speaker(speaker_profiles)
+                    else:
+                        profile = speaker_profiles[0]
+
+                    # Process the selected profile
                     speaker_id = profile.get("speaker_id")
-                    speaker_name = profile.get("speaker_name")
 
                     # Validate required fields
                     if not speaker_id or not speaker_name:
@@ -343,27 +468,25 @@ class SpeakerVerificationService:
                         skipped_count += 1
                         continue
 
-                    # Assess profile quality based on embedding dimension
-                    # Current ECAPA-TDNN uses 192 dimensions
-                    is_native = embedding.shape[0] == 192 # Native profile if 192D embedding matches encoder dimension (192D)
-                    total_samples = profile.get("total_samples", 0) # Total audio samples used for profile creation
+                    # Assess profile quality - NOW DYNAMIC!
+                    is_native = embedding.shape[0] == self.current_model_dimension
+                    total_samples = profile.get("total_samples", 0)
 
-                    # Determine quality and threshold based on samples and native status
-                    # Adaptive thresholds based on profile quality and real-world performance
+                    # Determine quality and threshold
                     if is_native and total_samples >= 100:
-                        quality = "excellent" # High-quality native profile
-                        threshold = self.verification_threshold  # 0.45
+                        quality = "excellent"
+                        threshold = self.verification_threshold
                     elif is_native and total_samples >= 50:
-                        quality = "good" # Medium-quality native profile
-                        threshold = self.verification_threshold  # 0.45
+                        quality = "good"
+                        threshold = self.verification_threshold
                     elif total_samples >= 50:
-                        quality = "fair" # Medium-quality legacy profile
-                        threshold = self.legacy_threshold  # 0.40
+                        quality = "fair"
+                        threshold = self.legacy_threshold
                     else:
-                        quality = "legacy" # Low-quality legacy profile
-                        threshold = self.legacy_threshold  # 0.40
+                        quality = "legacy"
+                        threshold = self.legacy_threshold
 
-                    # Store profile in cache and quality scores for adaptive thresholding and verification
+                    # Store profile
                     self.speaker_profiles[speaker_name] = {
                         "speaker_id": speaker_id,
                         "embedding": embedding,
@@ -376,7 +499,6 @@ class SpeakerVerificationService:
                         "threshold": threshold,
                     }
 
-                    # Store quality score for adaptive threshold
                     self.profile_quality_scores[speaker_name] = {
                         "is_native": is_native,
                         "quality": quality,
@@ -385,17 +507,24 @@ class SpeakerVerificationService:
                     }
 
                     logger.info(
-                        f"✅ Loaded speaker profile: {speaker_name} "
+                        f"✅ Loaded: {speaker_name} "
                         f"(ID: {speaker_id}, Primary: {profile.get('is_primary_user', False)}, "
-                        f"Embedding: {embedding.shape[0]}D, Quality: {quality}, "
+                        f"{embedding.shape[0]}D, Quality: {quality}, "
                         f"Threshold: {threshold*100:.0f}%, Samples: {total_samples})"
                     )
                     loaded_count += 1
 
                 except Exception as profile_error:
-                    logger.error(f"❌ Error loading profile {profile.get('speaker_name', 'unknown')}: {profile_error}")
+                    logger.error(f"❌ Error loading profile {speaker_name}: {profile_error}")
                     skipped_count += 1
                     continue
+
+            # If no profiles found, provide diagnostics
+            if len(profiles) == 0:
+                logger.warning("⚠️ No speaker profiles found in database!")
+                logger.info("💡 To create a speaker profile, use voice commands like:")
+                logger.info("   - 'Learn my voice as Derek'")
+                logger.info("   - 'Create speaker profile for Derek'")
 
             # Summary
             logger.info(
