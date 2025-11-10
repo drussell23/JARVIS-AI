@@ -459,7 +459,7 @@ class SpeakerVerificationService:
             return avg_embedding
 
         except Exception as e:
-            logger.error(f"Failed to reconstruct embedding: {e}")
+            logger.error(f"Failed to reconstruct embedding for {speaker_name}: {type(e).__name__}: {e}", exc_info=True)
             return None
 
     async def _create_multi_model_profile(self, profile: dict, speaker_name: str) -> dict:

@@ -2937,6 +2937,57 @@ class JARVISLearningDatabase:
             logger.error(f"Failed to record voice sample: {e}")
             return -1
 
+    async def get_voice_samples_for_speaker(self, speaker_id: int, limit: int = 10) -> list:
+        """
+        Retrieve stored voice samples for a speaker.
+
+        Args:
+            speaker_id: Database ID of the speaker
+            limit: Maximum number of samples to retrieve
+
+        Returns:
+            List of sample dictionaries with audio_data and metadata
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT audio_hash, mfcc_features, duration_ms, transcription,
+                           pitch_mean, pitch_std, energy_mean, recording_timestamp,
+                           quality_score
+                    FROM voice_samples
+                    WHERE speaker_id = ?
+                    ORDER BY quality_score DESC, recording_timestamp DESC
+                    LIMIT ?
+                    """,
+                    (speaker_id, limit),
+                )
+
+                rows = await cursor.fetchall()
+
+                # Note: The actual audio_data is not stored, only features
+                # Return feature data that can be used for analysis
+                samples = []
+                for row in rows:
+                    samples.append({
+                        "audio_hash": row[0],
+                        "mfcc_features": row[1],
+                        "duration_ms": row[2],
+                        "transcription": row[3],
+                        "pitch_mean": row[4],
+                        "pitch_std": row[5],
+                        "energy_mean": row[6],
+                        "recording_timestamp": row[7],
+                        "quality_score": row[8],
+                        "audio_data": None  # Raw audio not stored
+                    })
+
+                return samples
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve voice samples for speaker {speaker_id}: {e}")
+            return []
+
     async def record_query_retry(
         self,
         original_transcription_id: int,
