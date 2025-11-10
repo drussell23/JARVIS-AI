@@ -136,17 +136,61 @@ class CloudDatabaseAdapter:
         else:
             await self._init_sqlite()
 
+    async def _ensure_proxy_running(self):
+        """Ensure Cloud SQL proxy is running, start it if not"""
+        import asyncio
+        import socket
+
+        # Check if proxy port is already listening
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex((self.config.db_host, self.config.db_port))
+            sock.close()
+
+            if result == 0:
+                logger.info(f"✅ Cloud SQL proxy already running on port {self.config.db_port}")
+                return True
+        except Exception as e:
+            logger.debug(f"Port check failed: {e}")
+
+        # Proxy not running, try to start it
+        logger.warning(f"⚠️  Cloud SQL proxy not detected on port {self.config.db_port}")
+        logger.info(f"🚀 Attempting to start Cloud SQL proxy...")
+
+        try:
+            from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
+
+            proxy_manager = CloudSQLProxyManager()
+            started = await proxy_manager.start(force_restart=False)
+
+            if started:
+                logger.info(f"✅ Cloud SQL proxy started successfully")
+                # Wait a moment for proxy to be fully ready
+                await asyncio.sleep(2)
+                return True
+            else:
+                logger.error(f"❌ Failed to start Cloud SQL proxy")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error starting Cloud SQL proxy: {e}", exc_info=True)
+            return False
+
     async def _init_sqlite(self):
         """Initialize local SQLite connection"""
         self.config.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info(f"📂 Using local SQLite: {self.config.sqlite_path}")
 
     async def _init_cloud_sql(self):
-        """Initialize Cloud SQL connection pool with timeout protection"""
+        """Initialize Cloud SQL connection pool with timeout protection and auto-start proxy"""
         import asyncio
 
         try:
             logger.info(f"☁️  Connecting to Cloud SQL: {self.config.connection_name}")
+
+            # ROBUSTNESS: Ensure Cloud SQL proxy is running before attempting connection
+            await self._ensure_proxy_running()
 
             # Use direct connection via Cloud SQL Proxy (simpler and no event loop issues)
             # Cloud SQL Proxy must be running locally: ~/.local/bin/cloud-sql-proxy <connection-name>
