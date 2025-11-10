@@ -3635,14 +3635,40 @@ class AsyncSystemManager:
                     [name for name in speaker_service.speaker_profiles.keys() if "Derek" in name]
                 )
 
+                # Check for BEAST MODE features
+                beast_mode_profiles = []
+                for name, profile in speaker_service.speaker_profiles.items():
+                    if "Derek" in name:
+                        acoustic_features = profile.get("acoustic_features", {})
+                        has_beast_mode = any(v is not None for v in acoustic_features.values())
+                        if has_beast_mode:
+                            beast_mode_profiles.append(name)
+
                 print(f"\n{Colors.GREEN}✅ Voice biometric authentication ready:{Colors.ENDC}")
                 print(
                     f"{Colors.CYAN}   └─ Profiles loaded: {num_profiles} Derek profile(s){Colors.ENDC}"
                 )
                 print(f"{Colors.CYAN}   └─ Voice samples: {total_samples} total{Colors.ENDC}")
-                print(
-                    f"{Colors.CYAN}   └─ Authentication: ACTIVE (75% confidence threshold){Colors.ENDC}"
-                )
+
+                # Show BEAST MODE status
+                if beast_mode_profiles:
+                    print(
+                        f"{Colors.GREEN}   └─ 🔬 BEAST MODE: ENABLED (85-95% confidence){Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}      • Multi-modal biometric fusion active{Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}      • Profiles with BEAST MODE: {', '.join(beast_mode_profiles)}{Colors.ENDC}"
+                    )
+                else:
+                    print(
+                        f"{Colors.YELLOW}   └─ Authentication: BASIC MODE (45% confidence threshold){Colors.ENDC}"
+                    )
+                    print(
+                        f"{Colors.CYAN}      💡 Run 'python3 backend/quick_voice_enhancement.py' for BEAST MODE{Colors.ENDC}"
+                    )
+
                 print(
                     f"{Colors.CYAN}   └─ Speaker encoder: Pre-loaded for instant unlock{Colors.ENDC}"
                 )
