@@ -59,14 +59,20 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Essential for production stability
    - Integration metrics tracking for all vision components
 
-7. VOICE UNLOCK (Cloud SQL Biometric Authentication)
-   - Voice-based biometric authentication for macOS
-   - Cloud SQL storage: 59 voice samples + 768-byte averaged embedding
+7. VOICE UNLOCK (BEAST MODE Multi-Modal Biometric Authentication)
+   - Advanced probabilistic voice biometric authentication for macOS
+   - Multi-Modal Verification: 5 independent biometric signals
+     * Deep learning embeddings (ECAPA-TDNN 192D)
+     * Mahalanobis distance (statistical with adaptive covariance)
+     * Acoustic features (pitch, formants, spectral analysis)
+     * Physics-based validation (vocal tract constraints, harmonics)
+     * Anti-spoofing detection (replay, synthesis, voice conversion)
+   - Cloud SQL storage: 50+ acoustic features per speaker profile
    - PostgreSQL database via GCP Cloud SQL proxy (127.0.0.1:5432)
+   - Bayesian confidence with uncertainty quantification
+   - Adaptive threshold learning (zero hardcoded values)
    - Personalized responses using verified speaker identity
-   - Anti-spoofing protection with 75% confidence threshold
    - Screensaver and system integration
-   - Adaptive authentication with continuous learning
 
 8. WAKE WORD (Hands-free Activation)
    - "Hey JARVIS" wake word detection

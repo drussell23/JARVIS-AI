@@ -37,7 +37,7 @@ async def main():
         if profile:
             speaker_name = profile['speaker_name'] if isinstance(profile, dict) else profile[1]
             total_samples_prof = profile['total_samples'] if isinstance(profile, dict) else profile[4]
-            confidence = profile['confidence_score'] if isinstance(profile, dict) else profile[6]
+            confidence = profile.get('recognition_confidence', profile.get('confidence_score', 0.0)) if isinstance(profile, dict) else profile[6]
 
             print(f"\n👤 Speaker: {speaker_name}")
             print(f"   ID: 1")
