@@ -1003,7 +1003,8 @@ class SpeakerVerificationService:
                 logger.info(f"🔍 DEBUG: Adaptive threshold: {adaptive_threshold:.2%}")
 
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
-                    audio_data, known_embedding, threshold=adaptive_threshold
+                    audio_data, known_embedding, threshold=adaptive_threshold,
+                    speaker_name=speaker_name, transcription=""
                 )
 
                 logger.info(f"🔍 DEBUG: Verification result - Confidence: {confidence:.2%}, Verified: {is_verified}")
@@ -1036,7 +1037,8 @@ class SpeakerVerificationService:
                 known_embedding = profile["embedding"]
                 profile_threshold = profile.get("threshold", self.verification_threshold)
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
-                    audio_data, known_embedding, threshold=profile_threshold
+                    audio_data, known_embedding, threshold=profile_threshold,
+                    speaker_name=profile_name, transcription=""
                 )
 
                 if confidence > best_confidence:
