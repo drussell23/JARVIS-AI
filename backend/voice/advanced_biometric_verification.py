@@ -550,13 +550,19 @@ class AdvancedBiometricVerifier:
         if context and 'audio_quality' in context:
             quality = context['audio_quality']
 
-            # Check if quality is suspiciously perfect (pre-recorded)
-            if quality.get('snr_db', 0) > 50:
-                spoofing_indicators.append(("perfect_quality", 0.3))
+            # Handle both float and dict quality values
+            if isinstance(quality, dict):
+                # Check if quality is suspiciously perfect (pre-recorded)
+                if quality.get('snr_db', 0) > 50:
+                    spoofing_indicators.append(("perfect_quality", 0.3))
 
-            # Check for missing background noise (replay)
-            if quality.get('background_noise', 0) < 0.001:
-                spoofing_indicators.append(("no_background", 0.2))
+                # Check for missing background noise (replay)
+                if quality.get('background_noise', 0) < 0.001:
+                    spoofing_indicators.append(("no_background", 0.2))
+            elif isinstance(quality, (int, float)):
+                # Simple quality score - check if suspiciously high
+                if quality > 0.95:
+                    spoofing_indicators.append(("perfect_quality", 0.2))
 
         # 2. Synthesis detection (unnatural prosody/artifacts)
         # Check for too-consistent pitch (synthesized voices are often too stable)

@@ -1761,7 +1761,7 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info(f"   Decision: {'✅ VERIFIED' if result.verified else '❌ REJECTED'}")
             logger.info(f"   Confidence: {result.confidence:.1%} ({result.confidence:.4f})")
             logger.info(f"   Uncertainty: ±{result.uncertainty:.1%}")
-            logger.info(f"   Threshold: {result.threshold_used:.1%} (adaptive)")
+            logger.info(f"   Threshold: {getattr(result, 'threshold_used', threshold):.1%} (adaptive)")
             logger.info(f"\n   📊 Component Scores:")
             logger.info(f"      Embedding similarity: {result.embedding_similarity:.1%}")
             logger.info(f"      Mahalanobis distance: {result.mahalanobis_distance:.3f}")
