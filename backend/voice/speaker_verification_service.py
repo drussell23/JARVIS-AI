@@ -435,7 +435,19 @@ class SpeakerVerificationService:
 
             # Extract embeddings from each sample using current model
             embeddings = []
-            for sample in samples[:10]:  # Use up to 10 samples
+            samples_with_audio = [s for s in samples[:10] if s.get("audio_data")]
+
+            if not samples_with_audio:
+                logger.warning(
+                    f"No audio_data found in voice samples for {speaker_name}. "
+                    f"This is expected for profiles created before audio storage was enabled. "
+                    f"Will use fallback migration methods (padding/truncation)."
+                )
+                return None
+
+            logger.info(f"Found {len(samples_with_audio)} samples with audio data")
+
+            for sample in samples_with_audio:
                 try:
                     audio_data = sample.get("audio_data")
                     if audio_data:

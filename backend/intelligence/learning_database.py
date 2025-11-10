@@ -1865,6 +1865,7 @@ class JARVISLearningDatabase:
                     {auto_increment('sample_id')},
                     speaker_id INTEGER NOT NULL,
                     audio_hash TEXT NOT NULL,
+                    audio_data {blob_type()},
                     audio_fingerprint {blob_type()},
                     mfcc_features {blob_type()},
                     duration_ms REAL NOT NULL,
@@ -2893,13 +2894,14 @@ class JARVISLearningDatabase:
                 await cursor.execute(
                     """
                     INSERT INTO voice_samples
-                    (speaker_id, audio_hash, mfcc_features, duration_ms, transcription,
+                    (speaker_id, audio_hash, audio_data, mfcc_features, duration_ms, transcription,
                      pitch_mean, pitch_std, energy_mean, recording_timestamp, quality_score)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         speaker_id,
                         audio_hash,
+                        audio_data,  # Store raw audio for embedding reconstruction
                         mfcc_features,
                         audio_duration_ms,
                         transcription,
@@ -2952,7 +2954,7 @@ class JARVISLearningDatabase:
             async with self.db.cursor() as cursor:
                 await cursor.execute(
                     """
-                    SELECT audio_hash, mfcc_features, duration_ms, transcription,
+                    SELECT audio_hash, audio_data, mfcc_features, duration_ms, transcription,
                            pitch_mean, pitch_std, energy_mean, recording_timestamp,
                            quality_score
                     FROM voice_samples
@@ -2965,23 +2967,23 @@ class JARVISLearningDatabase:
 
                 rows = await cursor.fetchall()
 
-                # Note: The actual audio_data is not stored, only features
-                # Return feature data that can be used for analysis
+                # Return samples with raw audio data for embedding reconstruction
                 samples = []
                 for row in rows:
                     samples.append({
                         "audio_hash": row[0],
-                        "mfcc_features": row[1],
-                        "duration_ms": row[2],
-                        "transcription": row[3],
-                        "pitch_mean": row[4],
-                        "pitch_std": row[5],
-                        "energy_mean": row[6],
-                        "recording_timestamp": row[7],
-                        "quality_score": row[8],
-                        "audio_data": None  # Raw audio not stored
+                        "audio_data": row[1],  # Raw audio bytes for reconstruction
+                        "mfcc_features": row[2],
+                        "duration_ms": row[3],
+                        "transcription": row[4],
+                        "pitch_mean": row[5],
+                        "pitch_std": row[6],
+                        "energy_mean": row[7],
+                        "recording_timestamp": row[8],
+                        "quality_score": row[9],
                     })
 
+                logger.debug(f"Retrieved {len(samples)} voice samples for speaker {speaker_id}")
                 return samples
 
         except Exception as e:
