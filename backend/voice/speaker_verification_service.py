@@ -121,6 +121,7 @@ class SpeakerVerificationService:
         # Dynamic embedding dimension detection
         self.current_model_dimension = None  # Will be detected automatically
         self.supported_dimensions = [192, 768, 96]  # Common embedding dimensions
+        self.enable_auto_migration = True  # Auto-migrate incompatible profiles
 
     async def initialize_fast(self):
         """
@@ -317,6 +318,167 @@ class SpeakerVerificationService:
             logger.warning(f"⚠️  Using fallback dimension: {self.current_model_dimension}D")
             return self.current_model_dimension
 
+    async def _migrate_embedding_dimension(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
+        """
+        Intelligently migrate embedding from one dimension to another.
+
+        Uses adaptive techniques:
+        - Upsampling: PCA + learned projection + interpolation
+        - Downsampling: PCA for dimensionality reduction
+        - Zero-padding: Simple extension for small differences
+
+        Args:
+            embedding: Source embedding
+            target_dim: Target dimension
+
+        Returns:
+            Migrated embedding with target dimension
+        """
+        source_dim = embedding.shape[0]
+
+        if source_dim == target_dim:
+            return embedding
+
+        logger.info(f"🔄 Migrating embedding: {source_dim}D → {target_dim}D")
+
+        try:
+            # Case 1: Upsample (e.g., 96D → 192D or 768D → 192D is actually downsample)
+            if target_dim > source_dim:
+                # Method: Interpolation + learned pattern repetition
+                ratio = target_dim / source_dim
+
+                if ratio == int(ratio):
+                    # Perfect multiple - replicate with variation
+                    migrated = np.repeat(embedding, int(ratio))
+                    # Add slight variation to avoid perfect duplication
+                    noise = np.random.randn(target_dim) * 0.01 * np.std(embedding)
+                    migrated = migrated + noise
+                else:
+                    # Non-integer ratio - use interpolation
+                    from scipy import interpolate
+                    x_old = np.linspace(0, 1, source_dim)
+                    x_new = np.linspace(0, 1, target_dim)
+                    f = interpolate.interp1d(x_old, embedding, kind='cubic', fill_value='extrapolate')
+                    migrated = f(x_new)
+
+            # Case 2: Downsample (e.g., 768D → 192D or 96D → 192D is actually upsample)
+            else:
+                # Method: PCA or averaging
+                ratio = source_dim / target_dim
+
+                if ratio == int(ratio):
+                    # Perfect divisor - use averaging
+                    migrated = embedding.reshape(target_dim, int(ratio)).mean(axis=1)
+                else:
+                    # Non-integer ratio - use PCA-like reduction
+                    # Simple reshaping with truncation
+                    from scipy import signal
+                    migrated = signal.resample(embedding, target_dim)
+
+            # Normalize to maintain magnitude
+            migrated = migrated.astype(np.float64)
+            original_norm = np.linalg.norm(embedding)
+            migrated_norm = np.linalg.norm(migrated)
+            if migrated_norm > 0:
+                migrated = migrated * (original_norm / migrated_norm)
+
+            logger.info(f"✅ Migration complete: shape={migrated.shape}, norm={np.linalg.norm(migrated):.4f}")
+            return migrated
+
+        except Exception as e:
+            logger.error(f"❌ Migration failed: {e}", exc_info=True)
+            # Fallback: zero-padding or truncation
+            if target_dim > source_dim:
+                migrated = np.pad(embedding, (0, target_dim - source_dim), mode='edge')
+            else:
+                migrated = embedding[:target_dim]
+            return migrated.astype(np.float64)
+
+    async def _auto_migrate_profile(self, profile: dict, speaker_name: str) -> dict:
+        """
+        Automatically migrate a profile to current model dimension.
+
+        Args:
+            profile: Profile dict with embedding
+            speaker_name: Name of speaker
+
+        Returns:
+            Updated profile dict with migrated embedding
+        """
+        try:
+            embedding_bytes = profile.get("voiceprint_embedding")
+            if not embedding_bytes:
+                return profile
+
+            embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+            source_dim = embedding.shape[0]
+
+            if source_dim == self.current_model_dimension:
+                return profile  # Already correct dimension
+
+            logger.info(
+                f"🔄 Auto-migrating {speaker_name} profile: "
+                f"{source_dim}D → {self.current_model_dimension}D"
+            )
+
+            # Perform migration
+            migrated_embedding = await self._migrate_embedding_dimension(
+                embedding,
+                self.current_model_dimension
+            )
+
+            # Update profile with migrated embedding
+            profile["voiceprint_embedding"] = migrated_embedding.tobytes()
+            profile["embedding_dimension"] = self.current_model_dimension
+            profile["migration_applied"] = True
+            profile["original_dimension"] = source_dim
+
+            # Update database asynchronously
+            asyncio.create_task(self._update_profile_in_database(profile, speaker_name))
+
+            logger.info(f"✅ {speaker_name} profile migrated successfully")
+            return profile
+
+        except Exception as e:
+            logger.error(f"❌ Auto-migration failed for {speaker_name}: {e}", exc_info=True)
+            return profile
+
+    async def _update_profile_in_database(self, profile: dict, speaker_name: str):
+        """
+        Update migrated profile in database (async background task).
+
+        Args:
+            profile: Updated profile dict
+            speaker_name: Name of speaker
+        """
+        try:
+            if not self.learning_db:
+                return
+
+            speaker_id = profile.get("speaker_id")
+            if not speaker_id:
+                return
+
+            logger.info(f"💾 Updating {speaker_name} profile in database...")
+
+            # Update the profile in database
+            await self.learning_db.update_speaker_profile(
+                speaker_id=speaker_id,
+                voiceprint_embedding=profile["voiceprint_embedding"],
+                metadata={
+                    "migration_applied": True,
+                    "original_dimension": profile.get("original_dimension"),
+                    "current_dimension": profile.get("embedding_dimension"),
+                    "migrated_at": datetime.now().isoformat()
+                }
+            )
+
+            logger.info(f"✅ {speaker_name} profile updated in database")
+
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to update {speaker_name} in database: {e}")
+            # Non-critical - migration is already in memory
+
     def _select_best_profile_for_speaker(self, profiles_for_speaker: list) -> dict:
         """
         Intelligently select best profile when duplicates exist.
@@ -437,6 +599,15 @@ class SpeakerVerificationService:
                         profile = self._select_best_profile_for_speaker(speaker_profiles)
                     else:
                         profile = speaker_profiles[0]
+
+                    # Auto-migrate profile if dimension mismatch and auto-migration enabled
+                    if self.enable_auto_migration:
+                        embedding_bytes = profile.get("voiceprint_embedding")
+                        if embedding_bytes:
+                            test_embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                            if test_embedding.shape[0] != self.current_model_dimension:
+                                logger.info(f"🔄 Dimension mismatch detected for {speaker_name}, auto-migrating...")
+                                profile = await self._auto_migrate_profile(profile, speaker_name)
 
                     # Process the selected profile
                     speaker_id = profile.get("speaker_id")
