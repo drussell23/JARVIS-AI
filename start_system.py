@@ -4649,7 +4649,9 @@ if (typeof localStorage !== 'undefined') {
             applescript = f"""
             tell application "System Events"
                 set foundTab to false
+                set keptTab to null
                 set browserList to {{}}
+                set tabsClosed to 0
 
                 -- Check which browsers are running
                 if exists process "Google Chrome" then set end of browserList to "Google Chrome"
@@ -4659,70 +4661,126 @@ if (typeof localStorage !== 'undefined') {
                 if exists process "Brave Browser" then set end of browserList to "Brave Browser"
                 if exists process "Microsoft Edge" then set end of browserList to "Microsoft Edge"
 
-                -- First pass: Look for existing JARVIS tabs
+                -- First pass: Find all JARVIS tabs, keep one, close the rest
                 repeat with browserName in browserList
                     if browserName is "Google Chrome" then
                         tell application "Google Chrome"
                             set windowList to windows
                             repeat with w in windowList
                                 set tabList to tabs of w
+                                set tabsToClose to {{}}
                                 repeat with t in tabList
                                     try
                                         if {url_conditions} then
-                                            -- Found existing JARVIS tab, update it
-                                            log "REUSING_TAB: Found existing JARVIS tab in Google Chrome"
-                                            set URL of t to "{url}"
-                                            set active tab index of w to index of t
-                                            set index of w to 1
-                                            activate
-                                            set foundTab to true
-                                            return "REUSED_TAB_CHROME"
+                                            if not foundTab then
+                                                -- Keep the first JARVIS tab we find
+                                                log "KEEPING_TAB: Keeping first JARVIS tab in Google Chrome"
+                                                set keptTab to t
+                                                set foundTab to true
+                                                set URL of t to "{url}"
+                                                set active tab index of w to index of t
+                                                set index of w to 1
+                                            else
+                                                -- Close duplicate JARVIS tabs
+                                                log "CLOSING_TAB: Closing duplicate JARVIS tab"
+                                                set end of tabsToClose to t
+                                            end if
                                         end if
                                     end try
                                 end repeat
+
+                                -- Close the duplicate tabs
+                                repeat with t in tabsToClose
+                                    try
+                                        close t
+                                        set tabsClosed to tabsClosed + 1
+                                    end try
+                                end repeat
                             end repeat
+
+                            if foundTab then
+                                activate
+                                return "REUSED_TAB_CHROME:" & tabsClosed
+                            end if
                         end tell
                     else if browserName is "Safari" then
                         tell application "Safari"
                             set windowList to windows
                             repeat with w in windowList
                                 set tabList to tabs of w
+                                set tabsToClose to {{}}
                                 repeat with t in tabList
                                     try
                                         if {url_conditions} then
-                                            -- Found existing JARVIS tab, update it
-                                            log "REUSING_TAB: Found existing JARVIS tab in Safari"
-                                            set URL of t to "{url}"
-                                            set current tab of w to t
-                                            set index of w to 1
-                                            activate
-                                            set foundTab to true
-                                            return "REUSED_TAB_SAFARI"
+                                            if not foundTab then
+                                                -- Keep the first JARVIS tab we find
+                                                log "KEEPING_TAB: Keeping first JARVIS tab in Safari"
+                                                set keptTab to t
+                                                set foundTab to true
+                                                set URL of t to "{url}"
+                                                set current tab of w to t
+                                                set index of w to 1
+                                            else
+                                                -- Close duplicate JARVIS tabs
+                                                log "CLOSING_TAB: Closing duplicate JARVIS tab"
+                                                set end of tabsToClose to t
+                                            end if
                                         end if
                                     end try
                                 end repeat
+
+                                -- Close the duplicate tabs
+                                repeat with t in tabsToClose
+                                    try
+                                        close t
+                                        set tabsClosed to tabsClosed + 1
+                                    end try
+                                end repeat
                             end repeat
+
+                            if foundTab then
+                                activate
+                                return "REUSED_TAB_SAFARI:" & tabsClosed
+                            end if
                         end tell
                     else if browserName is "Arc" then
                         tell application "Arc"
                             set windowList to windows
                             repeat with w in windowList
                                 set tabList to tabs of w
+                                set tabsToClose to {{}}
                                 repeat with t in tabList
                                     try
                                         if {url_conditions} then
-                                            -- Found existing JARVIS tab, update it
-                                            log "REUSING_TAB: Found existing JARVIS tab in Arc"
-                                            tell t to reload
-                                            set URL of t to "{url}"
-                                            set index of w to 1
-                                            activate
-                                            set foundTab to true
-                                            return "REUSED_TAB_ARC"
+                                            if not foundTab then
+                                                -- Keep the first JARVIS tab we find
+                                                log "KEEPING_TAB: Keeping first JARVIS tab in Arc"
+                                                set keptTab to t
+                                                set foundTab to true
+                                                set URL of t to "{url}"
+                                                set index of w to 1
+                                            else
+                                                -- Close duplicate JARVIS tabs
+                                                log "CLOSING_TAB: Closing duplicate JARVIS tab"
+                                                set end of tabsToClose to t
+                                            end if
                                         end if
                                     end try
                                 end repeat
+
+                                -- Close the duplicate tabs
+                                repeat with t in tabsToClose
+                                    try
+                                        close t
+                                        set tabsClosed to tabsClosed + 1
+                                    end try
+                                end repeat
                             end repeat
+
+                            if foundTab then
+                                activate
+                                return "REUSED_TAB_ARC:" & tabsClosed
+                            end if
                         end tell
                     end if
                 end repeat
@@ -4741,7 +4799,7 @@ if (typeof localStorage !== 'undefined') {
                                     set newTab to make new tab with properties {{URL:"{url}"}}
                                     set active tab index to index of newTab
                                 end tell
-                                return "NEW_TAB_CHROME"
+                                return "NEW_TAB_CHROME:0"
                             else if preferredBrowser is "Safari" then
                                 if (count of windows) = 0 then
                                     make new document
@@ -4749,7 +4807,7 @@ if (typeof localStorage !== 'undefined') {
                                 tell window 1
                                     set current tab to make new tab with properties {{URL:"{url}"}}
                                 end tell
-                                return "NEW_TAB_SAFARI"
+                                return "NEW_TAB_SAFARI:0"
                             else if preferredBrowser is "Arc" then
                                 if (count of windows) = 0 then
                                     make new window
@@ -4757,7 +4815,7 @@ if (typeof localStorage !== 'undefined') {
                                 tell window 1
                                     make new tab with properties {{URL:"{url}"}}
                                 end tell
-                                return "NEW_TAB_ARC"
+                                return "NEW_TAB_ARC:0"
                             end if
                             activate
                         end tell
@@ -4765,7 +4823,7 @@ if (typeof localStorage !== 'undefined') {
                         -- No browser running, use system default
                         log "NEW_TAB: Opening with system default browser"
                         open location "{url}"
-                        return "NEW_TAB_DEFAULT"
+                        return "NEW_TAB_DEFAULT:0"
                     end if
                 end if
             end tell
@@ -4789,11 +4847,17 @@ if (typeof localStorage !== 'undefined') {
                 if stdout:
                     result = stdout.decode().strip()
                     if "REUSED_TAB" in result:
-                        browser = result.split("_")[-1]
-                        logger.info(f"✅ Reused existing JARVIS tab in {browser}")
-                        print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser}{Colors.ENDC}")
+                        parts = result.split(":")
+                        browser = parts[0].split("_")[-1]
+                        tabs_closed = int(parts[1]) if len(parts) > 1 else 0
+
+                        logger.info(f"✅ Reused existing JARVIS tab in {browser}, closed {tabs_closed} duplicates")
+                        if tabs_closed > 0:
+                            print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser} (closed {tabs_closed} duplicate{'s' if tabs_closed > 1 else ''}){Colors.ENDC}")
+                        else:
+                            print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser}{Colors.ENDC}")
                     elif "NEW_TAB" in result:
-                        browser = result.split("_")[-1]
+                        browser = result.split(":")[0].split("_")[-1]
                         logger.info(f"🌐 Created new tab in {browser}")
                         print(f"{Colors.BLUE}➕ Created new JARVIS tab in {browser}{Colors.ENDC}")
                     else:
