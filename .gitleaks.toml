@@ -113,9 +113,12 @@ paths = [
   '''test_voice_unlock_confidence.py''',
   '''diagnose_voice_confidence.py''',
   '''diagnose_verification_failure.py''',
+  '''diagnose_low_confidence.py''',
   '''fix_voice_profiles.py''',
   '''fix_voice_embedding_mismatch.py''',
   '''fix_profile_ownership.py''',
+  '''regenerate_embedding_from_audio.py''',
+  '''reconstruct_embedding.py''',
   # Test files can have mock secrets
   '''backend/tests/''',
   '''backend/*/tests/''',
