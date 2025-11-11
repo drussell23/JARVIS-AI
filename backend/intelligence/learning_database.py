@@ -3103,19 +3103,21 @@ class JARVISLearningDatabase:
         samples = []
 
         # Try Cloud SQL first (it has the persistent data)
-        if hasattr(self, 'adapter') and self.adapter:
+        # Check if we have a DatabaseConnectionWrapper which contains the adapter
+        if hasattr(self.db, 'adapter') and self.db.adapter:
             print(f"DEBUG: Trying Cloud SQL for speaker {speaker_id}, limit {limit}")
             try:
                 cloud_query = """
-                    SELECT sample_id, audio_data, transcription,
-                           confidence_score, created_at
+                    SELECT sample_id, audio_data, transcription
                     FROM voice_samples
                     WHERE speaker_id = $1 AND audio_data IS NOT NULL
-                    ORDER BY created_at DESC
+                    ORDER BY sample_id DESC
                     LIMIT $2
                 """
 
-                rows = await self.adapter.fetch(cloud_query, speaker_id, limit)
+                # Use the adapter's connection to fetch data
+                async with self.db.adapter.connection() as conn:
+                    rows = await conn.fetch(cloud_query, speaker_id, limit)
                 print(f"DEBUG: Cloud SQL returned {len(rows)} rows")
 
                 for row in rows:
@@ -3123,11 +3125,9 @@ class JARVISLearningDatabase:
                         "sample_id": row["sample_id"],
                         "audio_data": row["audio_data"],  # BYTEA from PostgreSQL
                         "transcription": row["transcription"],
-                        "confidence_score": row["confidence_score"],
-                        "created_at": row["created_at"],
                         # Add defaults for compatibility
                         "sample_rate": 16000,  # Default sample rate
-                        "quality_score": row["confidence_score"],
+                        "quality_score": 0.8,  # Default quality
                     })
 
                 if samples:
