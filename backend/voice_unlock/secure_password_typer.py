@@ -524,6 +524,26 @@ class SecurePasswordTyper:
 
         except Exception as e:
             logger.warning(f"⚠️ Failed to wake screen: {e}")
+    
+    async def _wake_screen_adaptive(self, config: TypingConfig, system_load: float):
+        """Wake screen with adaptive timing based on system load"""
+        try:
+            # Adjust wake timing based on system load
+            if system_load > 0.8:
+                # High load - use gentle wake
+                await asyncio.sleep(0.1)
+            
+            # Use standard wake screen method
+            await self._wake_screen()
+            
+            # Additional delay for high-load systems
+            if system_load > 0.7:
+                await asyncio.sleep(0.2)
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Adaptive wake failed: {e}")
+            # Fallback to standard wake
+            await self._wake_screen()
 
     async def _type_character_secure(self, char: str, randomize: bool = True) -> bool:
         """
@@ -631,6 +651,115 @@ class SecurePasswordTyper:
         except Exception as e:
             logger.error(f"❌ Failed to press modifier: {e}")
 
+    async def _fallback_applescript(self, password: str, submit: bool, metrics: TypingMetrics) -> Tuple[bool, TypingMetrics]:
+        """Fallback to AppleScript if Core Graphics fails"""
+        try:
+            logger.info("🔄 Using AppleScript fallback for password typing")
+            metrics.fallback_used = True
+            
+            # Wake screen first
+            wake_script = """
+            tell application "System Events"
+                key code 49
+            end tell
+            """
+            
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", wake_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            await asyncio.sleep(0.5)
+            
+            # Type password using AppleScript with environment variable for security
+            type_script = """
+            tell application "System Events"
+                keystroke (system attribute "JARVIS_UNLOCK_PASS")
+            end tell
+            """
+            
+            env = os.environ.copy()
+            env["JARVIS_UNLOCK_PASS"] = password
+            
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", type_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env
+            )
+            await proc.communicate()
+            
+            # Clear from environment
+            if "JARVIS_UNLOCK_PASS" in env:
+                del env["JARVIS_UNLOCK_PASS"]
+            
+            # Submit if requested
+            if submit:
+                await asyncio.sleep(0.1)
+                submit_script = """
+                tell application "System Events"
+                    key code 36
+                end tell
+                """
+                proc = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", submit_script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+            
+            metrics.success = True
+            logger.info("✅ AppleScript fallback succeeded")
+            return True, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ AppleScript fallback failed: {e}")
+            metrics.error_message = f"Fallback failed: {str(e)}"
+            return False, metrics
+    
+    async def _type_password_characters(self, password: str, config: TypingConfig, metrics: TypingMetrics) -> bool:
+        """Type password characters one by one"""
+        try:
+            for i, char in enumerate(password):
+                success = await self._type_character_secure(
+                    char,
+                    randomize=config.randomize_timing
+                )
+                
+                if not success:
+                    logger.error(f"❌ Failed to type character {i+1}/{len(password)}")
+                    return False
+                
+                # Inter-character delay
+                if config.randomize_timing:
+                    delay = 0.05 + (hash(char) % 50) / 1000.0  # 50-100ms
+                else:
+                    delay = 0.05
+                
+                # Adaptive timing based on system load
+                if config.adaptive_timing and metrics.system_load:
+                    if metrics.system_load > 0.7:
+                        delay *= 1.5  # Slow down on high load
+                
+                await asyncio.sleep(delay)
+            
+            logger.debug(f"🔐 [SECURE-TYPE] Typed {len(password)} characters")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to type password characters: {e}")
+            return False
+    
+    async def _press_return_secure(self, config: TypingConfig) -> bool:
+        """Press return key securely with proper timing"""
+        try:
+            # Use the standard return press method
+            return await self._press_return()
+        except Exception as e:
+            logger.error(f"❌ Failed to press return securely: {e}")
+            return False
+    
     async def _press_return(self) -> bool:
         """Press the Return key"""
         try:

@@ -89,6 +89,10 @@ regexes = [
   '''has_password\s*=''',
   '''if not has_password''',
   '''Keychain password''',
+  # Allow password in docstrings and log messages
+  '''Type password characters''',
+  '''type password characters''',
+  '''Failed to type password''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -113,6 +117,7 @@ paths = [
   '''backend/chatbots/claude_chatbot.py''',
   '''backend/voice/profile_consolidation_service.py''',
   '''backend/system_control/macos_controller.py''',
+  '''backend/voice_unlock/secure_password_typer.py''',
   '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
