@@ -71,7 +71,10 @@ async def regenerate_embedding():
                     # Generate embedding
                     embedding = await engine.extract_speaker_embedding(audio_bytes)
                     if embedding is not None:
-                        print(f"   Sample {i}: Shape {embedding.shape}, expected (192,)")
+                        # Squeeze to remove batch dimension if present
+                        if embedding.ndim == 2 and embedding.shape[0] == 1:
+                            embedding = embedding.squeeze(0)
+
                         if len(embedding) == 192:
                             embeddings.append(embedding)
                             successful += 1
@@ -101,7 +104,7 @@ async def regenerate_embedding():
         print("\n5️⃣ Updating speaker profile...")
         await conn.execute("""
             UPDATE speaker_profiles
-            SET embedding_data = $1,
+            SET voiceprint_embedding = $1,
                 last_updated = CURRENT_TIMESTAMP,
                 enrollment_quality_score = 0.95
             WHERE speaker_id = 1
@@ -109,38 +112,8 @@ async def regenerate_embedding():
 
         print("   ✅ Profile updated with new embedding")
 
-        # Also extract acoustic features if we have audio
-        print("\n6️⃣ Extracting acoustic features...")
-        from backend.voice.beast_mode_feature_extractor import BeastModeFeatureExtractor
-
-        extractor = BeastModeFeatureExtractor()
-        all_features = []
-
-        for sample in samples[:10]:  # Use first 10 samples
-            if sample['audio_data']:
-                features = await extractor.extract_beast_features(sample['audio_data'])
-                if features:
-                    all_features.append(features)
-
-        if all_features:
-            # Average the features
-            import json
-            avg_features = {}
-            for key in all_features[0].keys():
-                values = [f[key] for f in all_features if key in f]
-                if values:
-                    avg_features[key] = float(np.mean(values))
-
-            # Update acoustic features
-            await conn.execute("""
-                UPDATE speaker_profiles
-                SET acoustic_features = $1
-                WHERE speaker_id = 1
-            """, json.dumps(avg_features))
-
-            print(f"   ✅ Updated acoustic features ({len(avg_features)} parameters)")
-            if 'pitch_mean' in avg_features:
-                print(f"      Pitch: {avg_features['pitch_mean']:.1f} Hz")
+        # Skip acoustic features extraction for now - embedding is the critical part
+        print("\n6️⃣ Skipping acoustic features (embedding is sufficient)")
 
     finally:
         await conn.close()
