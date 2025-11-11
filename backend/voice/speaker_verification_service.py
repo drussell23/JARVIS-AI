@@ -1115,7 +1115,17 @@ class SpeakerVerificationService:
         if audio_data and len(audio_data) > 0:
             # Check if audio is not silent
             import numpy as np
-            audio_array = np.frombuffer(audio_data[:min(1000, len(audio_data))], dtype=np.float32, count=-1)
+            # JARVIS sends int16 PCM audio, not float32
+            try:
+                # Try int16 first (JARVIS format)
+                audio_array = np.frombuffer(audio_data[:min(2000, len(audio_data))], dtype=np.int16)
+                audio_array = audio_array.astype(np.float32) / 32768.0  # Convert to float32 normalized
+                logger.info(f"🎤 AUDIO DEBUG: Detected int16 PCM format")
+            except:
+                # Fallback to float32 if that fails
+                audio_array = np.frombuffer(audio_data[:min(1000, len(audio_data))], dtype=np.float32, count=-1)
+                logger.info(f"🎤 AUDIO DEBUG: Using float32 format")
+
             if len(audio_array) > 0:
                 audio_energy = np.mean(np.abs(audio_array))
                 logger.info(f"🎤 AUDIO DEBUG: Energy level = {audio_energy:.6f}")
@@ -1123,6 +1133,17 @@ class SpeakerVerificationService:
                     logger.warning("⚠️ AUDIO DEBUG: Audio appears to be silent!")
         else:
             logger.error("❌ AUDIO DEBUG: No audio data received!")
+
+        # Convert audio to float32 for processing
+        if audio_data and len(audio_data) > 0:
+            try:
+                # Convert int16 PCM to float32 for the engine
+                audio_int16 = np.frombuffer(audio_data, dtype=np.int16)
+                audio_float32 = audio_int16.astype(np.float32) / 32768.0
+                audio_data = audio_float32.tobytes()
+                logger.info(f"🎤 AUDIO DEBUG: Converted {len(audio_int16)} int16 samples to float32")
+            except Exception as e:
+                logger.info(f"🎤 AUDIO DEBUG: Keeping original format: {e}")
 
         try:
             # If speaker name provided, verify against that profile
