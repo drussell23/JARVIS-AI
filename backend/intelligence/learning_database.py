@@ -5362,6 +5362,389 @@ class JARVISLearningDatabase:
             logger.error(f"Failed to get speaker profiles: {e}", exc_info=True)
             return []
 
+    async def store_voice_sample(
+        self,
+        speaker_name: str,
+        audio_data: bytes,
+        embedding: Optional[np.ndarray] = None,
+        confidence: float = 0.0,
+        verified: bool = False,
+        command: Optional[str] = None,
+        transcription: Optional[str] = None,
+        environment_type: Optional[str] = None,
+        quality_score: Optional[float] = None,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store voice sample for continuous learning with RLHF support
+
+        Args:
+            speaker_name: Speaker identifier
+            audio_data: Raw audio bytes
+            embedding: Optional pre-computed embedding
+            confidence: Verification confidence score
+            verified: Whether verification succeeded
+            command: Command spoken (if any)
+            transcription: Speech transcription
+            environment_type: Environment (quiet, noisy, etc)
+            quality_score: Audio quality score
+            metadata: Additional metadata
+
+        Returns:
+            sample_id of stored sample
+        """
+        try:
+            # Store in both SQLite and CloudSQL for redundancy
+            embedding_bytes = embedding.tobytes() if embedding is not None else None
+
+            # CloudSQL storage
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            INSERT INTO voice_samples (
+                                speaker_name, audio_data, embedding,
+                                verification_confidence, verification_result,
+                                command, transcription, environment_type,
+                                quality_score, timestamp, metadata
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                            RETURNING sample_id
+                            """,
+                            (
+                                speaker_name, audio_data, embedding_bytes,
+                                confidence, verified, command, transcription,
+                                environment_type, quality_score,
+                                json.dumps(metadata) if metadata else None
+                            )
+                        )
+                        sample_id = (await cursor.fetchone())[0]
+                        await conn.commit()
+
+            # Local SQLite storage
+            async with self.db.execute(
+                """
+                INSERT INTO voice_samples (
+                    speaker_name, audio_data, embedding,
+                    verification_confidence, verification_result,
+                    command, transcription, environment_type,
+                    quality_score, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    speaker_name, audio_data, embedding_bytes,
+                    confidence, verified, command, transcription,
+                    environment_type, quality_score,
+                    json.dumps(metadata) if metadata else None
+                )
+            ) as cursor:
+                await self.db.commit()
+                local_sample_id = cursor.lastrowid
+
+            logger.info(f"✅ Stored voice sample for {speaker_name} (confidence: {confidence:.2%}, verified: {verified})")
+
+            # Trigger continuous learning if enough samples
+            await self._check_and_trigger_learning(speaker_name)
+
+            return sample_id if self.cloud_adapter else local_sample_id
+
+        except Exception as e:
+            logger.error(f"Failed to store voice sample: {e}")
+            return -1
+
+    async def get_voice_samples_for_training(
+        self, speaker_name: str, limit: int = 50, min_confidence: float = 0.1
+    ) -> List[Dict]:
+        """
+        Retrieve voice samples for ML training with RAG
+
+        Args:
+            speaker_name: Speaker to get samples for
+            limit: Maximum samples to retrieve
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of voice samples with metadata
+        """
+        try:
+            if self.cloud_adapter:
+                # Use CloudSQL for production
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            SELECT sample_id, audio_data, embedding, verification_confidence,
+                                   verification_result, quality_score, timestamp, metadata
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                              AND verification_confidence >= %s
+                              AND used_for_training = FALSE
+                            ORDER BY timestamp DESC
+                            LIMIT %s
+                            """,
+                            (speaker_name, min_confidence, limit)
+                        )
+
+                        samples = []
+                        for row in await cursor.fetchall():
+                            samples.append({
+                                'sample_id': row[0],
+                                'audio_data': row[1],
+                                'embedding': np.frombuffer(row[2]) if row[2] else None,
+                                'confidence': row[3],
+                                'verified': row[4],
+                                'quality_score': row[5],
+                                'timestamp': row[6],
+                                'metadata': json.loads(row[7]) if row[7] else {}
+                            })
+                        return samples
+            else:
+                # Fallback to SQLite
+                async with self.db.execute(
+                    """
+                    SELECT sample_id, audio_data, embedding, verification_confidence,
+                           verification_result, quality_score, timestamp, metadata
+                    FROM voice_samples
+                    WHERE speaker_name = ?
+                      AND verification_confidence >= ?
+                      AND used_for_training = 0
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (speaker_name, min_confidence, limit)
+                ) as cursor:
+                    samples = []
+                    async for row in cursor:
+                        samples.append({
+                            'sample_id': row[0],
+                            'audio_data': row[1],
+                            'embedding': np.frombuffer(row[2]) if row[2] else None,
+                            'confidence': row[3],
+                            'verified': row[4],
+                            'quality_score': row[5],
+                            'timestamp': row[6],
+                            'metadata': json.loads(row[7]) if row[7] else {}
+                        })
+                    return samples
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve voice samples: {e}")
+            return []
+
+    async def apply_rlhf_feedback(
+        self, sample_id: int, feedback_score: float, feedback_notes: Optional[str] = None
+    ):
+        """
+        Apply Reinforcement Learning from Human Feedback
+
+        Args:
+            sample_id: Voice sample ID
+            feedback_score: Human feedback score (0-1)
+            feedback_notes: Optional feedback notes
+        """
+        try:
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            UPDATE voice_samples
+                            SET feedback_score = %s, feedback_notes = %s
+                            WHERE sample_id = %s
+                            """,
+                            (feedback_score, feedback_notes, sample_id)
+                        )
+                        await conn.commit()
+            else:
+                await self.db.execute(
+                    """
+                    UPDATE voice_samples
+                    SET feedback_score = ?, feedback_notes = ?
+                    WHERE sample_id = ?
+                    """,
+                    (feedback_score, feedback_notes, sample_id)
+                )
+                await self.db.commit()
+
+            logger.info(f"✅ Applied RLHF feedback to sample {sample_id} (score: {feedback_score})")
+
+        except Exception as e:
+            logger.error(f"Failed to apply RLHF feedback: {e}")
+
+    async def perform_incremental_learning(
+        self, speaker_name: str, new_samples: List[Dict]
+    ) -> Dict:
+        """
+        Perform incremental learning with new voice samples
+
+        Args:
+            speaker_name: Speaker to update
+            new_samples: List of new voice samples
+
+        Returns:
+            Training results dictionary
+        """
+        try:
+            # Get current embedding
+            profile = await self.get_speaker_profile(speaker_name)
+            if not profile:
+                return {'success': False, 'error': 'Profile not found'}
+
+            current_embedding = np.frombuffer(profile['voiceprint_embedding'])
+
+            # Extract embeddings from new samples
+            new_embeddings = []
+            weights = []  # Weight by confidence and quality
+
+            for sample in new_samples:
+                if sample.get('embedding') is not None:
+                    new_embeddings.append(sample['embedding'])
+                    # Weight by confidence, quality, and feedback
+                    weight = (
+                        sample.get('confidence', 0.5) *
+                        sample.get('quality_score', 0.5) *
+                        sample.get('feedback_score', 1.0)
+                    )
+                    weights.append(weight)
+
+            if not new_embeddings:
+                return {'success': False, 'error': 'No valid embeddings'}
+
+            # Weighted average for incremental update
+            new_embeddings = np.array(new_embeddings)
+            weights = np.array(weights)
+            weights = weights / weights.sum()  # Normalize
+
+            # Compute weighted average of new embeddings
+            avg_new_embedding = np.average(new_embeddings, axis=0, weights=weights)
+
+            # Incremental update: blend old and new
+            update_weight = min(0.3, len(new_samples) * 0.05)  # Adaptive weight
+            updated_embedding = (
+                (1 - update_weight) * current_embedding +
+                update_weight * avg_new_embedding
+            )
+
+            # Update speaker profile
+            await self.update_speaker_embedding(
+                speaker_name=speaker_name,
+                embedding=updated_embedding,
+                metadata={
+                    'learning_type': 'incremental',
+                    'samples_used': len(new_samples),
+                    'update_weight': update_weight,
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+
+            # Record training history
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            INSERT INTO ml_training_history (
+                                speaker_name, samples_used, training_type,
+                                improvement_score, timestamp, metadata
+                            ) VALUES (%s, %s, %s, %s, NOW(), %s)
+                            """,
+                            (
+                                speaker_name, len(new_samples), 'incremental',
+                                update_weight, json.dumps({
+                                    'avg_confidence': float(np.mean([s.get('confidence', 0) for s in new_samples])),
+                                    'avg_quality': float(np.mean([s.get('quality_score', 0) for s in new_samples]))
+                                })
+                            )
+                        )
+                        await conn.commit()
+
+            logger.info(f"✅ Incremental learning complete for {speaker_name} using {len(new_samples)} samples")
+
+            return {
+                'success': True,
+                'samples_used': len(new_samples),
+                'update_weight': update_weight,
+                'improvement_estimate': update_weight * 0.5  # Rough estimate
+            }
+
+        except Exception as e:
+            logger.error(f"Incremental learning failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _check_and_trigger_learning(self, speaker_name: str):
+        """
+        Check if we should trigger automatic learning
+        """
+        try:
+            # Count unused training samples
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            SELECT COUNT(*) FROM voice_samples
+                            WHERE speaker_name = %s AND used_for_training = FALSE
+                            """,
+                            (speaker_name,)
+                        )
+                        unused_count = (await cursor.fetchone())[0]
+            else:
+                async with self.db.execute(
+                    """
+                    SELECT COUNT(*) FROM voice_samples
+                    WHERE speaker_name = ? AND used_for_training = 0
+                    """,
+                    (speaker_name,)
+                ) as cursor:
+                    unused_count = (await cursor.fetchone())[0]
+
+            # Trigger learning if enough samples
+            if unused_count >= 10:  # Configurable threshold
+                logger.info(f"🎓 Triggering automatic learning for {speaker_name} ({unused_count} samples)")
+
+                # Get samples and perform learning
+                samples = await self.get_voice_samples_for_training(speaker_name, limit=20)
+                if samples:
+                    result = await self.perform_incremental_learning(speaker_name, samples)
+
+                    if result.get('success'):
+                        # Mark samples as used
+                        sample_ids = [s['sample_id'] for s in samples]
+                        await self._mark_samples_as_used(sample_ids)
+
+        except Exception as e:
+            logger.error(f"Auto-learning check failed: {e}")
+
+    async def _mark_samples_as_used(self, sample_ids: List[int]):
+        """Mark voice samples as used for training"""
+        try:
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            f"""
+                            UPDATE voice_samples
+                            SET used_for_training = TRUE
+                            WHERE sample_id IN ({','.join(['%s'] * len(sample_ids))})
+                            """,
+                            sample_ids
+                        )
+                        await conn.commit()
+            else:
+                placeholders = ','.join(['?' * len(sample_ids)])
+                await self.db.execute(
+                    f"""
+                    UPDATE voice_samples
+                    SET used_for_training = 1
+                    WHERE sample_id IN ({placeholders})
+                    """,
+                    sample_ids
+                )
+                await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to mark samples as used: {e}")
+
     async def update_speaker_embedding(
         self,
         speaker_id: int,

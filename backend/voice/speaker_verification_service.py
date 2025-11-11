@@ -14,7 +14,7 @@ import asyncio
 import logging
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 
 import numpy as np
 
@@ -166,6 +166,25 @@ class SpeakerVerificationService:
         self.normalize_confidence = True
         self.confidence_history_window = 20  # Use last 20 attempts for normalization
         self.confidence_stats = {}  # Store mean/std for normalization
+
+        # CONTINUOUS LEARNING SYSTEM
+        # Store all voice interactions for ML training
+        self.continuous_learning_enabled = True
+        self.store_all_audio = True  # Store audio samples in database
+        self.min_audio_quality = 0.1  # Minimum quality to store
+        self.max_stored_samples_per_day = 100  # Limit daily storage
+        self.audio_storage_format = 'wav'  # Store as WAV files
+
+        # ML-based continuous improvement
+        self.ml_update_frequency = 10  # Update model every N samples
+        self.incremental_learning = True  # Use incremental learning
+        self.embedding_update_weight = 0.1  # Weight for new samples in embedding
+        self.auto_retrain_threshold = 50  # Retrain after N new samples
+
+        # Voice sample collection
+        self.voice_sample_buffer = []  # Buffer for recent samples
+        self.max_buffer_size = 20  # Keep last 20 samples in memory
+        self.sample_metadata = {}  # Store metadata for each sample
 
     async def initialize_fast(self):
         """
@@ -1234,6 +1253,17 @@ class SpeakerVerificationService:
 
                 logger.info(f"🔍 DEBUG: Final result - Confidence: {confidence:.2%}, Verified: {is_verified}")
 
+                # Store voice sample for continuous learning
+                if self.continuous_learning_enabled and self.store_all_audio:
+                    await self._store_voice_sample_async(
+                        speaker_name=speaker_name,
+                        audio_data=audio_data,
+                        confidence=confidence,
+                        verified=is_verified,
+                        command="unlock_screen",
+                        environment_type=self.current_environment
+                    )
+
                 # Learn from this attempt
                 await self._record_verification_attempt(speaker_name, confidence, is_verified)
 
@@ -1735,6 +1765,259 @@ class SpeakerVerificationService:
                     logger.info(f"✅ Profile updated with new threshold: {new_threshold:.2%}")
             except Exception as e:
                 logger.error(f"Failed to update profile: {e}")
+
+    async def _store_voice_sample_async(
+        self, speaker_name: str, audio_data: bytes,
+        confidence: float, verified: bool,
+        command: Optional[str] = None,
+        environment_type: Optional[str] = None
+    ):
+        """
+        Asynchronously store voice sample for continuous learning
+        """
+        try:
+            # Extract embedding for storage
+            embedding = None
+            if self.speechbrain_engine:
+                try:
+                    embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+                except Exception as e:
+                    logger.warning(f"Could not extract embedding: {e}")
+
+            # Calculate audio quality
+            quality_score = await self._calculate_audio_quality(audio_data)
+
+            # Store in database
+            sample_id = await self.learning_db.store_voice_sample(
+                speaker_name=speaker_name,
+                audio_data=audio_data,
+                embedding=embedding,
+                confidence=confidence,
+                verified=verified,
+                command=command,
+                environment_type=environment_type,
+                quality_score=quality_score,
+                metadata={
+                    'threshold_used': self.speaker_profiles.get(speaker_name, {}).get('threshold', self.verification_threshold),
+                    'calibration_mode': self.calibration_mode,
+                    'failure_count': self.failure_count.get(speaker_name, 0),
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+
+            # Add to memory buffer for quick access
+            if len(self.voice_sample_buffer) >= self.max_buffer_size:
+                self.voice_sample_buffer.pop(0)  # Remove oldest
+
+            self.voice_sample_buffer.append({
+                'sample_id': sample_id,
+                'speaker_name': speaker_name,
+                'confidence': confidence,
+                'verified': verified,
+                'embedding': embedding,
+                'timestamp': datetime.now()
+            })
+
+            logger.info(f"📀 Stored voice sample #{sample_id} for {speaker_name} (conf: {confidence:.2%}, verified: {verified})")
+
+            # Update rolling embeddings if successful
+            if verified and embedding is not None:
+                await self._update_rolling_embeddings(speaker_name, embedding)
+
+        except Exception as e:
+            logger.error(f"Failed to store voice sample: {e}")
+
+    async def _calculate_audio_quality(self, audio_data: bytes) -> float:
+        """
+        Calculate audio quality score (0-1)
+        """
+        try:
+            # Convert to numpy array
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+            # Calculate metrics
+            energy = np.mean(np.abs(audio_array))
+            snr = self._estimate_snr(audio_array)
+
+            # Simple quality score
+            quality = min(1.0, energy * 10) * min(1.0, snr / 20)
+            return max(0.1, quality)  # Minimum quality 0.1
+
+        except Exception:
+            return 0.5  # Default quality
+
+    def _estimate_snr(self, audio: np.ndarray) -> float:
+        """Estimate signal-to-noise ratio"""
+        try:
+            # Simple SNR estimation
+            signal_power = np.mean(audio ** 2)
+            noise_floor = np.percentile(np.abs(audio), 10) ** 2
+
+            if noise_floor > 0:
+                snr_db = 10 * np.log10(signal_power / noise_floor)
+                return max(0, min(30, snr_db))  # Clamp between 0-30 dB
+            return 15.0  # Default SNR
+
+        except Exception:
+            return 10.0
+
+    async def _update_rolling_embeddings(self, speaker_name: str, new_embedding: np.ndarray):
+        """
+        Update rolling embeddings for adaptive learning
+        """
+        if speaker_name not in self.rolling_embeddings:
+            self.rolling_embeddings[speaker_name] = []
+
+        embeddings_list = self.rolling_embeddings[speaker_name]
+        embeddings_list.append(new_embedding)
+
+        # Keep only recent embeddings
+        if len(embeddings_list) > self.max_rolling_samples:
+            embeddings_list.pop(0)
+
+        # Update profile with rolling average if enough samples
+        if len(embeddings_list) >= 5:
+            # Compute weighted average (recent samples have more weight)
+            weights = np.linspace(0.5, 1.0, len(embeddings_list))
+            weights = weights / weights.sum()
+
+            rolling_avg = np.average(embeddings_list, axis=0, weights=weights)
+
+            # Blend with current embedding
+            if speaker_name in self.speaker_profiles:
+                current_embedding = self.speaker_profiles[speaker_name]['embedding']
+                updated_embedding = (
+                    (1 - self.rolling_weight) * current_embedding +
+                    self.rolling_weight * rolling_avg
+                )
+
+                # Update in memory (not database yet)
+                self.speaker_profiles[speaker_name]['rolling_embedding'] = updated_embedding
+                logger.info(f"📊 Updated rolling embedding for {speaker_name} ({len(embeddings_list)} samples)")
+
+    async def perform_rag_similarity_search(
+        self, speaker_name: str, current_embedding: np.ndarray, top_k: int = 5
+    ) -> List[Dict]:
+        """
+        RAG: Retrieve similar voice patterns for better verification
+        """
+        try:
+            # Get recent successful verifications from buffer
+            similar_samples = []
+
+            for sample in self.voice_sample_buffer:
+                if (sample['speaker_name'] == speaker_name and
+                    sample['verified'] and
+                    sample.get('embedding') is not None):
+
+                    # Calculate cosine similarity
+                    similarity = self._cosine_similarity(current_embedding, sample['embedding'])
+                    similar_samples.append({
+                        'sample_id': sample['sample_id'],
+                        'similarity': similarity,
+                        'confidence': sample['confidence'],
+                        'timestamp': sample['timestamp']
+                    })
+
+            # Sort by similarity and return top-k
+            similar_samples.sort(key=lambda x: x['similarity'], reverse=True)
+            return similar_samples[:top_k]
+
+        except Exception as e:
+            logger.error(f"RAG similarity search failed: {e}")
+            return []
+
+    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Calculate cosine similarity between two embeddings"""
+        try:
+            a_norm = a / np.linalg.norm(a)
+            b_norm = b / np.linalg.norm(b)
+            return float(np.dot(a_norm, b_norm))
+        except Exception:
+            return 0.0
+
+    async def apply_human_feedback(
+        self, verification_id: int, correct: bool, notes: Optional[str] = None
+    ):
+        """
+        Apply RLHF: Human feedback on verification result
+
+        Args:
+            verification_id: ID of the verification attempt
+            correct: Whether the verification was correct
+            notes: Optional feedback notes
+        """
+        try:
+            # Find the sample in buffer
+            sample = None
+            for s in self.voice_sample_buffer:
+                if s.get('sample_id') == verification_id:
+                    sample = s
+                    break
+
+            if not sample:
+                logger.warning(f"Sample {verification_id} not found in buffer")
+                return
+
+            # Calculate feedback score
+            feedback_score = 1.0 if correct else 0.0
+
+            # Apply RLHF to database
+            await self.learning_db.apply_rlhf_feedback(
+                sample_id=verification_id,
+                feedback_score=feedback_score,
+                feedback_notes=notes
+            )
+
+            # Update local statistics
+            speaker_name = sample['speaker_name']
+            if speaker_name not in self.sample_metadata:
+                self.sample_metadata[speaker_name] = {'feedback_count': 0, 'correct_count': 0}
+
+            self.sample_metadata[speaker_name]['feedback_count'] += 1
+            if correct:
+                self.sample_metadata[speaker_name]['correct_count'] += 1
+
+            logger.info(f"✅ Applied human feedback for {speaker_name} (correct: {correct})")
+
+            # Trigger retraining if enough feedback
+            feedback_count = self.sample_metadata[speaker_name]['feedback_count']
+            if feedback_count >= 10 and feedback_count % 5 == 0:
+                await self._trigger_retraining(speaker_name)
+
+        except Exception as e:
+            logger.error(f"Failed to apply human feedback: {e}")
+
+    async def _trigger_retraining(self, speaker_name: str):
+        """
+        Trigger model retraining with accumulated samples
+        """
+        try:
+            logger.info(f"🔄 Triggering retraining for {speaker_name}")
+
+            # Get recent samples with feedback
+            samples = await self.learning_db.get_voice_samples_for_training(
+                speaker_name=speaker_name,
+                limit=30,
+                min_confidence=0.05  # Include low confidence samples for learning
+            )
+
+            if len(samples) >= 10:
+                # Perform incremental learning
+                result = await self.learning_db.perform_incremental_learning(
+                    speaker_name=speaker_name,
+                    new_samples=samples
+                )
+
+                if result.get('success'):
+                    # Reload profile
+                    await self._load_speaker_profiles()
+                    logger.info(f"✅ Retraining complete for {speaker_name}: {result}")
+                else:
+                    logger.error(f"Retraining failed: {result.get('error')}")
+
+        except Exception as e:
+            logger.error(f"Retraining trigger failed: {e}")
 
     async def enable_calibration_mode(self, speaker_name: str = None):
         """Manually enable calibration mode"""
