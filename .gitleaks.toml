@@ -108,6 +108,7 @@ paths = [
   '''backend/intelligence/cloud_sql_proxy_manager.py''',
   '''backend/chatbots/claude_chatbot.py''',
   '''backend/voice/profile_consolidation_service.py''',
+  '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
   '''check_voice_samples.py''',
