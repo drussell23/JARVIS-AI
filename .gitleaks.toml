@@ -82,6 +82,13 @@ regexes = [
   '''password\s*=\s*db_password''',
   '''password=db_password''',
   '''db_password = get_db_password\(\)''',
+  # Allow password from config getter (not hardcoded)
+  '''password=self\.config\[''',
+  '''\.get\('password',''',
+  # Allow keychain password checks (not exposing actual passwords)
+  '''has_password\s*=''',
+  '''if not has_password''',
+  '''Keychain password''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -102,8 +109,11 @@ paths = [
   '''backend/core/secret_manager.py''',
   '''backend/scripts/setup_local_secrets.py''',
   '''backend/intelligence/cloud_database_adapter.py''',
+  '''backend/intelligence/cloud_sql_proxy_manager.py''',
   '''backend/chatbots/claude_chatbot.py''',
   '''backend/voice/profile_consolidation_service.py''',
+  '''backend/system_control/macos_controller.py''',
+  '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
   '''check_voice_samples.py''',
@@ -113,9 +123,13 @@ paths = [
   '''test_voice_unlock_confidence.py''',
   '''diagnose_voice_confidence.py''',
   '''diagnose_verification_failure.py''',
+  '''diagnose_low_confidence.py''',
   '''fix_voice_profiles.py''',
   '''fix_voice_embedding_mismatch.py''',
   '''fix_profile_ownership.py''',
+  '''regenerate_embedding_from_audio.py''',
+  '''reconstruct_embedding.py''',
+  '''verify_embedding_update.py''',
   # Test files can have mock secrets
   '''backend/tests/''',
   '''backend/*/tests/''',

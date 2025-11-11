@@ -4,6 +4,8 @@ Advanced Learning Database System for JARVIS Goal Inference
 Hybrid architecture: SQLite (structured) + ChromaDB (embeddings) + Async + ML-powered insights
 """
 
+from __future__ import annotations
+
 import asyncio
 import calendar
 import hashlib
@@ -31,11 +33,12 @@ except ImportError:
 
 # Async and ML dependencies
 try:
-    pass
+    import numpy as np
 
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
+    np = None
 
 # ChromaDB for semantic search and embeddings
 try:
@@ -5361,6 +5364,643 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.error(f"Failed to get speaker profiles: {e}", exc_info=True)
             return []
+
+    async def store_voice_sample(
+        self,
+        speaker_name: str,
+        audio_data: bytes,
+        embedding: Optional[np.ndarray] = None,
+        confidence: float = 0.0,
+        verified: bool = False,
+        command: Optional[str] = None,
+        transcription: Optional[str] = None,
+        environment_type: Optional[str] = None,
+        quality_score: Optional[float] = None,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store voice sample for continuous learning with RLHF support
+
+        Args:
+            speaker_name: Speaker identifier
+            audio_data: Raw audio bytes
+            embedding: Optional pre-computed embedding
+            confidence: Verification confidence score
+            verified: Whether verification succeeded
+            command: Command spoken (if any)
+            transcription: Speech transcription
+            environment_type: Environment (quiet, noisy, etc)
+            quality_score: Audio quality score
+            metadata: Additional metadata
+
+        Returns:
+            sample_id of stored sample
+        """
+        try:
+            # Store in both SQLite and CloudSQL for redundancy
+            embedding_bytes = embedding.tobytes() if embedding is not None else None
+
+            # CloudSQL storage
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            INSERT INTO voice_samples (
+                                speaker_name, audio_data, embedding,
+                                verification_confidence, verification_result,
+                                command, transcription, environment_type,
+                                quality_score, timestamp, metadata
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                            RETURNING sample_id
+                            """,
+                            (
+                                speaker_name, audio_data, embedding_bytes,
+                                confidence, verified, command, transcription,
+                                environment_type, quality_score,
+                                json.dumps(metadata) if metadata else None
+                            )
+                        )
+                        sample_id = (await cursor.fetchone())[0]
+                        await conn.commit()
+
+            # Local SQLite storage
+            async with self.db.execute(
+                """
+                INSERT INTO voice_samples (
+                    speaker_name, audio_data, embedding,
+                    verification_confidence, verification_result,
+                    command, transcription, environment_type,
+                    quality_score, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    speaker_name, audio_data, embedding_bytes,
+                    confidence, verified, command, transcription,
+                    environment_type, quality_score,
+                    json.dumps(metadata) if metadata else None
+                )
+            ) as cursor:
+                await self.db.commit()
+                local_sample_id = cursor.lastrowid
+
+            logger.info(f"✅ Stored voice sample for {speaker_name} (confidence: {confidence:.2%}, verified: {verified})")
+
+            # Trigger continuous learning if enough samples
+            await self._check_and_trigger_learning(speaker_name)
+
+            return sample_id if self.cloud_adapter else local_sample_id
+
+        except Exception as e:
+            logger.error(f"Failed to store voice sample: {e}")
+            return -1
+
+    async def get_voice_samples_for_training(
+        self, speaker_name: str, limit: int = 50, min_confidence: float = 0.1
+    ) -> List[Dict]:
+        """
+        Retrieve voice samples for ML training with RAG
+
+        Args:
+            speaker_name: Speaker to get samples for
+            limit: Maximum samples to retrieve
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of voice samples with metadata
+        """
+        try:
+            if self.cloud_adapter:
+                # Use CloudSQL for production
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            SELECT sample_id, audio_data, embedding, verification_confidence,
+                                   verification_result, quality_score, timestamp, metadata
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                              AND verification_confidence >= %s
+                              AND used_for_training = FALSE
+                            ORDER BY timestamp DESC
+                            LIMIT %s
+                            """,
+                            (speaker_name, min_confidence, limit)
+                        )
+
+                        samples = []
+                        for row in await cursor.fetchall():
+                            samples.append({
+                                'sample_id': row[0],
+                                'audio_data': row[1],
+                                'embedding': np.frombuffer(row[2]) if row[2] else None,
+                                'confidence': row[3],
+                                'verified': row[4],
+                                'quality_score': row[5],
+                                'timestamp': row[6],
+                                'metadata': json.loads(row[7]) if row[7] else {}
+                            })
+                        return samples
+            else:
+                # Fallback to SQLite
+                async with self.db.execute(
+                    """
+                    SELECT sample_id, audio_data, embedding, verification_confidence,
+                           verification_result, quality_score, timestamp, metadata
+                    FROM voice_samples
+                    WHERE speaker_name = ?
+                      AND verification_confidence >= ?
+                      AND used_for_training = 0
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (speaker_name, min_confidence, limit)
+                ) as cursor:
+                    samples = []
+                    async for row in cursor:
+                        samples.append({
+                            'sample_id': row[0],
+                            'audio_data': row[1],
+                            'embedding': np.frombuffer(row[2]) if row[2] else None,
+                            'confidence': row[3],
+                            'verified': row[4],
+                            'quality_score': row[5],
+                            'timestamp': row[6],
+                            'metadata': json.loads(row[7]) if row[7] else {}
+                        })
+                    return samples
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve voice samples: {e}")
+            return []
+
+    async def apply_rlhf_feedback(
+        self, sample_id: int, feedback_score: float, feedback_notes: Optional[str] = None
+    ):
+        """
+        Apply Reinforcement Learning from Human Feedback
+
+        Args:
+            sample_id: Voice sample ID
+            feedback_score: Human feedback score (0-1)
+            feedback_notes: Optional feedback notes
+        """
+        try:
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            UPDATE voice_samples
+                            SET feedback_score = %s, feedback_notes = %s
+                            WHERE sample_id = %s
+                            """,
+                            (feedback_score, feedback_notes, sample_id)
+                        )
+                        await conn.commit()
+            else:
+                await self.db.execute(
+                    """
+                    UPDATE voice_samples
+                    SET feedback_score = ?, feedback_notes = ?
+                    WHERE sample_id = ?
+                    """,
+                    (feedback_score, feedback_notes, sample_id)
+                )
+                await self.db.commit()
+
+            logger.info(f"✅ Applied RLHF feedback to sample {sample_id} (score: {feedback_score})")
+
+        except Exception as e:
+            logger.error(f"Failed to apply RLHF feedback: {e}")
+
+    async def perform_incremental_learning(
+        self, speaker_name: str, new_samples: List[Dict]
+    ) -> Dict:
+        """
+        Perform incremental learning with new voice samples
+
+        Args:
+            speaker_name: Speaker to update
+            new_samples: List of new voice samples
+
+        Returns:
+            Training results dictionary
+        """
+        try:
+            # Get current embedding
+            profile = await self.get_speaker_profile(speaker_name)
+            if not profile:
+                return {'success': False, 'error': 'Profile not found'}
+
+            current_embedding = np.frombuffer(profile['voiceprint_embedding'])
+
+            # Extract embeddings from new samples
+            new_embeddings = []
+            weights = []  # Weight by confidence and quality
+
+            for sample in new_samples:
+                if sample.get('embedding') is not None:
+                    new_embeddings.append(sample['embedding'])
+                    # Weight by confidence, quality, and feedback
+                    weight = (
+                        sample.get('confidence', 0.5) *
+                        sample.get('quality_score', 0.5) *
+                        sample.get('feedback_score', 1.0)
+                    )
+                    weights.append(weight)
+
+            if not new_embeddings:
+                return {'success': False, 'error': 'No valid embeddings'}
+
+            # Weighted average for incremental update
+            new_embeddings = np.array(new_embeddings)
+            weights = np.array(weights)
+            weights = weights / weights.sum()  # Normalize
+
+            # Compute weighted average of new embeddings
+            avg_new_embedding = np.average(new_embeddings, axis=0, weights=weights)
+
+            # Incremental update: blend old and new
+            update_weight = min(0.3, len(new_samples) * 0.05)  # Adaptive weight
+            updated_embedding = (
+                (1 - update_weight) * current_embedding +
+                update_weight * avg_new_embedding
+            )
+
+            # Update speaker profile
+            await self.update_speaker_embedding(
+                speaker_name=speaker_name,
+                embedding=updated_embedding,
+                metadata={
+                    'learning_type': 'incremental',
+                    'samples_used': len(new_samples),
+                    'update_weight': update_weight,
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+
+            # Record training history
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            INSERT INTO ml_training_history (
+                                speaker_name, samples_used, training_type,
+                                improvement_score, timestamp, metadata
+                            ) VALUES (%s, %s, %s, %s, NOW(), %s)
+                            """,
+                            (
+                                speaker_name, len(new_samples), 'incremental',
+                                update_weight, json.dumps({
+                                    'avg_confidence': float(np.mean([s.get('confidence', 0) for s in new_samples])),
+                                    'avg_quality': float(np.mean([s.get('quality_score', 0) for s in new_samples]))
+                                })
+                            )
+                        )
+                        await conn.commit()
+
+            logger.info(f"✅ Incremental learning complete for {speaker_name} using {len(new_samples)} samples")
+
+            return {
+                'success': True,
+                'samples_used': len(new_samples),
+                'update_weight': update_weight,
+                'improvement_estimate': update_weight * 0.5  # Rough estimate
+            }
+
+        except Exception as e:
+            logger.error(f"Incremental learning failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _check_and_trigger_learning(self, speaker_name: str):
+        """
+        Check if we should trigger automatic learning
+        """
+        try:
+            # Count unused training samples
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            """
+                            SELECT COUNT(*) FROM voice_samples
+                            WHERE speaker_name = %s AND used_for_training = FALSE
+                            """,
+                            (speaker_name,)
+                        )
+                        unused_count = (await cursor.fetchone())[0]
+            else:
+                async with self.db.execute(
+                    """
+                    SELECT COUNT(*) FROM voice_samples
+                    WHERE speaker_name = ? AND used_for_training = 0
+                    """,
+                    (speaker_name,)
+                ) as cursor:
+                    unused_count = (await cursor.fetchone())[0]
+
+            # Trigger learning if enough samples
+            if unused_count >= 10:  # Configurable threshold
+                logger.info(f"🎓 Triggering automatic learning for {speaker_name} ({unused_count} samples)")
+
+                # Get samples and perform learning
+                samples = await self.get_voice_samples_for_training(speaker_name, limit=20)
+                if samples:
+                    result = await self.perform_incremental_learning(speaker_name, samples)
+
+                    if result.get('success'):
+                        # Mark samples as used
+                        sample_ids = [s['sample_id'] for s in samples]
+                        await self._mark_samples_as_used(sample_ids)
+
+        except Exception as e:
+            logger.error(f"Auto-learning check failed: {e}")
+
+    async def _mark_samples_as_used(self, sample_ids: List[int]):
+        """Mark voice samples as used for training"""
+        try:
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        await cursor.execute(
+                            f"""
+                            UPDATE voice_samples
+                            SET used_for_training = TRUE
+                            WHERE sample_id IN ({','.join(['%s'] * len(sample_ids))})
+                            """,
+                            sample_ids
+                        )
+                        await conn.commit()
+            else:
+                placeholders = ','.join(['?' * len(sample_ids)])
+                await self.db.execute(
+                    f"""
+                    UPDATE voice_samples
+                    SET used_for_training = 1
+                    WHERE sample_id IN ({placeholders})
+                    """,
+                    sample_ids
+                )
+                await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to mark samples as used: {e}")
+
+    async def manage_sample_freshness(
+        self, speaker_name: str, max_age_days: int = 30, target_sample_count: int = 100
+    ) -> Dict:
+        """
+        Advanced sample freshness management system
+
+        Automatically:
+        - Ages out old samples
+        - Balances sample distribution across time
+        - Maintains optimal sample count
+        - Ensures representation across different conditions
+
+        Args:
+            speaker_name: Speaker to manage samples for
+            max_age_days: Maximum age before samples are considered stale
+            target_sample_count: Target number of active samples to maintain
+
+        Returns:
+            Dict with freshness statistics and actions taken
+        """
+        try:
+            from datetime import timedelta
+            cutoff_date = datetime.now() - timedelta(days=max_age_days)
+
+            stats = {
+                'speaker_name': speaker_name,
+                'total_samples': 0,
+                'fresh_samples': 0,
+                'stale_samples': 0,
+                'samples_archived': 0,
+                'samples_retained': 0,
+                'freshness_score': 0.0,
+                'actions': []
+            }
+
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        # Get all samples with freshness analysis
+                        await cursor.execute(
+                            """
+                            SELECT
+                                sample_id,
+                                timestamp,
+                                verification_confidence,
+                                quality_score,
+                                used_for_training,
+                                EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 as age_days
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                            ORDER BY timestamp DESC
+                            """,
+                            (speaker_name,)
+                        )
+
+                        samples = await cursor.fetchall()
+                        stats['total_samples'] = len(samples)
+
+                        if not samples:
+                            return stats
+
+                        # Categorize samples by freshness
+                        fresh = []
+                        stale = []
+
+                        for sample in samples:
+                            sample_id, timestamp, confidence, quality, used, age_days = sample
+
+                            if age_days <= max_age_days:
+                                fresh.append({
+                                    'id': sample_id,
+                                    'age': age_days,
+                                    'confidence': confidence or 0,
+                                    'quality': quality or 0,
+                                    'used': used,
+                                    'score': (confidence or 0) * (quality or 0) / (1 + age_days/30)
+                                })
+                            else:
+                                stale.append({
+                                    'id': sample_id,
+                                    'age': age_days,
+                                    'used': used
+                                })
+
+                        stats['fresh_samples'] = len(fresh)
+                        stats['stale_samples'] = len(stale)
+
+                        # Calculate freshness score (0-1)
+                        if samples:
+                            avg_age = sum(s.get('age', 0) for s in fresh) / len(fresh) if fresh else max_age_days
+                            stats['freshness_score'] = max(0, 1 - (avg_age / max_age_days))
+
+                        # Strategy 1: Archive old, low-quality samples
+                        if len(stale) > 0:
+                            # Keep stale samples that were high quality for historical reference
+                            stale_to_archive = [
+                                s['id'] for s in stale
+                                if not s['used']  # Archive unused stale samples
+                            ][:50]  # Limit batch size
+
+                            if stale_to_archive:
+                                await cursor.execute(
+                                    f"""
+                                    UPDATE voice_samples
+                                    SET metadata = jsonb_set(
+                                        COALESCE(metadata, '{{}}')::jsonb,
+                                        '{{archived}}',
+                                        'true'::jsonb
+                                    )
+                                    WHERE sample_id IN ({','.join(['%s'] * len(stale_to_archive))})
+                                    """,
+                                    stale_to_archive
+                                )
+                                stats['samples_archived'] = len(stale_to_archive)
+                                stats['actions'].append(f"Archived {len(stale_to_archive)} stale samples")
+
+                        # Strategy 2: Maintain target count with best samples
+                        if len(fresh) > target_sample_count:
+                            # Sort by composite score (confidence * quality / age_factor)
+                            fresh.sort(key=lambda x: x['score'], reverse=True)
+
+                            # Keep top samples
+                            samples_to_keep = [s['id'] for s in fresh[:target_sample_count]]
+                            samples_to_archive = [s['id'] for s in fresh[target_sample_count:]]
+
+                            if samples_to_archive:
+                                await cursor.execute(
+                                    f"""
+                                    UPDATE voice_samples
+                                    SET metadata = jsonb_set(
+                                        COALESCE(metadata, '{{}}')::jsonb,
+                                        '{{archived}}',
+                                        'true'::jsonb
+                                    )
+                                    WHERE sample_id IN ({','.join(['%s'] * len(samples_to_archive))})
+                                    """,
+                                    samples_to_archive
+                                )
+                                stats['samples_archived'] += len(samples_to_archive)
+                                stats['actions'].append(f"Archived {len(samples_to_archive)} excess samples")
+
+                            stats['samples_retained'] = len(samples_to_keep)
+                        else:
+                            stats['samples_retained'] = len(fresh)
+
+                        # Strategy 3: Identify need for refresh
+                        if stats['freshness_score'] < 0.7:
+                            stats['actions'].append(
+                                f"RECOMMENDATION: Schedule enrollment refresh (freshness: {stats['freshness_score']:.1%})"
+                            )
+
+                        if stats['fresh_samples'] < 20:
+                            stats['actions'].append(
+                                f"WARNING: Low sample count ({stats['fresh_samples']}). Record more samples."
+                            )
+
+                        await conn.commit()
+
+            logger.info(f"✅ Sample freshness managed for {speaker_name}: {stats['freshness_score']:.1%} fresh")
+            return stats
+
+        except Exception as e:
+            logger.error(f"Sample freshness management failed: {e}")
+            return {'error': str(e)}
+
+    async def get_sample_freshness_report(self, speaker_name: str) -> Dict:
+        """
+        Generate comprehensive freshness report
+
+        Returns:
+            Detailed report on sample age distribution, quality, and recommendations
+        """
+        try:
+            report = {
+                'speaker_name': speaker_name,
+                'report_timestamp': datetime.now().isoformat(),
+                'age_distribution': {},
+                'quality_distribution': {},
+                'recommendations': [],
+                'statistics': {}
+            }
+
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        # Age distribution
+                        await cursor.execute(
+                            """
+                            SELECT
+                                CASE
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 7 THEN '0-7 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 14 THEN '8-14 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 30 THEN '15-30 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 60 THEN '31-60 days'
+                                    ELSE '60+ days'
+                                END as age_bracket,
+                                COUNT(*) as count,
+                                AVG(verification_confidence) as avg_confidence,
+                                AVG(quality_score) as avg_quality
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                            GROUP BY age_bracket
+                            ORDER BY
+                                CASE age_bracket
+                                    WHEN '0-7 days' THEN 1
+                                    WHEN '8-14 days' THEN 2
+                                    WHEN '15-30 days' THEN 3
+                                    WHEN '31-60 days' THEN 4
+                                    ELSE 5
+                                END
+                            """,
+                            (speaker_name,)
+                        )
+
+                        age_dist = await cursor.fetchall()
+                        for bracket, count, avg_conf, avg_qual in age_dist:
+                            report['age_distribution'][bracket] = {
+                                'count': count,
+                                'avg_confidence': float(avg_conf) if avg_conf else 0,
+                                'avg_quality': float(avg_qual) if avg_qual else 0
+                            }
+
+                        # Generate recommendations
+                        total_samples = sum(d['count'] for d in report['age_distribution'].values())
+                        recent_samples = report['age_distribution'].get('0-7 days', {}).get('count', 0)
+
+                        if recent_samples < total_samples * 0.3:
+                            report['recommendations'].append({
+                                'priority': 'HIGH',
+                                'action': 'Record new samples',
+                                'reason': f'Only {recent_samples}/{total_samples} samples are recent (< 7 days)'
+                            })
+
+                        old_samples = report['age_distribution'].get('60+ days', {}).get('count', 0)
+                        if old_samples > total_samples * 0.5:
+                            report['recommendations'].append({
+                                'priority': 'MEDIUM',
+                                'action': 'Archive old samples',
+                                'reason': f'{old_samples} samples are > 60 days old'
+                            })
+
+                        if total_samples < 30:
+                            report['recommendations'].append({
+                                'priority': 'HIGH',
+                                'action': 'Increase sample count',
+                                'reason': f'Only {total_samples} total samples (target: 30-50)'
+                            })
+
+            return report
+
+        except Exception as e:
+            logger.error(f"Freshness report generation failed: {e}")
+            return {'error': str(e)}
 
     async def update_speaker_embedding(
         self,

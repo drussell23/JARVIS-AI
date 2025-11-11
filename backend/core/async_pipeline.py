@@ -1303,7 +1303,7 @@ class AdvancedAsyncPipeline:
                 return {
                     "success": False,
                     "error": f"{action_type} command timed out after 60 seconds",
-                    "response": f"The screen {action_type.lower()} operation timed out. Please try again.",
+                    "response": f"Screen {action_type.lower()} timed out.",
                     "latency_ms": 60000,
                     "timeout": True,
                     "metadata": {"command": text, "user": user_name}

@@ -205,9 +205,50 @@ async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> d
     """
     command_lower = command.lower()
 
+    # For unlock/lock commands, we don't need the daemon - use direct handler
+    # Check for unlock/lock commands FIRST (highest priority)
+    if any(
+        phrase in command_lower
+        for phrase in [
+            "unlock my mac",
+            "unlock my screen",
+            "unlock mac",
+            "unlock the mac",
+            "unlock computer",
+        ]
+    ):
+        # User wants to unlock NOW - use simple handler with voice verification
+        logger.info("[VOICE UNLOCK] Direct unlock command detected - using simple handler")
+        from .simple_unlock_handler import handle_unlock_command
+
+        # Pass audio data and speaker info for voice verification
+        # Note: jarvis_instance should contain audio_data and speaker_name if available
+        return await handle_unlock_command(command, jarvis_instance)
+
+    elif any(
+        phrase in command_lower
+        for phrase in [
+            "lock my mac",
+            "lock my screen",
+            "lock mac",
+            "lock the mac",
+            "lock computer",
+            "lock the computer",
+        ]
+    ):
+        # User wants to lock NOW - use simple handler
+        logger.info("[VOICE UNLOCK] Direct lock command detected - using simple handler")
+        from .simple_unlock_handler import handle_unlock_command
+        return await handle_unlock_command(command, jarvis_instance)
+
+    # For other voice unlock commands (enable/disable/status), try daemon connection
     # Ensure we're connected
     if not voice_unlock_connector or not voice_unlock_connector.connected:
-        await initialize_voice_unlock()
+        try:
+            await initialize_voice_unlock()
+        except Exception as e:
+            logger.warning(f"Daemon connection failed (non-critical for unlock/lock): {e}")
+            # Continue anyway for unlock/lock commands
 
     # Map JARVIS commands to daemon commands
     if "enable voice unlock" in command_lower:
@@ -247,39 +288,6 @@ async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> d
                 "status": status,
                 "success": True,
             }
-
-    elif any(
-        phrase in command_lower
-        for phrase in [
-            "unlock my mac",
-            "unlock my screen",
-            "unlock mac",
-            "unlock the mac",
-            "unlock computer",
-        ]
-    ):
-        # User wants to unlock NOW - use simple handler with voice verification
-        from .simple_unlock_handler import handle_unlock_command
-
-        # Pass audio data and speaker info for voice verification
-        # Note: jarvis_instance should contain audio_data and speaker_name if available
-        return await handle_unlock_command(command, jarvis_instance)
-
-    elif any(
-        phrase in command_lower
-        for phrase in [
-            "lock my mac",
-            "lock my screen",
-            "lock mac",
-            "lock the mac",
-            "lock computer",
-            "lock the computer",
-        ]
-    ):
-        # User wants to lock the screen - use simple handler to avoid WebSocket conflicts
-        from .simple_unlock_handler import handle_unlock_command
-
-        return await handle_unlock_command(command, jarvis_instance)
 
     elif "test voice unlock" in command_lower:
         # Test the voice unlock system

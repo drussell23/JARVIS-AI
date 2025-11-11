@@ -1755,6 +1755,9 @@ class SpeechBrainEngine(BaseSTTEngine):
                 }
             )
 
+            # Compute audio quality for debugging
+            audio_quality_score = self._compute_audio_quality(audio_tensor)
+
             # Log comprehensive results
             logger.info(f"\n{'='*80}")
             logger.info(f"🎯 VERIFICATION RESULTS FOR {speaker_name}")
@@ -1763,6 +1766,7 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info(f"   Confidence: {result.confidence:.1%} ({result.confidence:.4f})")
             logger.info(f"   Uncertainty: ±{result.uncertainty:.1%}")
             logger.info(f"   Threshold: {getattr(result, 'threshold_used', threshold):.1%} (adaptive)")
+            logger.info(f"   Audio Quality: {audio_quality_score:.1%}")
             logger.info(f"\n   📊 Component Scores:")
             logger.info(f"      Embedding similarity: {result.embedding_similarity:.1%}")
             logger.info(f"      Mahalanobis distance: {result.mahalanobis_distance:.3f}")
