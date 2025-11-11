@@ -808,6 +808,10 @@ WantedBy=default.target
             'success_rate': success_rate
         }
 
+        # Voice profile verification (if connection is active)
+        if health_data['connection_active']:
+            health_data['voice_profiles'] = await self._check_voice_profiles()
+
         return health_data
 
     async def _auto_heal_reconnect(self) -> bool:
@@ -920,6 +924,117 @@ WantedBy=default.target
         if category in self.api_call_history:
             self.api_call_history[category].append(datetime.now().isoformat())
             logger.debug(f"[CLOUDSQL] API call recorded: {category}")
+
+    async def _check_voice_profiles(self) -> Dict:
+        """
+        Verify voice profiles are stored and ready in CloudSQL database
+
+        Returns:
+            Dict with voice profile status, sample counts, and readiness
+        """
+        import psycopg2
+
+        profile_data = {
+            'status': 'unknown',
+            'profiles_found': 0,
+            'speakers': [],
+            'total_samples': 0,
+            'ready_for_unlock': False,
+            'issues': []
+        }
+
+        try:
+            port = self.config['cloud_sql']['port']
+            conn = psycopg2.connect(
+                host='127.0.0.1',
+                port=port,
+                database=self.config['cloud_sql'].get('database', 'postgres'),
+                user=self.config['cloud_sql'].get('user', 'postgres'),
+                password=self.config['cloud_sql'].get('password', ''),
+                connect_timeout=5
+            )
+
+            cursor = conn.cursor()
+
+            # Query speaker profiles
+            cursor.execute("""
+                SELECT speaker_id, speaker_name, embedding, total_samples,
+                       last_trained, avg_confidence, threshold
+                FROM speaker_profiles
+                ORDER BY speaker_id
+            """)
+
+            profiles = cursor.fetchall()
+            profile_data['profiles_found'] = len(profiles)
+
+            logger.info(f"[CLOUDSQL] 🎤 Found {len(profiles)} voice profile(s) in database")
+
+            for profile in profiles:
+                speaker_id, speaker_name, embedding, total_samples, last_trained, avg_confidence, threshold = profile
+
+                # Check if embedding exists (stored as binary/bytea)
+                embedding_valid = embedding is not None and len(embedding) > 0
+
+                # Get actual sample count from voice_samples table
+                cursor.execute("""
+                    SELECT COUNT(*) FROM voice_samples
+                    WHERE speaker_name = %s
+                """, (speaker_name,))
+                actual_sample_count = cursor.fetchone()[0]
+
+                profile_data['total_samples'] += actual_sample_count
+
+                speaker_info = {
+                    'speaker_id': speaker_id,
+                    'speaker_name': speaker_name,
+                    'embedding_valid': embedding_valid,
+                    'embedding_size': len(embedding) if embedding else 0,
+                    'total_samples': total_samples,
+                    'actual_samples_in_db': actual_sample_count,
+                    'last_trained': last_trained.isoformat() if last_trained else None,
+                    'avg_confidence': float(avg_confidence) if avg_confidence else 0.0,
+                    'threshold': float(threshold) if threshold else 0.0,
+                    'ready': embedding_valid and actual_sample_count > 0
+                }
+
+                profile_data['speakers'].append(speaker_info)
+
+                logger.info(f"[CLOUDSQL]   └─ {speaker_name}: "
+                           f"{'✅' if speaker_info['ready'] else '❌'} "
+                           f"{actual_sample_count} samples, "
+                           f"embedding: {'valid' if embedding_valid else 'MISSING'}")
+
+                # Check for issues
+                if not embedding_valid:
+                    profile_data['issues'].append(f"{speaker_name}: Embedding missing or corrupted")
+                if actual_sample_count == 0:
+                    profile_data['issues'].append(f"{speaker_name}: No voice samples found")
+                elif actual_sample_count < 10:
+                    profile_data['issues'].append(f"{speaker_name}: Only {actual_sample_count} samples (recommend 30+)")
+
+            cursor.close()
+            conn.close()
+
+            # Determine overall status
+            if profile_data['profiles_found'] == 0:
+                profile_data['status'] = 'no_profiles'
+                profile_data['ready_for_unlock'] = False
+            elif profile_data['issues']:
+                profile_data['status'] = 'issues_found'
+                profile_data['ready_for_unlock'] = False
+            else:
+                profile_data['status'] = 'ready'
+                profile_data['ready_for_unlock'] = True
+
+            logger.info(f"[CLOUDSQL] 🎤 Voice Profile Status: {profile_data['status'].upper()} "
+                       f"({'✅ Ready' if profile_data['ready_for_unlock'] else '⚠️  Not Ready'})")
+
+        except Exception as e:
+            logger.error(f"[CLOUDSQL] ❌ Voice profile check failed: {e}")
+            profile_data['status'] = 'check_failed'
+            profile_data['error'] = str(e)
+
+        return profile_data
 
 
 def get_proxy_manager() -> CloudSQLProxyManager:

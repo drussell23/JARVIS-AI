@@ -2038,12 +2038,26 @@ class HybridIntelligenceCoordinator:
                     )
 
                     if spike_prediction["spike_likely"] and spike_prediction["confidence"] > 0.5:
-                        logger.info(
-                            f"🔮 SAI Prediction: RAM spike likely in 60s "
+                        # Store prediction for monitoring display
+                        self.last_sai_prediction = {
+                            'timestamp': datetime.now().isoformat(),
+                            'type': 'ram_spike',
+                            'predicted_peak': spike_prediction['predicted_peak'],
+                            'confidence': spike_prediction['confidence'],
+                            'reason': spike_prediction['reason'],
+                            'time_horizon_seconds': 60
+                        }
+                        self.sai_prediction_history.append(self.last_sai_prediction)
+                        if len(self.sai_prediction_history) > 10:
+                            self.sai_prediction_history.pop(0)
+                        self.sai_prediction_count += 1
+
+                        # Still log it but less verbosely
+                        logger.debug(
+                            f"🔮 SAI Prediction #{self.sai_prediction_count}: RAM spike likely in 60s "
                             f"(peak: {spike_prediction['predicted_peak']*100:.1f}%, "
-                            f"confidence: {spike_prediction['confidence']:.1%})"
+                            f"confidence: {spike_prediction['confidence']:.1%}) - {spike_prediction['reason']}"
                         )
-                        logger.info(f"   Reason: {spike_prediction['reason']}")
 
                 # Make routing decision (now using SAI-learned thresholds)
                 should_shift, reason, details = await self.ram_monitor.should_shift_to_gcp()
@@ -2822,6 +2836,11 @@ class AsyncSystemManager:
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
+
+        # SAI Prediction tracking
+        self.last_sai_prediction = None
+        self.sai_prediction_history = []  # Rolling window of last 10 predictions
+        self.sai_prediction_count = 0
 
         # Self-healing mechanism
         self.healing_attempts = {}
@@ -4957,6 +4976,54 @@ class AsyncSystemManager:
                         if auto_heal:
                             print(f"    ├─ {Colors.GREEN}🔧 AUTO-HEAL: Reconnection triggered{Colors.ENDC}")
 
+                        # Voice Profile Verification
+                        voice_profiles = cloudsql_health.get('voice_profiles')
+                        if voice_profiles:
+                            profiles_found = voice_profiles.get('profiles_found', 0)
+                            total_samples = voice_profiles.get('total_samples', 0)
+                            ready_for_unlock = voice_profiles.get('ready_for_unlock', False)
+                            profile_status = voice_profiles.get('status', 'unknown')
+
+                            # Status display
+                            if ready_for_unlock:
+                                status_icon = f"{Colors.GREEN}✅"
+                                status_text = "READY"
+                            elif profile_status == 'no_profiles':
+                                status_icon = f"{Colors.FAIL}❌"
+                                status_text = "NO PROFILES"
+                            elif profile_status == 'issues_found':
+                                status_icon = f"{Colors.WARNING}⚠️ "
+                                status_text = "ISSUES"
+                            else:
+                                status_icon = f"{Colors.YELLOW}?"
+                                status_text = "UNKNOWN"
+
+                            print(f"    ├─ {status_icon} Voice Profiles: {status_text} ({profiles_found} profile(s), {total_samples} samples)")
+
+                            # Show per-speaker details
+                            for speaker in voice_profiles.get('speakers', []):
+                                speaker_name = speaker['speaker_name']
+                                embedding_valid = speaker['embedding_valid']
+                                embedding_size = speaker['embedding_size']
+                                actual_samples = speaker['actual_samples_in_db']
+                                avg_conf = speaker['avg_confidence']
+                                ready = speaker['ready']
+
+                                ready_icon = "✅" if ready else "❌"
+                                emb_status = f"{embedding_size} bytes" if embedding_valid else "MISSING"
+
+                                print(f"    │  ├─ {ready_icon} {speaker_name}:")
+                                print(f"    │  │  ├─ Embedding: {emb_status}")
+                                print(f"    │  │  ├─ Samples in DB: {actual_samples}")
+                                print(f"    │  │  └─ Avg confidence: {avg_conf:.2%}")
+
+                            # Show issues if any
+                            issues = voice_profiles.get('issues', [])
+                            if issues:
+                                print(f"    │  └─ {Colors.WARNING}⚠️  Issues:{Colors.ENDC}")
+                                for issue in issues:
+                                    print(f"    │     └─ {issue}")
+
                         # Recommendations
                         recommendations = cloudsql_health.get('recommendations', [])
                         if recommendations:
@@ -4968,7 +5035,9 @@ class AsyncSystemManager:
                         else:
                             # All good!
                             if connection_active and timeout_status == 'healthy':
-                                print(f"    └─ {Colors.GREEN}✓ No issues detected{Colors.ENDC}")
+                                if not voice_profiles:  # No voice profile check
+                                    print(f"    └─ {Colors.GREEN}✓ No issues detected{Colors.ENDC}")
+                                # else: voice profiles already displayed
 
                     except FileNotFoundError:
                         # Config not found - likely not using CloudSQL
@@ -4983,6 +5052,32 @@ class AsyncSystemManager:
                             print(
                                 f"\n{Colors.WARNING}⚠ {service} health checks failing ({failures} failures){Colors.ENDC}"
                             )
+
+                    # SAI (Situational Awareness Intelligence) Predictions
+                    print()  # Blank line for separation
+                    if self.last_sai_prediction:
+                        prediction = self.last_sai_prediction
+                        timestamp = datetime.fromisoformat(prediction['timestamp'])
+                        time_ago = (datetime.now() - timestamp).total_seconds()
+
+                        confidence = prediction['confidence']
+                        if confidence >= 0.8:
+                            confidence_icon = f"{Colors.GREEN}✓"
+                        elif confidence >= 0.5:
+                            confidence_icon = f"{Colors.YELLOW}⚠"
+                        else:
+                            confidence_icon = f"{Colors.FAIL}!"
+
+                        print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.GREEN}Active{Colors.ENDC}")
+                        print(f"    ├─ Last prediction: {int(time_ago)}s ago")
+                        print(f"    ├─ {confidence_icon} Confidence: {confidence:.1%}{Colors.ENDC}")
+                        print(f"    ├─ Type: {prediction['type'].replace('_', ' ').title()}")
+                        print(f"    ├─ Predicted peak: {prediction['predicted_peak']*100:.1f}%")
+                        print(f"    ├─ Reason: {prediction['reason']}")
+                        print(f"    ├─ Time horizon: {prediction['time_horizon_seconds']}s")
+                        print(f"    └─ Total predictions: {self.sai_prediction_count}")
+                    else:
+                        print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.YELLOW}Idle{Colors.ENDC} (no recent predictions)")
 
                     # Show next health check countdown
                     print(f"\n{Colors.CYAN}  Next health check in 30 seconds...{Colors.ENDC}")
