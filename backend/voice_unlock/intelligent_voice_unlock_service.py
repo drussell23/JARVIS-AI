@@ -844,13 +844,23 @@ class IntelligentVoiceUnlockService:
         recent_attempts = historical.get("recent_attempts_24h", 0)
 
         # Dynamic response based on threat level and scenario
+        # Handle None speaker_name throughout
+        speaker_display = speaker_name if speaker_name and speaker_name != "None" else ""
+
         if threat_level == "high" and recent_attempts > 5:
             # Persistent unauthorized attempts - firm warning
-            responses = [
-                f"Access denied. {speaker_name}, this is your {recent_attempts}th unauthorized attempt in 24 hours. Only the device owner can unlock this system.",
-                f"I'm sorry {speaker_name}, but I cannot allow that. You've attempted unauthorized access {recent_attempts} times today. This system is secured for the owner only.",
-                f"{speaker_name}, I must inform you that I cannot grant access. This is your {recent_attempts}th attempt, and this device is owner-protected.",
-            ]
+            if speaker_display:
+                responses = [
+                    f"Access denied. {speaker_display}, this is your {recent_attempts}th unauthorized attempt in 24 hours. Only the device owner can unlock this system.",
+                    f"I'm sorry {speaker_display}, but I cannot allow that. You've attempted unauthorized access {recent_attempts} times today. This system is secured for the owner only.",
+                    f"{speaker_display}, I must inform you that I cannot grant access. This is your {recent_attempts}th attempt, and this device is owner-protected.",
+                ]
+            else:
+                responses = [
+                    f"Access denied. This is the {recent_attempts}th unauthorized attempt in 24 hours. Voice authentication failed.",
+                    f"Multiple unauthorized access attempts detected. This system is secured for the owner only.",
+                    f"Security alert: {recent_attempts} failed attempts recorded. Voice verification required.",
+                ]
         elif threat_level == "medium" and recent_attempts > 2:
             # Multiple attempts - polite but firm
             responses = [
@@ -875,11 +885,21 @@ class IntelligentVoiceUnlockService:
             ]
         else:
             # Default - clear and professional
-            responses = [
-                f"Access denied, {speaker_name}. Only the device owner can unlock via voice authentication.",
-                f"I'm sorry {speaker_name}, but voice unlock is restricted to the device owner only.",
-                f"{speaker_name}, I cannot grant access. This system requires owner voice authentication.",
-            ]
+            # Handle None speaker_name gracefully
+            if speaker_name and speaker_name != "None":
+                responses = [
+                    f"Access denied, {speaker_name}. Only the device owner can unlock via voice authentication.",
+                    f"I'm sorry {speaker_name}, but voice unlock is restricted to the device owner only.",
+                    f"{speaker_name}, I cannot grant access. This system requires owner voice authentication.",
+                ]
+            else:
+                # Unknown speaker (couldn't identify)
+                responses = [
+                    "Voice not recognized. Only the device owner can unlock via voice authentication.",
+                    "I cannot verify your identity. Voice unlock is restricted to the registered device owner.",
+                    "Access denied. Please speak clearly for voice verification, or use an alternative unlock method.",
+                    "Voice authentication failed. This device is secured for the owner only.",
+                ]
 
         # Select response dynamically
         message = random.choice(responses)  # nosec B311 # UI message selection

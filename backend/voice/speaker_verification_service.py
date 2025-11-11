@@ -1188,14 +1188,25 @@ class SpeakerVerificationService:
                 )
                 return best_match
 
-            # No match found
+            # No match found - but check if we have any primary user profile
+            # This ensures we at least know who the owner is even if verification failed
+            primary_profile = None
+            for profile_name, profile in self.speaker_profiles.items():
+                if profile.get("is_primary_user", False):
+                    primary_profile = profile_name
+                    break
+
+            logger.warning(f"⚠️ No speaker match found. Primary user: {primary_profile}, Best confidence: {best_confidence:.2%}")
+
             return {
                 "verified": False,
-                "confidence": 0.0,
+                "confidence": best_confidence if best_confidence else 0.0,
                 "speaker_name": "unknown",
                 "speaker_id": None,
                 "is_owner": False,
                 "security_level": "none",
+                "primary_user": primary_profile,  # Include who the actual owner is
+                "requires_enrollment": len(self.speaker_profiles) == 0
             }
 
         except Exception as e:
