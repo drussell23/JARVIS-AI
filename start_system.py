@@ -1838,6 +1838,11 @@ class HybridIntelligenceCoordinator:
         self.emergency_mode = False
         self.emergency_start = None
 
+        # SAI Prediction tracking (for monitoring display)
+        self.last_sai_prediction = None
+        self.sai_prediction_history = []  # Rolling window of last 10 predictions
+        self.sai_prediction_count = 0
+
         logger.info("🎯 HybridIntelligenceCoordinator initialized with SAI learning")
 
     async def start(self):

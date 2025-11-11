@@ -1099,10 +1099,11 @@ WantedBy=default.target
 
             cursor = conn.cursor()
 
-            # Query speaker profiles
+            # Query speaker profiles with correct column names
             cursor.execute("""
-                SELECT speaker_id, speaker_name, embedding, total_samples,
-                       last_trained, avg_confidence, threshold
+                SELECT speaker_id, speaker_name, voiceprint_embedding, total_samples,
+                       last_updated, recognition_confidence, successful_verifications,
+                       failed_verifications
                 FROM speaker_profiles
                 ORDER BY speaker_id
             """)
@@ -1113,30 +1114,38 @@ WantedBy=default.target
             logger.info(f"[CLOUDSQL] 🎤 Found {len(profiles)} voice profile(s) in database")
 
             for profile in profiles:
-                speaker_id, speaker_name, embedding, total_samples, last_trained, avg_confidence, threshold = profile
+                (speaker_id, speaker_name, voiceprint_embedding, total_samples,
+                 last_updated, recognition_confidence, successful_verifications,
+                 failed_verifications) = profile
 
                 # Check if embedding exists (stored as binary/bytea)
-                embedding_valid = embedding is not None and len(embedding) > 0
+                embedding_valid = voiceprint_embedding is not None and len(voiceprint_embedding) > 0
 
-                # Get actual sample count from voice_samples table
+                # Get actual sample count from voice_samples table (join by speaker_id)
                 cursor.execute("""
                     SELECT COUNT(*) FROM voice_samples
-                    WHERE speaker_name = %s
-                """, (speaker_name,))
+                    WHERE speaker_id = %s
+                """, (speaker_id,))
                 actual_sample_count = cursor.fetchone()[0]
 
                 profile_data['total_samples'] += actual_sample_count
+
+                # Calculate average confidence from verifications
+                total_verifications = successful_verifications + failed_verifications
+                avg_confidence = recognition_confidence if recognition_confidence else 0.0
 
                 speaker_info = {
                     'speaker_id': speaker_id,
                     'speaker_name': speaker_name,
                     'embedding_valid': embedding_valid,
-                    'embedding_size': len(embedding) if embedding else 0,
+                    'embedding_size': len(voiceprint_embedding) if voiceprint_embedding else 0,
                     'total_samples': total_samples,
                     'actual_samples_in_db': actual_sample_count,
-                    'last_trained': last_trained.isoformat() if last_trained else None,
-                    'avg_confidence': float(avg_confidence) if avg_confidence else 0.0,
-                    'threshold': float(threshold) if threshold else 0.0,
+                    'last_trained': last_updated.isoformat() if last_updated else None,
+                    'avg_confidence': float(avg_confidence),
+                    'successful_verifications': successful_verifications or 0,
+                    'failed_verifications': failed_verifications or 0,
+                    'total_verifications': total_verifications,
                     'ready': embedding_valid and actual_sample_count > 0
                 }
 
@@ -1145,7 +1154,8 @@ WantedBy=default.target
                 logger.info(f"[CLOUDSQL]   └─ {speaker_name}: "
                            f"{'✅' if speaker_info['ready'] else '❌'} "
                            f"{actual_sample_count} samples, "
-                           f"embedding: {'valid' if embedding_valid else 'MISSING'}")
+                           f"embedding: {'valid' if embedding_valid else 'MISSING'}, "
+                           f"verifications: {successful_verifications}/{total_verifications}")
 
                 # Check for issues
                 if not embedding_valid:
