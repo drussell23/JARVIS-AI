@@ -105,6 +105,7 @@ paths = [
   '''backend/core/secret_manager.py''',
   '''backend/scripts/setup_local_secrets.py''',
   '''backend/intelligence/cloud_database_adapter.py''',
+  '''backend/intelligence/cloud_sql_proxy_manager.py''',
   '''backend/chatbots/claude_chatbot.py''',
   '''backend/voice/profile_consolidation_service.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
