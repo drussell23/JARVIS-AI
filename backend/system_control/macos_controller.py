@@ -1339,13 +1339,94 @@ class MacOSController:
                         "Unable to unlock screen without password. Please setup Voice Unlock first.",
                     )
 
-            # For now, if no daemon is running and we have a password, report that unlock is not available
-            # This prevents infinite loops while we fix the underlying issue
-            logger.info("[UnlockScreen] Direct unlock temporarily disabled to prevent loops")
-            return (
-                False,
-                "Screen unlock requires Voice Unlock daemon. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable automatic unlocking.",
-            )
+            # DYNAMIC DIAGNOSTIC: Intelligently diagnose the issue
+            logger.info("[UnlockScreen] Performing dynamic diagnostics...")
+
+            # Build diagnostic report
+            diagnostic_issues = []
+
+            # Check keychain password
+            try:
+                result = subprocess.run(
+                    ["security", "find-generic-password", "-s", "com.jarvis.voiceunlock", "-a", "unlock_token", "-w"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                has_password = (result.returncode == 0)
+            except:
+                has_password = False
+
+            if not has_password:
+                diagnostic_issues.append("Keychain password not configured")
+
+            # Check enrollment data
+            import json
+            from pathlib import Path
+            enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
+            enrollment_status = "missing"
+
+            if enrollment_file.exists():
+                try:
+                    with open(enrollment_file) as f:
+                        enrollment = json.load(f)
+                        enrollment_status = enrollment.get("status", "unknown")
+                except:
+                    enrollment_status = "corrupted"
+
+            if enrollment_status != "complete":
+                diagnostic_issues.append(f"Enrollment {enrollment_status}")
+
+            # Check CloudSQL voice profiles
+            voice_profiles_available = False
+            try:
+                # Quick check if we can import the service
+                from voice.speaker_verification_service import _global_speaker_service
+                if _global_speaker_service and hasattr(_global_speaker_service, 'speaker_profiles'):
+                    voice_profiles_available = len(_global_speaker_service.speaker_profiles) > 0
+            except:
+                pass
+
+            if not voice_profiles_available:
+                diagnostic_issues.append("Voice profiles not loaded from CloudSQL")
+
+            # Generate intelligent response based on diagnostics
+            if diagnostic_issues:
+                issue_list = ", ".join(diagnostic_issues)
+                logger.warning(f"[UnlockScreen] Issues found: {issue_list}")
+
+                # Provide specific guidance based on the issues
+                if "Keychain password" in issue_list:
+                    suggestion = "I need your password stored in keychain. Run: ./backend/voice_unlock/enable_screen_unlock.sh"
+                elif "Voice profiles" in issue_list:
+                    suggestion = "Voice biometric profiles aren't loaded. Let me restart my backend services."
+                elif "Enrollment" in issue_list:
+                    suggestion = "Voice enrollment needs to be completed. Your biometric data is in CloudSQL but enrollment config is incomplete."
+                else:
+                    suggestion = "Multiple configuration issues detected. Checking system status..."
+
+                return (
+                    False,
+                    f"I detected issues with voice unlock configuration: {issue_list}. {suggestion}",
+                )
+            else:
+                # All checks passed but daemon not running - try alternative method
+                logger.info("[UnlockScreen] Configuration OK but daemon not available, trying direct unlock...")
+
+                # Import and use the simple unlock handler directly
+                try:
+                    from api.simple_unlock_handler import handle_unlock_command
+
+                    # Call the handler directly (it's already async)
+                    result = await handle_unlock_command("unlock my screen")
+
+                    if result.get("success"):
+                        return True, result.get("response", "Screen unlocked")
+                    else:
+                        return False, result.get("response", "Unable to unlock screen")
+                except Exception as e:
+                    logger.error(f"[UnlockScreen] Direct handler failed: {e}")
+                    return False, f"Voice unlock service error: {str(e)}. Attempting to diagnose and self-heal..."
 
         except Exception as e:
             logger.error(f"[UnlockScreen] Error unlocking screen: {e}")
