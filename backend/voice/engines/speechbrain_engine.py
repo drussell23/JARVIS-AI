@@ -1706,8 +1706,9 @@ class SpeechBrainEngine(BaseSTTEngine):
                     duration_seconds=test_features.duration_seconds,  # Use test duration
                     sample_rate=sample_rate
                 )
-                logger.info(f"   📊 Enrolled pitch: {af.get('pitch_mean_hz', 0):.1f}Hz, "
-                           f"F1: {af.get('formant_f1_hz', 0):.0f}Hz")
+                enrolled_pitch = af.get('pitch_mean_hz') or 0
+                enrolled_f1 = af.get('formant_f1_hz') or 0
+                logger.info(f"   📊 Enrolled pitch: {enrolled_pitch:.1f}Hz, F1: {enrolled_f1:.0f}Hz")
             else:
                 # Legacy fallback: use test features as baseline
                 logger.warning("   ⚠️  No acoustic features in profile, using test features as baseline")

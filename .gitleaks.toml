@@ -101,10 +101,14 @@ paths = [
   '''backend/scripts/setup_local_secrets.py''',
   '''backend/intelligence/cloud_database_adapter.py''',
   '''backend/chatbots/claude_chatbot.py''',
+  '''backend/voice/profile_consolidation_service.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
   '''test_voice_retrieval.py''',
   '''test_asyncpg.py''',
+  '''test_voice_unlock_confidence.py''',
+  '''diagnose_voice_confidence.py''',
+  '''fix_voice_profiles.py''',
   # Test files can have mock secrets
   '''backend/tests/''',
   '''backend/*/tests/''',
