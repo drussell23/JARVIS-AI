@@ -1267,6 +1267,14 @@ class SpeakerVerificationService:
                 # Learn from this attempt
                 await self._record_verification_attempt(speaker_name, confidence, is_verified)
 
+                # 🧠 Update Voice Memory Agent
+                try:
+                    from agents.voice_memory_agent import get_voice_memory_agent
+                    voice_agent = await get_voice_memory_agent()
+                    await voice_agent.record_interaction(speaker_name, confidence, is_verified)
+                except Exception as e:
+                    logger.debug(f"Voice memory agent update skipped: {e}")
+
                 result = {
                     "verified": is_verified,
                     "confidence": confidence,

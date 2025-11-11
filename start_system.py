@@ -4079,6 +4079,36 @@ class AsyncSystemManager:
             print(f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}")
             print(f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}")
 
+            # 🧠 Voice Memory Agent - Auto-check voice freshness
+            print(f"\n{Colors.CYAN}🧠 Initializing Voice Memory Agent...{Colors.ENDC}")
+            try:
+                from agents.voice_memory_agent import startup_voice_memory_check
+
+                voice_check_result = await startup_voice_memory_check()
+
+                if voice_check_result['status'] == 'healthy':
+                    print(f"{Colors.GREEN}✓ Voice memory system healthy{Colors.ENDC}")
+                elif voice_check_result['status'] == 'needs_attention':
+                    print(f"{Colors.YELLOW}⚠️  Voice samples need refresh{Colors.ENDC}")
+                    if voice_check_result.get('recommendations'):
+                        for rec in voice_check_result['recommendations'][:2]:  # Show first 2
+                            print(f"  💡 {rec['action']}")
+                else:
+                    print(f"{Colors.WARNING}⚠️  Voice memory: {voice_check_result['status']}{Colors.ENDC}")
+
+                # Show freshness if available
+                if voice_check_result.get('freshness'):
+                    for speaker, metrics in voice_check_result['freshness'].items():
+                        freshness = metrics.get('freshness_score', 0)
+                        if freshness < 0.6:
+                            print(f"  {Colors.YELLOW}🎤 {speaker}: {freshness:.0%} fresh{Colors.ENDC}")
+                        else:
+                            print(f"  {Colors.GREEN}🎤 {speaker}: {freshness:.0%} fresh{Colors.ENDC}")
+
+            except Exception as e:
+                logger.warning(f"Voice memory check skipped: {e}")
+                print(f"{Colors.YELLOW}⚠️  Voice memory check skipped (non-critical){Colors.ENDC}")
+
             # Check component status
             print(f"\n{Colors.CYAN}Checking loaded components...{Colors.ENDC}")
             try:
