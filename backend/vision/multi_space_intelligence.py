@@ -3223,10 +3223,15 @@ class MultiSpaceIntelligenceExtension:
         """Determine if query needs multi-space handling with dynamic analysis"""
         intent = self.query_detector.detect_intent(query)
         query_lower = query.lower()
-        
+
+        # Special case: "can you see my screen" should always use multi-space for full workspace visibility
+        if "can you see my screen" in query_lower or "can you see what" in query_lower:
+            logger.info("Multi-space enabled for screen visibility check")
+            return True
+
         # Decision factors with weights
         factors = []
-        
+
         # Factor 1: Intent type suggests multi-space
         multi_space_intents = {
             SpaceQueryType.LOCATION_QUERY: 0.8,

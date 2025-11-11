@@ -305,11 +305,11 @@ class OptimizedClaudeVisionAnalyzer:
 
     def _optimize_prompt(self, prompt: str) -> str:
         """Optimize prompt for faster response"""
-        # For common queries, use shorter prompts
+        # For common queries, use more comprehensive prompts for full workspace visibility
         if "can you see my screen" in prompt.lower():
-            return "Briefly describe the main application and activity visible on screen. Focus on: 1) Primary app open, 2) What the user is doing. Keep response under 100 words."
+            return "Describe what you can see across the user's workspace. Include: 1) All visible applications and windows, 2) Current activity or content visible, 3) Any notable UI elements or information. Be comprehensive but concise."
         elif "what's on my screen" in prompt.lower():
-            return "List the main elements visible: 1) Open application, 2) Current activity. Be concise."
+            return "List all visible elements across the workspace: 1) Open applications, 2) Window contents, 3) Current activities. Be thorough but concise."
         else:
             # For other prompts, add conciseness instruction
             return f"{prompt}\n\nBe concise and direct, limiting response to essential information only."
