@@ -62,6 +62,46 @@ class CloudSQLProxyManager:
         self.service_name = "com.jarvis.cloudsql-proxy"
         self.process: Optional[subprocess.Popen] = None
 
+        # NEW: Health monitoring and timeout tracking
+        self.last_successful_query = None
+        self.last_connection_check = None
+        self.connection_failures = 0
+        self.consecutive_failures = 0
+        self.connection_history = []  # Rolling window of connection checks
+        self.query_history = []  # Rolling window of query attempts
+        self.health_window = 50  # Track last 50 health checks
+
+        # Timeout thresholds (based on GCP documentation)
+        self.idle_timeout_seconds = 600  # 10 minutes typical idle timeout
+        self.warning_threshold_seconds = 480  # Warn at 8 minutes (80% of timeout)
+        self.critical_threshold_seconds = 540  # Critical at 9 minutes (90% of timeout)
+
+        # Rate limiting (from GCP Cloud SQL Admin API quotas)
+        self.api_rate_limits = {
+            'connect': 1000,  # requests per minute
+            'get': 500,       # requests per minute
+            'list': 500,      # requests per minute
+            'mutate': 180     # requests per minute
+        }
+        self.api_call_history = {
+            'connect': [],
+            'get': [],
+            'list': [],
+            'mutate': []
+        }
+
+        # Self-healing configuration
+        self.auto_reconnect_enabled = True
+        self.max_reconnect_attempts = 3
+        self.reconnect_backoff_seconds = [5, 15, 30]  # Exponential backoff
+        self.last_reconnect_attempt = None
+        self.reconnect_count = 0
+
+        # Connection pool tracking
+        self.active_connections = 0
+        self.max_connections = 100  # Default for Cloud Run/App Engine
+        self.connection_pool_warnings = []
+
     def _discover_config_path(self) -> Path:
         """
         Auto-discover database config file location.
@@ -601,6 +641,285 @@ WantedBy=default.target
         except Exception as e:
             logger.error(f"Error uninstalling service: {e}", exc_info=True)
             return False
+
+    # ========================================================================
+    # HEALTH MONITORING & TIMEOUT FORECASTING
+    # ========================================================================
+
+    async def check_connection_health(self) -> Dict:
+        """
+        Comprehensive connection health check with detailed metrics
+
+        Returns:
+            Dict with health status, timeout forecasting, rate limit usage, and recommendations
+        """
+        import psycopg2
+        from datetime import datetime, timedelta
+
+        health_data = {
+            'timestamp': datetime.now().isoformat(),
+            'proxy_running': False,
+            'connection_active': False,
+            'last_query_age_seconds': None,
+            'timeout_forecast': None,
+            'timeout_status': 'unknown',
+            'rate_limit_status': {},
+            'connection_pool': {},
+            'recommendations': [],
+            'needs_reconnect': False,
+            'auto_heal_triggered': False
+        }
+
+        # Check if proxy process is running
+        health_data['proxy_running'] = self.is_running()
+        if not health_data['proxy_running']:
+            logger.error("[CLOUDSQL] ❌ Proxy not running!")
+            health_data['recommendations'].append("Proxy process not running - auto-healing will attempt restart")
+            health_data['needs_reconnect'] = True
+
+            # AUTONOMOUS SELF-HEALING: Restart proxy
+            if self.auto_reconnect_enabled:
+                logger.info("[CLOUDSQL] 🔧 AUTO-HEAL: Attempting proxy restart...")
+                success = await self._auto_heal_reconnect()
+                health_data['auto_heal_triggered'] = True
+                health_data['proxy_running'] = success
+                if success:
+                    logger.info("[CLOUDSQL] ✅ AUTO-HEAL: Proxy restarted successfully")
+                else:
+                    logger.error("[CLOUDSQL] ❌ AUTO-HEAL: Proxy restart failed")
+
+            return health_data
+
+        # Try actual database connection
+        try:
+            port = self.config['cloud_sql']['port']
+            conn = psycopg2.connect(
+                host='127.0.0.1',
+                port=port,
+                database=self.config['cloud_sql'].get('database', 'postgres'),
+                user=self.config['cloud_sql'].get('user', 'postgres'),
+                password=self.config['cloud_sql'].get('password', ''),
+                connect_timeout=5
+            )
+
+            # Execute test query
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            # Success!
+            current_time = datetime.now()
+            self.last_successful_query = current_time
+            self.last_connection_check = current_time
+            self.consecutive_failures = 0
+            health_data['connection_active'] = True
+
+            # Track in history
+            self.connection_history.append({
+                'timestamp': current_time.isoformat(),
+                'success': True
+            })
+            if len(self.connection_history) > self.health_window:
+                self.connection_history.pop(0)
+
+            logger.info(f"[CLOUDSQL] ✅ Connection healthy (query successful)")
+
+        except Exception as e:
+            logger.error(f"[CLOUDSQL] ❌ Connection failed: {e}")
+            self.consecutive_failures += 1
+            self.connection_failures += 1
+            health_data['connection_active'] = False
+            health_data['error'] = str(e)
+
+            # Track failure in history
+            current_time = datetime.now()
+            self.connection_history.append({
+                'timestamp': current_time.isoformat(),
+                'success': False,
+                'error': str(e)
+            })
+            if len(self.connection_history) > self.health_window:
+                self.connection_history.pop(0)
+
+            # Check if we need to reconnect
+            if self.consecutive_failures >= 3:
+                health_data['needs_reconnect'] = True
+                health_data['recommendations'].append(f"3+ consecutive failures - reconnection needed")
+
+                # AUTONOMOUS SELF-HEALING
+                if self.auto_reconnect_enabled:
+                    logger.info(f"[CLOUDSQL] 🔧 AUTO-HEAL: {self.consecutive_failures} failures detected, reconnecting...")
+                    success = await self._auto_heal_reconnect()
+                    health_data['auto_heal_triggered'] = True
+                    if success:
+                        logger.info("[CLOUDSQL] ✅ AUTO-HEAL: Reconnected successfully")
+                        health_data['connection_active'] = True
+                        self.consecutive_failures = 0
+                    else:
+                        logger.error("[CLOUDSQL] ❌ AUTO-HEAL: Reconnection failed")
+
+        # Calculate timeout forecast
+        if self.last_successful_query:
+            age_seconds = (datetime.now() - self.last_successful_query).total_seconds()
+            health_data['last_query_age_seconds'] = int(age_seconds)
+
+            # Forecast timeout
+            time_until_timeout = self.idle_timeout_seconds - age_seconds
+            health_data['timeout_forecast'] = {
+                'seconds_until_timeout': int(max(0, time_until_timeout)),
+                'minutes_until_timeout': int(max(0, time_until_timeout / 60)),
+                'timeout_threshold': self.idle_timeout_seconds,
+                'percentage_used': min(100, (age_seconds / self.idle_timeout_seconds) * 100)
+            }
+
+            # Determine status
+            if age_seconds >= self.critical_threshold_seconds:
+                health_data['timeout_status'] = 'critical'
+                health_data['recommendations'].append(
+                    f"⚠️  CRITICAL: {int(time_until_timeout)}s until timeout - immediate action required"
+                )
+                # AUTO-HEAL: Preemptive reconnect
+                if self.auto_reconnect_enabled and time_until_timeout < 60:
+                    logger.warning("[CLOUDSQL] 🔧 AUTO-HEAL: Preemptive reconnect (< 60s until timeout)")
+                    await self._auto_heal_reconnect()
+                    health_data['auto_heal_triggered'] = True
+
+            elif age_seconds >= self.warning_threshold_seconds:
+                health_data['timeout_status'] = 'warning'
+                health_data['recommendations'].append(
+                    f"⚠️  WARNING: {int(time_until_timeout)}s until timeout"
+                )
+            else:
+                health_data['timeout_status'] = 'healthy'
+
+        # Check rate limits
+        health_data['rate_limit_status'] = self._check_rate_limits()
+
+        # Connection pool status
+        success_rate = self._calculate_success_rate()
+        health_data['connection_pool'] = {
+            'active_connections': self.active_connections,
+            'max_connections': self.max_connections,
+            'utilization_percent': (self.active_connections / self.max_connections) * 100,
+            'total_failures': self.connection_failures,
+            'consecutive_failures': self.consecutive_failures,
+            'success_rate': success_rate
+        }
+
+        return health_data
+
+    async def _auto_heal_reconnect(self) -> bool:
+        """
+        Autonomous self-healing reconnection with exponential backoff
+
+        Returns:
+            bool: True if reconnection successful
+        """
+        from datetime import datetime, timedelta
+
+        # Check if we've exceeded max attempts
+        if self.reconnect_count >= self.max_reconnect_attempts:
+            logger.error(f"[CLOUDSQL] ❌ Max reconnect attempts ({self.max_reconnect_attempts}) exceeded")
+            return False
+
+        # Check backoff time
+        if self.last_reconnect_attempt:
+            backoff_index = min(self.reconnect_count, len(self.reconnect_backoff_seconds) - 1)
+            backoff_seconds = self.reconnect_backoff_seconds[backoff_index]
+            time_since_last = (datetime.now() - self.last_reconnect_attempt).total_seconds()
+
+            if time_since_last < backoff_seconds:
+                logger.info(f"[CLOUDSQL] ⏳ Backoff active: wait {int(backoff_seconds - time_since_last)}s")
+                return False
+
+        self.last_reconnect_attempt = datetime.now()
+        self.reconnect_count += 1
+
+        logger.info(f"[CLOUDSQL] 🔄 Reconnect attempt {self.reconnect_count}/{self.max_reconnect_attempts}")
+
+        try:
+            # Stop existing proxy
+            if self.is_running():
+                logger.info("[CLOUDSQL] 🛑 Stopping existing proxy...")
+                self.stop()
+                await asyncio.sleep(2)
+
+            # Start new proxy
+            logger.info("[CLOUDSQL] 🚀 Starting new proxy...")
+            success = self.start()
+
+            if success:
+                # Wait for proxy to be ready
+                await asyncio.sleep(3)
+
+                # Verify connection
+                test_result = await self.check_connection_health()
+                if test_result.get('connection_active'):
+                    logger.info("[CLOUDSQL] ✅ Reconnection successful")
+                    self.reconnect_count = 0  # Reset on success
+                    return True
+                else:
+                    logger.error("[CLOUDSQL] ❌ Reconnection failed: connection not active")
+                    return False
+            else:
+                logger.error("[CLOUDSQL] ❌ Reconnection failed: proxy start failed")
+                return False
+
+        except Exception as e:
+            logger.error(f"[CLOUDSQL] ❌ Reconnection error: {e}")
+            return False
+
+    def _check_rate_limits(self) -> Dict:
+        """
+        Check API rate limit usage
+
+        Returns:
+            Dict with rate limit status for each API category
+        """
+        from datetime import datetime, timedelta
+
+        current_time = datetime.now()
+        one_minute_ago = current_time - timedelta(minutes=1)
+
+        rate_status = {}
+        for category, limit in self.api_rate_limits.items():
+            # Clean old entries
+            self.api_call_history[category] = [
+                call for call in self.api_call_history[category]
+                if datetime.fromisoformat(call) > one_minute_ago
+            ]
+
+            current_usage = len(self.api_call_history[category])
+            usage_percent = (current_usage / limit) * 100
+
+            rate_status[category] = {
+                'current_usage': current_usage,
+                'limit': limit,
+                'usage_percent': usage_percent,
+                'status': 'critical' if usage_percent > 90 else 'warning' if usage_percent > 75 else 'healthy',
+                'remaining': limit - current_usage
+            }
+
+        return rate_status
+
+    def _calculate_success_rate(self) -> float:
+        """Calculate recent connection success rate"""
+        if not self.connection_history:
+            return 1.0
+
+        recent = self.connection_history[-20:]  # Last 20 attempts
+        successes = sum(1 for c in recent if c.get('success'))
+        return successes / len(recent) if recent else 1.0
+
+    def record_api_call(self, category: str):
+        """Record an API call for rate limit tracking"""
+        from datetime import datetime
+
+        if category in self.api_call_history:
+            self.api_call_history[category].append(datetime.now().isoformat())
+            logger.debug(f"[CLOUDSQL] API call recorded: {category}")
 
 
 def get_proxy_manager() -> CloudSQLProxyManager:

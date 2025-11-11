@@ -4839,6 +4839,141 @@ class AsyncSystemManager:
                     except Exception as e:
                         print(f"  {Colors.YELLOW}⚠ Voice Memory Agent:{Colors.ENDC} Status unavailable")
 
+                    # === CLOUDSQL PROXY HEALTH CHECK ===
+                    try:
+                        from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+
+                        proxy_manager = get_proxy_manager()
+                        cloudsql_health = await proxy_manager.check_connection_health()
+
+                        # Determine overall status
+                        proxy_running = cloudsql_health.get('proxy_running', False)
+                        connection_active = cloudsql_health.get('connection_active', False)
+                        timeout_status = cloudsql_health.get('timeout_status', 'unknown')
+                        auto_heal = cloudsql_health.get('auto_heal_triggered', False)
+
+                        # Status icon and color
+                        if connection_active and timeout_status == 'healthy':
+                            status_icon = f"{Colors.GREEN}✓"
+                            status_text = "Connected"
+                        elif connection_active and timeout_status == 'warning':
+                            status_icon = f"{Colors.YELLOW}⚠️ "
+                            status_text = "Connected (Warning)"
+                        elif connection_active and timeout_status == 'critical':
+                            status_icon = f"{Colors.WARNING}🔴"
+                            status_text = "Connected (Critical)"
+                        elif proxy_running and not connection_active:
+                            status_icon = f"{Colors.WARNING}⚠️ "
+                            status_text = "Proxy running, connection failed"
+                        else:
+                            status_icon = f"{Colors.FAIL}✗"
+                            status_text = "Proxy not running"
+
+                        port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
+                        print(f"  {status_icon} CloudSQL Proxy:{Colors.ENDC} {status_text} (Port {port})")
+
+                        # Connection details
+                        if connection_active:
+                            last_query_age = cloudsql_health.get('last_query_age_seconds')
+                            if last_query_age is not None:
+                                mins = last_query_age // 60
+                                secs = last_query_age % 60
+                                age_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                                print(f"    ├─ Last query: {age_str} ago")
+
+                            # Timeout forecast
+                            timeout_forecast = cloudsql_health.get('timeout_forecast')
+                            if timeout_forecast:
+                                time_remaining = timeout_forecast['seconds_until_timeout']
+                                mins_remaining = timeout_forecast['minutes_until_timeout']
+                                percentage_used = timeout_forecast['percentage_used']
+
+                                # Color code based on percentage
+                                if percentage_used >= 90:
+                                    time_color = Colors.FAIL
+                                    forecast_icon = "🔴"
+                                elif percentage_used >= 80:
+                                    time_color = Colors.WARNING
+                                    forecast_icon = "🟠"
+                                elif percentage_used >= 60:
+                                    time_color = Colors.YELLOW
+                                    forecast_icon = "🟡"
+                                else:
+                                    time_color = Colors.GREEN
+                                    forecast_icon = "🟢"
+
+                                if mins_remaining > 0:
+                                    time_str = f"{mins_remaining}m {time_remaining % 60}s"
+                                else:
+                                    time_str = f"{time_remaining}s"
+
+                                print(f"    ├─ {forecast_icon} Timeout forecast: {time_color}{time_str} remaining ({percentage_used:.0f}% used){Colors.ENDC}")
+
+                        # Connection pool statistics
+                        pool_stats = cloudsql_health.get('connection_pool', {})
+                        if pool_stats:
+                            active = pool_stats.get('active_connections', 0)
+                            max_conn = pool_stats.get('max_connections', 100)
+                            utilization = pool_stats.get('utilization_percent', 0)
+                            success_rate = pool_stats.get('success_rate', 1.0)
+                            total_failures = pool_stats.get('total_failures', 0)
+                            consecutive_fails = pool_stats.get('consecutive_failures', 0)
+
+                            util_color = Colors.GREEN if utilization < 70 else Colors.YELLOW if utilization < 90 else Colors.WARNING
+                            success_color = Colors.GREEN if success_rate > 0.9 else Colors.YELLOW if success_rate > 0.7 else Colors.WARNING
+
+                            print(f"    ├─ Connection pool: {active}/{max_conn} ({util_color}{utilization:.0f}% util{Colors.ENDC})")
+                            print(f"    ├─ Success rate: {success_color}{success_rate*100:.1f}%{Colors.ENDC} ({total_failures} total failures)")
+
+                            if consecutive_fails > 0:
+                                print(f"    ├─ ⚠️  Consecutive failures: {consecutive_fails}")
+
+                        # Rate limit status
+                        rate_limits = cloudsql_health.get('rate_limit_status', {})
+                        if rate_limits:
+                            # Show summary of rate limits
+                            any_warnings = any(r.get('status') in ['warning', 'critical'] for r in rate_limits.values())
+
+                            if any_warnings:
+                                print(f"    ├─ {Colors.YELLOW}⚠️  API Rate Limits:{Colors.ENDC}")
+                                for category, stats in rate_limits.items():
+                                    if stats.get('status') in ['warning', 'critical']:
+                                        usage = stats['current_usage']
+                                        limit = stats['limit']
+                                        usage_pct = stats['usage_percent']
+                                        status = stats['status']
+
+                                        status_color = Colors.WARNING if status == 'critical' else Colors.YELLOW
+                                        print(f"    │  ├─ {category}: {status_color}{usage}/{limit} ({usage_pct:.0f}%){Colors.ENDC}")
+                            else:
+                                # Compact display when all healthy
+                                total_calls = sum(r['current_usage'] for r in rate_limits.values())
+                                print(f"    ├─ API rate limits: {Colors.GREEN}✓ Healthy{Colors.ENDC} ({total_calls} calls/min)")
+
+                        # Auto-heal actions
+                        if auto_heal:
+                            print(f"    ├─ {Colors.GREEN}🔧 AUTO-HEAL: Reconnection triggered{Colors.ENDC}")
+
+                        # Recommendations
+                        recommendations = cloudsql_health.get('recommendations', [])
+                        if recommendations:
+                            for i, rec in enumerate(recommendations[:3]):  # Show max 3
+                                if i == len(recommendations) - 1:
+                                    print(f"    └─ {rec}")
+                                else:
+                                    print(f"    ├─ {rec}")
+                        else:
+                            # All good!
+                            if connection_active and timeout_status == 'healthy':
+                                print(f"    └─ {Colors.GREEN}✓ No issues detected{Colors.ENDC}")
+
+                    except FileNotFoundError:
+                        # Config not found - likely not using CloudSQL
+                        print(f"  {Colors.CYAN}ℹ CloudSQL Proxy:{Colors.ENDC} Not configured (using SQLite)")
+                    except Exception as e:
+                        print(f"  {Colors.YELLOW}⚠ CloudSQL Proxy:{Colors.ENDC} Status check failed - {str(e)[:50]}")
+                        logger.debug(f"CloudSQL health check error: {e}")
+
                     # Alert on repeated failures
                     for service, failures in consecutive_failures.items():
                         if failures >= 3:

@@ -82,6 +82,9 @@ regexes = [
   '''password\s*=\s*db_password''',
   '''password=db_password''',
   '''db_password = get_db_password\(\)''',
+  # Allow password from config getter (not hardcoded)
+  '''password=self\.config\[''',
+  '''\.get\('password',''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets

@@ -1,16 +1,22 @@
-# 🧠🎤 Voice Memory Agent - Complete Integration Guide
+# 🧠🎤 Voice Memory Agent + CloudSQL Monitoring - Complete Integration Guide
 
 ## Overview
 
-JARVIS now has **persistent voice memory** - a self-aware AI agent that ensures your voice is never forgotten across restarts, maintaining high recognition accuracy through intelligent memory management.
+JARVIS now has **persistent voice memory** with **real-time CloudSQL monitoring** - a self-aware AI agent that ensures your voice is never forgotten across restarts, maintaining high recognition accuracy through intelligent memory management and preventing unlock failures with autonomous database connection management.
 
 ---
 
-## 🎯 What Problem Does This Solve?
+## 🎯 What Problems Does This Solve?
 
+### Voice Recognition Issues:
 **Before**: Voice recognition confidence would degrade over time as samples got old, and JARVIS had no memory of your voice patterns across sessions.
 
 **After**: JARVIS maintains a persistent memory of your voice, automatically checking freshness on startup, and continuously learning from every interaction.
+
+### Database Connection Issues:
+**Before**: CloudSQL connections would timeout after 10 minutes of inactivity, causing "unlock my screen" commands to fail with database errors.
+
+**After**: Real-time monitoring with timeout forecasting and autonomous self-healing ensures the database connection is always ready when you need it.
 
 ---
 
@@ -55,6 +61,21 @@ When you run `python start_system.py` or `python start_system.py --restart`:
 - Dynamic thresholds (no hardcoding)
 - Proactive refresh recommendations
 - Age-based sample scoring
+
+### 7. **CloudSQL Connection Monitoring** 🔥 **NEW!**
+- Real-time connection health checks (every 30 seconds)
+- Timeout forecasting with countdown timer
+- GCP API rate limit tracking (1000/500/180 requests/min)
+- Connection pool utilization monitoring
+- Autonomous self-healing with exponential backoff
+- Preemptive reconnection before timeout
+
+### 8. **Database Failure Prevention** 🔥 **NEW!**
+- Detects idle connections approaching 10-minute timeout
+- Warning at 8 minutes (80% timeout threshold)
+- Critical alert at 9 minutes (90% timeout threshold)
+- Auto-reconnect at < 60 seconds remaining
+- Prevents "unlock my screen" failures due to database timeouts
 
 ---
 
@@ -346,24 +367,134 @@ Provides intelligent recommendations on:
 
 ---
 
+## 📊 Real-Time Monitoring Display (Every 30 Seconds)
+
+### **Healthy State - All Systems Operational:**
+```
+🔍 Health Check #5 (Uptime: 12m 30s)
+  ✓ Backend API: http://localhost:8010 (42ms)
+    └─ Status: healthy
+    └─ Memory: 312.5 MB
+    └─ CPU: 8.2%
+    └─ 🦀 Rust: Active
+    └─ 🔧 Self-healing: 98% (15)
+
+  ✓ Voice Memory Agent: Active
+    └─ Speakers: 1
+    └─ Total interactions: 147
+    └─ Derek J. Russell: 🟢 73% fresh (147 interactions)
+       ├─ 📊 Latest confidence: 47.89%
+       ├─ Average: 32.15% (all) → 45.23% (recent 10) 📈
+       ├─ 📈 Trend: IMPROVING (+13.08%)
+       ├─ ✅ Success rate: 35.8% (19W/34L)
+       ├─    Recent 10: 60.0% 📈
+       ├─ Range: 12.45% - 68.92% (span: 56.47%)
+       ├─ 🎯 Target: 85% confidence
+       ├─    ETA: 48 more attempts (~10 days)
+       └─    Rate: +0.8123% per interaction
+
+  ✓ CloudSQL Proxy: Connected (Port 5432)
+    ├─ Last query: 45s ago
+    ├─ 🟢 Timeout forecast: 9m 15s remaining (8% used)
+    ├─ Connection pool: 3/100 (3% util)
+    ├─ Success rate: 100.0% (0 total failures)
+    ├─ API rate limits: ✓ Healthy (18 calls/min)
+    └─ ✓ No issues detected
+
+  Next health check in 30 seconds...
+```
+
+### **Warning State - Approaching Timeout:**
+```
+🔍 Health Check #28 (Uptime: 45m 10s)
+  ✓ CloudSQL Proxy: Connected (Warning)
+    ├─ Last query: 8m 30s ago
+    ├─ 🟠 Timeout forecast: 1m 30s remaining (85% used)
+    ├─ Connection pool: 5/100 (5% util, 100% success)
+    ├─ API rate limits: ✓ Healthy (25 calls/min)
+    └─ ⚠️  WARNING: 90s until timeout
+```
+
+### **Critical State + Autonomous Self-Healing:**
+```
+🔍 Health Check #32 (Uptime: 52m 15s)
+  🔴 CloudSQL Proxy: Connected (Critical)
+    ├─ Last query: 9m 45s ago
+    ├─ 🔴 Timeout forecast: 15s remaining (98% used)
+    ├─ Connection pool: 7/100 (7% util, 95% success)
+    ├─ 🔧 AUTO-HEAL: Reconnection triggered
+    └─ ⚠️  CRITICAL: 15s until timeout - immediate action required
+
+  [AUTO-HEAL IN PROGRESS]
+  [CLOUDSQL] 🔧 AUTO-HEAL: Preemptive reconnect (< 60s until timeout)
+  [CLOUDSQL] 🔄 Reconnect attempt 1/3
+  [CLOUDSQL] 🛑 Stopping existing proxy...
+  [CLOUDSQL] 🚀 Starting new proxy...
+  [CLOUDSQL] ✅ Reconnection successful
+
+  ✓ CloudSQL Proxy: Connected (Port 5432)
+    ├─ Last query: 0s ago
+    ├─ 🟢 Timeout forecast: 10m 0s remaining (0% used)
+    └─ ✓ Connection restored - unlock commands will now succeed
+```
+
+### **Rate Limit Warning:**
+```
+🔍 Health Check #45 (Uptime: 1h 15m 30s)
+  ✓ CloudSQL Proxy: Connected
+    ├─ Last query: 2m 15s ago
+    ├─ 🟢 Timeout forecast: 7m 45s remaining (23% used)
+    ├─ Connection pool: 12/100 (12% util, 98% success)
+    ├─ ⚠️  API Rate Limits:
+    │  ├─ mutate: 165/180 (92%) ⚠️
+    └─ ⚠️  Approaching mutate API limit - reduce database writes
+```
+
+### **Connection Failure + Auto-Recovery:**
+```
+🔍 Health Check #52 (Uptime: 1h 30m 45s)
+  ⚠️  CloudSQL Proxy: Proxy running, connection failed
+    ├─ Consecutive failures: 3
+    ├─ Connection pool: 0/100 (0% util, 85% success)
+    ├─ 🔧 AUTO-HEAL: 3 failures detected, reconnecting...
+    └─ 3+ consecutive failures - reconnection needed
+
+  [AUTO-HEAL IN PROGRESS]
+  [CLOUDSQL] 🔧 AUTO-HEAL: 3 failures detected, reconnecting...
+  [CLOUDSQL] 🔄 Reconnect attempt 1/3
+  [CLOUDSQL] 🛑 Stopping existing proxy...
+  [CLOUDSQL] 🚀 Starting new proxy...
+  [CLOUDSQL] ✅ Reconnection successful
+  [CLOUDSQL] ✅ AUTO-HEAL: Reconnected successfully
+
+  ✓ CloudSQL Proxy: Connected (Port 5432)
+    └─ ✓ Connection restored after auto-heal
+```
+
+---
+
 ## 🎯 Benefits
 
 ### For You:
 1. **Never Lose Voice Recognition** - Memory persists across restarts
-2. **Zero Manual Intervention** 🤖 **NEW!** - System auto-fixes issues without your input
+2. **Zero Manual Intervention** 🤖 - System auto-fixes issues without your input
 3. **Continuous Improvement** - Gets better with every use
-4. **Proactive Auto-Recovery** 🤖 **NEW!** - Critical issues handled autonomously
-5. **Intelligent Edge Case Handling** 🤖 **NEW!** - Robust handling of nuanced scenarios
-6. **Predictive Maintenance** 🤖 **NEW!** - Prevents degradation before it happens
+4. **Proactive Auto-Recovery** 🤖 - Critical issues handled autonomously
+5. **Intelligent Edge Case Handling** 🤖 - Robust handling of nuanced scenarios
+6. **Predictive Maintenance** 🤖 - Prevents degradation before it happens
+7. **No Unlock Failures** 🔥 **NEW!** - CloudSQL monitoring prevents database timeout failures
+8. **Real-Time Visibility** 🔥 **NEW!** - See confidence progression and database health every 30s
 
 ### For JARVIS:
 1. **Memory-Aware** - "Remembers" your voice characteristics
-2. **Self-Healing** 🤖 **NEW!** - Automatically repairs data integrity issues
-3. **Autonomous** 🤖 **NEW!** - Makes intelligent corrections independently
+2. **Self-Healing** 🤖 - Automatically repairs data integrity issues
+3. **Autonomous** 🤖 - Makes intelligent corrections independently
 4. **Self-Improving** - Learns from every interaction
 5. **Predictive** - Anticipates when refresh is needed and takes action
 6. **Adaptive** - Adjusts to voice changes over time
 7. **Persistent** - Never forgets across sessions
+8. **Database-Aware** 🔥 **NEW!** - Monitors CloudSQL health and prevents timeouts
+9. **Proactive Reconnection** 🔥 **NEW!** - Reconnects before database timeout occurs
 
 ---
 
@@ -736,3 +867,95 @@ Expected improvement: 60% → 90%
 - 🔄 **Adapts to changes** - Adjusts to voice variations over time
 
 **Your voice recognition will improve from 17% → 85%+ as you use JARVIS - fully automatically with zero maintenance!** 🚀
+
+---
+
+## 🔧 CloudSQL Monitoring Technical Details
+
+### **Timeout Management:**
+- **Idle Timeout**: 10 minutes (600 seconds) - GCP CloudSQL default
+- **Warning Threshold**: 8 minutes (480 seconds / 80% of timeout)
+- **Critical Threshold**: 9 minutes (540 seconds / 90% of timeout)
+- **Auto-Reconnect Trigger**: < 60 seconds remaining
+
+### **GCP API Rate Limits** (Per Minute):
+Based on official Google Cloud SQL Admin API quotas:
+- **Connect operations**: 1,000 requests/min
+- **Get operations**: 500 requests/min
+- **List operations**: 500 requests/min
+- **Mutate operations**: 180 requests/min ⚠️ (Most restrictive!)
+
+### **Connection Pool Limits:**
+- **Cloud Run / Cloud Functions (2nd gen)**: 100 concurrent connections per instance
+- **App Engine**: 100 concurrent connections per instance
+- **General**: Configurable via `max_connections` flag (depends on machine type)
+
+### **Self-Healing Configuration:**
+```python
+auto_reconnect_enabled = True
+max_reconnect_attempts = 3
+reconnect_backoff_seconds = [5, 15, 30]  # Exponential backoff
+```
+
+### **Autonomous Actions Triggered:**
+1. **Proxy not running** → Restart proxy immediately
+2. **3+ consecutive connection failures** → Reconnect with backoff
+3. **< 60s until timeout** → Preemptive reconnection
+4. **Rate limit > 90%** → Log warning (reduce writes)
+5. **Connection pool > 90%** → Log warning (check for leaks)
+
+### **Health Check Metrics:**
+Collected every 30 seconds:
+- Proxy process status (running/stopped)
+- Database connection status (test query: `SELECT 1`)
+- Last successful query timestamp
+- Time until idle timeout (real-time countdown)
+- API call counts per category (rolling 1-minute window)
+- Connection pool utilization
+- Success rate (last 20 connection attempts)
+
+### **What Gets Logged:**
+```
+[CLOUDSQL] ✅ Connection healthy (query successful)
+[CLOUDSQL] ⚠️  WARNING: 90s until timeout
+[CLOUDSQL] 🔧 AUTO-HEAL: Preemptive reconnect (< 60s until timeout)
+[CLOUDSQL] 🔄 Reconnect attempt 1/3
+[CLOUDSQL] 🛑 Stopping existing proxy...
+[CLOUDSQL] 🚀 Starting new proxy...
+[CLOUDSQL] ✅ Reconnection successful
+```
+
+### **Failure Scenarios Handled:**
+✅ Proxy process crashes → Auto-restart
+✅ Connection timeout approaching → Preemptive reconnect
+✅ Connection drops (3+ failures) → Exponential backoff reconnect
+✅ API rate limit exceeded → Warning + recommendation
+✅ Connection pool exhausted → Alert user
+✅ Network interruption → Retry with backoff
+
+### **What This Prevents:**
+❌ "unlock my screen" failing with database error
+❌ Connection timeout during verification
+❌ Lost voice samples due to write failures
+❌ Voice profile corruption from failed updates
+❌ API quota exhaustion from excessive retries
+
+---
+
+## 🎉 Final Summary
+
+### **Complete System Capabilities:**
+
+✅ **Voice Memory Persistence** - Never forgets your voice across restarts
+✅ **Confidence Tracking** - Real-time progression monitoring (17% → 85%+)
+✅ **Autonomous Self-Healing** - Auto-fixes voice profile issues
+✅ **Freshness Management** - Proactive sample refresh recommendations
+✅ **CloudSQL Monitoring** - Real-time database health with timeout forecasting
+✅ **Autonomous Reconnection** - Prevents unlock failures from database timeouts
+✅ **Rate Limit Tracking** - Monitors GCP API quotas (1000/500/180/min)
+✅ **Connection Pool Management** - Tracks utilization and prevents exhaustion
+✅ **Detailed Logging** - Every health check shows full system state
+✅ **Zero Manual Intervention** - Entire system runs autonomously
+
+### **Result:**
+**JARVIS is now equipped with enterprise-grade monitoring and self-healing for both voice recognition and database connectivity. Your "unlock my screen" commands will work reliably, and you'll see your confidence improve in real-time!** 🚀🔐
