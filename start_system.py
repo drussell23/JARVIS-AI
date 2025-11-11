@@ -2919,6 +2919,8 @@ class AsyncSystemManager:
             'average_confidence': 0.0,
             'failure_reasons': {}  # Count of each failure reason
         }
+        self.last_autonomous_fix_report = None  # Store last fix report
+        self.autonomous_fix_history = []  # Track all autonomous fixes
 
         # Self-healing mechanism
         self.healing_attempts = {}
@@ -6057,8 +6059,14 @@ class AsyncSystemManager:
 
                     # Voice Verification Diagnostics with AI-Powered Recommendations
                     print()  # Blank line for separation
+                    print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
                     stats = self.voice_verification_stats
-                    if stats['total_attempts'] > 0:
+
+                    # Always show status even with no attempts
+                    if stats['total_attempts'] == 0:
+                        print(f"  {Colors.CYAN}🎤 Voice Verification:{Colors.ENDC} {Colors.YELLOW}Waiting for first attempt...{Colors.ENDC}")
+                        print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
+                    elif stats['total_attempts'] > 0:
                         success_rate = (stats['successful'] / stats['total_attempts']) * 100
 
                         # Status icon based on recent performance
@@ -6113,20 +6121,39 @@ class AsyncSystemManager:
                                     # 🤖 AUTONOMOUS FIXING
                                     critical_bugs = sum(1 for b in deep_diagnostic.get('bugs_detected', []) if b.get('severity') == 'critical')
                                     if critical_bugs > 0 or deep_diagnostic.get('missing_components'):
-                                        print(f"    │  └─ 🤖 AUTONOMOUS FIXER: Applying fixes...")
+                                        print(f"    │")
+                                        print(f"    │  {Colors.YELLOW}{'▂' * 50}{Colors.ENDC}")
+                                        print(f"    │  {Colors.YELLOW}🤖 AUTONOMOUS CODE FIXER: ACTIVATING{Colors.ENDC}")
+                                        print(f"    │  {Colors.YELLOW}{'▔' * 50}{Colors.ENDC}")
+                                        print(f"    │  └─ Analyzing {len(deep_diagnostic.get('bugs_detected', []))} bugs...")
+                                        print(f"    │     ├─ Checking {len(deep_diagnostic.get('missing_components', []))} missing components...")
+                                        print(f"    │     └─ Applying patches to your code...")
+
                                         fix_report = await self._autonomous_code_fixer(deep_diagnostic)
 
+                                        # Store for persistent display
+                                        self.last_autonomous_fix_report = fix_report
+                                        self.autonomous_fix_history.append(fix_report)
+                                        if len(self.autonomous_fix_history) > 10:
+                                            self.autonomous_fix_history.pop(0)
+
+                                        print(f"    │")
                                         if fix_report['fixes_successful'] > 0:
-                                            print(f"    │     ├─ {Colors.GREEN}✅ Applied {fix_report['fixes_successful']} fixes{Colors.ENDC}")
-                                            for change in fix_report['changes_made'][:3]:
+                                            print(f"    │     {Colors.GREEN}{'='*50}{Colors.ENDC}")
+                                            print(f"    │     {Colors.GREEN}✅ SUCCESS: Applied {fix_report['fixes_successful']} fixes!{Colors.ENDC}")
+                                            print(f"    │     {Colors.GREEN}{'='*50}{Colors.ENDC}")
+                                            for change in fix_report['changes_made']:
                                                 if change.get('success'):
-                                                    print(f"    │     │  └─ Fixed: {change.get('bug_type', change.get('type', 'unknown'))}")
+                                                    bug_type = change.get('bug_type', change.get('type', 'unknown'))
+                                                    file_name = Path(change.get('file', '')).name if change.get('file') else change.get('package', 'unknown')
+                                                    print(f"    │     ├─ ✅ {bug_type}: {file_name}")
 
                                         if fix_report['fixes_failed'] > 0:
                                             print(f"    │     ├─ {Colors.YELLOW}⚠️  {fix_report['fixes_failed']} fixes failed{Colors.ENDC}")
 
                                         if fix_report['rollback_points']:
-                                            print(f"    │     └─ 📦 Backups created: {len(fix_report['rollback_points'])} files")
+                                            print(f"    │     └─ 📦 {len(fix_report['rollback_points'])} backup(s) in .jarvis_backups/")
+                                        print(f"    │")
 
                                     elif deep_diagnostic['autonomous_fixes']:
                                         print(f"    │  └─ 🔧 Auto-fixes: {len(deep_diagnostic['autonomous_fixes'])} available")
@@ -6158,6 +6185,37 @@ class AsyncSystemManager:
                             for reason, count in sorted_reasons[:3]:
                                 percentage = (count / stats['failed']) * 100 if stats['failed'] > 0 else 0
                                 print(f"       ├─ {reason[:50]}: {count}x ({percentage:.0f}%)")
+
+                    # PERSISTENT AUTONOMOUS FIX STATUS
+                    print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
+                    if self.last_autonomous_fix_report:
+                        fix_report = self.last_autonomous_fix_report
+                        fix_time = datetime.fromisoformat(fix_report['timestamp'])
+                        time_ago = (datetime.now() - fix_time).total_seconds()
+
+                        print(f"  {Colors.YELLOW}🤖 Last Autonomous Fix:{Colors.ENDC} {int(time_ago)}s ago")
+
+                        if fix_report['fixes_successful'] > 0:
+                            print(f"    ├─ {Colors.GREEN}✅ {fix_report['fixes_successful']} successful fixes{Colors.ENDC}")
+                            for change in fix_report['changes_made'][:5]:
+                                if change.get('success'):
+                                    print(f"    │  └─ {change.get('bug_type', change.get('type', 'fix'))}")
+
+                        if fix_report['fixes_failed'] > 0:
+                            print(f"    ├─ {Colors.YELLOW}⚠️  {fix_report['fixes_failed']} failed{Colors.ENDC}")
+
+                        total_fixes = len(self.autonomous_fix_history)
+                        total_successful = sum(f['fixes_successful'] for f in self.autonomous_fix_history)
+                        print(f"    └─ Total session: {total_successful} fixes across {total_fixes} runs")
+                    else:
+                        print(f"  {Colors.YELLOW}🤖 Autonomous Fixer:{Colors.ENDC} {Colors.CYAN}Standing by... (triggers on 3+ failures){Colors.ENDC}")
+
+                    print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
+
+                    if stats['total_attempts'] == 0:
+                        pass  # Already handled above
+                    elif stats['total_attempts'] > 0:
+                        pass  # Already displayed
                     else:
                         print(f"  {Colors.CYAN}🎤 Voice Verification:{Colors.ENDC} {Colors.YELLOW}No attempts yet{Colors.ENDC}")
 
