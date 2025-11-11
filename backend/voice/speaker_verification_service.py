@@ -113,6 +113,9 @@ class SpeakerVerificationService:
         self._shutdown_event = threading.Event()  # For clean thread shutdown
         self._preload_loop = None  # Track event loop for cleanup
 
+        # Debug mode for detailed verification logging
+        self.debug_mode = True  # Enable detailed verification debugging
+
         # Adaptive learning tracking
         self.verification_history = {}  # Track verification attempts per speaker
         self.learning_enabled = True
@@ -1003,6 +1006,15 @@ class SpeakerVerificationService:
                         quality = "legacy"
                         threshold = self.legacy_threshold
 
+                    if self.debug_mode:
+                        logger.info(f"  🔍 DEBUG Profile '{speaker_name}':")
+                        logger.info(f"     - Embedding dimension: {embedding.shape[0]} (Model: {self.current_model_dimension})")
+                        logger.info(f"     - Is native model: {is_native}")
+                        logger.info(f"     - Total samples: {total_samples}")
+                        logger.info(f"     - Quality rating: {quality}")
+                        logger.info(f"     - Assigned threshold: {threshold:.2%}")
+                        logger.info(f"     - Created: {profile.get('created_at', 'unknown')}")
+
                     # Store profile with comprehensive acoustic features
                     self.speaker_profiles[speaker_name] = {
                         "speaker_id": speaker_id,
@@ -1224,26 +1236,51 @@ class SpeakerVerificationService:
                     adaptive_threshold = self.calibration_threshold
 
                 # Get base verification result
+                if self.debug_mode:
+                    logger.info(f"🎤 VERIFICATION DEBUG: Starting verification for {speaker_name}")
+                    logger.info(f"  📊 Audio data size: {len(audio_data)} bytes")
+                    logger.info(f"  📊 Profile has {profile.get('total_samples', 0)} training samples")
+                    logger.info(f"  📊 Profile quality score: {self.profile_quality_scores.get(speaker_name, 1.0):.2f}")
+                    logger.info(f"  📊 Profile created: {profile.get('created_at', 'unknown')}")
+                    logger.info(f"  📊 Profile embedding dim: {profile.get('embedding_dimension', 'unknown')}")
+
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
                     audio_data, known_embedding, threshold=adaptive_threshold,
                     speaker_name=speaker_name, transcription="",
                     enrolled_profile=profile  # Pass full profile with acoustic features
                 )
 
+                if self.debug_mode:
+                    logger.info(f"  🔍 Base confidence: {confidence:.2%} ({confidence:.4f} raw)")
+                    logger.info(f"  🔍 Threshold used: {adaptive_threshold:.2%} ({adaptive_threshold:.4f} raw)")
+                    logger.info(f"  🔍 Initial verification: {'PASS' if is_verified else 'FAIL'}")
+                    logger.info(f"  🔍 Confidence vs Threshold: {confidence:.4f} {'≥' if confidence >= adaptive_threshold else '<'} {adaptive_threshold:.4f}")
+
                 # Apply multi-stage verification if enabled
                 if self.multi_stage_enabled and confidence > 0.05:
+                    original_confidence = confidence
                     confidence = await self._apply_multi_stage_verification(
                         confidence, audio_data, speaker_name, profile
                     )
+                    if self.debug_mode:
+                        logger.info(f"  🔄 Multi-stage verification: {original_confidence:.2%} → {confidence:.2%}")
+                        logger.info(f"     Change: {(confidence - original_confidence):.2%} ({'↑' if confidence > original_confidence else '↓'})")
 
                 # Apply confidence boosting if applicable
                 if self.confidence_boost_enabled:
+                    original_confidence = confidence
                     confidence = await self._apply_confidence_boost(
                         confidence, speaker_name, profile
                     )
+                    if self.debug_mode and confidence != original_confidence:
+                        logger.info(f"  ⬆️ Confidence boost applied: {original_confidence:.2%} → {confidence:.2%}")
+                        logger.info(f"     Boost factor: {confidence/original_confidence:.2f}x")
 
                 # Update verification decision based on boosted confidence
                 is_verified = confidence >= adaptive_threshold
+                if self.debug_mode:
+                    logger.info(f"  📍 Final verification decision: {'✅ PASS' if is_verified else '❌ FAIL'}")
+                    logger.info(f"  📍 Final confidence: {confidence:.2%} vs threshold: {adaptive_threshold:.2%}")
 
                 # Handle calibration mode
                 if self.calibration_mode and confidence > 0.10:
