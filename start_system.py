@@ -4711,6 +4711,189 @@ class AsyncSystemManager:
 
         print(f"\n{Colors.GREEN}✨ Autonomous systems active and self-healing{Colors.ENDC}")
 
+    def _analyze_voice_failures_with_ai(self, recent_failures: list, stats: dict) -> dict:
+        """
+        🧠 INTELLIGENT FAILURE ANALYSIS using SAI/CAI/UAE
+
+        Uses Situational Awareness Intelligence (SAI), Contextual Awareness Intelligence (CAI),
+        and Unified Awareness Engine (UAE) to diagnose voice verification failures and
+        provide actionable recommendations.
+
+        Args:
+            recent_failures: List of recent failure attempts with diagnostics
+            stats: Overall voice verification statistics
+
+        Returns:
+            AI analysis with root cause, patterns, and intelligent recommendations
+        """
+        analysis = {
+            'root_cause': 'Unknown',
+            'pattern_detected': 'Analyzing...',
+            'analysis_confidence': 0.0,
+            'recommendations': []
+        }
+
+        try:
+            # Extract failure characteristics
+            failure_count = len(recent_failures)
+            if failure_count == 0:
+                return analysis
+
+            # Analyze audio quality issues (CAI - Contextual Awareness)
+            audio_issues = sum(1 for f in recent_failures if f.get('audio_quality') in ['silent/corrupted', 'very_quiet', 'too_short'])
+            audio_issue_rate = audio_issues / failure_count
+
+            # Analyze database/profile issues
+            profile_issues = sum(1 for f in recent_failures if f.get('samples_in_db', 0) < 10)
+            profile_issue_rate = profile_issues / failure_count
+
+            # Analyze confidence patterns (SAI - Situational Awareness)
+            avg_failed_confidence = sum(f.get('confidence', 0.0) for f in recent_failures) / failure_count
+            very_low_confidence = sum(1 for f in recent_failures if f.get('confidence', 0.0) < 0.05)
+            very_low_rate = very_low_confidence / failure_count
+
+            # Analyze embedding dimension issues (UAE - Unified Awareness)
+            embedding_issues = sum(1 for f in recent_failures
+                                  if f.get('embedding_dimension') not in [192, 256, 512, 768, 'unknown'])
+
+            # Get most common severity
+            severities = [f.get('severity', 'unknown') for f in recent_failures]
+            most_common_severity = max(set(severities), key=severities.count) if severities else 'unknown'
+
+            # 🔍 ROOT CAUSE ANALYSIS (UAE Integration)
+            if audio_issue_rate > 0.7:
+                analysis['root_cause'] = 'Audio Pipeline Failure'
+                analysis['pattern_detected'] = f'{int(audio_issue_rate*100)}% of failures are audio quality issues'
+                analysis['analysis_confidence'] = 0.95
+
+                # Intelligent recommendations
+                if 'silent/corrupted' in [f.get('audio_quality') for f in recent_failures]:
+                    analysis['recommendations'].append({
+                        'priority': 'critical',
+                        'action': 'Fix microphone: Audio input is not being captured',
+                        'reason': 'System receiving silent/corrupted audio from microphone',
+                        'auto_fix_available': False,
+                        'steps': ['Check microphone permissions', 'Test microphone in System Preferences', 'Restart audio service']
+                    })
+                elif 'very_quiet' in [f.get('audio_quality') for f in recent_failures]:
+                    analysis['recommendations'].append({
+                        'priority': 'high',
+                        'action': 'Increase microphone gain or speak louder',
+                        'reason': 'Audio input level too low for reliable verification',
+                        'auto_fix_available': False,
+                        'steps': ['Increase microphone input volume', 'Move closer to microphone', 'Reduce background noise']
+                    })
+                elif 'too_short' in [f.get('audio_quality') for f in recent_failures]:
+                    analysis['recommendations'].append({
+                        'priority': 'medium',
+                        'action': 'Speak the command more slowly',
+                        'reason': 'Voice samples too short for accurate verification (need 1+ seconds)',
+                        'auto_fix_available': False,
+                        'steps': ['Say "unlock my screen" more slowly', 'Ensure full phrase is captured']
+                    })
+
+            elif profile_issue_rate > 0.7:
+                analysis['root_cause'] = 'Insufficient Voice Training Data'
+                analysis['pattern_detected'] = f'{int(profile_issue_rate*100)}% of failures due to low sample count'
+                analysis['analysis_confidence'] = 0.90
+
+                samples_in_db = recent_failures[0].get('samples_in_db', 0)
+                analysis['recommendations'].append({
+                    'priority': 'critical',
+                    'action': f'Re-enroll voice profile (only {samples_in_db}/30 samples)',
+                    'reason': 'Voice profile has insufficient training data for accurate verification',
+                    'auto_fix_available': True,
+                    'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker Derek',
+                    'steps': ['Run voice enrollment script', 'Provide 30+ voice samples', 'Test verification again']
+                })
+
+            elif very_low_rate > 0.7:
+                analysis['root_cause'] = 'Voice Mismatch or Model Incompatibility'
+                analysis['pattern_detected'] = f'{int(very_low_rate*100)}% have <5% confidence (critical threshold)'
+                analysis['analysis_confidence'] = 0.85
+
+                # Check for embedding dimension mismatch
+                if embedding_issues > 0:
+                    analysis['recommendations'].append({
+                        'priority': 'critical',
+                        'action': 'Re-enroll voice profile (model version mismatch detected)',
+                        'reason': 'Voice embedding dimension incompatible with current model',
+                        'auto_fix_available': True,
+                        'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker Derek --force',
+                        'steps': ['Delete old voice profile', 'Re-enroll with current model', 'Verify enrollment']
+                    })
+                else:
+                    analysis['recommendations'].append({
+                        'priority': 'high',
+                        'action': 'Verify speaker identity or re-enroll',
+                        'reason': 'Voice does not match enrolled profile (possible wrong speaker)',
+                        'auto_fix_available': False,
+                        'steps': ['Confirm correct speaker', 'Check for voice changes (illness, etc.)', 'Re-enroll if needed']
+                    })
+
+            elif stats['consecutive_failures'] >= 3:
+                analysis['root_cause'] = 'Environmental or Transient Issues'
+                analysis['pattern_detected'] = f'Recent sudden failure after {stats["successful"]} successes'
+                analysis['analysis_confidence'] = 0.75
+
+                analysis['recommendations'].append({
+                    'priority': 'medium',
+                    'action': 'Check environmental conditions',
+                    'reason': 'Verification working previously but failing recently',
+                    'auto_fix_available': False,
+                    'steps': ['Reduce background noise', 'Check for obstructions', 'Restart if issue persists']
+                })
+
+            else:
+                # General recommendations based on average confidence
+                analysis['root_cause'] = 'Variable Performance Issues'
+                analysis['pattern_detected'] = f'Mixed failure causes (avg confidence: {avg_failed_confidence:.1%})'
+                analysis['analysis_confidence'] = 0.60
+
+                if avg_failed_confidence < 0.20:
+                    analysis['recommendations'].append({
+                        'priority': 'high',
+                        'action': 'Improve audio quality and reduce noise',
+                        'reason': 'Low confidence scores suggest audio quality or environmental issues',
+                        'auto_fix_available': False,
+                        'steps': ['Find quieter environment', 'Check microphone placement', 'Speak clearly']
+                    })
+                else:
+                    analysis['recommendations'].append({
+                        'priority': 'medium',
+                        'action': 'Continue using - system is learning your voice',
+                        'reason': 'Confidence improving with adaptive learning',
+                        'auto_fix_available': False,
+                        'steps': ['Keep attempting verification', 'System adapting to your voice', 'Confidence will improve']
+                    })
+
+            # Add SAI prediction for future failures
+            if stats['consecutive_failures'] >= 2:
+                analysis['recommendations'].append({
+                    'priority': 'medium',
+                    'action': '🔮 SAI Prediction: Next attempt likely to fail without action',
+                    'reason': 'Pattern suggests underlying issue not yet resolved',
+                    'auto_fix_available': False,
+                    'steps': ['Address recommendations above first', 'Test in different environment']
+                })
+
+            # Add system health recommendation
+            if len(analysis['recommendations']) == 0:
+                analysis['recommendations'].append({
+                    'priority': 'low',
+                    'action': 'System operating normally - retry',
+                    'reason': 'No systemic issues detected',
+                    'auto_fix_available': False,
+                    'steps': ['Try again', 'Ensure clear audio']
+                })
+
+        except Exception as e:
+            logger.error(f"AI analysis error: {e}", exc_info=True)
+            analysis['root_cause'] = 'Analysis Error'
+            analysis['pattern_detected'] = str(e)
+
+        return analysis
+
     async def monitor_services(self):
         """Monitor services with health checks"""
         print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
@@ -5203,7 +5386,7 @@ class AsyncSystemManager:
                     else:
                         print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.YELLOW}Idle{Colors.ENDC} (no recent predictions)")
 
-                    # Voice Verification Diagnostics
+                    # Voice Verification Diagnostics with AI-Powered Recommendations
                     print()  # Blank line for separation
                     stats = self.voice_verification_stats
                     if stats['total_attempts'] > 0:
@@ -5229,26 +5412,41 @@ class AsyncSystemManager:
                             last_attempt_ago = (datetime.now() - stats['last_attempt_time']).total_seconds()
                             print(f"    ├─ Last attempt: {int(last_attempt_ago)}s ago")
 
-                        # Show recent failures with reasons
+                        # 🧠 INTELLIGENT ANALYSIS using SAI/CAI/UAE
                         if len(self.voice_verification_attempts) > 0:
                             recent_failures = [a for a in self.voice_verification_attempts if not a.get('success', False)]
                             if recent_failures:
-                                print(f"    ├─ Recent failures:")
-                                for i, failure in enumerate(recent_failures[-3:]):  # Last 3 failures
-                                    reason = failure.get('primary_reason', 'unknown')
-                                    confidence = failure.get('confidence', 0.0)
+                                # Analyze failure patterns with AI
+                                ai_analysis = self._analyze_voice_failures_with_ai(recent_failures, stats)
+
+                                print(f"    ├─ 🧠 AI Analysis:")
+                                print(f"    │  ├─ Root cause: {ai_analysis['root_cause']}")
+                                print(f"    │  ├─ Pattern: {ai_analysis['pattern_detected']}")
+                                print(f"    │  └─ Confidence: {ai_analysis['analysis_confidence']:.0%}")
+
+                                # Show intelligent recommendations
+                                print(f"    ├─ 💡 JARVIS Recommendations:")
+                                for i, rec in enumerate(ai_analysis['recommendations'][:3]):
+                                    priority_icon = "🔴" if rec['priority'] == 'critical' else "🟡" if rec['priority'] == 'high' else "🟢"
+                                    auto_fix = f" {Colors.GREEN}[AUTO-FIX AVAILABLE]{Colors.ENDC}" if rec.get('auto_fix_available') else ""
+                                    print(f"    │  {priority_icon} {rec['action']}{auto_fix}")
+                                    print(f"    │     └─ Why: {rec['reason']}")
+
+                                # Show recent failures (condensed)
+                                print(f"    ├─ Recent failures ({len(recent_failures[-3:])}):")
+                                for failure in recent_failures[-3:]:
+                                    reason = failure.get('primary_reason', 'unknown')[:50]
                                     severity = failure.get('severity', 'unknown')
-
                                     severity_color = Colors.FAIL if severity == 'critical' else Colors.WARNING if severity == 'high' else Colors.YELLOW
-                                    print(f"    │  ├─ {severity_color}[{severity.upper()}]{Colors.ENDC} {reason[:60]}")
-                                    print(f"    │  │  └─ Confidence: {confidence:.2%}")
+                                    print(f"    │  └─ {severity_color}{reason}{Colors.ENDC}")
 
-                        # Show top failure reasons
+                        # Show top failure reasons with counts
                         if stats['failure_reasons']:
-                            print(f"    └─ Top issues:")
+                            print(f"    └─ Failure breakdown:")
                             sorted_reasons = sorted(stats['failure_reasons'].items(), key=lambda x: x[1], reverse=True)
                             for reason, count in sorted_reasons[:3]:
-                                print(f"       ├─ {reason}: {count}x")
+                                percentage = (count / stats['failed']) * 100 if stats['failed'] > 0 else 0
+                                print(f"       ├─ {reason[:50]}: {count}x ({percentage:.0f}%)")
                     else:
                         print(f"  {Colors.CYAN}🎤 Voice Verification:{Colors.ENDC} {Colors.YELLOW}No attempts yet{Colors.ENDC}")
 
