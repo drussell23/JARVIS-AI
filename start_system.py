@@ -4621,6 +4621,7 @@ class AsyncSystemManager:
         consecutive_failures = {"backend": 0}
         health_check_count = 0
         monitoring_start = time.time()
+        self.recent_window = 10  # For confidence analytics display
 
         try:
             while True:
@@ -4728,7 +4729,7 @@ class AsyncSystemManager:
                             print(f"    └─ Speakers: {total_speakers}")
                             print(f"    └─ Total interactions: {total_interactions}")
 
-                            # Show per-speaker details
+                            # Show per-speaker details with CONFIDENCE ANALYTICS
                             for speaker_name, memory in all_memories.get('speakers', {}).items():
                                 freshness = memory.get('freshness_score', 0.0)
                                 interactions = memory.get('total_interactions', 0)
@@ -4739,22 +4740,100 @@ class AsyncSystemManager:
 
                                 print(f"    └─ {speaker_name}: {freshness_icon} {freshness_color}{freshness*100:.0f}% fresh{Colors.ENDC} ({interactions} interactions)")
 
-                                if last_interaction:
-                                    from datetime import datetime
-                                    try:
-                                        last_time = datetime.fromisoformat(last_interaction) if isinstance(last_interaction, str) else last_interaction
-                                        time_ago = datetime.now() - last_time
-                                        hours_ago = int(time_ago.total_seconds() / 3600)
-                                        if hours_ago < 1:
-                                            mins_ago = int(time_ago.total_seconds() / 60)
-                                            print(f"       └─ Last interaction: {mins_ago}m ago")
-                                        elif hours_ago < 24:
-                                            print(f"       └─ Last interaction: {hours_ago}h ago")
-                                        else:
-                                            days_ago = hours_ago // 24
-                                            print(f"       └─ Last interaction: {days_ago}d ago")
-                                    except:
-                                        pass
+                                # === CONFIDENCE ANALYTICS ===
+                                recent_conf = memory.get('recent_confidence')
+                                avg_conf_all = memory.get('avg_confidence_all')
+                                avg_conf_recent = memory.get('avg_confidence_recent')
+                                trend_direction = memory.get('trend_direction', 'unknown')
+                                trend = memory.get('trend', 0.0)
+                                success_rate_all = memory.get('success_rate_all')
+                                success_rate_recent = memory.get('success_rate_recent')
+                                successful = memory.get('successful_attempts', 0)
+                                failed = memory.get('failed_attempts', 0)
+                                min_conf = memory.get('min_confidence')
+                                max_conf = memory.get('max_confidence')
+                                prediction = memory.get('prediction')
+
+                                if recent_conf is not None:
+                                    # Show latest confidence
+                                    conf_color = Colors.GREEN if recent_conf > 0.70 else Colors.YELLOW if recent_conf > 0.40 else Colors.WARNING
+                                    print(f"       ├─ 📊 Latest confidence: {conf_color}{recent_conf:.2%}{Colors.ENDC}")
+
+                                    # Show average confidence (all time vs recent)
+                                    if avg_conf_all is not None and avg_conf_recent is not None:
+                                        diff = avg_conf_recent - avg_conf_all
+                                        diff_icon = "📈" if diff > 0.02 else "📉" if diff < -0.02 else "➡️"
+                                        print(f"       ├─ Average: {avg_conf_all:.2%} (all) → {avg_conf_recent:.2%} (recent {self.recent_window}) {diff_icon}")
+
+                                    # Show trend
+                                    if trend_direction != 'unknown':
+                                        trend_icon = "📈" if trend_direction == 'improving' else "📉" if trend_direction == 'declining' else "➡️"
+                                        trend_color = Colors.GREEN if trend_direction == 'improving' else Colors.WARNING if trend_direction == 'declining' else Colors.CYAN
+                                        print(f"       ├─ {trend_icon} Trend: {trend_color}{trend_direction.upper()}{Colors.ENDC} ({trend:+.2%})")
+
+                                    # Show success rate
+                                    if success_rate_all is not None:
+                                        rate_color = Colors.GREEN if success_rate_all > 0.70 else Colors.YELLOW if success_rate_all > 0.40 else Colors.WARNING
+                                        print(f"       ├─ ✅ Success rate: {rate_color}{success_rate_all:.1%}{Colors.ENDC} ({successful}W/{failed}L)")
+
+                                        # Show recent success rate if different
+                                        if success_rate_recent is not None and abs(success_rate_recent - success_rate_all) > 0.05:
+                                            recent_rate_color = Colors.GREEN if success_rate_recent > 0.70 else Colors.YELLOW if success_rate_recent > 0.40 else Colors.WARNING
+                                            rate_diff = success_rate_recent - success_rate_all
+                                            rate_icon = "📈" if rate_diff > 0 else "📉"
+                                            print(f"       ├─    Recent {self.recent_window}: {recent_rate_color}{success_rate_recent:.1%}{Colors.ENDC} {rate_icon}")
+
+                                    # Show confidence range
+                                    if min_conf is not None and max_conf is not None:
+                                        print(f"       ├─ Range: {min_conf:.2%} - {max_conf:.2%} (span: {max_conf-min_conf:.2%})")
+
+                                    # Show prediction
+                                    if prediction:
+                                        target = prediction.get('target_confidence', 0.85)
+                                        interactions_needed = prediction.get('interactions_needed', 0)
+                                        estimated_days = prediction.get('estimated_days', 0)
+                                        improvement_rate = prediction.get('improvement_rate', 0)
+
+                                        print(f"       ├─ 🎯 Target: {target:.0%} confidence")
+                                        print(f"       ├─    ETA: {interactions_needed} more attempts (~{estimated_days} days)")
+                                        print(f"       └─    Rate: {improvement_rate:+.4%} per interaction")
+                                    else:
+                                        # Show last interaction time
+                                        if last_interaction:
+                                            from datetime import datetime
+                                            try:
+                                                last_time = datetime.fromisoformat(last_interaction) if isinstance(last_interaction, str) else last_interaction
+                                                time_ago = datetime.now() - last_time
+                                                hours_ago = int(time_ago.total_seconds() / 3600)
+                                                if hours_ago < 1:
+                                                    mins_ago = int(time_ago.total_seconds() / 60)
+                                                    print(f"       └─ Last interaction: {mins_ago}m ago")
+                                                elif hours_ago < 24:
+                                                    print(f"       └─ Last interaction: {hours_ago}h ago")
+                                                else:
+                                                    days_ago = hours_ago // 24
+                                                    print(f"       └─ Last interaction: {days_ago}d ago")
+                                            except:
+                                                pass
+                                else:
+                                    # No confidence data yet
+                                    print(f"       └─ 📊 No confidence data yet (starting fresh)")
+                                    if last_interaction:
+                                        from datetime import datetime
+                                        try:
+                                            last_time = datetime.fromisoformat(last_interaction) if isinstance(last_interaction, str) else last_interaction
+                                            time_ago = datetime.now() - last_time
+                                            hours_ago = int(time_ago.total_seconds() / 3600)
+                                            if hours_ago < 1:
+                                                mins_ago = int(time_ago.total_seconds() / 60)
+                                                print(f"       └─ Last interaction: {mins_ago}m ago")
+                                            elif hours_ago < 24:
+                                                print(f"       └─ Last interaction: {hours_ago}h ago")
+                                            else:
+                                                days_ago = hours_ago // 24
+                                                print(f"       └─ Last interaction: {days_ago}d ago")
+                                        except:
+                                            pass
                         else:
                             print(f"  {Colors.YELLOW}⚠ Voice Memory Agent:{Colors.ENDC} No speakers enrolled")
                     except Exception as e:

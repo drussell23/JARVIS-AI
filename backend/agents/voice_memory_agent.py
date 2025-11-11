@@ -55,6 +55,12 @@ class VoiceMemoryAgent:
         self.last_interaction = {}  # Last interaction time per speaker
         self.interaction_count = {}  # Interaction counter per speaker
 
+        # NEW: Confidence tracking
+        self.confidence_history = {}  # List of recent confidence scores per speaker
+        self.success_history = {}  # List of recent success/fail per speaker
+        self.confidence_window = 50  # Track last 50 attempts
+        self.recent_window = 10  # Show last 10 for recent stats
+
         # Freshness management
         self.freshness_check_interval = 24 * 3600  # Check every 24 hours
         self.last_freshness_check = None
@@ -502,24 +508,75 @@ class VoiceMemoryAgent:
         self.last_interaction[speaker_name] = datetime.now()
         self.interaction_count[speaker_name] = self.interaction_count.get(speaker_name, 0) + 1
 
+        # NEW: Track confidence history (rolling window)
+        if speaker_name not in self.confidence_history:
+            self.confidence_history[speaker_name] = []
+        if speaker_name not in self.success_history:
+            self.success_history[speaker_name] = []
+
+        # Add to history with timestamp
+        interaction_data = {
+            'confidence': confidence,
+            'verified': verified,
+            'timestamp': datetime.now().isoformat()
+        }
+        self.confidence_history[speaker_name].append(interaction_data)
+        self.success_history[speaker_name].append(verified)
+
+        # Keep only last N interactions (rolling window)
+        if len(self.confidence_history[speaker_name]) > self.confidence_window:
+            self.confidence_history[speaker_name].pop(0)
+        if len(self.success_history[speaker_name]) > self.confidence_window:
+            self.success_history[speaker_name].pop(0)
+
+        # Calculate recent statistics
+        recent_confidences = [x['confidence'] for x in self.confidence_history[speaker_name][-self.recent_window:]]
+        avg_recent = sum(recent_confidences) / len(recent_confidences) if recent_confidences else 0.0
+
+        # Calculate trend (comparing first half vs second half of recent window)
+        if len(recent_confidences) >= 4:
+            mid_point = len(recent_confidences) // 2
+            first_half_avg = sum(recent_confidences[:mid_point]) / mid_point
+            second_half_avg = sum(recent_confidences[mid_point:]) / (len(recent_confidences) - mid_point)
+            trend = second_half_avg - first_half_avg
+        else:
+            trend = 0.0
+
+        # DETAILED LOGGING
+        logger.info(f"[VOICE MEMORY] 📊 Interaction recorded for {speaker_name}")
+        logger.info(f"  └─ Confidence: {confidence:.2%}")
+        logger.info(f"  └─ Verified: {'✅ SUCCESS' if verified else '❌ FAILED'}")
+        logger.info(f"  └─ Total interactions: {self.interaction_count[speaker_name]}")
+        logger.info(f"  └─ Recent avg confidence: {avg_recent:.2%}")
+        if trend != 0:
+            trend_icon = "📈" if trend > 0 else "📉"
+            logger.info(f"  └─ Trend: {trend_icon} {trend:+.2%}")
+
         # Update memory
         if speaker_name in self.voice_memory:
             self.voice_memory[speaker_name]['last_interaction'] = datetime.now().isoformat()
             self.voice_memory[speaker_name]['interaction_count'] = self.interaction_count[speaker_name]
             self.voice_memory[speaker_name]['recent_confidence'] = confidence
+            self.voice_memory[speaker_name]['avg_recent_confidence'] = avg_recent
+            self.voice_memory[speaker_name]['confidence_trend'] = trend
 
         # Track samples for profile update
         if verified and self.config['auto_profile_update']:
             self.samples_since_update[speaker_name] = self.samples_since_update.get(speaker_name, 0) + 1
 
+            logger.info(f"  └─ Samples since last update: {self.samples_since_update[speaker_name]}/{self.update_threshold}")
+
             # Trigger profile update if threshold reached
             if self.samples_since_update[speaker_name] >= self.update_threshold:
+                logger.info(f"  └─ 🔄 Triggering automatic profile update...")
                 await self._trigger_profile_update(speaker_name)
                 self.samples_since_update[speaker_name] = 0
+                logger.info(f"  └─ ✅ Profile update completed!")
 
         # Save state periodically
         if self.interaction_count[speaker_name] % 5 == 0:
             await self._save_persistent_memory()
+            logger.info(f"  └─ 💾 Memory persisted to disk")
 
     async def _trigger_profile_update(self, speaker_name: str):
         """Trigger automatic profile update from recent samples"""
@@ -582,20 +639,192 @@ class VoiceMemoryAgent:
         }
 
     async def get_all_memories(self) -> Dict:
-        """Get summary of all voice memories"""
+        """Get summary of all voice memories with confidence analytics"""
+        speakers_data = {}
+
+        for name, memory in self.voice_memory.items():
+            # Get confidence analytics for this speaker
+            confidence_stats = await self.get_confidence_analytics(name)
+
+            speakers_data[name] = {
+                'interactions': self.interaction_count.get(name, 0),
+                'last_seen': self.last_interaction.get(name),
+                'last_interaction': self.last_interaction.get(name),
+                'freshness': memory.get('freshness', 'unknown'),
+                'freshness_score': memory.get('freshness', 0.0),
+                'total_interactions': self.interaction_count.get(name, 0),
+                # NEW: Confidence analytics
+                **confidence_stats
+            }
+
         return {
             'total_speakers': len(self.voice_memory),
             'total_interactions': sum(self.interaction_count.values()),
             'last_freshness_check': self.last_freshness_check,
             'memory_file': str(self.memory_file),
-            'speakers': {
-                name: {
-                    'interactions': self.interaction_count.get(name, 0),
-                    'last_seen': self.last_interaction.get(name),
-                    'freshness': memory.get('freshness', 'unknown')
-                }
-                for name, memory in self.voice_memory.items()
+            'speakers': speakers_data
+        }
+
+    # ========================================================================
+    # CONFIDENCE ANALYTICS METHODS
+    # ========================================================================
+
+    async def get_confidence_analytics(self, speaker_name: str) -> Dict:
+        """
+        Get detailed confidence analytics for a speaker
+
+        Returns comprehensive statistics on confidence progression, success rate,
+        trends, and predictions.
+        """
+        if speaker_name not in self.confidence_history:
+            return {
+                'recent_confidence': None,
+                'avg_confidence_all': None,
+                'avg_confidence_recent': None,
+                'success_rate_all': None,
+                'success_rate_recent': None,
+                'trend': None,
+                'trend_direction': 'unknown',
+                'min_confidence': None,
+                'max_confidence': None,
+                'total_attempts': 0,
+                'successful_attempts': 0,
+                'failed_attempts': 0,
+                'confidence_range': None,
+                'improvement_rate': None,
+                'prediction': None
             }
+
+        history = self.confidence_history[speaker_name]
+        success_hist = self.success_history[speaker_name]
+
+        if not history:
+            return {'error': 'No confidence history available'}
+
+        # Extract confidence values
+        all_confidences = [x['confidence'] for x in history]
+        recent_confidences = [x['confidence'] for x in history[-self.recent_window:]]
+
+        # Basic statistics
+        avg_all = sum(all_confidences) / len(all_confidences)
+        avg_recent = sum(recent_confidences) / len(recent_confidences) if recent_confidences else 0.0
+        min_conf = min(all_confidences)
+        max_conf = max(all_confidences)
+
+        # Success rates
+        total_attempts = len(success_hist)
+        successful_attempts = sum(success_hist)
+        failed_attempts = total_attempts - successful_attempts
+        success_rate_all = successful_attempts / total_attempts if total_attempts > 0 else 0.0
+
+        recent_successes = sum(success_hist[-self.recent_window:])
+        recent_attempts = min(len(success_hist), self.recent_window)
+        success_rate_recent = recent_successes / recent_attempts if recent_attempts > 0 else 0.0
+
+        # Trend calculation (first half vs second half)
+        trend = 0.0
+        trend_direction = 'stable'
+        if len(all_confidences) >= 4:
+            mid_point = len(all_confidences) // 2
+            first_half_avg = sum(all_confidences[:mid_point]) / mid_point
+            second_half_avg = sum(all_confidences[mid_point:]) / (len(all_confidences) - mid_point)
+            trend = second_half_avg - first_half_avg
+
+            if trend > 0.05:
+                trend_direction = 'improving'
+            elif trend < -0.05:
+                trend_direction = 'declining'
+            else:
+                trend_direction = 'stable'
+
+        # Improvement rate (change per interaction)
+        improvement_rate = None
+        if len(all_confidences) >= 2:
+            improvement_rate = (all_confidences[-1] - all_confidences[0]) / len(all_confidences)
+
+        # Prediction: When will we reach 85% confidence?
+        prediction = None
+        if improvement_rate and improvement_rate > 0.001:  # Only if improving
+            current_conf = avg_recent
+            target_conf = 0.85
+            if current_conf < target_conf:
+                interactions_needed = int((target_conf - current_conf) / improvement_rate)
+                prediction = {
+                    'target_confidence': 0.85,
+                    'current_confidence': current_conf,
+                    'interactions_needed': interactions_needed,
+                    'estimated_days': int(interactions_needed / 5) if interactions_needed > 0 else 0,  # Assume ~5 attempts per day
+                    'improvement_rate': improvement_rate
+                }
+
+        return {
+            'recent_confidence': all_confidences[-1] if all_confidences else None,
+            'avg_confidence_all': avg_all,
+            'avg_confidence_recent': avg_recent,
+            'success_rate_all': success_rate_all,
+            'success_rate_recent': success_rate_recent,
+            'trend': trend,
+            'trend_direction': trend_direction,
+            'min_confidence': min_conf,
+            'max_confidence': max_conf,
+            'total_attempts': total_attempts,
+            'successful_attempts': successful_attempts,
+            'failed_attempts': failed_attempts,
+            'confidence_range': max_conf - min_conf,
+            'improvement_rate': improvement_rate,
+            'prediction': prediction,
+            'last_10_confidences': all_confidences[-10:],
+            'last_10_successes': success_hist[-10:]
+        }
+
+    async def get_confidence_progression(self, speaker_name: str) -> Dict:
+        """
+        Get detailed confidence progression over time with milestones
+
+        Tracks when confidence crossed key thresholds (25%, 50%, 75%, 85%)
+        """
+        if speaker_name not in self.confidence_history:
+            return {'error': 'No confidence history'}
+
+        history = self.confidence_history[speaker_name]
+        if not history:
+            return {'error': 'Empty history'}
+
+        # Track milestone crossings
+        milestones = {
+            0.25: {'crossed': False, 'at_interaction': None},
+            0.50: {'crossed': False, 'at_interaction': None},
+            0.75: {'crossed': False, 'at_interaction': None},
+            0.85: {'crossed': False, 'at_interaction': None}
+        }
+
+        for idx, entry in enumerate(history):
+            conf = entry['confidence']
+            for threshold in milestones.keys():
+                if conf >= threshold and not milestones[threshold]['crossed']:
+                    milestones[threshold]['crossed'] = True
+                    milestones[threshold]['at_interaction'] = idx + 1
+                    milestones[threshold]['timestamp'] = entry['timestamp']
+
+        # Create progression timeline
+        timeline = []
+        for i in range(0, len(history), max(1, len(history) // 20)):  # Max 20 data points
+            entry = history[i]
+            timeline.append({
+                'interaction': i + 1,
+                'confidence': entry['confidence'],
+                'timestamp': entry['timestamp'],
+                'verified': entry['verified']
+            })
+
+        return {
+            'speaker_name': speaker_name,
+            'total_interactions': len(history),
+            'milestones': milestones,
+            'timeline': timeline,
+            'current_confidence': history[-1]['confidence'],
+            'starting_confidence': history[0]['confidence'],
+            'total_improvement': history[-1]['confidence'] - history[0]['confidence']
         }
 
     # ========================================================================
