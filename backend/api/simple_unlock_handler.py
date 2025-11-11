@@ -598,7 +598,7 @@ async def _execute_screen_action(
                 )
                 # Store intermediate message for JARVIS to speak
                 context["verification_message"] = (
-                    f"Identity confirmed, {speaker_name}. Voice biometrics verified at {confidence:.0%} confidence. "
+                    f"Identity confirmed, {speaker_name}. "
                     f"Initiating screen unlock sequence now."
                 )
 
@@ -900,7 +900,7 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
             )
             # Store intermediate message for JARVIS to speak
             context["verification_message"] = (
-                f"Identity confirmed, {speaker_name}. Voice biometrics verified at {confidence:.0%} confidence. "
+                f"Identity confirmed, {speaker_name}. "
                 f"Initiating screen unlock sequence now."
             )
 

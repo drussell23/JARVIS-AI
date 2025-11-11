@@ -1377,19 +1377,6 @@ class MacOSController:
             if enrollment_status != "complete":
                 diagnostic_issues.append(f"Enrollment {enrollment_status}")
 
-            # Check CloudSQL voice profiles
-            voice_profiles_available = False
-            try:
-                # Quick check if we can import the service
-                from voice.speaker_verification_service import _global_speaker_service
-                if _global_speaker_service and hasattr(_global_speaker_service, 'speaker_profiles'):
-                    voice_profiles_available = len(_global_speaker_service.speaker_profiles) > 0
-            except:
-                pass
-
-            if not voice_profiles_available:
-                diagnostic_issues.append("Voice profiles not loaded from CloudSQL")
-
             # Generate intelligent response based on diagnostics
             if diagnostic_issues:
                 issue_list = ", ".join(diagnostic_issues)
@@ -1398,12 +1385,10 @@ class MacOSController:
                 # Provide specific guidance based on the issues
                 if "Keychain password" in issue_list:
                     suggestion = "I need your password stored in keychain. Run: ./backend/voice_unlock/enable_screen_unlock.sh"
-                elif "Voice profiles" in issue_list:
-                    suggestion = "Voice biometric profiles aren't loaded. Let me restart my backend services."
                 elif "Enrollment" in issue_list:
                     suggestion = "Voice enrollment needs to be completed. Your biometric data is in CloudSQL but enrollment config is incomplete."
                 else:
-                    suggestion = "Multiple configuration issues detected. Checking system status..."
+                    suggestion = "Configuration issue detected. Checking system status..."
 
                 return (
                     False,
