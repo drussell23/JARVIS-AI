@@ -2690,7 +2690,10 @@ class SAIHybridIntegration:
                         )
 
         except Exception as e:
-            logger.warning(f"Failed to load learned parameters: {e}")
+            # Only log if it's an actual error, not just missing data
+            if str(e) != "0":
+                logger.debug(f"Could not load learned parameters: {e}")
+            # Missing learned parameters is normal on first run
 
     async def save_learned_parameters(self):
         """Save learned parameters to database"""
