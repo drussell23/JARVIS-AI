@@ -158,6 +158,9 @@ class OptimizedClaudeVisionAnalyzer:
         """
         start_time = time.time()
 
+        # Note: Removed fast path for "can you see my screen" - this should go through
+        # full vision pipeline to properly analyze workspace with multi-space support
+
         # Convert to PIL Image
         if isinstance(image, np.ndarray):
             if image.dtype == object:
@@ -230,12 +233,18 @@ class OptimizedClaudeVisionAnalyzer:
                 logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
 
         # Fallback to direct API
-        # Send to Claude with optimized settings
+        # Send to Claude with optimized settings (asynchronously)
         api_start = time.time()
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=512,  # Reduced from 1024
-            messages=[
+
+        # Use asyncio to run the synchronous API call in a thread pool
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        # Create the message parameters
+        message_params = {
+            "model": self.model,
+            "max_tokens": 512,  # Reduced from 1024
+            "messages": [
                 {
                     "role": "user",
                     "content": [
@@ -251,13 +260,27 @@ class OptimizedClaudeVisionAnalyzer:
                     ],
                 }
             ],
-            temperature=0.3,  # Lower temperature for more consistent responses
-        )
+            "temperature": 0.3,  # Lower temperature for more consistent responses
+        }
+
+        # Run the synchronous API call in a thread pool to avoid blocking
+        try:
+            message = await loop.run_in_executor(
+                None,
+                lambda: self.client.messages.create(**message_params)
+            )
+        except Exception as e:
+            logger.error(f"Claude API call failed: {e}")
+            return {
+                "description": "I'm having trouble accessing my vision capabilities at the moment.",
+                "response_time": time.time() - start_time,
+                "error": str(e)
+            }
 
         logger.info(f"Claude API call took {time.time() - api_start:.2f}s")
 
         result = {
-            "description": message.content[0].text,
+            "description": message.content[0].text if message.content else "Unable to analyze screen",
             "response_time": time.time() - start_time,
             "image_size_kb": len(image_data) / 1024,
         }
