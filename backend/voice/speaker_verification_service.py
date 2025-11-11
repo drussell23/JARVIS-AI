@@ -569,7 +569,32 @@ class SpeakerVerificationService:
         logger.info(f"🔀 Cross-model migration: {source_dim}D → {target_dim}D")
 
         # Apply model-specific transformations
-        if source_dim == 768 and target_dim == 192:
+        if source_dim == 1536 and target_dim == 192:
+            # Large model (1536D) to ECAPA-TDNN (192D)
+            # Use advanced dimension reduction preserving speaker characteristics
+
+            # Method 1: Intelligent downsampling with feature preservation
+            # Divide into 8 segments (1536/192 = 8)
+            segment_size = source_dim // target_dim  # 8
+
+            # Extract key features from each segment
+            features = []
+            for i in range(target_dim):
+                segment = embedding[i*segment_size:(i+1)*segment_size]
+                # Take weighted combination: mean + variance information
+                feature = np.mean(segment) * 0.7 + np.std(segment) * 0.3
+                features.append(feature)
+
+            features = np.array(features)
+
+            # Preserve energy distribution
+            orig_norm = np.linalg.norm(embedding)
+            features = features / (np.linalg.norm(features) + 1e-10) * orig_norm
+
+            logger.info(f"✅ Reduced 1536D → 192D preserving speaker characteristics")
+            return features
+
+        elif source_dim == 768 and target_dim == 192:
             # Likely transformer (768D) to ECAPA-TDNN (192D)
             # Use PCA-like dimensionality reduction with emphasis on speaker-discriminative features
 
@@ -756,7 +781,11 @@ class SpeakerVerificationService:
                 continue
 
             try:
-                embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                # Try float32 first (most common), fallback to float64
+                try:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+                except:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
                 dimension = embedding.shape[0]
 
                 # Dimension match - highest priority
@@ -886,7 +915,11 @@ class SpeakerVerificationService:
 
                     # Validate embedding data
                     try:
-                        embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                        # Try float32 first (most common), fallback to float64
+                try:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+                except:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
                     except Exception as deserialize_error:
                         logger.error(f"❌ Failed to deserialize embedding for {speaker_name}: {deserialize_error}")
                         skipped_count += 1

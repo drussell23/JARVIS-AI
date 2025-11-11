@@ -109,6 +109,7 @@ paths = [
   '''test_voice_unlock_confidence.py''',
   '''diagnose_voice_confidence.py''',
   '''fix_voice_profiles.py''',
+  '''fix_voice_embedding_mismatch.py''',
   # Test files can have mock secrets
   '''backend/tests/''',
   '''backend/*/tests/''',
