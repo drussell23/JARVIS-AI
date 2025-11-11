@@ -16,33 +16,41 @@ JARVIS now has **persistent voice memory** - a self-aware AI agent that ensures 
 
 ## ✨ Key Features
 
-### 1. **Automatic Startup Integration**
+### 1. **Autonomous Self-Healing** 🤖 **NEW!**
+When you run `python start_system.py` or `python start_system.py --restart`:
+- ✅ **5-Phase Autonomous Diagnostics** - Pre-check, freshness analysis, optimization, sync, reporting
+- ✅ **Automatic Issue Detection & Repair** - Fixes data integrity issues, missing fields, invalid values
+- ✅ **Intelligent Edge Case Handling** - Handles stale samples, profile degradation, distribution imbalances
+- ✅ **Predictive Maintenance** - Predicts freshness degradation and takes preventive action
+- ✅ **Zero Manual Intervention** - Automatically corrects issues without user input
+
+### 2. **Automatic Startup Integration**
 When you run `python start_system.py` or `python start_system.py --restart`:
 - ✅ Voice Memory Agent initializes automatically
 - ✅ Checks voice sample freshness
 - ✅ Loads voice profiles into memory
-- ✅ Displays status and recommendations
+- ✅ Displays status and autonomous actions taken
 - ✅ Syncs with database
 
-### 2. **Persistent Memory Across Restarts**
+### 3. **Persistent Memory Across Restarts**
 - Voice characteristics stored in `~/.jarvis/voice_memory.json`
 - Loads on startup - JARVIS "remembers" you
 - Tracks interaction counts and patterns
 - Maintains freshness scores
 
-### 3. **Continuous Learning**
+### 4. **Continuous Learning**
 - Every voice interaction is recorded
 - Automatic profile updates every 10 samples
 - Incremental learning without manual intervention
 - Adapts to voice changes over time
 
-### 4. **Memory-Aware Voice Recognition**
+### 5. **Memory-Aware Voice Recognition**
 - Integrates with `JARVISLearningDatabase`
 - Syncs with speaker verification service
 - Real-time confidence tracking
 - Pattern recognition and recall
 
-### 5. **Intelligent Freshness Management**
+### 6. **Intelligent Freshness Management**
 - Automatic freshness checks (every 24 hours)
 - Dynamic thresholds (no hardcoding)
 - Proactive refresh recommendations
@@ -60,11 +68,14 @@ When you run `python start_system.py` or `python start_system.py --restart`:
                   │
                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│           Voice Memory Agent (NEW!)                          │
+│     🤖 Voice Memory Agent - AUTONOMOUS (NEW!)                │
 │  - Loads voice profiles into memory                         │
-│  - Checks sample freshness                                  │
-│  - Provides recommendations                                 │
-│  - Maintains persistent memory file                         │
+│  - 5-Phase diagnostic & self-healing                        │
+│  - Auto-fixes data integrity issues                         │
+│  - Auto-archives stale samples                              │
+│  - Auto-optimizes voice profiles                            │
+│  - Predictive maintenance                                   │
+│  - Zero manual intervention required                        │
 └────────┬──────────────────┬─────────────────────────────────┘
          │                  │
          │                  │
@@ -95,22 +106,51 @@ When you run `python start_system.py` or `python start_system.py --restart`:
 ```
 1. Backend Initializes
    ↓
-2. 🧠 Voice Memory Agent Initializes
-   ├─ Loads voice profiles from database
-   ├─ Loads persistent memory from ~/.jarvis/voice_memory.json
-   ├─ Syncs memory with database
-   └─ Performs freshness check
+2. 🤖 Voice Memory Agent - AUTONOMOUS Mode
+   ├─ PHASE 1: Pre-Check Diagnostics
+   │  ├─ Auto-loads voice profiles from database
+   │  ├─ Validates data integrity
+   │  └─ Auto-repairs missing/invalid fields
+   │
+   ├─ PHASE 2: Freshness Analysis
+   │  ├─ Calculates age-weighted freshness scores
+   │  ├─ Identifies stale samples (>60 days)
+   │  └─ Detects critical degradation (<40%)
+   │
+   ├─ PHASE 3: Autonomous Optimization
+   │  ├─ Auto-archives stale samples if needed
+   │  ├─ Auto-optimizes profile with best samples
+   │  ├─ Auto-rebalances age distribution
+   │  └─ Auto-adjusts verification thresholds
+   │
+   ├─ PHASE 4: Database Sync
+   │  ├─ Syncs memory cache with database
+   │  └─ Persists fixes to disk
+   │
+   └─ PHASE 5: Reporting & Recommendations
+      └─ Shows autonomous actions taken
    ↓
-3. Displays Status:
+3. Displays Status with Autonomous Actions:
+
    ✓ Voice memory system healthy
+   🤖 Autonomous actions:
+      ✅ Auto-loaded voice profiles from database
+      ✅ Auto-archived 12 stale samples (>60 days)
+      ✅ Auto-optimized profile with top 100 samples
    🎤 Derek J. Russell: 73% fresh
 
-OR if attention needed:
+OR if critical freshness detected:
 
-   ⚠️  Voice samples need refresh
-   💡 Voice samples for Derek J. Russell need refresh
-   💡 Record 10-30 new samples for Derek J. Russell
-   🎤 Derek J. Russell: 45% fresh
+   🔴 Critical freshness detected
+   🤖 Autonomous actions:
+      ✅ Auto-loaded voice profiles from database
+      ✅ Auto-archived 23 stale samples (>60 days)
+      ✅ Auto-optimized profile with best samples
+      ✅ Auto-rebalanced sample distribution
+      ⚠️  Prediction: Freshness will drop below 30% in 7 days
+   ✅ Auto-fixed: 3 issues
+   🎤 Derek J. Russell: 38% fresh (recovered from 25%)
+   💡 Recommend recording 20-30 new samples for optimal performance
 ```
 
 ### Then During Use:
@@ -139,11 +179,21 @@ Every time you say "unlock my screen":
 
 ### **New Files Created:**
 
-1. **`backend/agents/voice_memory_agent.py`** (500+ lines)
-   - Main Voice Memory Agent implementation
-   - Startup checks, freshness management
-   - Memory persistence
-   - Integration with database
+1. **`backend/agents/voice_memory_agent.py`** (830+ lines) 🤖 **ENHANCED!**
+   - **Autonomous Voice Memory Agent** with self-healing capabilities
+   - **5-Phase Startup Diagnostics**: Pre-check, freshness analysis, optimization, sync, reporting
+   - **8 Autonomous Helper Methods**:
+     - `_check_data_integrity()` - Validates memory data structure
+     - `_auto_repair_data()` - Fixes missing/invalid fields automatically
+     - `_auto_archive_stale_samples()` - Archives samples older than threshold
+     - `_auto_optimize_profile()` - Re-optimizes profile with best samples
+     - `_auto_rebalance_samples()` - Balances age distribution
+     - `_predict_freshness_degradation()` - Predicts future degradation
+     - `_intelligent_sample_recovery()` - Attempts sample recovery
+     - `_auto_optimize_thresholds()` - Adjusts verification thresholds
+   - **Configuration-Driven Autonomy**: 8 toggleable auto-fix options
+   - **Edge Case Handling**: Robust handling of nuanced scenarios
+   - Memory persistence and database integration
 
 2. **`backend/agents/__init__.py`**
    - Package initialization
@@ -158,10 +208,15 @@ Every time you say "unlock my screen":
 
 ### **Files Modified:**
 
-1. **`start_system.py`** (Lines 4082-4110)
-   - Added Voice Memory Agent initialization
-   - Automatic freshness check on startup
-   - Status display integration
+1. **`start_system.py`** (Lines 4082-4132) 🤖 **ENHANCED!**
+   - Added **Autonomous Voice Memory Agent** initialization
+   - Automatic freshness check with **self-healing** on startup
+   - **Enhanced status display** showing:
+     - Autonomous actions taken
+     - Issues auto-fixed count
+     - Freshness scores with severity indicators
+     - Predictive degradation warnings
+     - Only critical/high priority recommendations
 
 2. **`speaker_verification_service.py`** (Lines 1270-1276)
    - Integrated Voice Memory Agent updates
@@ -212,31 +267,57 @@ Every time you say "unlock my screen":
 
 ## 🚀 Usage Examples
 
-### **1. Normal Startup (Automatic)**
+### **1. Normal Startup (Automatic) - Healthy System**
 ```bash
 python start_system.py
 ```
 Output:
 ```
-🧠 Initializing Voice Memory Agent...
+🧠 Initializing Autonomous Voice Memory Agent...
 ✓ Voice memory system healthy
+🤖 Autonomous actions:
+   ✅ Auto-loaded voice profiles from database
+   ✅ Validated data integrity (0 issues)
 🎤 Derek J. Russell: 73% fresh
 ```
 
-### **2. When Refresh Needed**
+### **2. Startup with Auto-Fix (Medium Priority)**
 ```bash
 python start_system.py --restart
 ```
 Output:
 ```
-🧠 Initializing Voice Memory Agent...
+🧠 Initializing Autonomous Voice Memory Agent...
 ⚠️  Voice samples need refresh
-  💡 Voice samples for Derek J. Russell need refresh
-  💡 Record 10-30 new samples for Derek J. Russell
-  🎤 Derek J. Russell: 45% fresh
+🤖 Autonomous actions:
+   ✅ Auto-loaded voice profiles from database
+   ✅ Auto-archived 8 stale samples (>60 days)
+   ✅ Auto-rebalanced sample distribution
+✅ Auto-fixed: 1 issue
+🎤 Derek J. Russell: 56% fresh
+💡 Recommend recording 10-20 new samples
 ```
 
-### **3. Manual Freshness Check**
+### **3. Critical Freshness - Full Auto-Recovery**
+```bash
+python start_system.py
+```
+Output:
+```
+🧠 Initializing Autonomous Voice Memory Agent...
+🔴 Critical freshness detected
+🤖 Autonomous actions:
+   ✅ Auto-loaded voice profiles from database
+   ✅ Auto-archived 23 stale samples (>60 days)
+   ✅ Auto-optimized profile with best samples
+   ✅ Auto-rebalanced sample distribution
+   ⚠️  Prediction: Freshness will drop below 30% in 7 days
+✅ Auto-fixed: 3 issues
+🎤 Derek J. Russell: 38% fresh (recovered from 25%)
+💡 Record 20-30 new samples for optimal performance
+```
+
+### **4. Manual Freshness Check**
 ```bash
 python manage_voice_freshness.py
 ```
@@ -247,13 +328,13 @@ Shows comprehensive report with:
 - Predictions
 - Recommendations
 
-### **4. Auto-Management**
+### **5. Auto-Management**
 ```bash
 python manage_voice_freshness.py --auto-manage
 ```
 Automatically archives old samples and maintains optimal count.
 
-### **5. Generate Refresh Strategy**
+### **6. Generate Refresh Strategy**
 ```bash
 python manage_voice_freshness.py --generate-strategy
 ```
@@ -269,17 +350,20 @@ Provides intelligent recommendations on:
 
 ### For You:
 1. **Never Lose Voice Recognition** - Memory persists across restarts
-2. **Automatic Monitoring** - No manual freshness checks needed
+2. **Zero Manual Intervention** 🤖 **NEW!** - System auto-fixes issues without your input
 3. **Continuous Improvement** - Gets better with every use
-4. **Proactive Alerts** - Notified when samples need refresh
-5. **Zero Maintenance** - Everything happens automatically
+4. **Proactive Auto-Recovery** 🤖 **NEW!** - Critical issues handled autonomously
+5. **Intelligent Edge Case Handling** 🤖 **NEW!** - Robust handling of nuanced scenarios
+6. **Predictive Maintenance** 🤖 **NEW!** - Prevents degradation before it happens
 
 ### For JARVIS:
 1. **Memory-Aware** - "Remembers" your voice characteristics
-2. **Self-Improving** - Learns from every interaction
-3. **Predictive** - Anticipates when refresh is needed
-4. **Adaptive** - Adjusts to voice changes over time
-5. **Persistent** - Never forgets across sessions
+2. **Self-Healing** 🤖 **NEW!** - Automatically repairs data integrity issues
+3. **Autonomous** 🤖 **NEW!** - Makes intelligent corrections independently
+4. **Self-Improving** - Learns from every interaction
+5. **Predictive** - Anticipates when refresh is needed and takes action
+6. **Adaptive** - Adjusts to voice changes over time
+7. **Persistent** - Never forgets across sessions
 
 ---
 
@@ -302,6 +386,188 @@ Provides intelligent recommendations on:
 - 🔄 Continuous learning active
 - 💾 Rich interaction history
 - ✅ Consistent unlocking
+
+---
+
+## 🤖 Autonomous Self-Healing Capabilities
+
+### Overview
+
+The Voice Memory Agent now operates in **fully autonomous mode** with intelligent self-healing capabilities. When issues are detected, the agent **automatically corrects them** without requiring manual intervention.
+
+### 5-Phase Startup Diagnostics
+
+Every time JARVIS starts, the Voice Memory Agent performs a comprehensive 5-phase check:
+
+#### **PHASE 1: Pre-Check Diagnostics**
+```python
+✓ Auto-loads voice profiles from database
+✓ Validates data integrity (checks for missing fields, invalid values)
+✓ Auto-repairs corrupted memory data
+✓ Ensures memory cache is synchronized
+```
+
+#### **PHASE 2: Freshness Analysis**
+```python
+✓ Calculates age-weighted freshness scores
+  - 0-7 days:   1.0x weight
+  - 8-14 days:  0.8x weight
+  - 15-30 days: 0.6x weight
+  - 31-60 days: 0.3x weight
+  - 60+ days:   0.1x weight
+✓ Identifies stale samples (>60 days old)
+✓ Detects critical freshness (<40%)
+✓ Detects high priority issues (<60%)
+✓ Detects medium priority issues (<75%)
+```
+
+#### **PHASE 3: Autonomous Optimization**
+
+**Critical Priority (< 40% freshness)**:
+```python
+🤖 Auto-archives stale samples (>60 days)
+🤖 Auto-optimizes profile with best samples
+🤖 Calculates predicted degradation timeline
+🤖 Prepares recovery recommendations
+```
+
+**High Priority (< 60% freshness)**:
+```python
+🤖 Auto-archives old samples (>60 days)
+🤖 Auto-rebalances sample age distribution
+🤖 Ensures samples span multiple time periods
+```
+
+**Medium Priority (< 75% freshness)**:
+```python
+🤖 Predicts when freshness will degrade
+🤖 Calculates optimal refresh timeline
+🤖 Prepares proactive recommendations
+```
+
+#### **PHASE 4: Database Sync**
+```python
+✓ Syncs memory cache with database
+✓ Persists all fixes to disk
+✓ Updates voice_memory.json with latest state
+```
+
+#### **PHASE 5: Reporting & Recommendations**
+```python
+✓ Reports autonomous actions taken
+✓ Shows issues auto-fixed count
+✓ Displays freshness scores with severity
+✓ Provides only critical/high priority recommendations
+```
+
+### 8 Autonomous Helper Methods
+
+The agent has 8 specialized methods that handle different types of issues automatically:
+
+#### **1. `_check_data_integrity()`**
+- Validates memory data structure
+- Checks for missing required fields
+- Detects invalid values (negative counts, future dates)
+- Returns list of detected issues
+
+#### **2. `_auto_repair_data()`**
+- Fixes missing fields automatically
+- Repairs invalid values with safe defaults
+- Reconstructs corrupted memory entries
+- Returns list of repairs made
+
+#### **3. `_auto_archive_stale_samples()`**
+- Archives samples older than threshold (default: 60 days)
+- Maintains minimum sample count (never removes critical samples)
+- Updates database with archived status
+- Returns count of samples archived
+
+#### **4. `_auto_optimize_profile()`**
+- Fetches best samples (highest quality scores)
+- Re-computes voice profile using top samples
+- Updates speaker_profiles table with optimized embedding
+- Returns success status
+
+#### **5. `_auto_rebalance_samples()`**
+- Analyzes age distribution of samples
+- Ensures samples span multiple time periods
+- Archives excess samples from over-represented periods
+- Maintains balanced temporal distribution
+- Returns success status
+
+#### **6. `_predict_freshness_degradation()`**
+- Models linear degradation based on usage patterns
+- Factors in quality trend and usage rate
+- Calculates days until critical threshold
+- Returns predicted dates for degradation milestones
+
+#### **7. `_intelligent_sample_recovery()`**
+- Attempts to recover from low sample count
+- Checks archived samples for high-quality candidates
+- Restores best archived samples if needed
+- Returns count of samples recovered
+
+#### **8. `_auto_optimize_thresholds()`**
+- Analyzes recent verification success rates
+- Dynamically adjusts verification thresholds
+- Updates speaker_profiles.threshold based on performance
+- Returns success status
+
+### Configuration Options
+
+The autonomous behavior is fully configurable. All auto-fix features can be toggled:
+
+```python
+agent.config = {
+    'auto_fix_enabled': True,          # Master switch for all auto-fixes
+    'auto_archive_stale': True,        # Auto-archive old samples
+    'auto_refresh_critical': True,     # Auto-handle critical freshness
+    'auto_rebalance_samples': True,    # Auto-balance age distribution
+    'auto_optimize_thresholds': True,  # Auto-adjust verification thresholds
+    'intelligent_migration': True,     # Migrate old samples intelligently
+    'self_healing': True,              # Self-heal corrupted data
+    'predictive_maintenance': True     # Predict and prevent issues
+}
+```
+
+### Edge Case Handling
+
+The agent intelligently handles numerous edge cases:
+
+**Missing Data**:
+- Missing embeddings → Recomputes from audio
+- Missing timestamps → Uses file metadata
+- Missing quality scores → Estimates from verification history
+
+**Data Corruption**:
+- Invalid JSON → Rebuilds from database
+- Corrupted embeddings → Re-extracts from audio
+- Inconsistent state → Syncs with source of truth (database)
+
+**Sample Imbalance**:
+- Too many old samples → Archives excess
+- Too few recent samples → Flags for user attention
+- Unbalanced distribution → Rebalances automatically
+
+**Critical Freshness**:
+- < 40% freshness → Immediate auto-recovery
+- Insufficient samples → Attempts intelligent recovery
+- Unable to recover → Provides specific guidance
+
+**Database Sync Issues**:
+- Memory-DB mismatch → Syncs from database (source of truth)
+- Failed writes → Retries with exponential backoff
+- Connection issues → Falls back to cached memory
+
+### Safety Mechanisms
+
+The agent includes multiple safety mechanisms to prevent data loss:
+
+1. **Never removes all samples** - Maintains minimum count (default: 20)
+2. **Archives before deleting** - Samples can be recovered
+3. **Validation before updates** - Ensures changes are safe
+4. **Rollback on failure** - Reverts changes if operation fails
+5. **Audit logging** - All autonomous actions are logged
 
 ---
 
@@ -419,27 +685,54 @@ Expected improvement: 60% → 90%
 ### What You Get:
 
 ✅ **Memory Persistence** - Voice profiles loaded on every startup
-✅ **Automatic Checks** - Freshness monitored without your input
+✅ **Autonomous Self-Healing** 🤖 **NEW!** - Automatically detects and fixes issues
+✅ **Zero Manual Intervention** 🤖 **NEW!** - System handles issues independently
+✅ **Intelligent Edge Case Handling** 🤖 **NEW!** - Robust handling of nuanced scenarios
+✅ **Predictive Maintenance** 🤖 **NEW!** - Prevents degradation before it happens
 ✅ **Continuous Learning** - Every interaction improves the model
-✅ **Proactive Alerts** - Notified when refresh is needed
+✅ **Proactive Auto-Recovery** 🤖 **NEW!** - Critical issues handled autonomously
 ✅ **Zero Hardcoding** - All thresholds dynamically computed
 ✅ **Intelligent Management** - ML-based freshness analysis
 ✅ **Seamless Integration** - Works with existing systems
 
 ### How It Works:
 
-1. **On Startup**: Voice Memory Agent loads profiles and checks freshness
-2. **During Use**: Every interaction is recorded and contributes to learning
-3. **Automatic Updates**: Profile updates every 10 samples
-4. **Persistent Memory**: State saved across restarts
-5. **Self-Improving**: Recognition accuracy increases over time
+1. **On Startup**:
+   - Voice Memory Agent performs 5-phase autonomous diagnostics
+   - Automatically detects and fixes issues without user input
+   - Displays autonomous actions taken
+
+2. **During Use**:
+   - Every interaction is recorded and contributes to learning
+   - Real-time confidence tracking and pattern recognition
+
+3. **Automatic Updates**:
+   - Profile updates every 10 samples
+   - Auto-archives stale samples when detected
+   - Auto-rebalances age distribution
+   - Auto-optimizes profiles with best samples
+
+4. **Persistent Memory**:
+   - State saved across restarts in ~/.jarvis/voice_memory.json
+   - Database synced with memory cache
+   - All fixes persisted automatically
+
+5. **Self-Improving & Self-Healing**:
+   - Recognition accuracy increases over time (17% → 85%+)
+   - Autonomous correction of data integrity issues
+   - Predictive degradation modeling
+   - Intelligent sample recovery
 
 ### Result:
 
-**JARVIS now has a persistent memory of your voice that:**
-- Never forgets across restarts
-- Continuously learns and improves
-- Proactively maintains accuracy
-- Adapts to changes automatically
+**JARVIS now has a fully autonomous voice memory system that:**
+- 🤖 **Heals itself** - Automatically repairs data integrity issues
+- 🤖 **Thinks ahead** - Predicts and prevents degradation
+- 🤖 **Adapts intelligently** - Handles edge cases autonomously
+- 🤖 **Optimizes continuously** - Archives stale samples, rebalances distribution
+- 💾 **Never forgets** - Persistent memory across restarts
+- 📈 **Continuously learns** - Gets better with every interaction
+- 🎯 **Maintains accuracy** - Proactive freshness management
+- 🔄 **Adapts to changes** - Adjusts to voice variations over time
 
-**Your voice recognition will improve from 17% → 85%+ as you use JARVIS!** 🚀
+**Your voice recognition will improve from 17% → 85%+ as you use JARVIS - fully automatically with zero maintenance!** 🚀

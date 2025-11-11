@@ -4079,31 +4079,53 @@ class AsyncSystemManager:
             print(f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}")
             print(f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}")
 
-            # 🧠 Voice Memory Agent - Auto-check voice freshness
-            print(f"\n{Colors.CYAN}🧠 Initializing Voice Memory Agent...{Colors.ENDC}")
+            # 🧠 Voice Memory Agent - AUTONOMOUS with Self-Healing
+            print(f"\n{Colors.CYAN}🧠 Initializing Autonomous Voice Memory Agent...{Colors.ENDC}")
             try:
                 from agents.voice_memory_agent import startup_voice_memory_check
 
                 voice_check_result = await startup_voice_memory_check()
 
-                if voice_check_result['status'] == 'healthy':
-                    print(f"{Colors.GREEN}✓ Voice memory system healthy{Colors.ENDC}")
-                elif voice_check_result['status'] == 'needs_attention':
-                    print(f"{Colors.YELLOW}⚠️  Voice samples need refresh{Colors.ENDC}")
-                    if voice_check_result.get('recommendations'):
-                        for rec in voice_check_result['recommendations'][:2]:  # Show first 2
-                            print(f"  💡 {rec['action']}")
-                else:
-                    print(f"{Colors.WARNING}⚠️  Voice memory: {voice_check_result['status']}{Colors.ENDC}")
+                # Show status
+                status_icon = {
+                    'healthy': f"{Colors.GREEN}✓",
+                    'needs_attention': f"{Colors.YELLOW}⚠️ ",
+                    'critical': f"{Colors.FAIL}🔴",
+                    'warning': f"{Colors.WARNING}⚠️ "
+                }.get(voice_check_result['status'], '•')
 
-                # Show freshness if available
+                status_text = voice_check_result['status'].replace('_', ' ').title()
+                print(f"{status_icon} Voice memory: {status_text}{Colors.ENDC}")
+
+                # Show autonomous actions taken
+                if voice_check_result.get('actions_taken'):
+                    print(f"{Colors.GREEN}   🤖 Autonomous actions:{Colors.ENDC}")
+                    for action in voice_check_result['actions_taken'][:3]:  # Show first 3
+                        print(f"      {action}")
+
+                # Show issues fixed
+                if voice_check_result.get('issues_fixed'):
+                    print(f"{Colors.GREEN}   ✅ Auto-fixed: {len(voice_check_result['issues_fixed'])} issues{Colors.ENDC}")
+
+                # Show freshness scores
                 if voice_check_result.get('freshness'):
                     for speaker, metrics in voice_check_result['freshness'].items():
                         freshness = metrics.get('freshness_score', 0)
-                        if freshness < 0.6:
+                        if freshness < 0.4:
+                            print(f"  {Colors.FAIL}🎤 {speaker}: {freshness:.0%} fresh (CRITICAL){Colors.ENDC}")
+                        elif freshness < 0.6:
                             print(f"  {Colors.YELLOW}🎤 {speaker}: {freshness:.0%} fresh{Colors.ENDC}")
                         else:
                             print(f"  {Colors.GREEN}🎤 {speaker}: {freshness:.0%} fresh{Colors.ENDC}")
+
+                # Show critical recommendations only
+                if voice_check_result.get('recommendations'):
+                    critical_recs = [r for r in voice_check_result['recommendations'] if r.get('priority') in ['CRITICAL', 'HIGH']]
+                    if critical_recs:
+                        print(f"{Colors.YELLOW}   💡 Recommendations:{Colors.ENDC}")
+                        for rec in critical_recs[:2]:  # Show top 2 critical
+                            priority_color = Colors.FAIL if rec['priority'] == 'CRITICAL' else Colors.YELLOW
+                            print(f"      {priority_color}[{rec['priority']}]{Colors.ENDC} {rec['action']}")
 
             except Exception as e:
                 logger.warning(f"Voice memory check skipped: {e}")
