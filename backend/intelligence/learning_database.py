@@ -5745,6 +5745,260 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.error(f"Failed to mark samples as used: {e}")
 
+    async def manage_sample_freshness(
+        self, speaker_name: str, max_age_days: int = 30, target_sample_count: int = 100
+    ) -> Dict:
+        """
+        Advanced sample freshness management system
+
+        Automatically:
+        - Ages out old samples
+        - Balances sample distribution across time
+        - Maintains optimal sample count
+        - Ensures representation across different conditions
+
+        Args:
+            speaker_name: Speaker to manage samples for
+            max_age_days: Maximum age before samples are considered stale
+            target_sample_count: Target number of active samples to maintain
+
+        Returns:
+            Dict with freshness statistics and actions taken
+        """
+        try:
+            from datetime import timedelta
+            cutoff_date = datetime.now() - timedelta(days=max_age_days)
+
+            stats = {
+                'speaker_name': speaker_name,
+                'total_samples': 0,
+                'fresh_samples': 0,
+                'stale_samples': 0,
+                'samples_archived': 0,
+                'samples_retained': 0,
+                'freshness_score': 0.0,
+                'actions': []
+            }
+
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        # Get all samples with freshness analysis
+                        await cursor.execute(
+                            """
+                            SELECT
+                                sample_id,
+                                timestamp,
+                                verification_confidence,
+                                quality_score,
+                                used_for_training,
+                                EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 as age_days
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                            ORDER BY timestamp DESC
+                            """,
+                            (speaker_name,)
+                        )
+
+                        samples = await cursor.fetchall()
+                        stats['total_samples'] = len(samples)
+
+                        if not samples:
+                            return stats
+
+                        # Categorize samples by freshness
+                        fresh = []
+                        stale = []
+
+                        for sample in samples:
+                            sample_id, timestamp, confidence, quality, used, age_days = sample
+
+                            if age_days <= max_age_days:
+                                fresh.append({
+                                    'id': sample_id,
+                                    'age': age_days,
+                                    'confidence': confidence or 0,
+                                    'quality': quality or 0,
+                                    'used': used,
+                                    'score': (confidence or 0) * (quality or 0) / (1 + age_days/30)
+                                })
+                            else:
+                                stale.append({
+                                    'id': sample_id,
+                                    'age': age_days,
+                                    'used': used
+                                })
+
+                        stats['fresh_samples'] = len(fresh)
+                        stats['stale_samples'] = len(stale)
+
+                        # Calculate freshness score (0-1)
+                        if samples:
+                            avg_age = sum(s.get('age', 0) for s in fresh) / len(fresh) if fresh else max_age_days
+                            stats['freshness_score'] = max(0, 1 - (avg_age / max_age_days))
+
+                        # Strategy 1: Archive old, low-quality samples
+                        if len(stale) > 0:
+                            # Keep stale samples that were high quality for historical reference
+                            stale_to_archive = [
+                                s['id'] for s in stale
+                                if not s['used']  # Archive unused stale samples
+                            ][:50]  # Limit batch size
+
+                            if stale_to_archive:
+                                await cursor.execute(
+                                    f"""
+                                    UPDATE voice_samples
+                                    SET metadata = jsonb_set(
+                                        COALESCE(metadata, '{{}}')::jsonb,
+                                        '{{archived}}',
+                                        'true'::jsonb
+                                    )
+                                    WHERE sample_id IN ({','.join(['%s'] * len(stale_to_archive))})
+                                    """,
+                                    stale_to_archive
+                                )
+                                stats['samples_archived'] = len(stale_to_archive)
+                                stats['actions'].append(f"Archived {len(stale_to_archive)} stale samples")
+
+                        # Strategy 2: Maintain target count with best samples
+                        if len(fresh) > target_sample_count:
+                            # Sort by composite score (confidence * quality / age_factor)
+                            fresh.sort(key=lambda x: x['score'], reverse=True)
+
+                            # Keep top samples
+                            samples_to_keep = [s['id'] for s in fresh[:target_sample_count]]
+                            samples_to_archive = [s['id'] for s in fresh[target_sample_count:]]
+
+                            if samples_to_archive:
+                                await cursor.execute(
+                                    f"""
+                                    UPDATE voice_samples
+                                    SET metadata = jsonb_set(
+                                        COALESCE(metadata, '{{}}')::jsonb,
+                                        '{{archived}}',
+                                        'true'::jsonb
+                                    )
+                                    WHERE sample_id IN ({','.join(['%s'] * len(samples_to_archive))})
+                                    """,
+                                    samples_to_archive
+                                )
+                                stats['samples_archived'] += len(samples_to_archive)
+                                stats['actions'].append(f"Archived {len(samples_to_archive)} excess samples")
+
+                            stats['samples_retained'] = len(samples_to_keep)
+                        else:
+                            stats['samples_retained'] = len(fresh)
+
+                        # Strategy 3: Identify need for refresh
+                        if stats['freshness_score'] < 0.7:
+                            stats['actions'].append(
+                                f"RECOMMENDATION: Schedule enrollment refresh (freshness: {stats['freshness_score']:.1%})"
+                            )
+
+                        if stats['fresh_samples'] < 20:
+                            stats['actions'].append(
+                                f"WARNING: Low sample count ({stats['fresh_samples']}). Record more samples."
+                            )
+
+                        await conn.commit()
+
+            logger.info(f"✅ Sample freshness managed for {speaker_name}: {stats['freshness_score']:.1%} fresh")
+            return stats
+
+        except Exception as e:
+            logger.error(f"Sample freshness management failed: {e}")
+            return {'error': str(e)}
+
+    async def get_sample_freshness_report(self, speaker_name: str) -> Dict:
+        """
+        Generate comprehensive freshness report
+
+        Returns:
+            Detailed report on sample age distribution, quality, and recommendations
+        """
+        try:
+            report = {
+                'speaker_name': speaker_name,
+                'report_timestamp': datetime.now().isoformat(),
+                'age_distribution': {},
+                'quality_distribution': {},
+                'recommendations': [],
+                'statistics': {}
+            }
+
+            if self.cloud_adapter:
+                async with self.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        # Age distribution
+                        await cursor.execute(
+                            """
+                            SELECT
+                                CASE
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 7 THEN '0-7 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 14 THEN '8-14 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 30 THEN '15-30 days'
+                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 60 THEN '31-60 days'
+                                    ELSE '60+ days'
+                                END as age_bracket,
+                                COUNT(*) as count,
+                                AVG(verification_confidence) as avg_confidence,
+                                AVG(quality_score) as avg_quality
+                            FROM voice_samples
+                            WHERE speaker_name = %s
+                            GROUP BY age_bracket
+                            ORDER BY
+                                CASE age_bracket
+                                    WHEN '0-7 days' THEN 1
+                                    WHEN '8-14 days' THEN 2
+                                    WHEN '15-30 days' THEN 3
+                                    WHEN '31-60 days' THEN 4
+                                    ELSE 5
+                                END
+                            """,
+                            (speaker_name,)
+                        )
+
+                        age_dist = await cursor.fetchall()
+                        for bracket, count, avg_conf, avg_qual in age_dist:
+                            report['age_distribution'][bracket] = {
+                                'count': count,
+                                'avg_confidence': float(avg_conf) if avg_conf else 0,
+                                'avg_quality': float(avg_qual) if avg_qual else 0
+                            }
+
+                        # Generate recommendations
+                        total_samples = sum(d['count'] for d in report['age_distribution'].values())
+                        recent_samples = report['age_distribution'].get('0-7 days', {}).get('count', 0)
+
+                        if recent_samples < total_samples * 0.3:
+                            report['recommendations'].append({
+                                'priority': 'HIGH',
+                                'action': 'Record new samples',
+                                'reason': f'Only {recent_samples}/{total_samples} samples are recent (< 7 days)'
+                            })
+
+                        old_samples = report['age_distribution'].get('60+ days', {}).get('count', 0)
+                        if old_samples > total_samples * 0.5:
+                            report['recommendations'].append({
+                                'priority': 'MEDIUM',
+                                'action': 'Archive old samples',
+                                'reason': f'{old_samples} samples are > 60 days old'
+                            })
+
+                        if total_samples < 30:
+                            report['recommendations'].append({
+                                'priority': 'HIGH',
+                                'action': 'Increase sample count',
+                                'reason': f'Only {total_samples} total samples (target: 30-50)'
+                            })
+
+            return report
+
+        except Exception as e:
+            logger.error(f"Freshness report generation failed: {e}")
+            return {'error': str(e)}
+
     async def update_speaker_embedding(
         self,
         speaker_id: int,

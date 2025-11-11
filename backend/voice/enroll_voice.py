@@ -1071,8 +1071,18 @@ async def main():
     parser.add_argument(
         "--samples",
         type=int,
-        default=25,
-        help="Number of voice samples to collect (default: 25)",
+        default=30,
+        help="Number of voice samples to collect (default: 30)",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Refresh mode: Update existing profile with new samples",
+    )
+    parser.add_argument(
+        "--auto-refresh",
+        action="store_true",
+        help="Enable automatic sample freshness management",
     )
     parser.add_argument(
         "--resume",
