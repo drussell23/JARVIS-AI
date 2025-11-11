@@ -1110,6 +1110,20 @@ class SpeakerVerificationService:
         if not self.initialized:
             await self.initialize()
 
+        # Debug audio data
+        logger.info(f"🎤 AUDIO DEBUG: Received {len(audio_data) if audio_data else 0} bytes of audio")
+        if audio_data and len(audio_data) > 0:
+            # Check if audio is not silent
+            import numpy as np
+            audio_array = np.frombuffer(audio_data[:min(1000, len(audio_data))], dtype=np.float32, count=-1)
+            if len(audio_array) > 0:
+                audio_energy = np.mean(np.abs(audio_array))
+                logger.info(f"🎤 AUDIO DEBUG: Energy level = {audio_energy:.6f}")
+                if audio_energy < 0.0001:
+                    logger.warning("⚠️ AUDIO DEBUG: Audio appears to be silent!")
+        else:
+            logger.error("❌ AUDIO DEBUG: No audio data received!")
+
         try:
             # If speaker name provided, verify against that profile
             if speaker_name and speaker_name in self.speaker_profiles:
