@@ -85,6 +85,10 @@ regexes = [
   # Allow password from config getter (not hardcoded)
   '''password=self\.config\[''',
   '''\.get\('password',''',
+  # Allow keychain password checks (not exposing actual passwords)
+  '''has_password\s*=''',
+  '''if not has_password''',
+  '''Keychain password''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
