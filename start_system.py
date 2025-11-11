@@ -245,6 +245,65 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Global system manager reference for voice verification tracking
+_global_system_manager = None
+
+def track_voice_verification_attempt(success: bool, confidence: float, diagnostics: dict = None):
+    """
+    Track voice verification attempt in monitoring system
+
+    Args:
+        success: Whether verification succeeded
+        confidence: Verification confidence score
+        diagnostics: Detailed diagnostic information from failure analysis
+    """
+    global _global_system_manager
+    if _global_system_manager is None:
+        return
+
+    try:
+        from datetime import datetime
+
+        # Update stats
+        stats = _global_system_manager.voice_verification_stats
+        stats['total_attempts'] += 1
+        stats['last_attempt_time'] = datetime.now()
+
+        if success:
+            stats['successful'] += 1
+            stats['consecutive_failures'] = 0
+            stats['last_success_time'] = datetime.now()
+        else:
+            stats['failed'] += 1
+            stats['consecutive_failures'] += 1
+            stats['last_failure_time'] = datetime.now()
+
+            # Track failure reasons
+            if diagnostics and 'primary_reason' in diagnostics:
+                reason = diagnostics['primary_reason']
+                stats['failure_reasons'][reason] = stats['failure_reasons'].get(reason, 0) + 1
+
+        # Calculate running average confidence
+        n = stats['total_attempts']
+        prev_avg = stats['average_confidence']
+        stats['average_confidence'] = (prev_avg * (n - 1) + confidence) / n
+
+        # Store in rolling window
+        attempt_record = {
+            'timestamp': datetime.now(),
+            'success': success,
+            'confidence': confidence
+        }
+        if diagnostics:
+            attempt_record.update(diagnostics)
+
+        _global_system_manager.voice_verification_attempts.append(attempt_record)
+        if len(_global_system_manager.voice_verification_attempts) > 20:
+            _global_system_manager.voice_verification_attempts.pop(0)
+
+    except Exception as e:
+        logger.debug(f"Failed to track voice verification: {e}")
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -2847,6 +2906,20 @@ class AsyncSystemManager:
         self.sai_prediction_history = []  # Rolling window of last 10 predictions
         self.sai_prediction_count = 0
 
+        # Voice Verification Diagnostics tracking
+        self.voice_verification_attempts = []  # Rolling window of last 20 attempts
+        self.voice_verification_stats = {
+            'total_attempts': 0,
+            'successful': 0,
+            'failed': 0,
+            'last_attempt_time': None,
+            'last_success_time': None,
+            'last_failure_time': None,
+            'consecutive_failures': 0,
+            'average_confidence': 0.0,
+            'failure_reasons': {}  # Count of each failure reason
+        }
+
         # Self-healing mechanism
         self.healing_attempts = {}
         self.max_healing_attempts = 3
@@ -5129,6 +5202,55 @@ class AsyncSystemManager:
                         print(f"    └─ Total predictions: {self.sai_prediction_count}")
                     else:
                         print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.YELLOW}Idle{Colors.ENDC} (no recent predictions)")
+
+                    # Voice Verification Diagnostics
+                    print()  # Blank line for separation
+                    stats = self.voice_verification_stats
+                    if stats['total_attempts'] > 0:
+                        success_rate = (stats['successful'] / stats['total_attempts']) * 100
+
+                        # Status icon based on recent performance
+                        if stats['consecutive_failures'] >= 3:
+                            status_icon = f"{Colors.FAIL}❌"
+                            status_text = f"{Colors.FAIL}FAILING{Colors.ENDC}"
+                        elif stats['consecutive_failures'] >= 1:
+                            status_icon = f"{Colors.WARNING}⚠️ "
+                            status_text = f"{Colors.WARNING}DEGRADED{Colors.ENDC}"
+                        else:
+                            status_icon = f"{Colors.GREEN}✅"
+                            status_text = f"{Colors.GREEN}HEALTHY{Colors.ENDC}"
+
+                        print(f"  {Colors.CYAN}🎤 Voice Verification:{Colors.ENDC} {status_text}")
+                        print(f"    ├─ {status_icon} Success rate: {success_rate:.1f}% ({stats['successful']}/{stats['total_attempts']}){Colors.ENDC}")
+                        print(f"    ├─ Average confidence: {stats['average_confidence']:.2%}")
+                        print(f"    ├─ Consecutive failures: {stats['consecutive_failures']}")
+
+                        if stats['last_attempt_time']:
+                            last_attempt_ago = (datetime.now() - stats['last_attempt_time']).total_seconds()
+                            print(f"    ├─ Last attempt: {int(last_attempt_ago)}s ago")
+
+                        # Show recent failures with reasons
+                        if len(self.voice_verification_attempts) > 0:
+                            recent_failures = [a for a in self.voice_verification_attempts if not a.get('success', False)]
+                            if recent_failures:
+                                print(f"    ├─ Recent failures:")
+                                for i, failure in enumerate(recent_failures[-3:]):  # Last 3 failures
+                                    reason = failure.get('primary_reason', 'unknown')
+                                    confidence = failure.get('confidence', 0.0)
+                                    severity = failure.get('severity', 'unknown')
+
+                                    severity_color = Colors.FAIL if severity == 'critical' else Colors.WARNING if severity == 'high' else Colors.YELLOW
+                                    print(f"    │  ├─ {severity_color}[{severity.upper()}]{Colors.ENDC} {reason[:60]}")
+                                    print(f"    │  │  └─ Confidence: {confidence:.2%}")
+
+                        # Show top failure reasons
+                        if stats['failure_reasons']:
+                            print(f"    └─ Top issues:")
+                            sorted_reasons = sorted(stats['failure_reasons'].items(), key=lambda x: x[1], reverse=True)
+                            for reason, count in sorted_reasons[:3]:
+                                print(f"       ├─ {reason}: {count}x")
+                    else:
+                        print(f"  {Colors.CYAN}🎤 Voice Verification:{Colors.ENDC} {Colors.YELLOW}No attempts yet{Colors.ENDC}")
 
                     # Show next health check countdown
                     print(f"\n{Colors.CYAN}  Next health check in 30 seconds...{Colors.ENDC}")
@@ -8291,6 +8413,10 @@ async def main():
     _manager.frontend_only = args.frontend_only
     _manager.is_restart = args.restart  # Track if this is a restart
     _manager.use_optimized = not args.standard
+
+    # Set global reference for voice verification tracking
+    global _global_system_manager
+    _global_system_manager = _manager
     _manager.auto_cleanup = not args.no_auto_cleanup
 
     # Always use autonomous mode unless explicitly disabled

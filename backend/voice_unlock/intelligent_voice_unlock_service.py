@@ -338,11 +338,29 @@ class IntelligentVoiceUnlockService:
 
         if not verification_passed:
             self.stats["failed_authentications"] += 1
-            logger.warning(
-                f"🚫 Voice verification FAILED for owner '{speaker_identified}' (confidence: {verification_confidence:.2f})"
+
+            # 🔍 DETAILED DIAGNOSTICS: Analyze why verification failed
+            failure_diagnostics = await self._analyze_verification_failure(
+                audio_data=audio_data,
+                speaker_name=speaker_identified,
+                confidence=verification_confidence,
+                transcription=transcribed_text
             )
 
-            # Record failed authentication
+            logger.error(
+                f"🚫 Voice verification FAILED for owner '{speaker_identified}'\n"
+                f"   ├─ Confidence: {verification_confidence:.2%} (threshold: {failure_diagnostics.get('threshold', 'unknown')})\n"
+                f"   ├─ Audio quality: {failure_diagnostics.get('audio_quality', 'unknown')}\n"
+                f"   ├─ Audio duration: {failure_diagnostics.get('audio_duration_ms', 0)}ms\n"
+                f"   ├─ Audio energy: {failure_diagnostics.get('audio_energy', 0):.6f}\n"
+                f"   ├─ Samples in DB: {failure_diagnostics.get('samples_in_db', 0)}\n"
+                f"   ├─ Embedding dimension: {failure_diagnostics.get('embedding_dimension', 'unknown')}\n"
+                f"   ├─ Primary failure reason: {failure_diagnostics.get('primary_reason', 'unknown')}\n"
+                f"   ├─ Suggested fix: {failure_diagnostics.get('suggested_fix', 'unknown')}\n"
+                f"   └─ Architecture issue: {failure_diagnostics.get('architecture_issue', 'none detected')}"
+            )
+
+            # Record failed authentication with diagnostics
             await self._record_unlock_attempt(
                 speaker_name=speaker_identified,
                 transcribed_text=transcribed_text,
@@ -353,14 +371,36 @@ class IntelligentVoiceUnlockService:
                 speaker_confidence=verification_confidence,
             )
 
+            # Track in monitoring system
+            try:
+                import sys
+                from pathlib import Path
+                # Add parent directory to path to import from start_system
+                sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+                from start_system import track_voice_verification_attempt
+                track_voice_verification_attempt(False, verification_confidence, failure_diagnostics)
+            except Exception as e:
+                logger.debug(f"Failed to track verification in monitoring: {e}")
+
             return await self._create_failure_response(
                 "verification_failed",
-                f"Voice verification failed (confidence: {verification_confidence:.2%}). Please try again.",
+                f"Voice verification failed (confidence: {verification_confidence:.2%}). {failure_diagnostics.get('user_message', 'Please try again.')}",
                 speaker_name=speaker_identified,
+                diagnostics=failure_diagnostics
             )
 
         self.stats["owner_unlock_attempts"] += 1
         logger.info(f"✅ Owner '{speaker_identified}' verified for unlock")
+
+        # Track successful verification in monitoring system
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+            from start_system import track_voice_verification_attempt
+            track_voice_verification_attempt(True, verification_confidence, None)
+        except Exception as e:
+            logger.debug(f"Failed to track verification in monitoring: {e}")
 
         # Step 6: Context and Scenario Analysis (CAI + SAI)
         context_analysis = await self._analyze_context(transcribed_text, context)
@@ -538,6 +578,168 @@ class IntelligentVoiceUnlockService:
         except Exception as e:
             logger.error(f"Speaker verification failed: {e}")
             return False, 0.0
+
+    async def _analyze_verification_failure(
+        self, audio_data: bytes, speaker_name: str, confidence: float, transcription: str
+    ) -> Dict[str, Any]:
+        """
+        Comprehensive analysis of voice verification failure
+
+        Diagnoses:
+        - Audio quality issues
+        - Database/profile issues
+        - Embedding dimension mismatches
+        - Sample count deficiencies
+        - Environmental factors
+        - System architecture flaws
+        """
+        diagnostics = {
+            'primary_reason': 'unknown',
+            'suggested_fix': 'Contact system administrator',
+            'architecture_issue': 'none detected',
+            'user_message': 'Please try again.',
+            'threshold': 'unknown',
+            'audio_quality': 'unknown',
+            'audio_duration_ms': 0,
+            'audio_energy': 0.0,
+            'samples_in_db': 0,
+            'embedding_dimension': 'unknown',
+            'severity': 'low'
+        }
+
+        try:
+            import numpy as np
+
+            # 1. AUDIO QUALITY ANALYSIS
+            if audio_data and len(audio_data) > 0:
+                try:
+                    # Parse audio (assuming int16 PCM)
+                    audio_int16 = np.frombuffer(audio_data, dtype=np.int16)
+                    audio_float32 = audio_int16.astype(np.float32) / 32768.0
+
+                    # Calculate duration (assuming 16kHz sample rate)
+                    duration_ms = (len(audio_int16) / 16000) * 1000
+                    diagnostics['audio_duration_ms'] = int(duration_ms)
+
+                    # Calculate energy
+                    energy = np.mean(np.abs(audio_float32))
+                    diagnostics['audio_energy'] = float(energy)
+
+                    # Determine audio quality
+                    if energy < 0.0001:
+                        diagnostics['audio_quality'] = 'silent/corrupted'
+                        diagnostics['primary_reason'] = 'Audio input is silent or corrupted'
+                        diagnostics['suggested_fix'] = 'Check microphone connection and permissions'
+                        diagnostics['architecture_issue'] = 'Audio pipeline may not be capturing input correctly'
+                        diagnostics['user_message'] = 'Microphone not detecting audio. Check your audio settings.'
+                        diagnostics['severity'] = 'critical'
+                    elif energy < 0.001:
+                        diagnostics['audio_quality'] = 'very_quiet'
+                        diagnostics['primary_reason'] = 'Audio input too quiet'
+                        diagnostics['suggested_fix'] = 'Speak louder or adjust microphone gain'
+                        diagnostics['user_message'] = 'Please speak louder.'
+                        diagnostics['severity'] = 'high'
+                    elif duration_ms < 500:
+                        diagnostics['audio_quality'] = 'too_short'
+                        diagnostics['primary_reason'] = f'Audio too short ({duration_ms:.0f}ms, need 1000ms+)'
+                        diagnostics['suggested_fix'] = 'Speak for longer duration'
+                        diagnostics['user_message'] = 'Please speak the command more slowly.'
+                        diagnostics['severity'] = 'high'
+                    else:
+                        diagnostics['audio_quality'] = 'acceptable'
+                except Exception as e:
+                    diagnostics['audio_quality'] = f'parse_error: {str(e)}'
+                    logger.error(f"Audio parsing failed: {e}")
+            else:
+                diagnostics['audio_quality'] = 'no_data'
+                diagnostics['primary_reason'] = 'No audio data received'
+                diagnostics['suggested_fix'] = 'Verify audio recording pipeline'
+                diagnostics['architecture_issue'] = 'Audio data not reaching verification service'
+                diagnostics['severity'] = 'critical'
+
+            # 2. DATABASE PROFILE ANALYSIS
+            if self.speaker_engine and hasattr(self.speaker_engine, 'speaker_profiles'):
+                profiles = self.speaker_engine.speaker_profiles
+                if speaker_name in profiles:
+                    profile = profiles[speaker_name]
+
+                    # Get embedding info
+                    embedding = profile.get('embedding')
+                    if embedding is not None:
+                        if hasattr(embedding, 'shape'):
+                            diagnostics['embedding_dimension'] = int(embedding.shape[0])
+                        elif hasattr(embedding, '__len__'):
+                            diagnostics['embedding_dimension'] = len(embedding)
+
+                    # Get sample count from database
+                    if self.speaker_engine.learning_db:
+                        try:
+                            profile_data = await self.speaker_engine.learning_db.get_speaker_profile(speaker_name)
+                            if profile_data:
+                                diagnostics['samples_in_db'] = profile_data.get('total_samples', 0)
+
+                                # Check if insufficient samples
+                                if diagnostics['samples_in_db'] < 10:
+                                    diagnostics['primary_reason'] = f'Insufficient voice samples ({diagnostics["samples_in_db"]}/30 recommended)'
+                                    diagnostics['suggested_fix'] = 'Re-enroll voice profile with more samples'
+                                    diagnostics['architecture_issue'] = 'Voice enrollment may not have captured enough samples'
+                                    diagnostics['user_message'] = 'Voice profile needs more training samples.'
+                                    diagnostics['severity'] = 'high'
+                        except Exception as e:
+                            logger.debug(f"Could not get sample count: {e}")
+
+                    # Get threshold
+                    if hasattr(self.speaker_engine, '_get_adaptive_threshold'):
+                        try:
+                            threshold = await self.speaker_engine._get_adaptive_threshold(speaker_name, profile)
+                            diagnostics['threshold'] = f"{threshold:.2%}"
+                        except:
+                            diagnostics['threshold'] = profile.get('threshold', 'unknown')
+                else:
+                    diagnostics['primary_reason'] = f'No voice profile found for speaker: {speaker_name}'
+                    diagnostics['suggested_fix'] = 'Enroll voice profile first'
+                    diagnostics['architecture_issue'] = 'Speaker not registered in database'
+                    diagnostics['user_message'] = 'Voice profile not found. Please enroll first.'
+                    diagnostics['severity'] = 'critical'
+
+            # 3. CONFIDENCE ANALYSIS
+            if diagnostics['audio_quality'] == 'acceptable' and diagnostics['samples_in_db'] >= 10:
+                if confidence < 0.05:
+                    diagnostics['primary_reason'] = 'Voice does not match enrolled profile'
+                    diagnostics['suggested_fix'] = 'Verify speaker identity or re-enroll'
+                    diagnostics['architecture_issue'] = 'Possible embedding dimension mismatch or model version incompatibility'
+                    diagnostics['user_message'] = 'Voice not recognized. Try re-enrolling your voice profile.'
+                    diagnostics['severity'] = 'critical'
+                elif confidence < 0.20:
+                    diagnostics['primary_reason'] = f'Low confidence match ({confidence:.2%})'
+                    diagnostics['suggested_fix'] = 'Improve audio quality, reduce background noise, or re-enroll'
+                    diagnostics['user_message'] = 'Voice match uncertain. Speak in a quieter environment.'
+                    diagnostics['severity'] = 'high'
+                elif confidence < 0.40:
+                    diagnostics['primary_reason'] = f'Moderate confidence ({confidence:.2%}) below threshold'
+                    diagnostics['suggested_fix'] = 'System is learning your voice. Keep using it or re-enroll for better accuracy'
+                    diagnostics['user_message'] = 'Almost there! System is still learning your voice.'
+                    diagnostics['severity'] = 'medium'
+                else:
+                    diagnostics['primary_reason'] = f'Confidence ({confidence:.2%}) just below threshold'
+                    diagnostics['suggested_fix'] = 'Try again with clearer audio'
+                    diagnostics['user_message'] = 'Very close! Please try again.'
+                    diagnostics['severity'] = 'low'
+
+            # 4. SYSTEM ARCHITECTURE CHECKS
+            if diagnostics['architecture_issue'] == 'none detected':
+                # Check for known architectural issues
+                if diagnostics.get('embedding_dimension') not in [192, 256, 512, 768]:
+                    diagnostics['architecture_issue'] = f'Unusual embedding dimension: {diagnostics.get("embedding_dimension")}'
+
+                if diagnostics['samples_in_db'] == 0 and confidence > 0:
+                    diagnostics['architecture_issue'] = 'Profile exists but no samples in database - possible data corruption'
+
+        except Exception as e:
+            logger.error(f"Failure analysis error: {e}", exc_info=True)
+            diagnostics['primary_reason'] = f'Diagnostic error: {str(e)}'
+
+        return diagnostics
 
     async def _analyze_context(
         self, transcribed_text: str, context: Optional[Dict[str, Any]]
