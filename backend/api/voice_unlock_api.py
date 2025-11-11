@@ -89,33 +89,54 @@ def initialize_voice_unlock():
 @router.get("/status")
 async def get_voice_unlock_status():
     """Get voice unlock system status"""
-    config = get_config()
-    
-    status = {
-        "initialized": enrollment_manager is not None,
-        "config": {
-            "integration_mode": config.system.integration_mode,
-            "min_samples": config.enrollment.min_samples,
-            "anti_spoofing_level": config.security.anti_spoofing_level,
-            "adaptive_thresholds": config.authentication.adaptive_thresholds,
-        },
-        "services": {
+    try:
+        config = get_config()
+
+        # Primary status fields expected by monitoring system
+        status = {
+            "enabled": VOICE_UNLOCK_AVAILABLE and enrollment_manager is not None,
+            "ready": authenticator is not None and keychain_service is not None,
+            "models_loaded": authenticator is not None,
+            "initialized": enrollment_manager is not None,
+        }
+
+        # Detailed configuration
+        if config:
+            status["config"] = {
+                "integration_mode": config.system.integration_mode,
+                "min_samples": config.enrollment.min_samples,
+                "anti_spoofing_level": config.security.anti_spoofing_level,
+                "adaptive_thresholds": config.authentication.adaptive_thresholds,
+            }
+
+        # Service status
+        status["services"] = {
             "enrollment": enrollment_manager is not None,
             "authentication": authenticator is not None,
             "keychain": keychain_service is not None,
-            "screensaver": screensaver_manager is not None and screensaver_manager.integration.monitoring
+            "screensaver": screensaver_manager is not None and hasattr(screensaver_manager, 'integration') and screensaver_manager.integration.monitoring
         }
-    }
-    
-    # Get enrolled users count
-    if keychain_service:
-        try:
-            voiceprints = keychain_service.list_voiceprints()
-            status["enrolled_users"] = len(voiceprints)
-        except:
+
+        # Get enrolled users count
+        if keychain_service:
+            try:
+                voiceprints = keychain_service.list_voiceprints()
+                status["enrolled_users"] = len(voiceprints)
+            except:
+                status["enrolled_users"] = 0
+        else:
             status["enrolled_users"] = 0
-    
-    return status
+
+        return status
+    except Exception as e:
+        logger.error(f"Status check error: {e}")
+        # Return minimal status on error
+        return {
+            "enabled": False,
+            "ready": False,
+            "models_loaded": False,
+            "error": str(e)
+        }
 
 
 @router.post("/enrollment/start")
