@@ -509,7 +509,8 @@ class SpeakerVerificationService:
             # Get original embedding
             embedding_bytes = profile.get("voiceprint_embedding")
             if embedding_bytes:
-                original_embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                # Fix: Use float32 as embeddings are stored as float32
+                original_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
                 original_dim = original_embedding.shape[0]
                 multi_embeddings[original_dim] = original_embedding
 
@@ -671,7 +672,8 @@ class SpeakerVerificationService:
             if not embedding_bytes:
                 return profile
 
-            embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+            # Fix: Use float32 as embeddings are stored as float32
+            embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
             source_dim = embedding.shape[0]
 
             if source_dim == self.current_model_dimension:
@@ -781,11 +783,8 @@ class SpeakerVerificationService:
                 continue
 
             try:
-                # Try float32 first (most common), fallback to float64
-                try:
-                    embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
-                except:
-                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                # Always use float32 - embeddings are stored as float32
+                embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
                 dimension = embedding.shape[0]
 
                 # Dimension match - highest priority
@@ -887,7 +886,8 @@ class SpeakerVerificationService:
                     if self.enable_auto_migration:
                         embedding_bytes = profile.get("voiceprint_embedding")
                         if embedding_bytes:
-                            test_embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                            # Fix: Use float32 as embeddings are stored as float32
+                            test_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
                             logger.info(f"🔍 DEBUG: {speaker_name} - Current: {test_embedding.shape[0]}D, Model: {self.current_model_dimension}D")
                             if test_embedding.shape[0] != self.current_model_dimension:
                                 logger.warning(f"🔄 DIMENSION MISMATCH: {speaker_name} has {test_embedding.shape[0]}D but model expects {self.current_model_dimension}D")
@@ -915,11 +915,8 @@ class SpeakerVerificationService:
 
                     # Validate embedding data
                     try:
-                        # Try float32 first (most common), fallback to float64
-                try:
-                    embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
-                except:
-                    embedding = np.frombuffer(embedding_bytes, dtype=np.float64)
+                        # Always use float32 - embeddings are stored as float32
+                        embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
                     except Exception as deserialize_error:
                         logger.error(f"❌ Failed to deserialize embedding for {speaker_name}: {deserialize_error}")
                         skipped_count += 1

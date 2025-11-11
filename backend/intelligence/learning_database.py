@@ -3104,33 +3104,30 @@ class JARVISLearningDatabase:
 
         # Try Cloud SQL first (it has the persistent data)
         if hasattr(self, 'adapter') and self.adapter:
+            print(f"DEBUG: Trying Cloud SQL for speaker {speaker_id}, limit {limit}")
             try:
                 cloud_query = """
-                    SELECT sample_id, audio_hash, audio_data, mfcc_features, duration_ms,
-                           transcription, pitch_mean, pitch_std, energy_mean,
-                           recording_timestamp, quality_score, sample_rate
+                    SELECT sample_id, audio_data, transcription,
+                           confidence_score, created_at
                     FROM voice_samples
-                    WHERE speaker_id = $1
-                    ORDER BY quality_score DESC NULLS LAST, recording_timestamp DESC
+                    WHERE speaker_id = $1 AND audio_data IS NOT NULL
+                    ORDER BY created_at DESC
                     LIMIT $2
                 """
 
                 rows = await self.adapter.fetch(cloud_query, speaker_id, limit)
+                print(f"DEBUG: Cloud SQL returned {len(rows)} rows")
 
                 for row in rows:
                     samples.append({
                         "sample_id": row["sample_id"],
-                        "audio_hash": row["audio_hash"],
                         "audio_data": row["audio_data"],  # BYTEA from PostgreSQL
-                        "mfcc_features": row["mfcc_features"],
-                        "duration_ms": row["duration_ms"],
                         "transcription": row["transcription"],
-                        "pitch_mean": row["pitch_mean"],
-                        "pitch_std": row["pitch_std"],
-                        "energy_mean": row["energy_mean"],
-                        "recording_timestamp": row["recording_timestamp"],
-                        "quality_score": row["quality_score"],
-                        "sample_rate": row["sample_rate"],
+                        "confidence_score": row["confidence_score"],
+                        "created_at": row["created_at"],
+                        # Add defaults for compatibility
+                        "sample_rate": 16000,  # Default sample rate
+                        "quality_score": row["confidence_score"],
                     })
 
                 if samples:
@@ -3138,7 +3135,8 @@ class JARVISLearningDatabase:
                     return samples
 
             except Exception as e:
-                logger.warning(f"Failed to retrieve from Cloud SQL, trying SQLite: {e}")
+                logger.warning(f"Failed to retrieve voice samples for speaker {speaker_id}: {e}")
+                print(f"Failed to retrieve voice samples for speaker {speaker_id}: {e}")
 
         # Fallback to SQLite if Cloud SQL fails or no samples found
         try:

@@ -78,8 +78,10 @@ regexes = [
   '''os\.getenv.*PASSWORD''',
   # Allow password variables that retrieve from Secret Manager (SAFE)
   '''db_password\s*=\s*get_secret''',
+  '''db_password\s*=\s*get_db_password''',
   '''password\s*=\s*db_password''',
   '''password=db_password''',
+  '''db_password = get_db_password\(\)''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -104,10 +106,13 @@ paths = [
   '''backend/voice/profile_consolidation_service.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
+  '''check_voice_samples.py''',
   '''test_voice_retrieval.py''',
+  '''test_voice_with_real_audio.py''',
   '''test_asyncpg.py''',
   '''test_voice_unlock_confidence.py''',
   '''diagnose_voice_confidence.py''',
+  '''diagnose_verification_failure.py''',
   '''fix_voice_profiles.py''',
   '''fix_voice_embedding_mismatch.py''',
   '''fix_profile_ownership.py''',
