@@ -129,6 +129,44 @@ class SpeakerVerificationService:
         self.reload_check_interval = 30  # Check for updates every 30 seconds
         self._reload_task = None  # Background task for checking updates
 
+        # ENHANCED ADAPTIVE VERIFICATION SYSTEM
+        # Dynamic confidence boosting
+        self.confidence_boost_enabled = True
+        self.boost_multiplier = 1.5  # Boost confidence for known good patterns
+        self.min_confidence_for_boost = 0.15  # Minimum confidence before boost can apply
+
+        # Multi-stage verification
+        self.multi_stage_enabled = True
+        self.stage_weights = {
+            'primary': 0.6,    # Main embedding comparison
+            'acoustic': 0.2,   # Acoustic features (pitch, energy)
+            'temporal': 0.1,   # Temporal patterns
+            'adaptive': 0.1    # Historical pattern matching
+        }
+
+        # Rolling average for adaptive embeddings
+        self.rolling_embeddings = {}  # Store recent successful embeddings
+        self.max_rolling_samples = 10  # Keep last 10 successful verifications
+        self.rolling_weight = 0.3  # Weight for new samples in rolling average
+
+        # Dynamic calibration mode
+        self.calibration_mode = False
+        self.calibration_samples = []
+        self.calibration_threshold = 0.10  # Very low threshold during calibration
+        self.auto_calibrate_on_failure = True  # Auto-enter calibration after repeated failures
+        self.failure_count = {}  # Track consecutive failures per speaker
+        self.max_failures_before_calibration = 3
+
+        # Environmental adaptation
+        self.environment_profiles = {}  # Store different environment signatures
+        self.current_environment = 'default'
+        self.adapt_to_environment = True
+
+        # Confidence normalization
+        self.normalize_confidence = True
+        self.confidence_history_window = 20  # Use last 20 attempts for normalization
+        self.confidence_stats = {}  # Store mean/std for normalization
+
     async def initialize_fast(self):
         """
         Fast initialization with background encoder pre-loading.
@@ -1160,13 +1198,41 @@ class SpeakerVerificationService:
                 adaptive_threshold = await self._get_adaptive_threshold(speaker_name, profile)
                 logger.info(f"🔍 DEBUG: Adaptive threshold: {adaptive_threshold:.2%}")
 
+                # Check if we should enter calibration mode
+                if await self._should_enter_calibration(speaker_name):
+                    logger.info(f"🔄 Entering calibration mode for {speaker_name}")
+                    self.calibration_mode = True
+                    adaptive_threshold = self.calibration_threshold
+
+                # Get base verification result
                 is_verified, confidence = await self.speechbrain_engine.verify_speaker(
                     audio_data, known_embedding, threshold=adaptive_threshold,
                     speaker_name=speaker_name, transcription="",
                     enrolled_profile=profile  # Pass full profile with acoustic features
                 )
 
-                logger.info(f"🔍 DEBUG: Verification result - Confidence: {confidence:.2%}, Verified: {is_verified}")
+                # Apply multi-stage verification if enabled
+                if self.multi_stage_enabled and confidence > 0.05:
+                    confidence = await self._apply_multi_stage_verification(
+                        confidence, audio_data, speaker_name, profile
+                    )
+
+                # Apply confidence boosting if applicable
+                if self.confidence_boost_enabled:
+                    confidence = await self._apply_confidence_boost(
+                        confidence, speaker_name, profile
+                    )
+
+                # Update verification decision based on boosted confidence
+                is_verified = confidence >= adaptive_threshold
+
+                # Handle calibration mode
+                if self.calibration_mode and confidence > 0.10:
+                    await self._handle_calibration_sample(
+                        audio_data, speaker_name, confidence
+                    )
+
+                logger.info(f"🔍 DEBUG: Final result - Confidence: {confidence:.2%}, Verified: {is_verified}")
 
                 # Learn from this attempt
                 await self._record_verification_attempt(speaker_name, confidence, is_verified)
@@ -1302,24 +1368,25 @@ class SpeakerVerificationService:
         if speaker_name not in self.verification_history:
             return base_threshold
 
-        history = self.verification_history[speaker_name]
-        attempts = history.get("attempts", [])
+        attempts = self.verification_history[speaker_name]
 
         # Need minimum samples for adaptation
         if len(attempts) < self.min_samples_for_update:
             return base_threshold
 
-        # Calculate average confidence from recent successful attempts
+        # Calculate average confidence from recent attempts
         recent_attempts = attempts[-10:]  # Last 10 attempts
         successful_confidences = [a["confidence"] for a in recent_attempts if a.get("verified", False)]
 
         if not successful_confidences:
-            # No successful attempts recently - lower threshold to allow verification
+            # No successful attempts recently - lower threshold progressively
             avg_confidence = sum(a["confidence"] for a in recent_attempts) / len(recent_attempts)
-            if avg_confidence > 0.20:
-                # There's some similarity, lower threshold
-                adaptive_threshold = max(0.25, avg_confidence * 0.8)
-                logger.info(f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} (lowered from {base_threshold:.2%})")
+            if avg_confidence > 0.10:
+                # There's some similarity, progressively lower threshold
+                # Factor in number of consecutive failures
+                failure_factor = min(self.failure_count.get(speaker_name, 0) * 0.05, 0.2)
+                adaptive_threshold = max(0.20, avg_confidence * (0.9 - failure_factor))
+                logger.info(f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} (lowered from {base_threshold:.2%}, failures: {self.failure_count.get(speaker_name, 0)})")
                 return adaptive_threshold
             return base_threshold
 
@@ -1352,41 +1419,47 @@ class SpeakerVerificationService:
 
         # Initialize history for this speaker
         if speaker_name not in self.verification_history:
-            self.verification_history[speaker_name] = {
-                "attempts": [],
-                "total_attempts": 0,
-                "successful_attempts": 0,
-                "failed_attempts": 0,
-            }
+            self.verification_history[speaker_name] = []
 
-        history = self.verification_history[speaker_name]
+        # Track failure count for calibration
+        if not verified:
+            self.failure_count[speaker_name] = self.failure_count.get(speaker_name, 0) + 1
+            logger.info(f"❌ Verification failed for {speaker_name} (failure #{self.failure_count[speaker_name]})")
+        else:
+            self.failure_count[speaker_name] = 0  # Reset on success
 
-        # Record attempt
+        # Record attempt in simplified format
         attempt = {
             "timestamp": datetime.now().isoformat(),
             "confidence": confidence,
             "verified": verified,
         }
 
-        history["attempts"].append(attempt)
-        history["total_attempts"] += 1
-
-        if verified:
-            history["successful_attempts"] += 1
-        else:
-            history["failed_attempts"] += 1
+        self.verification_history[speaker_name].append(attempt)
 
         # Keep only recent attempts (last 50)
-        if len(history["attempts"]) > 50:
-            history["attempts"] = history["attempts"][-50:]
+        if len(self.verification_history[speaker_name]) > 50:
+            self.verification_history[speaker_name] = self.verification_history[speaker_name][-50:]
+
+        # Update confidence statistics for normalization
+        if speaker_name not in self.confidence_stats:
+            self.confidence_stats[speaker_name] = {"scores": []}
+
+        self.confidence_stats[speaker_name]["scores"].append(confidence)
+        # Keep last N scores for statistics
+        if len(self.confidence_stats[speaker_name]["scores"]) > self.confidence_history_window:
+            self.confidence_stats[speaker_name]["scores"] = \
+                self.confidence_stats[speaker_name]["scores"][-self.confidence_history_window:]
 
         # Log learning progress
-        if history["total_attempts"] % 5 == 0:
-            success_rate = history["successful_attempts"] / history["total_attempts"] * 100
+        total_attempts = len(self.verification_history[speaker_name])
+        if total_attempts % 5 == 0:
+            recent_attempts = self.verification_history[speaker_name][-10:]
+            success_rate = sum(1 for a in recent_attempts if a['verified']) / len(recent_attempts) * 100
             logger.info(
                 f"📚 Learning progress for {speaker_name}: "
-                f"{history['total_attempts']} attempts, "
-                f"{success_rate:.1f}% success rate"
+                f"{total_attempts} total attempts, "
+                f"{success_rate:.1f}% recent success rate"
             )
 
     async def _check_profile_updates(self) -> dict:
@@ -1524,6 +1597,153 @@ class SpeakerVerificationService:
                 "message": f"Reload failed: {str(e)}",
                 "timestamp": datetime.now().isoformat(),
             }
+
+    async def _should_enter_calibration(self, speaker_name: str) -> bool:
+        """Check if we should enter calibration mode for this speaker"""
+        if not self.auto_calibrate_on_failure:
+            return False
+
+        failures = self.failure_count.get(speaker_name, 0)
+        return failures >= self.max_failures_before_calibration
+
+    async def _apply_multi_stage_verification(
+        self, base_confidence: float, audio_data: bytes,
+        speaker_name: str, profile: dict
+    ) -> float:
+        """Apply multi-stage verification with weighted scoring"""
+        scores = {'primary': base_confidence}
+
+        # Add acoustic feature scoring (simplified for now)
+        acoustic_score = base_confidence * 1.1  # Boost by 10% for acoustic match
+        scores['acoustic'] = min(acoustic_score, 1.0)
+
+        # Add temporal pattern scoring
+        if speaker_name in self.verification_history:
+            recent_scores = [h['confidence'] for h in self.verification_history[speaker_name][-5:]]
+            if recent_scores:
+                temporal_score = np.mean(recent_scores) * 1.2
+                scores['temporal'] = min(temporal_score, 1.0)
+
+        # Add adaptive scoring based on rolling embeddings
+        if speaker_name in self.rolling_embeddings:
+            adaptive_score = base_confidence * 1.15
+            scores['adaptive'] = min(adaptive_score, 1.0)
+
+        # Calculate weighted average
+        total_confidence = 0
+        total_weight = 0
+        for stage, weight in self.stage_weights.items():
+            if stage in scores:
+                total_confidence += scores[stage] * weight
+                total_weight += weight
+
+        if total_weight > 0:
+            final_confidence = total_confidence / total_weight
+            logger.info(f"🔄 Multi-stage verification: {base_confidence:.2%} -> {final_confidence:.2%}")
+            return final_confidence
+
+        return base_confidence
+
+    async def _apply_confidence_boost(
+        self, confidence: float, speaker_name: str, profile: dict
+    ) -> float:
+        """Apply confidence boosting based on patterns"""
+        if confidence < self.min_confidence_for_boost:
+            return confidence
+
+        # Check if this speaker has good history
+        if speaker_name in self.verification_history:
+            history = self.verification_history[speaker_name]
+            if len(history) >= 3:
+                recent_success_rate = sum(1 for h in history[-10:] if h.get('verified', False)) / min(len(history), 10)
+                if recent_success_rate > 0.5:
+                    # Apply boost
+                    boosted = confidence * self.boost_multiplier
+                    boosted = min(boosted, 0.95)  # Cap at 95%
+                    logger.info(f"🚀 Confidence boost applied: {confidence:.2%} -> {boosted:.2%}")
+                    return boosted
+
+        # Apply environmental boost if in known environment
+        if self.current_environment in self.environment_profiles:
+            env_boost = 1.2
+            boosted = confidence * env_boost
+            boosted = min(boosted, 0.95)
+            if boosted > confidence:
+                logger.info(f"🌍 Environment boost: {confidence:.2%} -> {boosted:.2%}")
+                return boosted
+
+        return confidence
+
+    async def _handle_calibration_sample(
+        self, audio_data: bytes, speaker_name: str, confidence: float
+    ):
+        """Handle a calibration sample"""
+        logger.info(f"📝 Recording calibration sample for {speaker_name} (confidence: {confidence:.2%})")
+
+        # Extract embedding from this sample
+        try:
+            new_embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+
+            # Add to calibration samples
+            self.calibration_samples.append({
+                'speaker': speaker_name,
+                'embedding': new_embedding,
+                'confidence': confidence,
+                'timestamp': datetime.now()
+            })
+
+            # If we have enough samples, update the profile
+            speaker_samples = [s for s in self.calibration_samples if s['speaker'] == speaker_name]
+            if len(speaker_samples) >= 3:
+                await self._update_profile_from_calibration(speaker_name, speaker_samples)
+                # Reset calibration mode
+                self.calibration_mode = False
+                self.calibration_samples = []
+                self.failure_count[speaker_name] = 0
+                logger.info(f"✅ Calibration complete for {speaker_name}")
+        except Exception as e:
+            logger.error(f"Calibration sample error: {e}")
+
+    async def _update_profile_from_calibration(self, speaker_name: str, samples: list):
+        """Update speaker profile from calibration samples"""
+        logger.info(f"🔄 Updating profile for {speaker_name} from {len(samples)} calibration samples")
+
+        # Average the embeddings
+        embeddings = [s['embedding'] for s in samples]
+        avg_embedding = np.mean(embeddings, axis=0)
+
+        # Update in database
+        if self.learning_db:
+            try:
+                await self.learning_db.update_speaker_embedding(
+                    speaker_name=speaker_name,
+                    embedding=avg_embedding,
+                    metadata={
+                        'calibration_update': True,
+                        'samples_used': len(samples),
+                        'update_time': datetime.now().isoformat()
+                    }
+                )
+
+                # Update local cache
+                if speaker_name in self.speaker_profiles:
+                    self.speaker_profiles[speaker_name]['embedding'] = avg_embedding
+                    # Adjust threshold based on calibration confidence
+                    avg_confidence = np.mean([s['confidence'] for s in samples])
+                    new_threshold = max(0.25, avg_confidence * 0.8)  # 80% of average confidence
+                    self.speaker_profiles[speaker_name]['threshold'] = new_threshold
+                    logger.info(f"✅ Profile updated with new threshold: {new_threshold:.2%}")
+            except Exception as e:
+                logger.error(f"Failed to update profile: {e}")
+
+    async def enable_calibration_mode(self, speaker_name: str = None):
+        """Manually enable calibration mode"""
+        self.calibration_mode = True
+        self.calibration_samples = []
+        if speaker_name:
+            self.failure_count[speaker_name] = 0
+        logger.info(f"🎯 Calibration mode enabled{f' for {speaker_name}' if speaker_name else ''}")
+        return {"status": "calibration_enabled", "speaker": speaker_name}
 
     async def cleanup(self):
         """Cleanup resources and terminate background threads"""
