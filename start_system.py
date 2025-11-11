@@ -5024,6 +5024,52 @@ class AsyncSystemManager:
                                 for issue in issues:
                                     print(f"    │     └─ {issue}")
 
+                        # CloudSQL SAI Prediction (Situational Awareness Intelligence)
+                        sai_prediction = cloudsql_health.get('sai_prediction')
+                        if sai_prediction:
+                            severity = sai_prediction['severity']
+                            confidence = sai_prediction['confidence']
+                            pred_type = sai_prediction['type'].replace('_', ' ').title()
+                            time_horizon = sai_prediction['time_horizon_seconds']
+                            predicted_event = sai_prediction['predicted_event']
+                            reason = sai_prediction['reason']
+                            action = sai_prediction['recommended_action']
+                            auto_heal = sai_prediction.get('auto_heal_available', False)
+
+                            # Color coding based on severity
+                            if severity == 'critical':
+                                severity_icon = f"{Colors.FAIL}🚨"
+                                severity_text = f"{Colors.FAIL}CRITICAL{Colors.ENDC}"
+                            else:
+                                severity_icon = f"{Colors.WARNING}⚠️ "
+                                severity_text = f"{Colors.WARNING}WARNING{Colors.ENDC}"
+
+                            # Confidence indicator
+                            if confidence >= 0.8:
+                                conf_icon = f"{Colors.GREEN}●"
+                            elif confidence >= 0.5:
+                                conf_icon = f"{Colors.YELLOW}●"
+                            else:
+                                conf_icon = f"{Colors.FAIL}●"
+
+                            print(f"    ├─ {severity_icon} {severity_text} CloudSQL SAI Prediction:")
+                            print(f"    │  ├─ Type: {pred_type}")
+                            print(f"    │  ├─ Event: {predicted_event}")
+                            print(f"    │  ├─ Time horizon: {time_horizon}s")
+                            print(f"    │  ├─ {conf_icon} Confidence: {confidence:.1%}{Colors.ENDC}")
+                            print(f"    │  ├─ Reason: {reason}")
+                            print(f"    │  ├─ Action: {action}")
+                            if auto_heal:
+                                auto_heal_triggered = cloudsql_health.get('sai_auto_heal_triggered', False)
+                                if auto_heal_triggered:
+                                    auto_heal_success = cloudsql_health.get('sai_auto_heal_success', False)
+                                    heal_status = f"{Colors.GREEN}✅ Triggered & Successful" if auto_heal_success else f"{Colors.FAIL}❌ Triggered & Failed"
+                                    print(f"    │  └─ Auto-Heal: {heal_status}{Colors.ENDC}")
+                                else:
+                                    print(f"    │  └─ Auto-Heal: {Colors.GREEN}✓ Available{Colors.ENDC}")
+                            else:
+                                print(f"    │  └─ Auto-Heal: Not available")
+
                         # Recommendations
                         recommendations = cloudsql_health.get('recommendations', [])
                         if recommendations:

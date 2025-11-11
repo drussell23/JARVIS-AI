@@ -102,6 +102,12 @@ class CloudSQLProxyManager:
         self.max_connections = 100  # Default for Cloud Run/App Engine
         self.connection_pool_warnings = []
 
+        # SAI (Situational Awareness Intelligence) prediction tracking
+        self.sai_predictions = []  # Rolling window of predictions
+        self.last_sai_prediction = None
+        self.sai_prediction_count = 0
+        self.sai_max_predictions = 20  # Keep last 20 predictions
+
     def _discover_config_path(self) -> Path:
         """
         Auto-discover database config file location.
@@ -812,6 +818,30 @@ WantedBy=default.target
         if health_data['connection_active']:
             health_data['voice_profiles'] = await self._check_voice_profiles()
 
+        # SAI Prediction (Situational Awareness Intelligence)
+        sai_prediction = self._generate_sai_prediction()
+        if sai_prediction:
+            health_data['sai_prediction'] = sai_prediction
+
+            # PROACTIVE SELF-HEALING based on SAI predictions
+            if sai_prediction['severity'] == 'critical' and sai_prediction.get('auto_heal_available'):
+                if sai_prediction['type'] == 'timeout_imminent' and sai_prediction['time_horizon_seconds'] < 60:
+                    logger.warning(
+                        f"[CLOUDSQL SAI] 🔧 PROACTIVE AUTO-HEAL: {sai_prediction['predicted_event']} "
+                        f"in {sai_prediction['time_horizon_seconds']}s - triggering preemptive reconnection"
+                    )
+                    success = await self._auto_heal_reconnect()
+                    health_data['sai_auto_heal_triggered'] = True
+                    health_data['sai_auto_heal_success'] = success
+                elif sai_prediction['type'] in ['connection_degradation', 'failure_trend']:
+                    logger.warning(
+                        f"[CLOUDSQL SAI] 🔧 PROACTIVE AUTO-HEAL: {sai_prediction['reason']} - "
+                        f"triggering reconnection"
+                    )
+                    success = await self._auto_heal_reconnect()
+                    health_data['sai_auto_heal_triggered'] = True
+                    health_data['sai_auto_heal_success'] = success
+
         return health_data
 
     async def _auto_heal_reconnect(self) -> bool:
@@ -924,6 +954,119 @@ WantedBy=default.target
         if category in self.api_call_history:
             self.api_call_history[category].append(datetime.now().isoformat())
             logger.debug(f"[CLOUDSQL] API call recorded: {category}")
+
+    def _generate_sai_prediction(self) -> Optional[Dict]:
+        """
+        SAI (Situational Awareness Intelligence) prediction for CloudSQL issues
+
+        Analyzes historical patterns to predict:
+        - Imminent timeout/disconnection
+        - Rate limit approaching
+        - Connection degradation
+        - Auto-healing needs
+
+        Returns:
+            Dict with prediction details or None if no issues predicted
+        """
+        from datetime import datetime, timedelta
+
+        predictions = []
+        current_time = datetime.now()
+
+        # PREDICTION 1: Timeout imminent
+        if self.last_successful_query:
+            age_seconds = (current_time - self.last_successful_query).total_seconds()
+            time_until_timeout = self.idle_timeout_seconds - age_seconds
+            timeout_percentage = (age_seconds / self.idle_timeout_seconds) * 100
+
+            if time_until_timeout < 120 and timeout_percentage >= 80:  # < 2 minutes and >= 80%
+                confidence = min(1.0, timeout_percentage / 100)
+                predictions.append({
+                    'type': 'timeout_imminent',
+                    'severity': 'critical' if time_until_timeout < 60 else 'warning',
+                    'confidence': confidence,
+                    'time_horizon_seconds': int(time_until_timeout),
+                    'predicted_event': 'CloudSQL connection timeout',
+                    'reason': f'Connection idle for {int(age_seconds)}s ({timeout_percentage:.1f}% of timeout threshold)',
+                    'recommended_action': 'Trigger preemptive reconnection',
+                    'auto_heal_available': self.auto_reconnect_enabled
+                })
+
+        # PREDICTION 2: Rate limit approaching
+        rate_limits = self._check_rate_limits()
+        for category, status in rate_limits.items():
+            if status['usage_percent'] > 80:
+                predictions.append({
+                    'type': 'rate_limit_approaching',
+                    'severity': 'critical' if status['usage_percent'] > 90 else 'warning',
+                    'confidence': min(1.0, status['usage_percent'] / 100),
+                    'time_horizon_seconds': 60,  # Within next minute
+                    'predicted_event': f'{category} rate limit exceeded',
+                    'reason': f"{category} API at {status['usage_percent']:.1f}% ({status['current_usage']}/{status['limit']} calls/min)",
+                    'recommended_action': 'Throttle API calls or wait for rate limit window to reset',
+                    'auto_heal_available': False
+                })
+
+        # PREDICTION 3: Connection degradation pattern
+        if len(self.connection_history) >= 10:
+            recent_10 = self.connection_history[-10:]
+            failures_in_last_10 = sum(1 for c in recent_10 if not c.get('success'))
+            failure_rate = failures_in_last_10 / 10
+
+            if failure_rate > 0.3:  # > 30% failure rate
+                predictions.append({
+                    'type': 'connection_degradation',
+                    'severity': 'critical' if failure_rate > 0.5 else 'warning',
+                    'confidence': failure_rate,
+                    'time_horizon_seconds': 30,
+                    'predicted_event': 'Connection failure imminent',
+                    'reason': f'{failures_in_last_10}/10 recent connection attempts failed ({failure_rate:.0%} failure rate)',
+                    'recommended_action': 'Investigate network issues and trigger reconnection',
+                    'auto_heal_available': self.auto_reconnect_enabled
+                })
+
+        # PREDICTION 4: Consecutive failures trend
+        if self.consecutive_failures >= 2:
+            predictions.append({
+                'type': 'failure_trend',
+                'severity': 'critical' if self.consecutive_failures >= 3 else 'warning',
+                'confidence': min(1.0, self.consecutive_failures / 3),
+                'time_horizon_seconds': 10,
+                'predicted_event': 'Auto-healing trigger imminent',
+                'reason': f'{self.consecutive_failures} consecutive failures detected',
+                'recommended_action': 'Auto-healing will trigger after 3 consecutive failures',
+                'auto_heal_available': self.auto_reconnect_enabled
+            })
+
+        # Return highest severity prediction
+        if predictions:
+            # Sort by severity (critical first) and confidence
+            predictions.sort(key=lambda p: (
+                0 if p['severity'] == 'critical' else 1,
+                -p['confidence']
+            ))
+
+            best_prediction = predictions[0]
+            best_prediction['timestamp'] = current_time.isoformat()
+            best_prediction['alternative_predictions'] = len(predictions) - 1
+
+            # Store prediction
+            self.last_sai_prediction = best_prediction
+            self.sai_predictions.append(best_prediction)
+            if len(self.sai_predictions) > self.sai_max_predictions:
+                self.sai_predictions.pop(0)
+            self.sai_prediction_count += 1
+
+            # Log at DEBUG level to avoid spam
+            logger.debug(
+                f"[CLOUDSQL SAI] 🔮 Prediction #{self.sai_prediction_count}: "
+                f"{best_prediction['predicted_event']} in {best_prediction['time_horizon_seconds']}s "
+                f"(confidence: {best_prediction['confidence']:.1%}, severity: {best_prediction['severity'].upper()})"
+            )
+
+            return best_prediction
+
+        return None
 
     async def _check_voice_profiles(self) -> Dict:
         """
