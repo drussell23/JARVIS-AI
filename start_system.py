@@ -4614,9 +4614,13 @@ class AsyncSystemManager:
     async def monitor_services(self):
         """Monitor services with health checks"""
         print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
+        print(f"{Colors.CYAN}  • Health checks every 30 seconds{Colors.ENDC}")
+        print(f"{Colors.CYAN}  • Process monitoring every 5 seconds{Colors.ENDC}")
 
         last_health_check = time.time()
         consecutive_failures = {"backend": 0}
+        health_check_count = 0
+        monitoring_start = time.time()
 
         try:
             while True:
@@ -4625,6 +4629,10 @@ class AsyncSystemManager:
                 # Exit monitoring loop if we're shutting down
                 if self._shutting_down:
                     break
+
+                # Calculate uptime
+                uptime_seconds = int(time.time() - monitoring_start)
+                uptime_str = f"{uptime_seconds // 60}m {uptime_seconds % 60}s"
 
                 # Check if processes are still running
                 for i, proc in enumerate(self.processes):
@@ -4643,48 +4651,114 @@ class AsyncSystemManager:
 
                 # Periodic health check
                 if time.time() - last_health_check > 30:
+                    health_check_count += 1
+                    print(f"\n{Colors.BLUE}🔍 Health Check #{health_check_count} (Uptime: {uptime_str}){Colors.ENDC}")
                     last_health_check = time.time()
 
                     # Check backend health
+                    backend_start = time.time()
                     try:
                         async with aiohttp.ClientSession() as session:
                             async with session.get(
                                 f"http://localhost:{self.ports['main_api']}/health",
                                 timeout=2,
                             ) as resp:
+                                response_time_ms = int((time.time() - backend_start) * 1000)
+
                                 if resp.status == 200:
                                     consecutive_failures["backend"] = 0
+                                    print(f"  {Colors.GREEN}✓ Backend API:{Colors.ENDC} http://localhost:{self.ports['main_api']} ({response_time_ms}ms)")
+
                                     # Check for Rust acceleration and self-healing
                                     try:
                                         data = await resp.json()
+
+                                        # Display detailed health metrics
+                                        if "status" in data:
+                                            print(f"    └─ Status: {data['status']}")
+
+                                        if "memory" in data:
+                                            memory_mb = data['memory'].get('rss', 0) / 1024 / 1024
+                                            print(f"    └─ Memory: {memory_mb:.1f} MB")
+
+                                        if "cpu_percent" in data:
+                                            print(f"    └─ CPU: {data['cpu_percent']:.1f}%")
+
                                         rust_status = data.get("rust_acceleration", {})
                                         self_healing_status = data.get("self_healing", {})
 
-                                        if rust_status.get("enabled") and not hasattr(
-                                            self, "_rust_logged"
-                                        ):
-                                            print(
-                                                f"\n{Colors.GREEN}🦀 Rust acceleration active{Colors.ENDC}"
-                                            )
-                                            self._rust_logged = True
+                                        if rust_status.get("enabled"):
+                                            if not hasattr(self, "_rust_logged"):
+                                                print(f"    {Colors.GREEN}└─ 🦀 Rust acceleration: ACTIVE{Colors.ENDC}")
+                                                self._rust_logged = True
+                                            else:
+                                                print(f"    └─ 🦀 Rust: Active")
 
-                                        if self_healing_status.get("enabled") and not hasattr(
-                                            self, "_healing_logged"
-                                        ):
-                                            success_rate = self_healing_status.get(
-                                                "success_rate", 0.0
-                                            )
-                                            if success_rate > 0:
-                                                print(
-                                                    f"{Colors.GREEN}🔧 Self-healing: {success_rate:.0%} success rate{Colors.ENDC}"
-                                                )
-                                            self._healing_logged = True
-                                    except:
-                                        pass
+                                        if self_healing_status.get("enabled"):
+                                            success_rate = self_healing_status.get("success_rate", 0.0)
+                                            heal_count = self_healing_status.get("heal_count", 0)
+                                            if not hasattr(self, "_healing_logged"):
+                                                print(f"    {Colors.GREEN}└─ 🔧 Self-healing: {success_rate:.0%} success ({heal_count} heals){Colors.ENDC}")
+                                                self._healing_logged = True
+                                            else:
+                                                print(f"    └─ 🔧 Self-healing: {success_rate:.0%} ({heal_count})")
+                                    except Exception as e:
+                                        print(f"    {Colors.YELLOW}└─ Detailed metrics unavailable{Colors.ENDC}")
                                 else:
                                     consecutive_failures["backend"] += 1
-                    except:
+                                    print(f"  {Colors.WARNING}✗ Backend API:{Colors.ENDC} Status {resp.status} ({response_time_ms}ms)")
+                    except asyncio.TimeoutError:
                         consecutive_failures["backend"] += 1
+                        print(f"  {Colors.WARNING}✗ Backend API:{Colors.ENDC} Timeout (>2000ms)")
+                    except Exception as e:
+                        consecutive_failures["backend"] += 1
+                        print(f"  {Colors.WARNING}✗ Backend API:{Colors.ENDC} Connection failed - {str(e)[:50]}")
+
+                    # Check Voice Memory Agent status
+                    try:
+                        from agents.voice_memory_agent import get_voice_memory_agent
+                        voice_agent = await get_voice_memory_agent()
+                        all_memories = await voice_agent.get_all_memories()
+
+                        total_speakers = all_memories.get('total_speakers', 0)
+                        total_interactions = all_memories.get('total_interactions', 0)
+
+                        if total_speakers > 0:
+                            print(f"  {Colors.GREEN}✓ Voice Memory Agent:{Colors.ENDC} Active")
+                            print(f"    └─ Speakers: {total_speakers}")
+                            print(f"    └─ Total interactions: {total_interactions}")
+
+                            # Show per-speaker details
+                            for speaker_name, memory in all_memories.get('speakers', {}).items():
+                                freshness = memory.get('freshness_score', 0.0)
+                                interactions = memory.get('total_interactions', 0)
+                                last_interaction = memory.get('last_interaction')
+
+                                freshness_icon = "🟢" if freshness > 0.75 else "🟡" if freshness > 0.60 else "🟠" if freshness > 0.40 else "🔴"
+                                freshness_color = Colors.GREEN if freshness > 0.75 else Colors.YELLOW if freshness > 0.60 else Colors.WARNING if freshness > 0.40 else Colors.FAIL
+
+                                print(f"    └─ {speaker_name}: {freshness_icon} {freshness_color}{freshness*100:.0f}% fresh{Colors.ENDC} ({interactions} interactions)")
+
+                                if last_interaction:
+                                    from datetime import datetime
+                                    try:
+                                        last_time = datetime.fromisoformat(last_interaction) if isinstance(last_interaction, str) else last_interaction
+                                        time_ago = datetime.now() - last_time
+                                        hours_ago = int(time_ago.total_seconds() / 3600)
+                                        if hours_ago < 1:
+                                            mins_ago = int(time_ago.total_seconds() / 60)
+                                            print(f"       └─ Last interaction: {mins_ago}m ago")
+                                        elif hours_ago < 24:
+                                            print(f"       └─ Last interaction: {hours_ago}h ago")
+                                        else:
+                                            days_ago = hours_ago // 24
+                                            print(f"       └─ Last interaction: {days_ago}d ago")
+                                    except:
+                                        pass
+                        else:
+                            print(f"  {Colors.YELLOW}⚠ Voice Memory Agent:{Colors.ENDC} No speakers enrolled")
+                    except Exception as e:
+                        print(f"  {Colors.YELLOW}⚠ Voice Memory Agent:{Colors.ENDC} Status unavailable")
 
                     # Alert on repeated failures
                     for service, failures in consecutive_failures.items():
@@ -4692,6 +4766,9 @@ class AsyncSystemManager:
                             print(
                                 f"\n{Colors.WARNING}⚠ {service} health checks failing ({failures} failures){Colors.ENDC}"
                             )
+
+                    # Show next health check countdown
+                    print(f"\n{Colors.CYAN}  Next health check in 30 seconds...{Colors.ENDC}")
 
         except asyncio.CancelledError:
             self._shutting_down = True

@@ -4,6 +4,8 @@ Advanced Learning Database System for JARVIS Goal Inference
 Hybrid architecture: SQLite (structured) + ChromaDB (embeddings) + Async + ML-powered insights
 """
 
+from __future__ import annotations
+
 import asyncio
 import calendar
 import hashlib
@@ -31,11 +33,12 @@ except ImportError:
 
 # Async and ML dependencies
 try:
-    pass
+    import numpy as np
 
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
+    np = None
 
 # ChromaDB for semantic search and embeddings
 try:
