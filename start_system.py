@@ -2922,6 +2922,17 @@ class AsyncSystemManager:
         self.last_autonomous_fix_report = None  # Store last fix report
         self.autonomous_fix_history = []  # Track all autonomous fixes
 
+        # Voice Unlock Configuration tracking
+        self.voice_unlock_config_status = {
+            'configured': False,
+            'daemon_running': False,
+            'keychain_password_stored': False,
+            'enrollment_data_exists': False,
+            'last_check_time': None,
+            'auto_config_attempted': False,
+            'issues': []
+        }
+
         # Self-healing mechanism
         self.healing_attempts = {}
         self.max_healing_attempts = 3
@@ -5565,6 +5576,191 @@ class AsyncSystemManager:
 
         return fix_report
 
+    async def _check_voice_unlock_configuration(self) -> dict:
+        """
+        🔐 CHECK VOICE UNLOCK CONFIGURATION
+
+        Checks if voice unlock is properly configured:
+        - Keychain password stored
+        - Enrollment data exists
+        - Daemon processrunning
+
+        Returns:
+            Configuration status with issues and recommendations
+        """
+        import subprocess
+        from pathlib import Path
+        from datetime import datetime
+
+        status = self.voice_unlock_config_status.copy()
+        status['last_check_time'] = datetime.now()
+        status['issues'] = []
+
+        try:
+            # 1. Check if password is stored in Keychain
+            try:
+                result = subprocess.run(
+                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    status['keychain_password_stored'] = True
+                    logger.info("[VOICE UNLOCK] ✅ Password stored in Keychain")
+                else:
+                    status['keychain_password_stored'] = False
+                    status['issues'].append('Password not stored in Keychain')
+                    logger.warning("[VOICE UNLOCK] ⚠️  Password not in Keychain")
+            except Exception as e:
+                status['keychain_password_stored'] = False
+                status['issues'].append(f'Keychain check failed: {str(e)}')
+                logger.error(f"[VOICE UNLOCK] ❌ Keychain check error: {e}")
+
+            # 2. Check if enrollment data exists
+            enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
+            if enrollment_file.exists():
+                status['enrollment_data_exists'] = True
+                logger.info(f"[VOICE UNLOCK] ✅ Enrollment data found: {enrollment_file}")
+
+                # Read enrollment details for display
+                try:
+                    import json
+                    with open(enrollment_file, 'r') as f:
+                        enrollment_data = json.load(f)
+                        status['enrollment_details'] = {
+                            'username': enrollment_data.get('user', 'unknown'),
+                            'enrollment_date': enrollment_data.get('configured_at', 'unknown'),
+                            'voice_samples': enrollment_data.get('voice_samples', 0),
+                            'auto_configured': enrollment_data.get('auto_configured', False),
+                            'status': enrollment_data.get('status', 'unknown')
+                        }
+                        logger.info(f"[VOICE UNLOCK]   ├─ User: {status['enrollment_details']['username']}")
+                        logger.info(f"[VOICE UNLOCK]   ├─ Samples: {status['enrollment_details']['voice_samples']}")
+                        logger.info(f"[VOICE UNLOCK]   └─ Date: {status['enrollment_details']['enrollment_date']}")
+                except Exception as e:
+                    logger.warning(f"[VOICE UNLOCK] ⚠️  Could not read enrollment details: {e}")
+            else:
+                status['enrollment_data_exists'] = False
+                status['issues'].append('Enrollment data not found')
+                logger.warning(f"[VOICE UNLOCK] ⚠️  No enrollment data at {enrollment_file}")
+
+            # 3. Check if voice unlock daemon/service is running
+            # This checks if the backend voice unlock endpoint is accessible
+            try:
+                import aiohttp
+                logger.debug("[VOICE UNLOCK] Checking service status at http://localhost:8010/api/voice-unlock/status")
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://localhost:8010/api/voice-unlock/status', timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            status['daemon_running'] = data.get('enabled', False)
+                            status['service_health'] = {
+                                'enabled': data.get('enabled', False),
+                                'ready': data.get('ready', False),
+                                'models_loaded': data.get('models_loaded', False),
+                                'last_check': datetime.now().isoformat()
+                            }
+                            logger.info(f"[VOICE UNLOCK] ✅ Service is running")
+                            logger.info(f"[VOICE UNLOCK]   ├─ Enabled: {data.get('enabled', False)}")
+                            logger.info(f"[VOICE UNLOCK]   ├─ Ready: {data.get('ready', False)}")
+                            logger.info(f"[VOICE UNLOCK]   └─ Models loaded: {data.get('models_loaded', False)}")
+                        else:
+                            status['daemon_running'] = False
+                            status['issues'].append('Voice unlock service not responding')
+                            logger.warning(f"[VOICE UNLOCK] ⚠️  Service returned HTTP {resp.status}")
+            except aiohttp.ClientConnectorError as e:
+                status['daemon_running'] = False
+                status['issues'].append('Voice unlock backend not running')
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Backend not reachable (is it running?)")
+            except asyncio.TimeoutError:
+                status['daemon_running'] = False
+                status['issues'].append('Voice unlock service timeout')
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Service timeout (backend overloaded?)")
+            except Exception as e:
+                status['daemon_running'] = False
+                status['issues'].append(f'Cannot connect to voice unlock service: {str(e)}')
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Service check error: {e}")
+
+            # 4. Determine overall configuration status
+            status['configured'] = (
+                status['keychain_password_stored'] and
+                status['enrollment_data_exists']
+            )
+
+            # 5. Generate comprehensive health summary
+            if status['configured']:
+                logger.info("[VOICE UNLOCK] ✅ Voice Unlock is fully configured")
+                logger.info("[VOICE UNLOCK] ═══════════════════════════════════════════")
+                logger.info("[VOICE UNLOCK] Configuration Health Summary:")
+                logger.info(f"[VOICE UNLOCK]   ✅ Keychain: Configured")
+                logger.info(f"[VOICE UNLOCK]   ✅ Enrollment: Complete")
+                if status.get('daemon_running'):
+                    logger.info(f"[VOICE UNLOCK]   ✅ Service: Running")
+                else:
+                    logger.info(f"[VOICE UNLOCK]   ⚠️  Service: Not running (start backend)")
+                logger.info("[VOICE UNLOCK] ═══════════════════════════════════════════")
+            else:
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Voice Unlock not configured: {len(status['issues'])} issues")
+                logger.warning("[VOICE UNLOCK] ═══════════════════════════════════════════")
+                logger.warning("[VOICE UNLOCK] Configuration Issues:")
+                for issue in status['issues']:
+                    logger.warning(f"[VOICE UNLOCK]   ❌ {issue}")
+                logger.warning("[VOICE UNLOCK] ═══════════════════════════════════════════")
+                logger.warning("[VOICE UNLOCK] To fix: Run ./backend/voice_unlock/enable_screen_unlock.sh")
+
+        except Exception as e:
+            logger.error(f"[VOICE UNLOCK] Configuration check failed: {e}", exc_info=True)
+            status['issues'].append(f'Configuration check error: {str(e)}')
+
+        self.voice_unlock_config_status = status
+        return status
+
+    async def _auto_configure_voice_unlock(self) -> bool:
+        """
+        🤖 AUTONOMOUS VOICE UNLOCK CONFIGURATION
+
+        Attempts to automatically configure voice unlock if not set up
+        Returns True if successful, False otherwise
+        """
+        import subprocess
+        from pathlib import Path
+
+        if self.voice_unlock_config_status.get('auto_config_attempted'):
+            logger.info("[VOICE UNLOCK] Auto-config already attempted this session")
+            return False
+
+        self.voice_unlock_config_status['auto_config_attempted'] = True
+
+        try:
+            logger.info("[VOICE UNLOCK] 🤖 Attempting autonomous configuration...")
+
+            # Run the setup script non-interactively
+            # Note: This won't work fully because it needs password input
+            # But we can at least create enrollment data structure
+
+            enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
+            if not enrollment_file.exists():
+                enrollment_file.parent.mkdir(parents=True, exist_ok=True)
+                import json
+                enrollment_data = {
+                    "user": os.getenv("USER", "unknown"),
+                    "configured_at": datetime.now().isoformat(),
+                    "auto_configured": True,
+                    "status": "partial",
+                    "note": "Keychain password must be set manually"
+                }
+                with open(enrollment_file, 'w') as f:
+                    json.dump(enrollment_data, f, indent=2)
+                logger.info(f"[VOICE UNLOCK] ✅ Created enrollment data at {enrollment_file}")
+
+            logger.warning("[VOICE UNLOCK] ⚠️  Manual step required: Run ./backend/voice_unlock/enable_screen_unlock.sh to store password")
+            return False  # Partial success
+
+        except Exception as e:
+            logger.error(f"[VOICE UNLOCK] Auto-config failed: {e}")
+            return False
+
     async def monitor_services(self):
         """Monitor services with health checks"""
         print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
@@ -6056,6 +6252,52 @@ class AsyncSystemManager:
                         print(f"    └─ Total predictions: {self.sai_prediction_count}")
                     else:
                         print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.YELLOW}Idle{Colors.ENDC} (no recent predictions)")
+
+                    # 🔐 VOICE UNLOCK CONFIGURATION CHECK
+                    print()  # Blank line for separation
+                    voice_unlock_status = await self._check_voice_unlock_configuration()
+
+                    if voice_unlock_status['configured']:
+                        status_icon = f"{Colors.GREEN}✅"
+                        status_text = f"{Colors.GREEN}CONFIGURED{Colors.ENDC}"
+                    else:
+                        status_icon = f"{Colors.YELLOW}⚠️ "
+                        status_text = f"{Colors.YELLOW}NOT CONFIGURED{Colors.ENDC}"
+
+                    print(f"  {status_icon} Voice Unlock: {status_text}")
+                    print(f"    ├─ {'✅' if voice_unlock_status['keychain_password_stored'] else '❌'} Keychain password")
+                    print(f"    ├─ {'✅' if voice_unlock_status['enrollment_data_exists'] else '❌'} Enrollment data")
+
+                    # Daemon status with detailed info
+                    if voice_unlock_status['daemon_running']:
+                        print(f"    ├─ ✅ Service status: {Colors.GREEN}RUNNING{Colors.ENDC}")
+                    else:
+                        print(f"    ├─ ⚠️  Service status: {Colors.YELLOW}NOT RUNNING{Colors.ENDC}")
+
+                    # Show enrollment details if available
+                    if voice_unlock_status['enrollment_data_exists'] and voice_unlock_status.get('enrollment_details'):
+                        details = voice_unlock_status['enrollment_details']
+                        print(f"    ├─ Enrolled user: {details.get('username', 'unknown')}")
+                        print(f"    ├─ Voice samples: {details.get('voice_samples', 0)}")
+                        enrollment_date = details.get('enrollment_date', 'unknown')
+                        if enrollment_date != 'unknown':
+                            print(f"    ├─ Enrolled: {enrollment_date}")
+
+                    # Auto-configure if not configured
+                    if not voice_unlock_status['configured']:
+                        print(f"    │")
+                        # Attempt autonomous configuration once per session
+                        if not self.voice_unlock_config_status.get('auto_config_attempted'):
+                            print(f"    ├─ {Colors.YELLOW}🤖 Attempting autonomous configuration...{Colors.ENDC}")
+                            auto_config_success = await self._auto_configure_voice_unlock()
+                            if auto_config_success:
+                                print(f"    └─ {Colors.GREEN}✅ Auto-configured successfully!{Colors.ENDC}")
+                            else:
+                                print(f"    └─ {Colors.YELLOW}⚠️  Partial config - run: ./backend/voice_unlock/enable_screen_unlock.sh{Colors.ENDC}")
+                        else:
+                            print(f"    └─ {Colors.YELLOW}⚠️  Manual setup required - run: ./backend/voice_unlock/enable_screen_unlock.sh{Colors.ENDC}")
+                    else:
+                        print(f"    └─ {Colors.GREEN}✓ Ready for voice unlock commands{Colors.ENDC}")
 
                     # Voice Verification Diagnostics with AI-Powered Recommendations
                     print()  # Blank line for separation
