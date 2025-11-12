@@ -544,41 +544,80 @@ class PriorityQueue:
 class PrometheusMetrics:
     """
     Prometheus metrics exporter for hybrid sync telemetry.
+    Uses singleton registry to prevent duplicate metric registration.
     """
 
     def __init__(self, port: int = 9090):
         self.port = port
         self.enabled = PROMETHEUS_AVAILABLE
+        self.server_started = False
 
         if not self.enabled:
             return
 
-        # Counters
-        self.cache_hits = Counter('jarvis_cache_hits_total', 'Total cache hits')
-        self.cache_misses = Counter('jarvis_cache_misses_total', 'Total cache misses')
-        self.syncs_total = Counter('jarvis_syncs_total', 'Total sync operations', ['status'])
-        self.queries_total = Counter('jarvis_queries_total', 'Total database queries', ['type'])
+        # Try to get existing metrics or create new ones
+        try:
+            from prometheus_client import REGISTRY
 
-        # Gauges
-        self.queue_size = Gauge('jarvis_queue_size', 'Current sync queue size')
-        self.connection_pool_size = Gauge('jarvis_connection_pool_size', 'Current connection pool size')
-        self.connection_pool_load = Gauge('jarvis_connection_pool_load', 'Connection pool load percentage')
-        self.circuit_state = Gauge('jarvis_circuit_state', 'Circuit breaker state (0=closed, 1=open, 2=half-open)')
-        self.cache_size = Gauge('jarvis_cache_size', 'FAISS cache size')
+            # Try to get existing collectors
+            try:
+                self.cache_hits = REGISTRY._names_to_collectors.get('jarvis_cache_hits_total')
+                self.cache_misses = REGISTRY._names_to_collectors.get('jarvis_cache_misses_total')
+                self.syncs_total = REGISTRY._names_to_collectors.get('jarvis_syncs_total')
+                self.queries_total = REGISTRY._names_to_collectors.get('jarvis_queries_total')
+                self.queue_size = REGISTRY._names_to_collectors.get('jarvis_queue_size')
+                self.connection_pool_size = REGISTRY._names_to_collectors.get('jarvis_connection_pool_size')
+                self.connection_pool_load = REGISTRY._names_to_collectors.get('jarvis_connection_pool_load')
+                self.circuit_state = REGISTRY._names_to_collectors.get('jarvis_circuit_state')
+                self.cache_size = REGISTRY._names_to_collectors.get('jarvis_cache_size')
+                self.read_latency = REGISTRY._names_to_collectors.get('jarvis_read_latency_seconds')
+                self.write_latency = REGISTRY._names_to_collectors.get('jarvis_write_latency_seconds')
+                self.sync_latency = REGISTRY._names_to_collectors.get('jarvis_sync_latency_seconds')
 
-        # Histograms
-        self.read_latency = Histogram('jarvis_read_latency_seconds', 'Read operation latency', ['source'])
-        self.write_latency = Histogram('jarvis_write_latency_seconds', 'Write operation latency')
-        self.sync_latency = Histogram('jarvis_sync_latency_seconds', 'Sync operation latency')
+                # If any are None, we need to create them
+                if not all([self.cache_hits, self.cache_misses, self.syncs_total]):
+                    raise ValueError("Metrics not fully registered")
+
+                logger.info("✅ Reusing existing Prometheus metrics")
+
+            except (ValueError, AttributeError):
+                # Create new metrics
+                self.cache_hits = Counter('jarvis_cache_hits_total', 'Total cache hits')
+                self.cache_misses = Counter('jarvis_cache_misses_total', 'Total cache misses')
+                self.syncs_total = Counter('jarvis_syncs_total', 'Total sync operations', ['status'])
+                self.queries_total = Counter('jarvis_queries_total', 'Total database queries', ['type'])
+
+                # Gauges
+                self.queue_size = Gauge('jarvis_queue_size', 'Current sync queue size')
+                self.connection_pool_size = Gauge('jarvis_connection_pool_size', 'Current connection pool size')
+                self.connection_pool_load = Gauge('jarvis_connection_pool_load', 'Connection pool load percentage')
+                self.circuit_state = Gauge('jarvis_circuit_state', 'Circuit breaker state (0=closed, 1=open, 2=half-open)')
+                self.cache_size = Gauge('jarvis_cache_size', 'FAISS cache size')
+
+                # Histograms
+                self.read_latency = Histogram('jarvis_read_latency_seconds', 'Read operation latency', ['source'])
+                self.write_latency = Histogram('jarvis_write_latency_seconds', 'Write operation latency')
+                self.sync_latency = Histogram('jarvis_sync_latency_seconds', 'Sync operation latency')
+
+        except Exception as e:
+            logger.warning(f"⚠️  Prometheus metrics initialization failed: {e}")
+            self.enabled = False
 
         logger.info(f"📊 Prometheus metrics enabled on port {port}")
 
     def start_server(self):
-        """Start Prometheus metrics HTTP server"""
-        if self.enabled:
+        """Start Prometheus metrics HTTP server (only if not already started)"""
+        if self.enabled and not self.server_started:
             try:
                 start_http_server(self.port)
+                self.server_started = True
                 logger.info(f"✅ Prometheus server started: http://localhost:{self.port}/metrics")
+            except OSError as e:
+                if "Address already in use" in str(e):
+                    logger.info(f"ℹ️  Prometheus server already running on port {self.port}")
+                    self.server_started = True
+                else:
+                    logger.warning(f"⚠️  Prometheus server failed to start: {e}")
             except Exception as e:
                 logger.warning(f"⚠️  Prometheus server failed to start: {e}")
 
@@ -954,6 +993,10 @@ class HybridDatabaseSync:
         self._shutdown = False
         self._start_time = time.time()
 
+        # Health tracking
+        self.cloudsql_healthy = False
+        self.last_health_check = datetime.now()
+
         # Metrics
         self.metrics = SyncMetrics()
 
@@ -1023,6 +1066,20 @@ class HybridDatabaseSync:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Create speaker_profiles table for FAISS cache preload
+            await self.sqlite_conn.execute("""
+                CREATE TABLE IF NOT EXISTS speaker_profiles (
+                    speaker_id INTEGER PRIMARY KEY,
+                    speaker_name TEXT UNIQUE NOT NULL,
+                    voiceprint_embedding BLOB NOT NULL,
+                    acoustic_features TEXT NOT NULL,
+                    total_samples INTEGER DEFAULT 0,
+                    last_updated TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             await self.sqlite_conn.commit()
 
             logger.info("✅ SQLite initialized (WAL mode enabled)")
