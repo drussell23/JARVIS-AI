@@ -14,7 +14,9 @@ Features:
 
 import asyncio
 import logging
+import os
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -97,16 +99,17 @@ class UnifiedWebSocketManager:
         self.sai_engine = None  # Will be set by main.py
         self.learning_db = None  # Will be set by main.py
 
-        # Self-healing configuration (dynamic, loaded from config or learned)
+        # Self-healing configuration (dynamic, loaded from environment or config)
         self.config = {
-            "health_check_interval": 10.0,  # Increased from 5s to reduce overhead
-            "message_timeout": 60.0,  # Increased from 30s - frontend pings every 15s, give more buffer
-            "ping_interval": 20.0,  # Increased from 15s to reduce ping traffic
-            "max_recovery_attempts": 5,
-            "circuit_breaker_threshold": 3,
-            "circuit_breaker_timeout": 60.0,
-            "predictive_healing_enabled": True,
-            "auto_learning_enabled": True,
+            "health_check_interval": float(os.getenv("WS_HEALTH_CHECK_INTERVAL", "10.0")),
+            "message_timeout": float(os.getenv("WS_MESSAGE_TIMEOUT", "60.0")),
+            "ping_interval": float(os.getenv("WS_PING_INTERVAL", "20.0")),
+            "max_recovery_attempts": int(os.getenv("WS_MAX_RECOVERY_ATTEMPTS", "5")),
+            "circuit_breaker_threshold": int(os.getenv("WS_CIRCUIT_BREAKER_THRESHOLD", "3")),
+            "circuit_breaker_timeout": float(os.getenv("WS_CIRCUIT_BREAKER_TIMEOUT", "60.0")),
+            "predictive_healing_enabled": os.getenv("WS_PREDICTIVE_HEALING", "true").lower() == "true",
+            "auto_learning_enabled": os.getenv("WS_AUTO_LEARNING", "true").lower() == "true",
+            "max_pattern_history": int(os.getenv("WS_MAX_PATTERN_HISTORY", "1000")),
         }
 
         # Circuit breaker state
@@ -117,10 +120,27 @@ class UnifiedWebSocketManager:
         # Background tasks
         self.health_monitor_task: Optional[asyncio.Task] = None
         self.recovery_tasks: Dict[str, asyncio.Task] = {}
+        self._shutdown_event = asyncio.Event()
 
-        # Learning & patterns
-        self.disconnection_patterns: List[Dict] = []
+        # Learning & patterns (using deque for bounded memory)
+        self.disconnection_patterns: deque = deque(maxlen=self.config["max_pattern_history"])
         self.recovery_success_rate: Dict[str, float] = {}
+
+        # Metrics & analytics
+        self.metrics = {
+            "total_connections": 0,
+            "total_disconnections": 0,
+            "total_messages_sent": 0,
+            "total_messages_received": 0,
+            "total_errors": 0,
+            "total_recoveries": 0,
+            "circuit_breaker_activations": 0,
+            "uptime_start": time.time(),
+        }
+
+        # Rate limiting (prevents connection flooding)
+        self.connection_rate_limit = int(os.getenv("WS_CONNECTION_RATE_LIMIT", "10"))  # per minute
+        self.connection_timestamps: deque = deque(maxlen=100)
 
         # Message handlers (dynamically extensible)
         self.handlers = {
@@ -145,6 +165,7 @@ class UnifiedWebSocketManager:
             "subscribe": self._handle_subscribe,
             "unsubscribe": self._handle_unsubscribe,
             "health_check": self._handle_health_check,
+            "system_metrics": self._handle_system_metrics,
         }
 
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
@@ -176,7 +197,89 @@ class UnifiedWebSocketManager:
                 await self.health_monitor_task
             except asyncio.CancelledError:
                 pass
+            self.health_monitor_task = None
             logger.info("[UNIFIED-WS] Health monitoring stopped")
+
+    async def shutdown(self):
+        """
+        Graceful shutdown handler for resource cleanup
+
+        Performs:
+        - Stop health monitoring
+        - Cancel all recovery tasks
+        - Close all active connections
+        - Log final metrics
+        - Clear resources
+        """
+        logger.info("[UNIFIED-WS] 🛑 Starting graceful shutdown...")
+
+        # Signal shutdown to prevent new connections
+        self._shutdown_event.set()
+
+        # Stop health monitoring
+        await self.stop_health_monitoring()
+
+        # Cancel all recovery tasks
+        if self.recovery_tasks:
+            logger.info(f"[UNIFIED-WS] Cancelling {len(self.recovery_tasks)} recovery tasks...")
+            for task in self.recovery_tasks.values():
+                task.cancel()
+
+            # Wait for all to finish
+            await asyncio.gather(*self.recovery_tasks.values(), return_exceptions=True)
+            self.recovery_tasks.clear()
+
+        # Collect final metrics before disconnecting
+        total_messages_sent = sum(h.messages_sent for h in self.connection_health.values())
+        total_messages_received = sum(h.messages_received for h in self.connection_health.values())
+        total_errors = sum(h.errors for h in self.connection_health.values())
+        avg_health_score = (
+            sum(h.health_score for h in self.connection_health.values()) / len(self.connection_health)
+            if self.connection_health
+            else 0
+        )
+
+        logger.info(
+            f"[UNIFIED-WS] 📊 Final metrics: "
+            f"{len(self.connections)} active connections, "
+            f"{total_messages_sent} sent, "
+            f"{total_messages_received} received, "
+            f"{total_errors} errors, "
+            f"avg health: {avg_health_score:.1f}"
+        )
+
+        # Close all connections gracefully
+        if self.connections:
+            logger.info(f"[UNIFIED-WS] Closing {len(self.connections)} active connections...")
+
+            # Send shutdown notification to all clients
+            shutdown_message = {
+                "type": "system_shutdown",
+                "message": "Server is shutting down gracefully",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            for client_id in list(self.connections.keys()):
+                try:
+                    websocket = self.connections[client_id]
+                    await websocket.send_json(shutdown_message)
+                except Exception as e:
+                    logger.debug(f"[UNIFIED-WS] Could not send shutdown message to {client_id}: {e}")
+
+                # Disconnect
+                await self.disconnect(client_id)
+
+        # Log final learning data
+        if self.learning_db and self.disconnection_patterns:
+            logger.info(
+                f"[UNIFIED-WS] 🧠 Collected {len(self.disconnection_patterns)} connection patterns during session"
+            )
+
+        # Clear remaining data structures
+        self.connection_health.clear()
+        self.connections.clear()
+
+        logger.info("[UNIFIED-WS] ✅ Graceful shutdown complete")
 
     async def _health_monitoring_loop(self):
         """Continuous health monitoring with predictive healing"""
@@ -224,8 +327,15 @@ class UnifiedWebSocketManager:
                         await self._send_ping(health)
 
                     # Predictive healing (UAE-powered)
-                    if self.config["predictive_healing_enabled"] and self.uae_engine:
-                        await self._predictive_healing(health)
+                    if self.config["predictive_healing_enabled"]:
+                        if self.uae_engine:
+                            await self._predictive_healing(health)
+                        else:
+                            # Log once per health check cycle if UAE not available
+                            if int(current_time) % 300 == 0:  # Every 5 minutes
+                                logger.debug(
+                                    "[UNIFIED-WS] Predictive healing enabled but UAE engine not available"
+                                )
 
                 # Check circuit breaker
                 await self._check_circuit_breaker()
@@ -289,6 +399,7 @@ class UnifiedWebSocketManager:
                 if current_time - health.last_message_time < 3:
                     health.state = ConnectionState.HEALTHY
                     health.health_score = min(100, health.health_score + 30)
+                    self.metrics["total_recoveries"] += 1
                     logger.info(f"[UNIFIED-WS] ✅ Recovery successful for {health.client_id}")
 
                     # Notify SAI of recovery
@@ -391,6 +502,7 @@ class UnifiedWebSocketManager:
                 )
                 self.circuit_open = True
                 self.circuit_open_time = current_time
+                self.metrics["circuit_breaker_activations"] += 1
 
                 # Notify all clients
                 await self.broadcast(
@@ -407,6 +519,7 @@ class UnifiedWebSocketManager:
     async def _notify_sai(self, event: str, health: Optional[ConnectionHealth]):
         """Notify SAI of connection events for situational awareness"""
         if not self.sai_engine:
+            logger.debug(f"[UNIFIED-WS] SAI notification skipped (engine not available): {event}")
             return
 
         try:
@@ -505,6 +618,11 @@ class UnifiedWebSocketManager:
 
         return {"type": "health_status", "error": "Client health data not found"}
 
+    async def _handle_system_metrics(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system metrics requests"""
+        metrics = self.get_system_metrics()
+        return {"type": "system_metrics", "metrics": metrics, "timestamp": datetime.now().isoformat()}
+
     async def _ask_uae_prediction(self, metrics: Dict) -> Optional[Dict]:
         """Ask UAE to predict disconnection risk"""
         if not self.uae_engine or not hasattr(self.uae_engine, "predict_connection_risk"):
@@ -596,7 +714,6 @@ class UnifiedWebSocketManager:
         """Non-blocking message processing via async pipeline"""
         try:
             message = context.metadata.get("message", {})
-            context.metadata.get("client_id", "")
 
             # Parse message type
             msg_type = message.get("type", "")
@@ -619,7 +736,6 @@ class UnifiedWebSocketManager:
         try:
             message = context.metadata.get("message", {})
             msg_type = context.metadata.get("msg_type", "")
-            context.metadata.get("client_id", "")
 
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
@@ -730,10 +846,33 @@ class UnifiedWebSocketManager:
             return {"type": "vision_result", "success": False, "error": str(e)}
 
     async def connect(self, websocket: WebSocket, client_id: str):
-        """Accept new WebSocket connection with health monitoring"""
+        """Accept new WebSocket connection with health monitoring and rate limiting"""
+        # Check if shutting down
+        if self._shutdown_event.is_set():
+            logger.warning(f"[UNIFIED-WS] Rejecting connection from {client_id} - system is shutting down")
+            await websocket.close(code=1001, reason="Server shutting down")
+            return
+
+        # Rate limiting check
+        current_time = time.time()
+        self.connection_timestamps.append(current_time)
+
+        # Count connections in last minute
+        recent_connections = sum(1 for ts in self.connection_timestamps if current_time - ts < 60)
+
+        if recent_connections > self.connection_rate_limit:
+            logger.warning(
+                f"[UNIFIED-WS] ⚠️ Rate limit exceeded: {recent_connections}/{self.connection_rate_limit} per minute"
+            )
+            await websocket.close(code=1008, reason="Rate limit exceeded")
+            return
+
         await websocket.accept()
         self.connections[client_id] = websocket
         connection_capabilities[client_id] = set()
+
+        # Update metrics
+        self.metrics["total_connections"] += 1
 
         # Create health monitoring for this connection
         health = ConnectionHealth(client_id=client_id, websocket=websocket)
@@ -817,6 +956,12 @@ class UnifiedWebSocketManager:
 
             # Notify SAI of disconnection
             await self._notify_sai("connection_disconnected", health)
+
+            # Update global metrics
+            self.metrics["total_disconnections"] += 1
+            self.metrics["total_messages_sent"] += health.messages_sent
+            self.metrics["total_messages_received"] += health.messages_received
+            self.metrics["total_errors"] += health.errors
 
             logger.info(
                 f"[UNIFIED-WS] Client {client_id} disconnected (duration: {time.time() - health.connection_time:.1f}s, health: {health.health_score:.1f})"
@@ -924,6 +1069,101 @@ class UnifiedWebSocketManager:
                 "available_types": list(self.handlers.keys()),
             }
 
+    def get_system_metrics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive system metrics and statistics
+
+        Returns detailed information about:
+        - Connection statistics
+        - Health metrics
+        - Performance data
+        - Circuit breaker state
+        - Learning patterns
+        """
+        current_time = time.time()
+        uptime = current_time - self.metrics["uptime_start"]
+
+        # Calculate current connection stats
+        active_connections = len(self.connections)
+        healthy_connections = sum(
+            1 for h in self.connection_health.values() if h.state == ConnectionState.HEALTHY
+        )
+        degraded_connections = sum(
+            1 for h in self.connection_health.values() if h.state == ConnectionState.DEGRADED
+        )
+        recovering_connections = sum(
+            1 for h in self.connection_health.values() if h.state == ConnectionState.RECOVERING
+        )
+
+        # Calculate average health score
+        avg_health_score = (
+            sum(h.health_score for h in self.connection_health.values()) / len(self.connection_health)
+            if self.connection_health
+            else 0
+        )
+
+        # Calculate average latency
+        avg_latency = (
+            sum(h.latency_ms for h in self.connection_health.values()) / len(self.connection_health)
+            if self.connection_health
+            else 0
+        )
+
+        return {
+            "uptime_seconds": uptime,
+            "uptime_formatted": f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s",
+            "connections": {
+                "active": active_connections,
+                "total_lifetime": self.metrics["total_connections"],
+                "total_disconnections": self.metrics["total_disconnections"],
+                "healthy": healthy_connections,
+                "degraded": degraded_connections,
+                "recovering": recovering_connections,
+            },
+            "messages": {
+                "total_sent": self.metrics["total_messages_sent"],
+                "total_received": self.metrics["total_messages_received"],
+                "throughput_per_second": (
+                    (self.metrics["total_messages_sent"] + self.metrics["total_messages_received"]) / uptime
+                    if uptime > 0
+                    else 0
+                ),
+            },
+            "health": {
+                "average_score": avg_health_score,
+                "average_latency_ms": avg_latency,
+                "total_errors": self.metrics["total_errors"],
+                "total_recoveries": self.metrics["total_recoveries"],
+                "error_rate": (
+                    self.metrics["total_errors"] / self.metrics["total_connections"]
+                    if self.metrics["total_connections"] > 0
+                    else 0
+                ),
+            },
+            "circuit_breaker": {
+                "is_open": self.circuit_open,
+                "failures": self.circuit_failures,
+                "threshold": self.config["circuit_breaker_threshold"],
+                "total_activations": self.metrics["circuit_breaker_activations"],
+            },
+            "learning": {
+                "patterns_collected": len(self.disconnection_patterns),
+                "max_pattern_history": self.config["max_pattern_history"],
+            },
+            "intelligence": {
+                "uae_available": self.uae_engine is not None,
+                "sai_available": self.sai_engine is not None,
+                "learning_db_available": self.learning_db is not None,
+                "predictive_healing_enabled": self.config["predictive_healing_enabled"],
+            },
+            "config": {
+                "health_check_interval": self.config["health_check_interval"],
+                "message_timeout": self.config["message_timeout"],
+                "ping_interval": self.config["ping_interval"],
+                "connection_rate_limit": self.connection_rate_limit,
+            },
+        }
+
     async def broadcast(self, message: Dict[str, Any], capability: Optional[str] = None):
         """Broadcast message to all connected clients or those with specific capability"""
         disconnected = []
@@ -941,7 +1181,7 @@ class UnifiedWebSocketManager:
 
         # Clean up disconnected clients
         for client_id in disconnected:
-            self.disconnect(client_id)
+            await self.disconnect(client_id)
 
     # Handler implementations
 

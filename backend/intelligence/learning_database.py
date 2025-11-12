@@ -2157,37 +2157,91 @@ class JARVISLearningDatabase:
                 pass  # Telemetry module not available or already disabled
 
             # Initialize ChromaDB client with persistent storage
-            self.chroma_client = chromadb.PersistentClient(
-                path=str(self.chroma_path),
-                settings=Settings(anonymized_telemetry=False, allow_reset=True),
-            )
+            try:
+                self.chroma_client = chromadb.PersistentClient(
+                    path=str(self.chroma_path),
+                    settings=Settings(anonymized_telemetry=False, allow_reset=True),
+                )
 
-            # Create or get collections with metadata
-            self.goal_collection = self.chroma_client.get_or_create_collection(
-                name="goal_embeddings",
-                metadata={
-                    "description": "Goal context embeddings for similarity search",
-                    "created": datetime.now().isoformat(),
-                },
-            )
+                # Create or get collections with metadata
+                self.goal_collection = self.chroma_client.get_or_create_collection(
+                    name="goal_embeddings",
+                    metadata={
+                        "description": "Goal context embeddings for similarity search",
+                        "created": datetime.now().isoformat(),
+                    },
+                )
 
-            self.pattern_collection = self.chroma_client.get_or_create_collection(
-                name="pattern_embeddings",
-                metadata={
-                    "description": "Pattern embeddings for matching",
-                    "created": datetime.now().isoformat(),
-                },
-            )
+                self.pattern_collection = self.chroma_client.get_or_create_collection(
+                    name="pattern_embeddings",
+                    metadata={
+                        "description": "Pattern embeddings for matching",
+                        "created": datetime.now().isoformat(),
+                    },
+                )
 
-            self.context_collection = self.chroma_client.get_or_create_collection(
-                name="context_embeddings",
-                metadata={
-                    "description": "Context state embeddings for prediction",
-                    "created": datetime.now().isoformat(),
-                },
-            )
+                self.context_collection = self.chroma_client.get_or_create_collection(
+                    name="context_embeddings",
+                    metadata={
+                        "description": "Context state embeddings for prediction",
+                        "created": datetime.now().isoformat(),
+                    },
+                )
 
-            logger.info("ChromaDB initialized for semantic search")
+                logger.info("ChromaDB initialized for semantic search")
+
+            except Exception as chroma_error:
+                # Check if it's a schema error
+                if "no such column" in str(chroma_error).lower():
+                    logger.warning(f"ChromaDB schema mismatch detected: {chroma_error}")
+                    logger.info("Resetting ChromaDB to fix schema issue...")
+
+                    # Reset and recreate the client
+                    try:
+                        import shutil
+                        if self.chroma_path.exists():
+                            # Backup old database
+                            backup_path = self.chroma_path.parent / f"chroma_embeddings_backup_{int(time.time())}"
+                            shutil.move(str(self.chroma_path), str(backup_path))
+                            logger.info(f"Backed up old ChromaDB to: {backup_path}")
+
+                        # Create fresh ChromaDB instance
+                        self.chroma_client = chromadb.PersistentClient(
+                            path=str(self.chroma_path),
+                            settings=Settings(anonymized_telemetry=False, allow_reset=True),
+                        )
+
+                        # Create collections
+                        self.goal_collection = self.chroma_client.get_or_create_collection(
+                            name="goal_embeddings",
+                            metadata={
+                                "description": "Goal context embeddings for similarity search",
+                                "created": datetime.now().isoformat(),
+                            },
+                        )
+
+                        self.pattern_collection = self.chroma_client.get_or_create_collection(
+                            name="pattern_embeddings",
+                            metadata={
+                                "description": "Pattern embeddings for matching",
+                                "created": datetime.now().isoformat(),
+                            },
+                        )
+
+                        self.context_collection = self.chroma_client.get_or_create_collection(
+                            name="context_embeddings",
+                            metadata={
+                                "description": "Context state embeddings for prediction",
+                                "created": datetime.now().isoformat(),
+                            },
+                        )
+
+                        logger.info("ChromaDB reset complete - fresh database created")
+                    except Exception as reset_error:
+                        logger.error(f"Failed to reset ChromaDB: {reset_error}")
+                        self.chroma_client = None
+                else:
+                    raise chroma_error
 
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
