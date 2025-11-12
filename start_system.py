@@ -5412,24 +5412,43 @@ class AsyncSystemManager:
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking CloudSQL proxy connection...")
             try:
-                from intelligence.cloud_database_adapter import CloudDatabaseAdapter
+                import psycopg2
+                import json
+                from pathlib import Path
 
-                cloud_adapter = CloudDatabaseAdapter()
-                await cloud_adapter.initialize()
+                # Load database config
+                config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+                if config_path.exists():
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
 
-                # Test connection by querying
-                connection_ok = await cloud_adapter.test_connection()
+                    cloud_sql = config.get("cloud_sql", {})
 
-                status['detailed_checks']['cloudsql_proxy'] = {
-                    'connected': connection_ok,
-                    'status': 'CONNECTED' if connection_ok else 'DISCONNECTED'
-                }
+                    # Test connection
+                    conn = psycopg2.connect(
+                        host=cloud_sql.get("host", "127.0.0.1"),
+                        port=cloud_sql.get("port", 5432),
+                        database=cloud_sql.get("database", "jarvis_learning"),
+                        user=cloud_sql.get("user", "jarvis"),
+                        password=cloud_sql.get("password", ""),
+                        connect_timeout=3
+                    )
+                    conn.close()
 
-                if connection_ok:
+                    status['detailed_checks']['cloudsql_proxy'] = {
+                        'connected': True,
+                        'status': 'CONNECTED',
+                        'instance': cloud_sql.get("instance_name", "unknown")
+                    }
                     logger.info("[VOICE UNLOCK] ✅ CloudSQL Proxy: CONNECTED")
                 else:
-                    logger.warning("[VOICE UNLOCK] ⚠️  CloudSQL Proxy: DISCONNECTED")
-                    status['issues'].append('CloudSQL proxy not connected')
+                    status['detailed_checks']['cloudsql_proxy'] = {
+                        'connected': False,
+                        'error': 'Config file not found'
+                    }
+                    status['issues'].append('CloudSQL config not found')
+                    logger.warning("[VOICE UNLOCK] ⚠️  CloudSQL Proxy: CONFIG NOT FOUND")
+
             except Exception as e:
                 status['detailed_checks']['cloudsql_proxy'] = {
                     'connected': False,
