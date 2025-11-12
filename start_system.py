@@ -5661,6 +5661,48 @@ class AsyncSystemManager:
                 }
                 logger.warning(f"[VOICE UNLOCK] ⚠️  SAI: CHECK FAILED - {e}")
 
+            # ═══════════════════════════════════════════════════════════
+            # 12. CHECK HYBRID DATABASE SYNC SYSTEM
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking Hybrid Database Sync System...")
+            try:
+                if test_db and hasattr(test_db, 'hybrid_sync') and test_db.hybrid_sync:
+                    hybrid_sync = test_db.hybrid_sync
+                    metrics = hybrid_sync.get_metrics()
+
+                    status['detailed_checks']['hybrid_sync'] = {
+                        'enabled': True,
+                        'sqlite_path': str(hybrid_sync.sqlite_path),
+                        'cloudsql_available': metrics.cloudsql_available,
+                        'local_read_latency_ms': metrics.local_read_latency_ms,
+                        'cloud_write_latency_ms': metrics.cloud_write_latency_ms,
+                        'sync_queue_size': metrics.sync_queue_size,
+                        'total_synced': metrics.total_synced,
+                        'total_failed': metrics.total_failed,
+                        'sync_interval_seconds': hybrid_sync.sync_interval
+                    }
+
+                    logger.info("[VOICE UNLOCK] ✅ Hybrid Sync: ENABLED")
+                    logger.info(f"[VOICE UNLOCK]    ├─ SQLite: {hybrid_sync.sqlite_path}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ CloudSQL: {'AVAILABLE' if metrics.cloudsql_available else 'UNAVAILABLE'}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Local Read: {metrics.local_read_latency_ms:.1f}ms")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Cloud Write: {metrics.cloud_write_latency_ms:.1f}ms")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Queue: {metrics.sync_queue_size} pending")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Synced: {metrics.total_synced}")
+                    logger.info(f"[VOICE UNLOCK]    └─ Failed: {metrics.total_failed}")
+                else:
+                    status['detailed_checks']['hybrid_sync'] = {
+                        'enabled': False,
+                        'reason': 'Not initialized or disabled in config'
+                    }
+                    logger.warning("[VOICE UNLOCK] ⚠️  Hybrid Sync: DISABLED")
+            except Exception as e:
+                status['detailed_checks']['hybrid_sync'] = {
+                    'enabled': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Hybrid Sync: CHECK FAILED - {e}")
+
             # 2. Check if enrollment data exists
             enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
             if enrollment_file.exists():
@@ -6740,9 +6782,24 @@ class AsyncSystemManager:
                     sai = detailed.get('sai', {})
                     if sai.get('available'):
                         features = sai.get('features', [])
-                        print(f"    │  └─ ✅ SAI (Scenario-Aware): {Colors.GREEN}ENABLED{Colors.ENDC} ({len(features)} detectors)")
+                        print(f"    │  ├─ ✅ SAI (Scenario-Aware): {Colors.GREEN}ENABLED{Colors.ENDC} ({len(features)} detectors)")
                     else:
-                        print(f"    │  └─ ⚠️  SAI: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
+                        print(f"    │  ├─ ⚠️  SAI: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
+
+                    # 12. Hybrid Database Sync
+                    hybrid_sync = detailed.get('hybrid_sync', {})
+                    if hybrid_sync.get('enabled'):
+                        cloudsql_status = "AVAILABLE" if hybrid_sync.get('cloudsql_available') else "UNAVAILABLE"
+                        color = Colors.GREEN if hybrid_sync.get('cloudsql_available') else Colors.YELLOW
+                        print(f"    │  └─ ✅ Hybrid Sync: {color}{cloudsql_status}{Colors.ENDC}")
+                        print(f"    │     ├─ Local Read: {hybrid_sync.get('local_read_latency_ms', 0):.1f}ms")
+                        print(f"    │     ├─ Cloud Write: {hybrid_sync.get('cloud_write_latency_ms', 0):.1f}ms")
+                        print(f"    │     ├─ Queue: {hybrid_sync.get('sync_queue_size', 0)} pending")
+                        print(f"    │     ├─ Synced: {hybrid_sync.get('total_synced', 0)}")
+                        print(f"    │     └─ Failed: {hybrid_sync.get('total_failed', 0)}")
+                    else:
+                        reason = hybrid_sync.get('reason', hybrid_sync.get('error', 'Disabled'))
+                        print(f"    │  └─ ⚠️  Hybrid Sync: {Colors.YELLOW}DISABLED{Colors.ENDC} ({reason})")
 
                     # UNLOCK FLOW DIAGRAM
                     print(f"    │")

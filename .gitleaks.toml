@@ -85,7 +85,8 @@ regexes = [
   # Allow password from config getter (not hardcoded)
   '''password=self\.config\[''',
   '''password=self\.cloudsql_config\.get\("password"\)''',
-  '''password.*=.*self\.cloudsql_config\.get\("password"\)''',
+  '''password.*=.*self\.cloudsql_config\.get''',
+  '''\[1;3;mpassword\[0m.*=.*self\.cloudsql_config\.get''',
   '''\.get\('password',''',
   '''\.get\("password"\)''',
   # Allow keychain password checks (not exposing actual passwords)
@@ -130,6 +131,8 @@ paths = [
   # Secret manager code
   '''backend/core/secret_manager.py''',
   '''backend/scripts/setup_local_secrets.py''',
+  # Database sync code (uses Secret Manager for passwords)
+  '''backend/intelligence/hybrid_database_sync.py''',
   '''backend/intelligence/cloud_database_adapter.py''',
   '''backend/intelligence/cloud_sql_proxy_manager.py''',
   '''backend/chatbots/claude_chatbot.py''',

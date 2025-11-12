@@ -1246,6 +1246,10 @@ class JARVISLearningDatabase:
         self.pattern_collection = None
         self.context_collection = None
 
+        # Hybrid Sync System for voice biometrics
+        self.hybrid_sync = None
+        self._sync_enabled = self.config.get("enable_hybrid_sync", True)
+
         logger.info(f"Advanced JARVIS Learning Database initializing at {self.db_dir}")
 
     async def initialize(self):
@@ -1265,6 +1269,10 @@ class JARVISLearningDatabase:
         # Load metrics
         await self._load_metrics()
 
+        # Initialize hybrid sync system for voice biometrics
+        if self._sync_enabled:
+            await self._init_hybrid_sync()
+
         # Start background tasks and track them for clean shutdown
         flush_task = asyncio.create_task(self._auto_flush_batches())
         optimize_task = asyncio.create_task(self._auto_optimize_task())
@@ -1275,6 +1283,7 @@ class JARVISLearningDatabase:
         logger.info(f"   Cache: {self.cache_size} entries, {self.cache_ttl}s TTL")
         logger.info(f"   ML Features: {self.enable_ml}")
         logger.info(f"   Auto-optimize: {self.auto_optimize}")
+        logger.info(f"   Hybrid Sync: {self._sync_enabled}")
         logger.info(f"   Background tasks: {len(self._background_tasks)} started")
 
     def _ensure_db_initialized(self) -> Union[aiosqlite.Connection, "DatabaseConnectionWrapper"]:
@@ -2124,6 +2133,45 @@ class JARVISLearningDatabase:
 
         await self.db.commit()
         logger.info("SQLite database initialized with enhanced async schema")
+
+    async def _init_hybrid_sync(self):
+        """Initialize hybrid database sync for voice biometrics"""
+        try:
+            from intelligence.hybrid_database_sync import HybridDatabaseSync
+            import json
+
+            # Load CloudSQL config
+            config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+            if not config_path.exists():
+                logger.warning("⚠️  CloudSQL config not found - hybrid sync disabled")
+                self._sync_enabled = False
+                return
+
+            with open(config_path, 'r') as f:
+                gcp_config = json.load(f)
+
+            cloudsql_config = gcp_config.get("cloud_sql", {})
+
+            # Initialize hybrid sync
+            sqlite_sync_path = self.db_dir / "voice_biometrics_sync.db"
+            self.hybrid_sync = HybridDatabaseSync(
+                sqlite_path=sqlite_sync_path,
+                cloudsql_config=cloudsql_config,
+                sync_interval_seconds=30,
+                max_retry_attempts=5,
+                batch_size=50
+            )
+
+            await self.hybrid_sync.initialize()
+            logger.info("✅ Hybrid sync enabled - voice biometrics have instant local fallback")
+            logger.info(f"   Local: {sqlite_sync_path}")
+            logger.info(f"   Cloud: {cloudsql_config.get('instance_name', 'unknown')}")
+
+        except Exception as e:
+            logger.warning(f"⚠️  Hybrid sync initialization failed: {e}")
+            logger.info("   Continuing with standard database access")
+            self.hybrid_sync = None
+            self._sync_enabled = False
 
     async def _init_chromadb(self):
         """Initialize ChromaDB for embeddings and semantic search"""
