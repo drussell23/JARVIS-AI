@@ -8961,6 +8961,129 @@ async def shutdown_handler():
             logger.error(f"Error during cleanup: {e}")
 
 
+async def ensure_cloud_sql_proxy():
+    """
+    Ensure CloudSQL proxy is running for voice biometric data access.
+    Auto-starts the proxy if not running.
+    """
+    import subprocess
+    import json
+    from pathlib import Path
+
+    print(f"\n{Colors.CYAN}🔗 Checking CloudSQL Proxy...{Colors.ENDC}")
+
+    # Check if proxy is already running
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "cloud-sql-proxy"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            print(f"  {Colors.GREEN}✓ CloudSQL Proxy already running (PID: {result.stdout.strip()}){Colors.ENDC}")
+
+            # Verify it's listening on correct port
+            port_check = subprocess.run(
+                ["lsof", "-i", ":5432"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if port_check.returncode == 0 and "cloud-sql" in port_check.stdout:
+                print(f"  {Colors.GREEN}✓ Listening on port 5432{Colors.ENDC}")
+                return True
+            else:
+                print(f"  {Colors.YELLOW}⚠️  Proxy running but not on port 5432, restarting...{Colors.ENDC}")
+                subprocess.run(["pkill", "-f", "cloud-sql-proxy"], timeout=5)
+                await asyncio.sleep(1)
+    except Exception as e:
+        print(f"  {Colors.YELLOW}⚠️  Error checking proxy status: {e}{Colors.ENDC}")
+
+    # Start the proxy
+    print(f"  {Colors.CYAN}Starting CloudSQL Proxy...{Colors.ENDC}")
+
+    # Load database config
+    config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+    if not config_path.exists():
+        print(f"  {Colors.FAIL}✗ Database config not found at {config_path}{Colors.ENDC}")
+        return False
+
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    connection_name = config.get("cloud_sql", {}).get("connection_name")
+    if not connection_name:
+        print(f"  {Colors.FAIL}✗ No connection_name in config{Colors.ENDC}")
+        return False
+
+    # Find cloud-sql-proxy binary
+    proxy_paths = [
+        Path.home() / ".local" / "bin" / "cloud-sql-proxy",
+        "/usr/local/bin/cloud-sql-proxy",
+        "cloud-sql-proxy"  # In PATH
+    ]
+
+    proxy_binary = None
+    for path in proxy_paths:
+        if isinstance(path, Path) and path.exists():
+            proxy_binary = str(path)
+            break
+        elif isinstance(path, str):
+            # Check if it's in PATH
+            which_result = subprocess.run(
+                ["which", path],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if which_result.returncode == 0:
+                proxy_binary = path
+                break
+
+    if not proxy_binary:
+        print(f"  {Colors.FAIL}✗ cloud-sql-proxy not found{Colors.ENDC}")
+        print(f"    Install: brew install cloud-sql-proxy")
+        return False
+
+    # Start proxy in background
+    try:
+        log_file = Path("/tmp/cloud-sql-proxy.log")
+        with open(log_file, 'w') as f:
+            subprocess.Popen(
+                [proxy_binary, "--port=5432", connection_name],
+                stdout=f,
+                stderr=f,
+                start_new_session=True
+            )
+
+        # Wait for proxy to start
+        await asyncio.sleep(3)
+
+        # Verify it started
+        port_check = subprocess.run(
+            ["lsof", "-i", ":5432"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if port_check.returncode == 0 and "cloud-sql" in port_check.stdout:
+            print(f"  {Colors.GREEN}✓ CloudSQL Proxy started successfully{Colors.ENDC}")
+            print(f"  {Colors.GREEN}✓ Listening on 127.0.0.1:5432{Colors.ENDC}")
+            print(f"  {Colors.CYAN}  Connection: {connection_name}{Colors.ENDC}")
+            return True
+        else:
+            print(f"  {Colors.FAIL}✗ Proxy failed to start (check {log_file}){Colors.ENDC}")
+            return False
+
+    except Exception as e:
+        print(f"  {Colors.FAIL}✗ Error starting proxy: {e}{Colors.ENDC}")
+        return False
+
+
 async def main():
     """Main entry point"""
     global _manager
@@ -9443,6 +9566,19 @@ async def main():
             pass
 
     # Handle restart mode (explicit --restart flag)
+    # Ensure CloudSQL proxy is running (for voice biometrics)
+    print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
+    print(f"{Colors.CYAN}🔐 Voice Biometric System Initialization{Colors.ENDC}")
+    print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
+
+    proxy_started = await ensure_cloud_sql_proxy()
+    if proxy_started:
+        print(f"{Colors.GREEN}✅ Voice biometric data access ready{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}⚠️  CloudSQL proxy not available - voice biometrics may be degraded{Colors.ENDC}")
+
+    print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
+
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
