@@ -2221,75 +2221,157 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure Dynamic CORS
+# ═══════════════════════════════════════════════════════════════
+# ROBUST DYNAMIC CORS CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+logger.info("🔒 Configuring CORS security...")
+
+# Detect environment
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
+IS_DOCKER = os.path.exists("/.dockerenv")
+BACKEND_PORT = os.getenv("BACKEND_PORT", "8010")
+
+def build_cors_origins():
+    """
+    Build comprehensive CORS origins list dynamically
+
+    Supports:
+    - Multiple ports (3000, 3001, 8000, 8010, 8080)
+    - Both localhost and 127.0.0.1
+    - WebSocket origins (ws://)
+    - IPv6 localhost ([::1])
+    - Docker networking
+    - Custom origins from environment
+    - Production domains
+    """
+    origins = set()
+
+    # Development origins - localhost variations
+    dev_ports = [3000, 3001, 8000, 8010, 8080]
+    for port in dev_ports:
+        origins.add(f"http://localhost:{port}")
+        origins.add(f"http://127.0.0.1:{port}")
+        origins.add(f"ws://localhost:{port}")
+        origins.add(f"ws://127.0.0.1:{port}")
+
+    # Add current backend port explicitly
+    origins.add(f"http://localhost:{BACKEND_PORT}")
+    origins.add(f"http://127.0.0.1:{BACKEND_PORT}")
+    origins.add(f"ws://localhost:{BACKEND_PORT}")
+    origins.add(f"ws://127.0.0.1:{BACKEND_PORT}")
+
+    # IPv6 localhost support
+    for port in dev_ports:
+        origins.add(f"http://[::1]:{port}")
+        origins.add(f"ws://[::1]:{port}")
+
+    # Docker networking support
+    if IS_DOCKER:
+        origins.add("http://host.docker.internal:3000")
+        origins.add("http://host.docker.internal:8010")
+        origins.add("ws://host.docker.internal:8010")
+
+    # Custom origins from environment (comma-separated)
+    custom_origins = os.getenv("CORS_ORIGINS", "")
+    if custom_origins:
+        for origin in custom_origins.split(","):
+            origin = origin.strip()
+            if origin:
+                origins.add(origin)
+                # Also add WebSocket version if HTTP
+                if origin.startswith("http://"):
+                    origins.add(origin.replace("http://", "ws://"))
+                elif origin.startswith("https://"):
+                    origins.add(origin.replace("https://", "wss://"))
+
+    # Production domains (if specified)
+    prod_domain = os.getenv("PRODUCTION_DOMAIN", "")
+    if prod_domain and IS_PRODUCTION:
+        origins.add(f"https://{prod_domain}")
+        origins.add(f"wss://{prod_domain}")
+        origins.add(f"https://www.{prod_domain}")
+        origins.add(f"wss://www.{prod_domain}")
+
+    return sorted(list(origins))
+
+# Build origins list
+allowed_origins = build_cors_origins()
+
+# Allowed headers (comprehensive list)
+allowed_headers = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-api-key",
+    "x-client-id",
+    "x-session-id",
+    "cache-control",
+]
+
+# Exposed headers (for client access)
+exposed_headers = [
+    "content-length",
+    "content-type",
+    "x-request-id",
+    "x-response-time",
+    "x-rate-limit-limit",
+    "x-rate-limit-remaining",
+    "x-rate-limit-reset",
+]
+
+# Allowed methods
+allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"]
+
+# Configure CORS middleware
 try:
-    from api.dynamic_cors_handler import DynamicCORSMiddleware
-
-    # Add dynamic CORS middleware
-    class DynamicCORSWrapper:
-        def __init__(self, app):
-            self.cors_handler = DynamicCORSMiddleware(app)
-
-        async def __call__(self, scope, receive, send):
-            if scope["type"] == "http":
-                # Create request object from scope
-                from starlette.requests import Request
-
-                request = Request(scope, receive)
-
-                async def call_next(request):
-                    # Create response by calling the app
-                    async def receive_wrapper():
-                        return await receive()
-
-                    async def send_wrapper(message):
-                        pass
-
-                    # Execute the app and capture response
-                    await self.cors_handler.app(scope, receive, send)
-
-                # Let the middleware handle it
-                await self.cors_handler(request, call_next)
-            else:
-                # Non-HTTP, pass through
-                await self.cors_handler.app(scope, receive, send)
-
-    # For now, use standard CORS with dynamic configuration
-    origins = os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:3001,http://localhost:8000,http://localhost:8010",
-    ).split(",")
-    backend_port = os.getenv("BACKEND_PORT", "8000")
-    if backend_port == "8010":
-        origins.extend(["http://localhost:8010", "ws://localhost:8010"])
-
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins
-        + ["http://127.0.0.1:3000", "http://127.0.0.1:8000", "http://127.0.0.1:8010"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["*"],
+        allow_methods=allowed_methods,
+        allow_headers=allowed_headers,
+        expose_headers=exposed_headers,
+        max_age=3600,  # Cache preflight requests for 1 hour
     )
 
-    logger.info("✅ CORS configured with dynamic origins")
+    # Log CORS configuration
+    logger.info("✅ CORS configured successfully")
+    logger.info(f"   • Environment: {'Production' if IS_PRODUCTION else 'Development'}")
+    logger.info(f"   • Backend Port: {BACKEND_PORT}")
+    logger.info(f"   • Allowed Origins: {len(allowed_origins)} configured")
+
+    # Show first few origins in development
+    if not IS_PRODUCTION:
+        logger.info(f"   • Sample Origins: {', '.join(allowed_origins[:5])}")
+        if len(allowed_origins) > 5:
+            logger.info(f"   • ... and {len(allowed_origins) - 5} more")
+
+    # Security warnings
+    if IS_PRODUCTION and "*" in allowed_origins:
+        logger.error("⚠️  SECURITY WARNING: Wildcard CORS origin in production!")
+
+    if not IS_PRODUCTION:
+        logger.info("   • Dev Mode: Permissive CORS for all localhost ports")
+    else:
+        logger.info("   • Production Mode: Restricted CORS origins")
 
 except Exception as e:
-    # Fallback to static CORS if dynamic handler not available
-    logger.warning(f"Dynamic CORS handler error: {e}, using static configuration")
-    origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
-    backend_port = os.getenv("BACKEND_PORT", "8000")
-    if backend_port == "8010":
-        origins.extend(["http://localhost:8010", "ws://localhost:8010"])
-
+    logger.error(f"❌ Failed to configure CORS: {e}")
+    # Minimal fallback CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=["http://localhost:3000", f"http://localhost:{BACKEND_PORT}"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    logger.warning("⚠️  Using minimal fallback CORS configuration")
 
 
 # Health check endpoint
