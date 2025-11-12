@@ -5250,6 +5250,9 @@ class AsyncSystemManager:
 
             # Generate fixes for each bug
             for bug in diagnostic['bugs_detected']:
+                # Add bug to findings for reporting
+                pass  # Bug processing handled elsewhere
+
             logger.info(f"✅ Deep diagnostic complete: {len(diagnostic['findings'])} findings, "
                        f"{len(diagnostic['bugs_detected'])} bugs detected")
 

@@ -916,21 +916,26 @@ class UnifiedWebSocketManager:
         if self.display_monitor:
             try:
                 available_displays = self.display_monitor.get_available_display_details()
-                if available_displays:
-                    logger.info(
-                        f"[WS] Sending {len(available_displays)} available displays to new client"
+                # Type guard: ensure we have a list before iterating
+                if not available_displays:
+                    return
+                if not isinstance(available_displays, list):
+                    return
+
+                logger.info(
+                    f"[WS] Sending {len(available_displays)} available displays to new client"
+                )
+                for display in available_displays:
+                    await websocket.send_json(
+                        {
+                            "type": "display_detected",
+                            "display_name": display["display_name"],
+                            "display_id": display["display_id"],
+                            "message": display["message"],
+                            "timestamp": datetime.now().isoformat(),
+                            "on_connect": True,  # Flag to indicate this is initial status
+                        }
                     )
-                    for display in available_displays:
-                        await websocket.send_json(
-                            {
-                                "type": "display_detected",
-                                "display_name": display["display_name"],
-                                "display_id": display["display_id"],
-                                "message": display["message"],
-                                "timestamp": datetime.now().isoformat(),
-                                "on_connect": True,  # Flag to indicate this is initial status
-                            }
-                        )
             except Exception as e:
                 logger.warning(f"[WS] Failed to send display status to new client: {e}")
 
