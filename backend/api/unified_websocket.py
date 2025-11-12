@@ -740,15 +740,14 @@ class UnifiedWebSocketManager:
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
                 # Execute voice command
-                from pydantic import BaseModel
-
-                from .jarvis_voice_api import jarvis_api
-
-                class VoiceCommand(BaseModel):
-                    text: str
+                from .jarvis_voice_api import JARVISCommand, jarvis_api
 
                 command_text = message.get("command", message.get("text", ""))
-                command_obj = VoiceCommand(text=command_text)
+                # Get optional audio data if provided
+                audio_data = message.get("audio_data")
+
+                # Create properly typed command object
+                command_obj = JARVISCommand(text=command_text, audio_data=audio_data)
 
                 result = await jarvis_api.process_command(command_obj)
 
@@ -1289,17 +1288,18 @@ class UnifiedWebSocketManager:
                     logger.warning(
                         "[WS] Unified processor not available, falling back to async pipeline"
                     )
-                    result = await self.pipeline.execute(command_text)
+                    result = await self.pipeline.process_async(text=command_text)
 
-                    response_text = result.response or "Command processed, Sir."
+                    response_text = result.get("response", "Command processed, Sir.")
+                    success = result.get("success", False)
 
                     logger.info(f"[WS] Pipeline result: {response_text[:100]}")
 
                     return {
                         "type": "response",
                         "text": response_text,
-                        "status": "success" if result.success else "error",
-                        "command_type": result.metadata.get("intent", "unknown"),
+                        "status": "success" if success else "error",
+                        "command_type": result.get("metadata", {}).get("intent", "unknown"),
                         "speak": True,
                         "routing": {
                             "routed_to": "pipeline_fallback",

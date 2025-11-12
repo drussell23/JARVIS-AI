@@ -875,10 +875,51 @@ Classification:"""
 
         return result
 
-    async def generate_response_with_llm(
-        self, command: str, context: Optional[Dict] = None
-    ) -> Dict[str, Any]:
-        """Generate response using LLM with context.
+
+# ============================================================================
+# GLOBAL ORCHESTRATOR INSTANCE
+# ============================================================================
+
+_global_orchestrator: Optional[HybridOrchestrator] = None
+
+
+def get_orchestrator() -> HybridOrchestrator:
+    """Get or create the global Hybrid Orchestrator instance.
+    
+    This function provides a singleton pattern for accessing the hybrid
+    orchestrator throughout the application. The orchestrator coordinates
+    between local and cloud backends with intelligent routing.
+    
+    Returns:
+        HybridOrchestrator: The global orchestrator instance
         
-        Args:
-            command: User
+    Example:
+        >>> from backend.core.hybrid_orchestrator import get_orchestrator
+        >>> orchestrator = get_orchestrator()
+        >>> result = await orchestrator.execute_command("open safari")
+    """
+    global _global_orchestrator
+    if _global_orchestrator is None:
+        _global_orchestrator = HybridOrchestrator()
+        logger.info("✅ Global HybridOrchestrator instance created")
+    return _global_orchestrator
+
+
+async def get_orchestrator_async() -> HybridOrchestrator:
+    """Get or create and start the global Hybrid Orchestrator instance.
+    
+    Similar to get_orchestrator() but ensures the orchestrator is started
+    before returning. Useful for async contexts where you want to guarantee
+    the orchestrator is ready to use.
+    
+    Returns:
+        HybridOrchestrator: The global orchestrator instance (started)
+        
+    Example:
+        >>> orchestrator = await get_orchestrator_async()
+        >>> result = await orchestrator.execute_command("search for AI news")
+    """
+    orchestrator = get_orchestrator()
+    if not orchestrator.is_running:
+        await orchestrator.start()
+    return orchestrator
