@@ -2152,7 +2152,7 @@ class JARVISLearningDatabase:
 
             cloudsql_config = gcp_config.get("cloud_sql", {})
 
-            # Initialize ADVANCED hybrid sync (V2.0)
+            # Initialize ADVANCED hybrid sync V2.0 with Phase 2 features
             sqlite_sync_path = self.db_dir / "voice_biometrics_sync.db"
             self.hybrid_sync = HybridDatabaseSync(
                 sqlite_path=sqlite_sync_path,
@@ -2161,15 +2161,24 @@ class JARVISLearningDatabase:
                 max_retry_attempts=5,
                 batch_size=50,
                 max_connections=3,  # 🚀 Reduced from 10 to prevent exhaustion
-                enable_faiss_cache=True  # 🚀 Enable sub-millisecond FAISS cache
+                enable_faiss_cache=True,  # 🚀 Sub-millisecond FAISS cache
+                enable_prometheus=True,  # 🚀 Phase 2: Prometheus metrics on port 9090
+                enable_redis=True,  # 🚀 Phase 2: Redis distributed metrics
+                enable_ml_prefetch=True,  # 🚀 Phase 2: ML-based predictive cache warming
+                prometheus_port=9090,
+                redis_url="redis://localhost:6379"
             )
 
             await self.hybrid_sync.initialize()
             logger.info("✅ Advanced hybrid sync V2.0 enabled - zero live queries mode")
             logger.info(f"   Local: {sqlite_sync_path}")
             logger.info(f"   Cloud: {cloudsql_config.get('instance_name', 'unknown')}")
-            logger.info(f"   Max Connections: 3 (connection orchestrator)")
-            logger.info(f"   FAISS Cache: {'Enabled' if self.hybrid_sync.enable_faiss_cache else 'Disabled'}")
+            logger.info(f"   📊 Phase 2 Features:")
+            logger.info(f"      Connection Orchestrator: 3 max connections")
+            logger.info(f"      FAISS Cache: Enabled")
+            logger.info(f"      Prometheus Metrics: http://localhost:9090/metrics")
+            logger.info(f"      Redis Metrics: Enabled")
+            logger.info(f"      ML Prefetcher: Enabled")
 
         except Exception as e:
             logger.warning(f"⚠️  Hybrid sync initialization failed: {e}")

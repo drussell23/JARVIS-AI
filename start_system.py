@@ -3697,10 +3697,20 @@ class AsyncSystemManager:
             from intelligence.learning_database import JARVISLearningDatabase
             from voice.speaker_verification_service import SpeakerVerificationService
 
-            # Initialize learning database with Cloud SQL
+            # Initialize learning database with Cloud SQL + Phase 2 features
             learning_db = JARVISLearningDatabase()
             await learning_db.initialize()
             print(f"{Colors.GREEN}      ✓ Learning database initialized{Colors.ENDC}")
+
+            # Show Phase 2 features status
+            if hasattr(learning_db, 'hybrid_sync') and learning_db.hybrid_sync:
+                hs = learning_db.hybrid_sync
+                print(f"{Colors.CYAN}      ├─ 🚀 Phase 2 Features:{Colors.ENDC}")
+                print(f"{Colors.GREEN}         ├─ FAISS Cache: {'✓' if hs.faiss_cache and hs.faiss_cache.index else '✗'}{Colors.ENDC}")
+                print(f"{Colors.GREEN}         ├─ Prometheus: {'✓ port ' + str(hs.prometheus.port) if hs.prometheus and hs.prometheus.enabled else '✗'}{Colors.ENDC}")
+                print(f"{Colors.GREEN}         ├─ Redis: {'✓ ' + hs.redis.redis_url if hs.redis and hs.redis.redis else '✗'}{Colors.ENDC}")
+                print(f"{Colors.GREEN}         ├─ ML Prefetcher: {'✓' if hs.ml_prefetcher else '✗'}{Colors.ENDC}")
+                print(f"{Colors.GREEN}         └─ Max Connections: {hs.connection_orchestrator.max_connections}{Colors.ENDC}")
 
             # Initialize speaker service with FAST mode (background encoder loading)
             print(f"{Colors.CYAN}   └─ Initializing Speaker Verification Service (fast mode)...{Colors.ENDC}")

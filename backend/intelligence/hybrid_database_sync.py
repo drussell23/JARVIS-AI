@@ -58,6 +58,28 @@ except ImportError:
     FAISS_AVAILABLE = False
     logger.warning("FAISS not available - install with: pip install faiss-cpu")
 
+try:
+    import redis.asyncio as aioredis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logger.warning("Redis not available - install with: pip install redis")
+
+try:
+    from prometheus_client import Counter, Gauge, Histogram, start_http_server
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+    logger.warning("Prometheus not available - install with: pip install prometheus-client")
+
+try:
+    import grpc
+    from concurrent import futures
+    GRPC_AVAILABLE = True
+except ImportError:
+    GRPC_AVAILABLE = False
+    logger.warning("gRPC not available - install with: pip install grpcio grpcio-tools")
+
 logger = logging.getLogger(__name__)
 
 
@@ -519,6 +541,322 @@ class PriorityQueue:
         return {p.name: len(self.queues[p]) for p in SyncPriority}
 
 
+class PrometheusMetrics:
+    """
+    Prometheus metrics exporter for hybrid sync telemetry.
+    """
+
+    def __init__(self, port: int = 9090):
+        self.port = port
+        self.enabled = PROMETHEUS_AVAILABLE
+
+        if not self.enabled:
+            return
+
+        # Counters
+        self.cache_hits = Counter('jarvis_cache_hits_total', 'Total cache hits')
+        self.cache_misses = Counter('jarvis_cache_misses_total', 'Total cache misses')
+        self.syncs_total = Counter('jarvis_syncs_total', 'Total sync operations', ['status'])
+        self.queries_total = Counter('jarvis_queries_total', 'Total database queries', ['type'])
+
+        # Gauges
+        self.queue_size = Gauge('jarvis_queue_size', 'Current sync queue size')
+        self.connection_pool_size = Gauge('jarvis_connection_pool_size', 'Current connection pool size')
+        self.connection_pool_load = Gauge('jarvis_connection_pool_load', 'Connection pool load percentage')
+        self.circuit_state = Gauge('jarvis_circuit_state', 'Circuit breaker state (0=closed, 1=open, 2=half-open)')
+        self.cache_size = Gauge('jarvis_cache_size', 'FAISS cache size')
+
+        # Histograms
+        self.read_latency = Histogram('jarvis_read_latency_seconds', 'Read operation latency', ['source'])
+        self.write_latency = Histogram('jarvis_write_latency_seconds', 'Write operation latency')
+        self.sync_latency = Histogram('jarvis_sync_latency_seconds', 'Sync operation latency')
+
+        logger.info(f"📊 Prometheus metrics enabled on port {port}")
+
+    def start_server(self):
+        """Start Prometheus metrics HTTP server"""
+        if self.enabled:
+            try:
+                start_http_server(self.port)
+                logger.info(f"✅ Prometheus server started: http://localhost:{self.port}/metrics")
+            except Exception as e:
+                logger.warning(f"⚠️  Prometheus server failed to start: {e}")
+
+    def record_cache_hit(self):
+        if self.enabled:
+            self.cache_hits.inc()
+
+    def record_cache_miss(self):
+        if self.enabled:
+            self.cache_misses.inc()
+
+    def record_sync(self, status: str):
+        if self.enabled:
+            self.syncs_total.labels(status=status).inc()
+
+    def record_query(self, query_type: str):
+        if self.enabled:
+            self.queries_total.labels(type=query_type).inc()
+
+    def update_queue_size(self, size: int):
+        if self.enabled:
+            self.queue_size.set(size)
+
+    def update_connection_pool(self, size: int, load: float):
+        if self.enabled:
+            self.connection_pool_size.set(size)
+            self.connection_pool_load.set(load)
+
+    def update_circuit_state(self, state: CircuitState):
+        if self.enabled:
+            state_map = {CircuitState.CLOSED: 0, CircuitState.OPEN: 1, CircuitState.HALF_OPEN: 2}
+            self.circuit_state.set(state_map.get(state, 0))
+
+    def update_cache_size(self, size: int):
+        if self.enabled:
+            self.cache_size.set(size)
+
+    def observe_read_latency(self, latency_seconds: float, source: str):
+        if self.enabled:
+            self.read_latency.labels(source=source).observe(latency_seconds)
+
+    def observe_write_latency(self, latency_seconds: float):
+        if self.enabled:
+            self.write_latency.observe(latency_seconds)
+
+    def observe_sync_latency(self, latency_seconds: float):
+        if self.enabled:
+            self.sync_latency.observe(latency_seconds)
+
+
+class RedisMetrics:
+    """
+    Redis-based metrics storage and retrieval for distributed monitoring.
+    """
+
+    def __init__(self, redis_url: str = "redis://localhost:6379"):
+        self.redis_url = redis_url
+        self.redis: Optional[aioredis.Redis] = None
+        self.enabled = REDIS_AVAILABLE
+        self.key_prefix = "jarvis:metrics:"
+
+        if not self.enabled:
+            logger.warning("⚠️  Redis not available - distributed metrics disabled")
+
+    async def connect(self):
+        """Connect to Redis"""
+        if not self.enabled:
+            return False
+
+        try:
+            self.redis = await aioredis.from_url(
+                self.redis_url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0
+            )
+            await self.redis.ping()
+            logger.info(f"✅ Redis connected: {self.redis_url}")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️  Redis connection failed: {e}")
+            self.enabled = False
+            return False
+
+    async def set_metric(self, key: str, value: Any, ttl: int = 3600):
+        """Set metric with TTL (default 1 hour)"""
+        if not self.enabled or not self.redis:
+            return
+
+        try:
+            full_key = f"{self.key_prefix}{key}"
+            await self.redis.setex(full_key, ttl, json.dumps(value))
+        except Exception as e:
+            logger.debug(f"Redis set failed: {e}")
+
+    async def get_metric(self, key: str) -> Optional[Any]:
+        """Get metric value"""
+        if not self.enabled or not self.redis:
+            return None
+
+        try:
+            full_key = f"{self.key_prefix}{key}"
+            value = await self.redis.get(full_key)
+            return json.loads(value) if value else None
+        except Exception as e:
+            logger.debug(f"Redis get failed: {e}")
+            return None
+
+    async def increment(self, key: str, amount: int = 1) -> int:
+        """Increment counter"""
+        if not self.enabled or not self.redis:
+            return 0
+
+        try:
+            full_key = f"{self.key_prefix}{key}"
+            return await self.redis.incrby(full_key, amount)
+        except Exception as e:
+            logger.debug(f"Redis incr failed: {e}")
+            return 0
+
+    async def push_to_timeseries(self, key: str, value: float, timestamp: Optional[float] = None):
+        """Push metric to time series (sorted set)"""
+        if not self.enabled or not self.redis:
+            return
+
+        try:
+            full_key = f"{self.key_prefix}ts:{key}"
+            score = timestamp or time.time()
+            await self.redis.zadd(full_key, {str(value): score})
+            # Keep only last 1000 entries
+            await self.redis.zremrangebyrank(full_key, 0, -1001)
+        except Exception as e:
+            logger.debug(f"Redis timeseries push failed: {e}")
+
+    async def get_timeseries(self, key: str, limit: int = 100) -> List[Tuple[float, float]]:
+        """Get recent time series data"""
+        if not self.enabled or not self.redis:
+            return []
+
+        try:
+            full_key = f"{self.key_prefix}ts:{key}"
+            data = await self.redis.zrevrange(full_key, 0, limit - 1, withscores=True)
+            return [(float(val), float(score)) for val, score in data]
+        except Exception as e:
+            logger.debug(f"Redis timeseries get failed: {e}")
+            return []
+
+    async def close(self):
+        """Close Redis connection"""
+        if self.redis:
+            await self.redis.close()
+            logger.info("✅ Redis connection closed")
+
+
+class MLCachePrefetcher:
+    """
+    ML-based predictive cache warming using usage patterns.
+    """
+
+    def __init__(self, faiss_cache: Optional[FAISSVectorCache] = None):
+        self.faiss_cache = faiss_cache
+        self.access_history: Deque[Tuple[str, float]] = deque(maxlen=1000)  # Last 1000 accesses
+        self.access_patterns: Dict[str, List[float]] = defaultdict(list)  # speaker_name -> access times
+        self.prediction_threshold = 0.7  # Confidence threshold for prefetching
+        self.lock = Lock()
+
+        logger.info("🧠 ML Cache Prefetcher initialized")
+
+    def record_access(self, speaker_name: str):
+        """Record cache access for pattern learning"""
+        with self.lock:
+            current_time = time.time()
+            self.access_history.append((speaker_name, current_time))
+            self.access_patterns[speaker_name].append(current_time)
+
+            # Keep only last 100 accesses per speaker
+            if len(self.access_patterns[speaker_name]) > 100:
+                self.access_patterns[speaker_name] = self.access_patterns[speaker_name][-100:]
+
+    def predict_next_accesses(self, window_seconds: float = 300.0) -> List[Tuple[str, float]]:
+        """
+        Predict which speakers are likely to be accessed in the next time window.
+        Returns list of (speaker_name, confidence) tuples.
+        """
+        with self.lock:
+            current_time = time.time()
+            predictions = []
+
+            for speaker_name, access_times in self.access_patterns.items():
+                if len(access_times) < 3:
+                    continue
+
+                # Calculate access frequency (accesses per hour)
+                time_range = access_times[-1] - access_times[0]
+                if time_range < 60:  # Less than 1 minute of data
+                    continue
+
+                access_frequency = len(access_times) / (time_range / 3600.0)
+
+                # Calculate time since last access
+                time_since_last = current_time - access_times[-1]
+
+                # Simple heuristic: if accessed frequently and recently, likely to be accessed again
+                if access_frequency > 1.0 and time_since_last < window_seconds:
+                    confidence = min(0.9, access_frequency / 10.0)
+                    predictions.append((speaker_name, confidence))
+
+                # Pattern: repeated accesses at regular intervals
+                if len(access_times) >= 5:
+                    intervals = [access_times[i] - access_times[i-1] for i in range(1, len(access_times))]
+                    avg_interval = sum(intervals) / len(intervals)
+                    std_interval = (sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)) ** 0.5
+
+                    # If interval is regular (low std dev) and we're near next expected access
+                    if std_interval < avg_interval * 0.3:  # Low variance
+                        time_until_next = avg_interval - time_since_last
+                        if 0 < time_until_next < window_seconds:
+                            confidence = 0.8
+                            predictions.append((speaker_name, confidence))
+
+            # Sort by confidence, filter by threshold
+            predictions = [(name, conf) for name, conf in predictions if conf >= self.prediction_threshold]
+            predictions.sort(key=lambda x: x[1], reverse=True)
+
+            return predictions[:10]  # Top 10 predictions
+
+    async def prefetch_predicted(self, sqlite_conn: aiosqlite.Connection):
+        """Prefetch predicted speakers into FAISS cache"""
+        if not self.faiss_cache:
+            return
+
+        predictions = self.predict_next_accesses()
+
+        if not predictions:
+            return
+
+        logger.info(f"🔮 Prefetching {len(predictions)} predicted speakers")
+
+        for speaker_name, confidence in predictions:
+            # Check if already in cache
+            if self.faiss_cache.get_by_name(speaker_name):
+                continue
+
+            # Load from SQLite and add to cache
+            try:
+                async with sqlite_conn.execute(
+                    "SELECT voiceprint_embedding, acoustic_features, total_samples FROM speaker_profiles WHERE speaker_name = ?",
+                    (speaker_name,)
+                ) as cursor:
+                    row = await cursor.fetchone()
+
+                    if row:
+                        embedding_bytes, features_json, total_samples = row
+                        if embedding_bytes:
+                            embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+                            metadata = {
+                                "acoustic_features": json.loads(features_json) if features_json else {},
+                                "total_samples": total_samples,
+                                "prefetched": True,
+                                "confidence": confidence
+                            }
+                            self.faiss_cache.add_embedding(speaker_name, embedding, metadata)
+                            logger.debug(f"✅ Prefetched {speaker_name} (confidence: {confidence:.2f})")
+            except Exception as e:
+                logger.debug(f"Prefetch failed for {speaker_name}: {e}")
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get prefetcher statistics"""
+        with self.lock:
+            return {
+                "total_accesses": len(self.access_history),
+                "unique_speakers": len(self.access_patterns),
+                "active_patterns": sum(1 for times in self.access_patterns.values() if len(times) >= 3),
+                "prediction_threshold": self.prediction_threshold
+            }
+
+
 class HybridDatabaseSync:
     """
     Advanced hybrid database synchronization system for voice biometrics.
@@ -542,10 +880,15 @@ class HybridDatabaseSync:
         max_retry_attempts: int = 5,
         batch_size: int = 50,
         max_connections: int = 3,  # Reduced from 10
-        enable_faiss_cache: bool = True
+        enable_faiss_cache: bool = True,
+        enable_prometheus: bool = True,
+        enable_redis: bool = True,
+        enable_ml_prefetch: bool = True,
+        prometheus_port: int = 9090,
+        redis_url: str = "redis://localhost:6379"
     ):
         """
-        Initialize advanced hybrid sync system.
+        Initialize advanced hybrid sync system with Phase 2 features.
 
         Args:
             sqlite_path: Path to local SQLite database
@@ -555,6 +898,11 @@ class HybridDatabaseSync:
             batch_size: Records per sync batch
             max_connections: Maximum CloudSQL connections
             enable_faiss_cache: Enable FAISS vector cache
+            enable_prometheus: Enable Prometheus metrics export
+            enable_redis: Enable Redis distributed metrics
+            enable_ml_prefetch: Enable ML-based predictive cache warming
+            prometheus_port: Prometheus HTTP server port
+            redis_url: Redis connection URL
         """
         self.sqlite_path = sqlite_path
         self.cloudsql_config = cloudsql_config
@@ -580,6 +928,21 @@ class HybridDatabaseSync:
         if self.enable_faiss_cache:
             self.faiss_cache = FAISSVectorCache(embedding_dim=192)
 
+        # Phase 2: Prometheus metrics
+        self.prometheus: Optional[PrometheusMetrics] = None
+        if enable_prometheus and PROMETHEUS_AVAILABLE:
+            self.prometheus = PrometheusMetrics(port=prometheus_port)
+
+        # Phase 2: Redis metrics
+        self.redis: Optional[RedisMetrics] = None
+        if enable_redis and REDIS_AVAILABLE:
+            self.redis = RedisMetrics(redis_url=redis_url)
+
+        # Phase 2: ML prefetcher
+        self.ml_prefetcher: Optional[MLCachePrefetcher] = None
+        if enable_ml_prefetch and self.faiss_cache:
+            self.ml_prefetcher = MLCachePrefetcher(faiss_cache=self.faiss_cache)
+
         # Thread pool for parallel operations
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
 
@@ -587,13 +950,20 @@ class HybridDatabaseSync:
         self.sync_task: Optional[asyncio.Task] = None
         self.health_check_task: Optional[asyncio.Task] = None
         self.metrics_task: Optional[asyncio.Task] = None
+        self.prefetch_task: Optional[asyncio.Task] = None
         self._shutdown = False
         self._start_time = time.time()
 
         # Metrics
         self.metrics = SyncMetrics()
 
-        logger.info(f"🚀 Advanced Hybrid Sync initialized (SQLite: {sqlite_path}, max_conn={max_connections})")
+        logger.info(f"🚀 Advanced Hybrid Sync V2.0 initialized")
+        logger.info(f"   SQLite: {sqlite_path}")
+        logger.info(f"   Max Connections: {max_connections}")
+        logger.info(f"   FAISS Cache: {'Enabled' if self.enable_faiss_cache else 'Disabled'}")
+        logger.info(f"   Prometheus: {'Enabled' if self.prometheus else 'Disabled'}")
+        logger.info(f"   Redis: {'Enabled' if self.redis else 'Disabled'}")
+        logger.info(f"   ML Prefetcher: {'Enabled' if self.ml_prefetcher else 'Disabled'}")
 
     async def initialize(self):
         """Initialize database connections and start background sync"""
@@ -602,6 +972,14 @@ class HybridDatabaseSync:
 
         # Initialize CloudSQL connection orchestrator (may fail gracefully)
         await self._init_cloudsql_with_circuit_breaker()
+
+        # Phase 2: Start Prometheus metrics server
+        if self.prometheus:
+            self.prometheus.start_server()
+
+        # Phase 2: Connect to Redis
+        if self.redis:
+            await self.redis.connect()
 
         # Preload FAISS cache from SQLite for <1ms authentication
         if self.faiss_cache:
@@ -612,7 +990,12 @@ class HybridDatabaseSync:
         self.health_check_task = asyncio.create_task(self._health_check_loop())
         self.metrics_task = asyncio.create_task(self._metrics_loop())
 
-        logger.info("✅ Advanced hybrid sync initialized - zero live queries mode active")
+        # Phase 2: Start ML prefetch loop
+        if self.ml_prefetcher:
+            self.prefetch_task = asyncio.create_task(self._ml_prefetch_loop())
+
+        logger.info("✅ Advanced hybrid sync V2.0 initialized - zero live queries mode")
+        logger.info("   🚀 Phase 2 features active: Prometheus, Redis, ML Prefetch")
 
     async def _init_sqlite(self):
         """Initialize local SQLite connection"""
@@ -1002,10 +1385,26 @@ class HybridDatabaseSync:
 
                 # Update connection pool load
                 if self.connection_orchestrator.pool:
+                    pool_size = self.connection_orchestrator.pool.get_size()
                     self.metrics.connection_pool_load = self.connection_orchestrator.metrics.moving_avg_load
+
+                    # Phase 2: Update Prometheus metrics
+                    if self.prometheus:
+                        self.prometheus.update_connection_pool(pool_size, self.metrics.connection_pool_load)
+                        self.prometheus.update_queue_size(self.metrics.sync_queue_size)
+                        self.prometheus.update_circuit_state(self.circuit_breaker.get_state())
 
                 # Update circuit state
                 self.metrics.circuit_state = self.circuit_breaker.get_state().value
+
+                # Phase 2: Push metrics to Redis
+                if self.redis:
+                    await self.redis.set_metric("uptime_seconds", self.metrics.uptime_seconds)
+                    await self.redis.set_metric("queue_size", self.metrics.sync_queue_size)
+                    await self.redis.set_metric("connection_pool_load", self.metrics.connection_pool_load)
+                    await self.redis.set_metric("circuit_state", self.metrics.circuit_state)
+                    await self.redis.set_metric("cache_size", self.metrics.cache_size)
+                    await self.redis.push_to_timeseries("uptime", self.metrics.uptime_seconds)
 
                 # Log summary if interesting
                 if self.metrics.sync_queue_size > 50 or self.metrics.connection_pool_load > 0.7:
@@ -1019,6 +1418,33 @@ class HybridDatabaseSync:
 
             except Exception as e:
                 logger.error(f"Metrics loop error: {e}")
+
+    async def _ml_prefetch_loop(self):
+        """Background ML-based predictive cache warming"""
+        while not self._shutdown:
+            try:
+                await asyncio.sleep(60)  # Run prefetch every 60 seconds
+
+                if not self.ml_prefetcher or not self.sqlite_conn:
+                    continue
+
+                # Get ML predictions and prefetch
+                await self.ml_prefetcher.prefetch_predicted(self.sqlite_conn)
+
+                # Get and log statistics
+                stats = self.ml_prefetcher.get_statistics()
+                logger.debug(
+                    f"🧠 ML Prefetcher: {stats['unique_speakers']} speakers, "
+                    f"{stats['active_patterns']} active patterns, "
+                    f"{stats['total_accesses']} total accesses"
+                )
+
+                # Phase 2: Push ML stats to Redis
+                if self.redis:
+                    await self.redis.set_metric("ml_prefetch_stats", stats)
+
+            except Exception as e:
+                logger.error(f"ML prefetch loop error: {e}")
 
     async def _reconcile_pending_syncs(self):
         """Reconcile pending syncs after CloudSQL reconnection"""
@@ -1218,8 +1644,24 @@ class HybridDatabaseSync:
                 cached_data = self.faiss_cache.get_by_name(speaker_name)
                 if cached_data:
                     latency = (time.time() - start_time) * 1000
+                    latency_seconds = latency / 1000.0
                     self.metrics.cache_hit_latency_ms = latency
                     self.metrics.cache_hits += 1
+
+                    # Phase 2: Record Prometheus metrics
+                    if self.prometheus:
+                        self.prometheus.record_cache_hit()
+                        self.prometheus.observe_read_latency(latency_seconds, source="faiss")
+                        self.prometheus.record_query("cache_hit")
+
+                    # Phase 2: Record Redis metrics
+                    if self.redis:
+                        await self.redis.increment("cache_hits")
+                        await self.redis.push_to_timeseries("read_latency_faiss", latency_seconds)
+
+                    # Phase 2: Record ML access pattern
+                    if self.ml_prefetcher:
+                        self.ml_prefetcher.record_access(speaker_name)
 
                     logger.debug(f"⚡ Cache hit: {speaker_name} in {latency:.3f}ms")
 
@@ -1237,6 +1679,13 @@ class HybridDatabaseSync:
                 else:
                     self.metrics.cache_misses += 1
 
+                    # Phase 2: Record metrics
+                    if self.prometheus:
+                        self.prometheus.record_cache_miss()
+
+                    if self.redis:
+                        await self.redis.increment("cache_misses")
+
             # PRIORITY 2: Fallback to SQLite (still fast, <5ms)
             async with self.sqlite_conn.execute(
                 "SELECT * FROM speaker_profiles WHERE speaker_name = ?",
@@ -1246,7 +1695,21 @@ class HybridDatabaseSync:
 
                 if row:
                     latency = (time.time() - start_time) * 1000
+                    latency_seconds = latency / 1000.0
                     self.metrics.local_read_latency_ms = latency
+
+                    # Phase 2: Record Prometheus metrics
+                    if self.prometheus:
+                        self.prometheus.observe_read_latency(latency_seconds, source="sqlite")
+                        self.prometheus.record_query("sqlite_read")
+
+                    # Phase 2: Record Redis metrics
+                    if self.redis:
+                        await self.redis.push_to_timeseries("read_latency_sqlite", latency_seconds)
+
+                    # Phase 2: Record ML access pattern
+                    if self.ml_prefetcher:
+                        self.ml_prefetcher.record_access(speaker_name)
 
                     logger.debug(f"✅ SQLite read: {speaker_name} in {latency:.2f}ms")
 
@@ -1269,6 +1732,10 @@ class HybridDatabaseSync:
                             }
                         )
                         self.metrics.cache_size = self.faiss_cache.size()
+
+                        # Phase 2: Update Prometheus cache size
+                        if self.prometheus:
+                            self.prometheus.update_cache_size(self.faiss_cache.size())
 
                     return profile
 
@@ -1299,16 +1766,16 @@ class HybridDatabaseSync:
 
     def get_metrics(self) -> SyncMetrics:
         """Get current sync metrics"""
-        self.metrics.sync_queue_size = self.sync_queue.qsize()
+        self.metrics.sync_queue_size = self.sync_queue.size()
         return self.metrics
 
     async def shutdown(self):
         """Graceful shutdown with connection cleanup"""
-        logger.info("🛑 Shutting down advanced hybrid sync...")
+        logger.info("🛑 Shutting down advanced hybrid sync V2.0...")
         self._shutdown = True
 
-        # Cancel background tasks
-        tasks_to_cancel = [self.sync_task, self.health_check_task, self.metrics_task]
+        # Cancel background tasks (including Phase 2 prefetch task)
+        tasks_to_cancel = [self.sync_task, self.health_check_task, self.metrics_task, self.prefetch_task]
         for task in tasks_to_cancel:
             if task:
                 task.cancel()
@@ -1335,12 +1802,25 @@ class HybridDatabaseSync:
         if self.connection_orchestrator:
             await self.connection_orchestrator.close()
 
+        # Phase 2: Close Redis connection
+        if self.redis:
+            await self.redis.close()
+
         # Shutdown thread pool
         if self.thread_pool:
             self.thread_pool.shutdown(wait=False)
 
-        logger.info("✅ Advanced hybrid sync shutdown complete")
-        logger.info(f"   📊 Final stats: synced={self.metrics.total_synced}, "
-                   f"failed={self.metrics.total_failed}, "
-                   f"cache_hits={self.metrics.cache_hits}, "
-                   f"uptime={self.metrics.uptime_seconds:.1f}s")
+        logger.info("✅ Advanced hybrid sync V2.0 shutdown complete")
+        logger.info(f"   📊 Final stats:")
+        logger.info(f"      Synced: {self.metrics.total_synced}")
+        logger.info(f"      Failed: {self.metrics.total_failed}")
+        logger.info(f"      Cache Hits: {self.metrics.cache_hits}")
+        logger.info(f"      Cache Misses: {self.metrics.cache_misses}")
+        logger.info(f"      Cache Hit Rate: {self.metrics.cache_hits / max(1, self.metrics.cache_hits + self.metrics.cache_misses) * 100:.1f}%")
+        logger.info(f"      Uptime: {self.metrics.uptime_seconds:.1f}s")
+
+        # Phase 2: Log ML prefetcher stats
+        if self.ml_prefetcher:
+            stats = self.ml_prefetcher.get_statistics()
+            logger.info(f"      ML Patterns: {stats['active_patterns']} active")
+            logger.info(f"      ML Accesses: {stats['total_accesses']} recorded")
