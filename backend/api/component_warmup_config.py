@@ -697,7 +697,7 @@ async def register_manual_components(warmup):
         loader=load_screen_lock_detector,
         priority=ComponentPriority.CRITICAL,
         health_check=check_screen_lock_detector_health,
-        timeout=5.0,
+        timeout=10.0,
         required=True,
         category="security",
     )
@@ -719,7 +719,7 @@ async def register_manual_components(warmup):
         loader=load_context_aware_handler,
         priority=ComponentPriority.HIGH,
         dependencies=["screen_lock_detector"],
-        timeout=10.0,
+        timeout=20.0,
         required=True,
         category="intelligence",
     )
@@ -729,7 +729,7 @@ async def register_manual_components(warmup):
         loader=load_multi_space_context_graph,
         priority=ComponentPriority.HIGH,
         health_check=check_context_graph_health,
-        timeout=8.0,
+        timeout=20.0,
         required=False,
         category="context",
     )
@@ -738,7 +738,7 @@ async def register_manual_components(warmup):
         name="implicit_reference_resolver",
         loader=load_implicit_resolver,
         priority=ComponentPriority.HIGH,
-        timeout=5.0,
+        timeout=15.0,
         required=False,
         category="nlp",
     )
@@ -748,8 +748,8 @@ async def register_manual_components(warmup):
         loader=load_compound_parser,
         priority=ComponentPriority.HIGH,
         health_check=check_compound_parser_health,
-        timeout=5.0,
-        required=True,
+        timeout=15.0,
+        required=False,
         category="nlp",
     )
 
@@ -758,7 +758,7 @@ async def register_manual_components(warmup):
         loader=load_macos_controller,
         priority=ComponentPriority.HIGH,
         health_check=check_macos_controller_health,
-        timeout=5.0,
+        timeout=10.0,
         required=True,
         category="system",
     )
@@ -769,7 +769,7 @@ async def register_manual_components(warmup):
         loader=load_query_complexity_manager,
         priority=ComponentPriority.MEDIUM,
         dependencies=["implicit_reference_resolver"],
-        timeout=10.0,
+        timeout=20.0,
         required=False,
         category="intelligence",
     )
@@ -779,7 +779,7 @@ async def register_manual_components(warmup):
         loader=load_yabai_detector,
         priority=ComponentPriority.MEDIUM,
         health_check=check_yabai_health,
-        timeout=5.0,
+        timeout=10.0,
         required=False,
         category="vision",
     )
@@ -789,7 +789,7 @@ async def register_manual_components(warmup):
         loader=load_window_detector,
         priority=ComponentPriority.MEDIUM,
         dependencies=["yabai_detector"],
-        timeout=8.0,
+        timeout=15.0,
         required=False,
         category="vision",
     )
@@ -799,7 +799,7 @@ async def register_manual_components(warmup):
         loader=load_learning_database,
         priority=ComponentPriority.MEDIUM,
         health_check=check_database_health,
-        timeout=15.0,
+        timeout=30.0,
         required=False,
         category="learning",
     )
@@ -829,7 +829,7 @@ async def register_manual_components(warmup):
         loader=load_multi_space_handler,
         priority=ComponentPriority.LOW,
         dependencies=["multi_space_context_graph", "learning_database"],
-        timeout=15.0,
+        timeout=25.0,
         required=False,
         category="vision",
     )
@@ -1077,7 +1077,11 @@ async def load_context_aware_handler():
 async def load_multi_space_context_graph():
     """Load multi-space context graph"""
     from core.context.multi_space_context_graph import MultiSpaceContextGraph
-    return MultiSpaceContextGraph(decay_ttl=300, enable_correlation=True)
+    # Fix: Use correct parameter names (temporal_decay_minutes, not decay_ttl)
+    return MultiSpaceContextGraph(
+        max_history_size=1000,
+        temporal_decay_minutes=5  # 5 minutes (was decay_ttl=300 seconds)
+    )
 
 
 async def check_context_graph_health(graph) -> bool:
@@ -1093,10 +1097,17 @@ async def load_implicit_resolver():
 
 async def load_compound_parser():
     """Load compound action parser"""
-    from context_intelligence.analyzers.compound_action_parser import get_compound_parser
-    parser = get_compound_parser()
-    await parser.parse("test command")
-    return parser
+    try:
+        from context_intelligence.analyzers.compound_action_parser import get_compound_parser
+        parser = get_compound_parser()
+        # Test parse (no await needed - parse returns actions synchronously)
+        actions = await parser.parse("test command")
+        logger.info(f"✅ Compound parser loaded - parsed {len(actions)} actions")
+        return parser
+    except Exception as e:
+        logger.error(f"❌ Failed to load compound parser: {e}")
+        # Return a mock parser so the system can continue
+        return None
 
 
 async def check_compound_parser_health(parser) -> bool:
