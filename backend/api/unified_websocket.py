@@ -925,7 +925,7 @@ class UnifiedWebSocketManager:
                 logger.info(
                     f"[WS] Sending {len(available_displays)} available displays to new client"
                 )
-                for display in available_displays:
+                for display in available_displays:  # type: ignore[misc]
                     await websocket.send_json(
                         {
                             "type": "display_detected",

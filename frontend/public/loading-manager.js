@@ -773,8 +773,8 @@ class JARVISLoadingManager {
                 }
             }
 
-            // Timeout after 5 minutes
-            if (totalTime > 300000 && this.state.progress < 100) {
+            // Timeout after 10 minutes (allows time for minimal-to-full mode upgrade)
+            if (totalTime > 600000 && this.state.progress < 100) {
                 this.showError('Startup timed out. Please check terminal logs and try again.');
             }
         }, 5000);

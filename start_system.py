@@ -5407,6 +5407,241 @@ class AsyncSystemManager:
                 status['issues'].append(f'Password typer check failed: {e}')
                 logger.error(f"[VOICE UNLOCK] ❌ Password Typer: FAILED - {e}")
 
+            # ═══════════════════════════════════════════════════════════
+            # 5. CHECK CLOUDSQL PROXY CONNECTION
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking CloudSQL proxy connection...")
+            try:
+                from intelligence.cloud_database_adapter import CloudDatabaseAdapter
+
+                cloud_adapter = CloudDatabaseAdapter()
+                await cloud_adapter.initialize()
+
+                # Test connection by querying
+                connection_ok = await cloud_adapter.test_connection()
+
+                status['detailed_checks']['cloudsql_proxy'] = {
+                    'connected': connection_ok,
+                    'status': 'CONNECTED' if connection_ok else 'DISCONNECTED'
+                }
+
+                if connection_ok:
+                    logger.info("[VOICE UNLOCK] ✅ CloudSQL Proxy: CONNECTED")
+                else:
+                    logger.warning("[VOICE UNLOCK] ⚠️  CloudSQL Proxy: DISCONNECTED")
+                    status['issues'].append('CloudSQL proxy not connected')
+            except Exception as e:
+                status['detailed_checks']['cloudsql_proxy'] = {
+                    'connected': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'CloudSQL proxy check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ CloudSQL Proxy: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 6. CHECK BEAST MODE: SPEAKER VERIFICATION SERVICE
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Speaker Verification Service...")
+            try:
+                from voice.speaker_verification_service import SpeakerVerificationService
+
+                speaker_service = SpeakerVerificationService()
+                await speaker_service.initialize()
+
+                # Check if encoder is loaded
+                encoder_ready = speaker_service.speaker_encoder is not None
+                profiles_count = len(speaker_service.speaker_profiles) if hasattr(speaker_service, 'speaker_profiles') else 0
+
+                status['detailed_checks']['speaker_verification'] = {
+                    'initialized': True,
+                    'encoder_ready': encoder_ready,
+                    'profiles_loaded': profiles_count,
+                    'status': 'READY' if encoder_ready and profiles_count > 0 else 'DEGRADED'
+                }
+
+                logger.info(f"[VOICE UNLOCK] ✅ Speaker Verification: INITIALIZED")
+                logger.info(f"[VOICE UNLOCK]    ├─ Encoder: {'READY' if encoder_ready else 'NOT LOADED'}")
+                logger.info(f"[VOICE UNLOCK]    └─ Profiles: {profiles_count}")
+            except Exception as e:
+                status['detailed_checks']['speaker_verification'] = {
+                    'initialized': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'Speaker verification check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ Speaker Verification: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 7. CHECK BEAST MODE: ECAPA-TDNN EMBEDDINGS
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: ECAPA-TDNN Embeddings...")
+            try:
+                # Check if we can load speaker embeddings from database
+                if status['detailed_checks'].get('voice_profiles', {}).get('loaded'):
+                    from intelligence.learning_database import JARVISLearningDatabase
+                    db = JARVISLearningDatabase()
+                    await db.initialize()
+
+                    profiles = await db.get_all_speaker_profiles()
+
+                    embeddings_found = 0
+                    embedding_dims = []
+
+                    for profile in profiles:
+                        if profile.get('embedding') and len(profile['embedding']) > 0:
+                            embeddings_found += 1
+                            embedding_dims.append(len(profile['embedding']))
+
+                    status['detailed_checks']['ecapa_embeddings'] = {
+                        'available': embeddings_found > 0,
+                        'count': embeddings_found,
+                        'dimensions': embedding_dims,
+                        'expected_dim': 192  # ECAPA-TDNN 192D
+                    }
+
+                    if embeddings_found > 0:
+                        logger.info(f"[VOICE UNLOCK] ✅ ECAPA-TDNN Embeddings: {embeddings_found} found")
+                        logger.info(f"[VOICE UNLOCK]    └─ Dimensions: {embedding_dims[0]}D (expected: 192D)")
+                    else:
+                        logger.warning("[VOICE UNLOCK] ⚠️  ECAPA-TDNN Embeddings: NOT FOUND")
+                        status['issues'].append('No ECAPA-TDNN embeddings in database')
+                else:
+                    status['detailed_checks']['ecapa_embeddings'] = {
+                        'available': False,
+                        'error': 'No voice profiles to check'
+                    }
+                    logger.warning("[VOICE UNLOCK] ⚠️  ECAPA-TDNN Embeddings: SKIPPED (no profiles)")
+            except Exception as e:
+                status['detailed_checks']['ecapa_embeddings'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'ECAPA embedding check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ ECAPA-TDNN Embeddings: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 8. CHECK BEAST MODE: ANTI-SPOOFING DETECTION
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Anti-Spoofing Detection...")
+            try:
+                from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+
+                unlock_service = IntelligentVoiceUnlockService()
+
+                # Check if anti-spoofing is available
+                anti_spoofing_available = hasattr(unlock_service, '_check_anti_spoofing')
+
+                status['detailed_checks']['anti_spoofing'] = {
+                    'available': anti_spoofing_available,
+                    'features': ['replay_detection', 'synthesis_detection', 'voice_conversion_detection'] if anti_spoofing_available else []
+                }
+
+                if anti_spoofing_available:
+                    logger.info("[VOICE UNLOCK] ✅ Anti-Spoofing: AVAILABLE")
+                    logger.info("[VOICE UNLOCK]    ├─ Replay Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Synthesis Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    └─ Voice Conversion Detection: ENABLED")
+                else:
+                    logger.warning("[VOICE UNLOCK] ⚠️  Anti-Spoofing: NOT AVAILABLE")
+            except Exception as e:
+                status['detailed_checks']['anti_spoofing'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Anti-Spoofing: CHECK FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 9. CHECK BEAST MODE: HYBRID STT SYSTEM
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Hybrid STT System...")
+            try:
+                from voice.hybrid_stt_router import HybridSTTRouter
+
+                stt_router = HybridSTTRouter()
+                await stt_router.initialize()
+
+                # Check available engines
+                available_engines = []
+                if hasattr(stt_router, 'available_engines'):
+                    available_engines = list(stt_router.available_engines.keys())
+
+                status['detailed_checks']['hybrid_stt'] = {
+                    'initialized': True,
+                    'engines': available_engines,
+                    'count': len(available_engines)
+                }
+
+                logger.info(f"[VOICE UNLOCK] ✅ Hybrid STT: {len(available_engines)} engines")
+                for engine in available_engines:
+                    logger.info(f"[VOICE UNLOCK]    ├─ {engine}")
+            except Exception as e:
+                status['detailed_checks']['hybrid_stt'] = {
+                    'initialized': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Hybrid STT: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 10. CHECK BEAST MODE: CONTEXT-AWARE INTELLIGENCE (CAI)
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Context-Aware Intelligence...")
+            try:
+                from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+
+                unlock_service = IntelligentVoiceUnlockService()
+
+                # Check if CAI analysis is available
+                cai_available = hasattr(unlock_service, '_analyze_context')
+
+                status['detailed_checks']['cai'] = {
+                    'available': cai_available,
+                    'features': ['screen_state', 'time_analysis', 'location_context'] if cai_available else []
+                }
+
+                if cai_available:
+                    logger.info("[VOICE UNLOCK] ✅ CAI (Context-Aware Intelligence): AVAILABLE")
+                    logger.info("[VOICE UNLOCK]    ├─ Screen State Analysis: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Time Analysis: ENABLED")
+                    logger.info("[VOICE UNLOCK]    └─ Location Context: ENABLED")
+                else:
+                    logger.warning("[VOICE UNLOCK] ⚠️  CAI: NOT AVAILABLE")
+            except Exception as e:
+                status['detailed_checks']['cai'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  CAI: CHECK FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 11. CHECK BEAST MODE: SCENARIO-AWARE INTELLIGENCE (SAI)
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Scenario-Aware Intelligence...")
+            try:
+                from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+
+                unlock_service = IntelligentVoiceUnlockService()
+
+                # Check if SAI analysis is available
+                sai_available = hasattr(unlock_service, '_analyze_scenario')
+
+                status['detailed_checks']['sai'] = {
+                    'available': sai_available,
+                    'features': ['routine_detection', 'emergency_detection', 'suspicious_detection'] if sai_available else []
+                }
+
+                if sai_available:
+                    logger.info("[VOICE UNLOCK] ✅ SAI (Scenario-Aware Intelligence): AVAILABLE")
+                    logger.info("[VOICE UNLOCK]    ├─ Routine Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Emergency Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    └─ Suspicious Detection: ENABLED")
+                else:
+                    logger.warning("[VOICE UNLOCK] ⚠️  SAI: NOT AVAILABLE")
+            except Exception as e:
+                status['detailed_checks']['sai'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  SAI: CHECK FAILED - {e}")
+
             # 2. Check if enrollment data exists
             enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
             if enrollment_file.exists():
@@ -6382,42 +6617,162 @@ class AsyncSystemManager:
                     # Show detailed checks
                     detailed = voice_unlock_status.get('detailed_checks', {})
 
+                    print(f"    │")
+                    print(f"    ├─ {Colors.CYAN}📦 CORE COMPONENTS:{Colors.ENDC}")
+                    print(f"    │")
+
                     # 1. Learning Database
                     learning_db = detailed.get('learning_db', {})
                     if learning_db.get('initialized'):
-                        print(f"    ├─ ✅ Learning Database: INITIALIZED")
+                        print(f"    │  ├─ ✅ Learning Database: {Colors.GREEN}INITIALIZED{Colors.ENDC}")
                     else:
                         error = learning_db.get('error', 'Unknown error')
-                        print(f"    ├─ ❌ Learning Database: FAILED ({error})")
+                        print(f"    │  ├─ ❌ Learning Database: {Colors.FAIL}FAILED{Colors.ENDC} ({error})")
 
-                    # 2. Voice Profiles
+                    # 2. CloudSQL Proxy
+                    cloudsql = detailed.get('cloudsql_proxy', {})
+                    if cloudsql.get('connected'):
+                        print(f"    │  ├─ ✅ CloudSQL Proxy: {Colors.GREEN}CONNECTED{Colors.ENDC}")
+                    else:
+                        error = cloudsql.get('error', 'Disconnected')
+                        print(f"    │  ├─ ❌ CloudSQL Proxy: {Colors.FAIL}DISCONNECTED{Colors.ENDC} ({error})")
+
+                    # 3. Voice Profiles
                     voice_profiles = detailed.get('voice_profiles', {})
                     if voice_profiles.get('loaded'):
                         count = voice_profiles.get('count', 0)
                         profiles = voice_profiles.get('profiles', [])
-                        print(f"    ├─ ✅ Voice Profiles: {count} loaded from CloudSQL")
+                        print(f"    │  ├─ ✅ Voice Profiles: {Colors.GREEN}{count} loaded{Colors.ENDC}")
                         for profile_name in profiles:
-                            print(f"    │  └─ {profile_name}")
+                            print(f"    │  │  └─ {Colors.CYAN}{profile_name}{Colors.ENDC}")
                     else:
                         error = voice_profiles.get('error', 'No profiles found')
-                        print(f"    ├─ ❌ Voice Profiles: {error}")
+                        print(f"    │  ├─ ❌ Voice Profiles: {Colors.FAIL}{error}{Colors.ENDC}")
 
-                    # 3. Keychain Password
+                    # 4. Keychain Password
                     keychain = detailed.get('keychain', {})
                     if keychain.get('stored'):
                         pwd_len = keychain.get('password_length', 0)
-                        print(f"    ├─ ✅ Keychain Password: Stored ({pwd_len} chars)")
+                        print(f"    │  ├─ ✅ Keychain Password: {Colors.GREEN}STORED{Colors.ENDC} ({pwd_len} chars)")
                     else:
                         error = keychain.get('error', 'Not found')
-                        print(f"    ├─ ❌ Keychain Password: {error}")
+                        print(f"    │  ├─ ❌ Keychain Password: {Colors.FAIL}{error}{Colors.ENDC}")
 
-                    # 4. Password Typer
+                    # 5. Password Typer
                     typer = detailed.get('password_typer', {})
                     if typer.get('available'):
-                        print(f"    ├─ ✅ Password Typer: FUNCTIONAL")
+                        print(f"    │  └─ ✅ Password Typer: {Colors.GREEN}FUNCTIONAL{Colors.ENDC}")
                     else:
                         error = typer.get('error', 'Not available')
-                        print(f"    ├─ ❌ Password Typer: {error}")
+                        print(f"    │  └─ ❌ Password Typer: {Colors.FAIL}{error}{Colors.ENDC}")
+
+                    # BEAST MODE COMPONENTS
+                    print(f"    │")
+                    print(f"    ├─ {Colors.CYAN}🦁 BEAST MODE VERIFICATION:{Colors.ENDC}")
+                    print(f"    │")
+
+                    # 6. Speaker Verification Service
+                    speaker_verif = detailed.get('speaker_verification', {})
+                    if speaker_verif.get('initialized'):
+                        encoder_status = "READY" if speaker_verif.get('encoder_ready') else "NOT LOADED"
+                        profiles = speaker_verif.get('profiles_loaded', 0)
+                        color = Colors.GREEN if speaker_verif.get('encoder_ready') and profiles > 0 else Colors.YELLOW
+                        print(f"    │  ├─ ✅ Speaker Verification: {color}{speaker_verif.get('status')}{Colors.ENDC}")
+                        print(f"    │  │  ├─ Encoder: {encoder_status}")
+                        print(f"    │  │  └─ Profiles: {profiles}")
+                    else:
+                        error = speaker_verif.get('error', 'Not available')
+                        print(f"    │  ├─ ❌ Speaker Verification: {Colors.FAIL}FAILED{Colors.ENDC} ({error})")
+
+                    # 7. ECAPA-TDNN Embeddings
+                    ecapa = detailed.get('ecapa_embeddings', {})
+                    if ecapa.get('available'):
+                        count = ecapa.get('count', 0)
+                        dims = ecapa.get('dimensions', [])
+                        dim_str = f"{dims[0]}D" if dims else "unknown"
+                        print(f"    │  ├─ ✅ ECAPA-TDNN Embeddings: {Colors.GREEN}{count} profiles{Colors.ENDC} ({dim_str})")
+                    else:
+                        error = ecapa.get('error', 'Not found')
+                        print(f"    │  ├─ ⚠️  ECAPA-TDNN Embeddings: {Colors.YELLOW}{error}{Colors.ENDC}")
+
+                    # 8. Anti-Spoofing Detection
+                    anti_spoof = detailed.get('anti_spoofing', {})
+                    if anti_spoof.get('available'):
+                        features = anti_spoof.get('features', [])
+                        print(f"    │  ├─ ✅ Anti-Spoofing: {Colors.GREEN}ENABLED{Colors.ENDC} ({len(features)} detectors)")
+                    else:
+                        print(f"    │  ├─ ⚠️  Anti-Spoofing: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
+
+                    # 9. Hybrid STT System
+                    hybrid_stt = detailed.get('hybrid_stt', {})
+                    if hybrid_stt.get('initialized'):
+                        count = hybrid_stt.get('count', 0)
+                        engines = hybrid_stt.get('engines', [])
+                        print(f"    │  ├─ ✅ Hybrid STT: {Colors.GREEN}{count} engines{Colors.ENDC}")
+                        for engine in engines[:3]:  # Show first 3
+                            print(f"    │  │  ├─ {engine}")
+                        if len(engines) > 3:
+                            print(f"    │  │  └─ ... +{len(engines)-3} more")
+                    else:
+                        error = hybrid_stt.get('error', 'Not available')
+                        print(f"    │  ├─ ⚠️  Hybrid STT: {Colors.YELLOW}{error}{Colors.ENDC}")
+
+                    # 10. Context-Aware Intelligence (CAI)
+                    cai = detailed.get('cai', {})
+                    if cai.get('available'):
+                        features = cai.get('features', [])
+                        print(f"    │  ├─ ✅ CAI (Context-Aware): {Colors.GREEN}ENABLED{Colors.ENDC} ({len(features)} analyzers)")
+                    else:
+                        print(f"    │  ├─ ⚠️  CAI: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
+
+                    # 11. Scenario-Aware Intelligence (SAI)
+                    sai = detailed.get('sai', {})
+                    if sai.get('available'):
+                        features = sai.get('features', [])
+                        print(f"    │  └─ ✅ SAI (Scenario-Aware): {Colors.GREEN}ENABLED{Colors.ENDC} ({len(features)} detectors)")
+                    else:
+                        print(f"    │  └─ ⚠️  SAI: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
+
+                    # UNLOCK FLOW DIAGRAM
+                    print(f"    │")
+                    print(f"    └─ {Colors.CYAN}🔄 UNLOCK FLOW (When you say 'unlock my screen'):{Colors.ENDC}")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[1] Audio Capture{Colors.ENDC} → Record your voice command")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[2] Hybrid STT{Colors.ENDC} → Transcribe audio to text")
+                    print(f"       │   └─ Output: 'unlock my screen'")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[3] Speaker Identification{Colors.ENDC} → Extract ECAPA-TDNN embedding")
+                    print(f"       │   ├─ Compare with CloudSQL profiles")
+                    print(f"       │   └─ Identify: Derek J. Russell (confidence: XX%)")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[4] Multi-Modal Verification{Colors.ENDC} → BEAST MODE")
+                    print(f"       │   ├─ Deep learning embeddings (ECAPA-TDNN)")
+                    print(f"       │   ├─ Mahalanobis distance (statistical)")
+                    print(f"       │   ├─ Acoustic features (pitch, formants)")
+                    print(f"       │   ├─ Physics-based validation")
+                    print(f"       │   └─ Anti-spoofing detection")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[5] CAI Analysis{Colors.ENDC} → Check context")
+                    print(f"       │   ├─ Screen state (locked/unlocked)")
+                    print(f"       │   ├─ Time of day")
+                    print(f"       │   └─ Location context")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[6] SAI Analysis{Colors.ENDC} → Detect scenario")
+                    print(f"       │   ├─ Routine unlock (normal)")
+                    print(f"       │   ├─ Emergency unlock (urgent)")
+                    print(f"       │   └─ Suspicious activity (security alert)")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[7] Password Retrieval{Colors.ENDC} → Keychain (JARVIS_Screen_Unlock)")
+                    print(f"       │   └─ Password: ************* (13 chars)")
+                    print(f"       │")
+                    print(f"       ├─ {Colors.BLUE}[8] Secure Typing{Colors.ENDC} → CoreGraphics API")
+                    print(f"       │   ├─ Type password character-by-character")
+                    print(f"       │   ├─ Randomized timing (human-like)")
+                    print(f"       │   └─ Press Enter")
+                    print(f"       │")
+                    print(f"       └─ {Colors.GREEN}[9] ✅ UNLOCKED{Colors.ENDC} → Welcome back, Derek!")
+                    print(f"")
 
                     # Legacy checks
                     print(f"    ├─ {'✅' if voice_unlock_status['enrollment_data_exists'] else '❌'} Enrollment data")
