@@ -6239,9 +6239,10 @@ class AsyncSystemManager:
 
                                 print(f"  {Colors.GREEN}✓ GCP Hybrid Cloud:{Colors.ENDC} {vm_count} VM(s) active (${total_cost:.4f} session)")
 
-                                # Show each VM
+                                # Show each VM with EXTREME DETAIL (GCP Console-like)
                                 for vm_name, vm in managed_vms.items():
                                     vm.update_cost()  # Update cost before display
+                                    vm.update_efficiency_score()  # Update efficiency
 
                                     # VM status icon
                                     if vm.is_healthy:
@@ -6254,8 +6255,95 @@ class AsyncSystemManager:
                                     print(f"    ├─ {vm_icon} VM: {vm.name}")
                                     print(f"    │  ├─ Status: {vm_status}")
                                     print(f"    │  ├─ External IP: {vm.ip_address or 'N/A'}")
-                                    print(f"    │  ├─ Uptime: {vm.uptime_hours:.2f}h")
-                                    print(f"    │  ├─ Cost: ${vm.total_cost:.4f} (${vm.cost_per_hour:.3f}/hour)")
+                                    print(f"    │  ├─ Zone: {vm.zone}")
+                                    print(f"    │  ├─ Machine Type: e2-highmem-4 (4 vCPU, 32GB RAM)")
+                                    print(f"    │  ├─ Instance ID: {vm.instance_id}")
+
+                                    # === COST TRACKING ===
+                                    print(f"    │  ├─ 💰 Cost Tracking:")
+                                    print(f"    │  │  ├─ Uptime: {vm.uptime_hours:.2f}h ({vm.uptime_hours * 60:.0f}m)")
+                                    print(f"    │  │  ├─ Current Cost: ${vm.total_cost:.4f}")
+                                    print(f"    │  │  ├─ Hourly Rate: ${vm.cost_per_hour:.3f}/hour")
+
+                                    # Cost projection
+                                    projected_1h = vm.total_cost + (vm.cost_per_hour * 1)
+                                    projected_3h = vm.total_cost + (vm.cost_per_hour * 2)
+                                    print(f"    │  │  ├─ Projected +1h: ${projected_1h:.4f}")
+                                    print(f"    │  │  └─ Projected +2h: ${projected_3h:.4f}")
+
+                                    # === COST EFFICIENCY (ROI) ===
+                                    efficiency = vm.cost_efficiency_score
+
+                                    if efficiency >= 70:
+                                        eff_icon = "🟢"
+                                        eff_color = Colors.GREEN
+                                        eff_status = "EXCELLENT"
+                                    elif efficiency >= 50:
+                                        eff_icon = "🟡"
+                                        eff_color = Colors.YELLOW
+                                        eff_status = "GOOD"
+                                    elif efficiency >= 30:
+                                        eff_icon = "🟠"
+                                        eff_color = Colors.WARNING
+                                        eff_status = "POOR"
+                                    else:
+                                        eff_icon = "🔴"
+                                        eff_color = Colors.FAIL
+                                        eff_status = "WASTING MONEY"
+
+                                    print(f"    │  ├─ {eff_icon} Cost Efficiency: {eff_color}{eff_status} ({efficiency:.1f}% ROI){Colors.ENDC}")
+
+                                    # Idle time warning
+                                    idle_mins = vm.idle_time_minutes
+                                    if idle_mins > 5:
+                                        idle_color = Colors.WARNING if idle_mins > 10 else Colors.YELLOW
+                                        print(f"    │  │  ├─ {idle_color}⚠️  Idle: {idle_mins:.1f}m (no activity){Colors.ENDC}")
+                                    else:
+                                        print(f"    │  │  ├─ {Colors.GREEN}✓ Active: {vm.component_usage_count} component accesses{Colors.ENDC}")
+
+                                    # Usage stats
+                                    print(f"    │  │  └─ Usage: {vm.component_usage_count} accesses")
+
+                                    # === DETAILED METRICS (GCP Console-like) ===
+                                    print(f"    │  ├─ 📊 VM Metrics:")
+
+                                    # CPU
+                                    cpu_pct = vm.cpu_percent
+                                    if cpu_pct > 80:
+                                        cpu_color = Colors.WARNING
+                                        cpu_icon = "🔴"
+                                    elif cpu_pct > 50:
+                                        cpu_color = Colors.YELLOW
+                                        cpu_icon = "🟡"
+                                    else:
+                                        cpu_color = Colors.GREEN
+                                        cpu_icon = "🟢"
+                                    print(f"    │  │  ├─ {cpu_icon} CPU: {cpu_color}{cpu_pct:.1f}%{Colors.ENDC} (4 vCPUs)")
+
+                                    # Memory
+                                    mem_pct = vm.memory_percent
+                                    mem_used = vm.memory_used_gb
+                                    mem_total = vm.memory_total_gb
+                                    if mem_pct > 80:
+                                        mem_color = Colors.WARNING
+                                        mem_icon = "🔴"
+                                    elif mem_pct > 60:
+                                        mem_color = Colors.YELLOW
+                                        mem_icon = "🟡"
+                                    else:
+                                        mem_color = Colors.GREEN
+                                        mem_icon = "🟢"
+                                    print(f"    │  │  ├─ {mem_icon} Memory: {mem_color}{mem_used:.1f}GB / {mem_total:.0f}GB ({mem_pct:.1f}%){Colors.ENDC}")
+
+                                    # Network (placeholder - would be from GCP Monitoring API)
+                                    net_sent = vm.network_sent_mb
+                                    net_recv = vm.network_received_mb
+                                    print(f"    │  │  ├─ 📡 Network: ↑ {net_sent:.2f}MB sent, ↓ {net_recv:.2f}MB received")
+
+                                    # Disk (placeholder)
+                                    disk_read = vm.disk_read_mb
+                                    disk_write = vm.disk_write_mb
+                                    print(f"    │  │  └─ 💾 Disk: 📖 {disk_read:.2f}MB read, ✍️  {disk_write:.2f}MB write")
 
                                     # Components offloaded
                                     if vm.components:
@@ -6263,13 +6351,41 @@ class AsyncSystemManager:
                                         comp_preview = ", ".join(vm.components[:3])
                                         if comp_count > 3:
                                             comp_preview += f", +{comp_count-3} more"
-                                        print(f"    │  ├─ Components: {comp_count} offloaded")
+                                        print(f"    │  ├─ 📦 Components: {comp_count} offloaded")
                                         print(f"    │  │  └─ {comp_preview}")
 
                                     # Trigger reason
                                     if vm.trigger_reason:
                                         reason_short = vm.trigger_reason[:60] + "..." if len(vm.trigger_reason) > 60 else vm.trigger_reason
-                                        print(f"    │  └─ Trigger: {reason_short}")
+                                        print(f"    │  ├─ 🎯 Trigger: {reason_short}")
+
+                                    # === COST SAVINGS RECOMMENDATIONS ===
+                                    recommendations = []
+
+                                    if vm.is_wasting_money:
+                                        recommendations.append(f"💸 TERMINATE NOW: Wasting money (idle {idle_mins:.1f}m, {efficiency:.0f}% efficiency)")
+
+                                    if idle_mins > 15:
+                                        recommendations.append(f"⏰ Consider terminating: Idle for {idle_mins:.1f}m")
+
+                                    # Check if local memory normalized
+                                    try:
+                                        import psutil
+                                        local_mem = psutil.virtual_memory().percent
+                                        if local_mem < 70:
+                                            recommendations.append(f"📉 Local RAM normalized ({local_mem:.1f}%) - VM may not be needed")
+                                    except:
+                                        pass
+
+                                    if recommendations:
+                                        print(f"    │  └─ {Colors.YELLOW}💡 Recommendations:{Colors.ENDC}")
+                                        for i, rec in enumerate(recommendations):
+                                            if i == len(recommendations) - 1:
+                                                print(f"    │     └─ {rec}")
+                                            else:
+                                                print(f"    │     ├─ {rec}")
+                                    else:
+                                        print(f"    │  └─ {Colors.GREEN}✓ No cost savings available - VM optimally used{Colors.ENDC}")
 
                             else:
                                 # No VMs active

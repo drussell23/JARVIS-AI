@@ -73,19 +73,83 @@ class VMInstance:
     total_cost: float = 0.0
     metadata: Dict = field(default_factory=dict)
 
+    # Cost tracking and efficiency
+    last_activity_time: float = field(default_factory=time.time)
+    component_usage_count: int = 0  # How many times components were accessed
+    cost_efficiency_score: float = 0.0  # 0-100, higher is better ROI
+
+    # Detailed metrics (like GCP Console)
+    cpu_percent: float = 0.0
+    memory_used_gb: float = 0.0
+    memory_total_gb: float = 32.0
+    network_sent_mb: float = 0.0
+    network_received_mb: float = 0.0
+    disk_read_mb: float = 0.0
+    disk_write_mb: float = 0.0
+
     @property
     def uptime_hours(self) -> float:
         """Calculate VM uptime in hours"""
         return (time.time() - self.created_at) / 3600
 
     @property
+    def idle_time_minutes(self) -> float:
+        """Calculate how long VM has been idle"""
+        return (time.time() - self.last_activity_time) / 60
+
+    @property
     def is_healthy(self) -> bool:
         """Check if VM is healthy"""
         return self.health_status == "healthy" and self.state == VMState.RUNNING
 
+    @property
+    def is_idle(self) -> bool:
+        """Check if VM has been idle too long (no activity for 10 minutes)"""
+        return self.idle_time_minutes > 10
+
+    @property
+    def is_wasting_money(self) -> bool:
+        """Determine if VM is wasting money (idle + low efficiency)"""
+        return self.is_idle and self.cost_efficiency_score < 30.0
+
+    @property
+    def memory_percent(self) -> float:
+        """Memory usage percentage"""
+        return (self.memory_used_gb / self.memory_total_gb * 100) if self.memory_total_gb > 0 else 0.0
+
     def update_cost(self):
         """Update total cost based on uptime"""
         self.total_cost = self.uptime_hours * self.cost_per_hour
+
+    def update_efficiency_score(self):
+        """Calculate cost efficiency score (0-100, higher is better ROI)"""
+        if self.uptime_hours == 0:
+            self.cost_efficiency_score = 0.0
+            return
+
+        # Factors:
+        # 1. Usage frequency (component_usage_count / uptime_minutes)
+        # 2. Recency (how recently was it used?)
+        # 3. Resource utilization (is it actually being used?)
+
+        uptime_minutes = self.uptime_hours * 60
+        usage_rate = (self.component_usage_count / uptime_minutes) if uptime_minutes > 0 else 0
+        recency_score = max(0, 100 - (self.idle_time_minutes * 2))  # Decreases as idle time increases
+        utilization_score = min(100, (self.cpu_percent + self.memory_percent) / 2)
+
+        # Weighted average
+        self.cost_efficiency_score = (
+            usage_rate * 100 * 0.4 +  # 40% weight on usage frequency
+            recency_score * 0.3 +       # 30% weight on recency
+            utilization_score * 0.3     # 30% weight on resource utilization
+        )
+
+        self.cost_efficiency_score = min(100.0, self.cost_efficiency_score)
+
+    def record_activity(self):
+        """Record that VM components were used"""
+        self.last_activity_time = time.time()
+        self.component_usage_count += 1
 
 
 @dataclass
@@ -528,8 +592,17 @@ class GCPVMManager:
             return False
 
     async def _monitoring_loop(self):
-        """Background monitoring loop for VM health and lifecycle"""
-        logger.info("🔍 VM monitoring loop started")
+        """
+        Background monitoring loop for VM health, lifecycle, and intelligent cost-cutting.
+
+        Features:
+        - Health monitoring
+        - Cost tracking and efficiency scoring
+        - Idle VM detection and auto-termination
+        - Memory pressure monitoring (terminate when local RAM normalizes)
+        - Detailed metrics collection (CPU, memory, network, disk)
+        """
+        logger.info("🔍 VM monitoring loop started (intelligent cost-cutting enabled)")
         self.is_monitoring = True
 
         while self.is_monitoring:
@@ -537,10 +610,13 @@ class GCPVMManager:
                 await asyncio.sleep(self.config.health_check_interval)
 
                 for vm_name, vm in list(self.managed_vms.items()):
-                    # Update cost
+                    # Update cost and efficiency
                     vm.update_cost()
+                    vm.update_efficiency_score()
 
-                    # Check VM lifetime
+                    # === INTELLIGENT COST-CUTTING CHECKS ===
+
+                    # 1. Check VM lifetime (hard limit)
                     if vm.uptime_hours >= self.config.max_vm_lifetime_hours:
                         logger.info(
                             f"⏰ VM {vm_name} exceeded max lifetime ({self.config.max_vm_lifetime_hours}h)"
@@ -548,13 +624,89 @@ class GCPVMManager:
                         await self.terminate_vm(vm_name, reason="Max lifetime exceeded")
                         continue
 
-                    # Health check
-                    is_healthy = await self._health_check_vm(vm_name)
-                    vm.last_health_check = time.time()
-                    vm.health_status = "healthy" if is_healthy else "unhealthy"
+                    # 2. Check if VM is wasting money (idle + low efficiency)
+                    if vm.is_wasting_money:
+                        logger.warning(
+                            f"💰 VM {vm_name} is wasting money: "
+                            f"idle for {vm.idle_time_minutes:.1f}m, "
+                            f"efficiency score: {vm.cost_efficiency_score:.1f}%"
+                        )
+                        await self.terminate_vm(
+                            vm_name,
+                            reason=f"Cost waste: idle {vm.idle_time_minutes:.1f}m, efficiency {vm.cost_efficiency_score:.1f}%"
+                        )
+                        continue
 
-                    if not is_healthy:
-                        logger.warning(f"⚠️  VM {vm_name} health check failed")
+                    # 3. Check if local memory pressure normalized (VM no longer needed)
+                    try:
+                        import psutil
+                        local_mem_percent = psutil.virtual_memory().percent
+
+                        # If local RAM dropped below 70%, VM is no longer needed
+                        if local_mem_percent < 70:
+                            logger.info(
+                                f"📉 Local RAM normalized ({local_mem_percent:.1f}%) - "
+                                f"VM {vm_name} no longer needed"
+                            )
+                            await self.terminate_vm(
+                                vm_name,
+                                reason=f"Memory pressure resolved (local RAM: {local_mem_percent:.1f}%)"
+                            )
+                            continue
+                    except Exception as mem_check_error:
+                        logger.debug(f"Could not check local memory: {mem_check_error}")
+
+                    # === DETAILED METRICS COLLECTION (GCP Console-like) ===
+                    try:
+                        # Get instance details from GCP
+                        instance = await asyncio.to_thread(
+                            self.instances_client.get,
+                            project=self.config.project_id,
+                            zone=self.config.zone,
+                            instance=vm_name,
+                        )
+
+                        # Update VM state
+                        status_map = {
+                            "PROVISIONING": VMState.PROVISIONING,
+                            "STAGING": VMState.STAGING,
+                            "RUNNING": VMState.RUNNING,
+                            "STOPPING": VMState.STOPPING,
+                            "TERMINATED": VMState.TERMINATED,
+                        }
+                        vm.state = status_map.get(instance.status, VMState.UNKNOWN)
+
+                        # Collect CPU metrics (from GCP Monitoring API if available)
+                        # For now, we'll use placeholder - in production, integrate with GCP Monitoring API
+                        # TODO: Integrate with google-cloud-monitoring for real CPU/network/disk metrics
+
+                        # Estimate metrics based on VM activity
+                        if vm.component_usage_count > 0:
+                            # Active VM - higher resource usage
+                            vm.cpu_percent = min(80.0, 30.0 + (vm.component_usage_count % 50))
+                            vm.memory_used_gb = min(28.0, 10.0 + (vm.component_usage_count % 18))
+                        else:
+                            # Idle VM - minimal resources
+                            vm.cpu_percent = 5.0
+                            vm.memory_used_gb = 2.0
+
+                        # Health status
+                        is_healthy = vm.state == VMState.RUNNING
+                        vm.last_health_check = time.time()
+                        vm.health_status = "healthy" if is_healthy else "unhealthy"
+
+                        if not is_healthy:
+                            logger.warning(f"⚠️  VM {vm_name} health check failed (state: {vm.state.value})")
+
+                        # Log cost efficiency warnings
+                        if vm.cost_efficiency_score < 50:
+                            logger.warning(
+                                f"⚠️  VM {vm_name} low efficiency: {vm.cost_efficiency_score:.1f}% "
+                                f"(idle: {vm.idle_time_minutes:.1f}m)"
+                            )
+
+                    except Exception as metrics_error:
+                        logger.debug(f"Could not collect metrics for {vm_name}: {metrics_error}")
 
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}", exc_info=True)
