@@ -225,8 +225,14 @@ class UnifiedWebSocketManager:
             for task in self.recovery_tasks.values():
                 task.cancel()
 
-            # Wait for all to finish
-            await asyncio.gather(*self.recovery_tasks.values(), return_exceptions=True)
+            # Wait for all to finish and retrieve exceptions to prevent warnings
+            results = await asyncio.gather(*self.recovery_tasks.values(), return_exceptions=True)
+
+            # Log any unexpected exceptions (CancelledError is expected)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                    logger.warning(f"[UNIFIED-WS] Recovery task {i} raised unexpected exception: {result}")
+
             self.recovery_tasks.clear()
 
         # Collect final metrics before disconnecting
