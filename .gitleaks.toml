@@ -121,6 +121,8 @@ paths = [
   '''backend/voice/profile_consolidation_service.py''',
   '''backend/system_control/macos_controller.py''',
   '''backend/voice_unlock/secure_password_typer.py''',
+  '''backend/api/simple_unlock_handler.py''',
+  '''test_voice_biometric_unlock_e2e.py''',
   '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',

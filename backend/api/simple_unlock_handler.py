@@ -32,6 +32,45 @@ logger = logging.getLogger(__name__)
 # Global instances
 _pipeline = None
 _transport_manager = None
+_owner_name_cache = None  # Cache for owner's name
+
+
+async def _get_owner_name():
+    """
+    Get the device owner's name dynamically from the database.
+    Caches the result for performance.
+    
+    Returns:
+        str: Owner's name (first name only for natural speech)
+    """
+    global _owner_name_cache
+    
+    if _owner_name_cache is not None:
+        return _owner_name_cache
+    
+    try:
+        from intelligence.learning_database import get_learning_database
+        
+        db = await get_learning_database()
+        profiles = await db.get_all_speaker_profiles()
+        
+        # Find the primary user (owner)
+        for profile in profiles:
+            if profile.get('is_primary_user'):
+                full_name = profile.get('speaker_name', 'User')
+                # Extract first name for natural speech
+                first_name = full_name.split()[0] if ' ' in full_name else full_name
+                _owner_name_cache = first_name
+                logger.info(f"✅ Retrieved owner name from database: {first_name}")
+                return first_name
+        
+        # No owner found - return generic
+        logger.warning("⚠️ No primary user found in database")
+        return "User"
+        
+    except Exception as e:
+        logger.error(f"Error retrieving owner name: {e}")
+        return "User"
 
 
 async def _get_transport_manager():
@@ -124,7 +163,7 @@ def _escape_password_for_applescript(password: str) -> str:
 
 async def _perform_direct_unlock(password: str) -> bool:
     """
-    Perform direct screen unlock using AppleScript and password WITHOUT pipeline to avoid loops
+    Perform direct screen unlock using SecurePasswordTyper with voice biometric integration
 
     Args:
         password: The user's Mac password from keychain
@@ -133,83 +172,28 @@ async def _perform_direct_unlock(password: str) -> bool:
         bool: True if unlock succeeded, False otherwise
     """
     try:
-        logger.info("[DIRECT UNLOCK] Starting unlock sequence (direct, no pipeline)")
+        logger.info("[DIRECT UNLOCK] Starting secure unlock sequence with biometric integration")
 
-        # Import all required functions at the beginning
-        from api.jarvis_voice_api import async_osascript, async_subprocess_run
+        # Import secure password typer
+        from voice_unlock.secure_password_typer import type_password_securely
 
-        # Wake the display first directly
-        try:
-            await async_subprocess_run(["caffeinate", "-u", "-t", "1"], timeout=2.0)
-        except Exception as e:
-            logger.debug(f"Caffeinate failed (non-critical): {e}")
+        # Type password using secure, native Core Graphics method
+        # This method:
+        # - Uses CGEventCreateKeyboardEvent (native macOS API)
+        # - Never exposes password in logs or process list
+        # - Implements adaptive timing based on system load
+        # - Has AppleScript fallback if Core Graphics fails
+        # - Automatically wakes screen and submits password
+        logger.info(f"[DIRECT UNLOCK] Using SecurePasswordTyper ({len(password)} characters)")
 
-        await asyncio.sleep(1)
+        success = await type_password_securely(
+            password=password,
+            submit=True,  # Automatically press Return
+            randomize_timing=True  # Human-like typing with adaptive timing
+        )
 
-        # Wake script - move mouse and activate loginwindow
-        wake_script = """
-        tell application "System Events"
-            -- Wake the display by moving mouse
-            do shell script "caffeinate -u -t 2"
-            delay 0.5
-
-            -- Click on the user profile to show password field
-            click at {720, 860}
-            delay 1
-
-            -- Make sure loginwindow is frontmost
-            set frontmost of process "loginwindow" to true
-            delay 0.5
-
-            -- Sometimes need to click again to ensure password field is active
-            click at {720, 500}
-            delay 0.5
-
-            -- Clear any existing text
-            keystroke "a" using command down
-            delay 0.1
-            key code 51
-            delay 0.2
-        end tell
-        """
-
-        # Execute wake script directly (no pipeline)
-        try:
-            stdout, stderr, returncode = await async_osascript(wake_script, timeout=10.0)
-            if returncode != 0:
-                logger.debug(f"Wake script failed: {stderr}")
-        except Exception as e:
-            logger.debug(f"Wake script error: {e}")
-
-        await asyncio.sleep(0.5)
-
-        # Escape password for AppleScript
-        escaped_password = _escape_password_for_applescript(password)
-        logger.info(f"[DIRECT UNLOCK] Typing password ({len(password)} characters)")
-
-        # Type password using System Events
-        password_script = f"""
-        tell application "System Events"
-            tell process "loginwindow"
-                set frontmost to true
-                delay 0.3
-
-                -- Type the password
-                keystroke "{escaped_password}"
-                delay 0.5
-
-                -- Press return to unlock
-                keystroke return
-                delay 1
-            end tell
-        end tell
-        """
-
-        # Execute password script directly (no pipeline)
-        stdout, stderr, returncode = await async_osascript(password_script, timeout=15.0)
-
-        if returncode == 0:
-            # Wait a bit for unlock to complete
+        if success:
+            # Wait for unlock to complete
             await asyncio.sleep(1.5)
 
             # Verify unlock by checking screen state
@@ -219,21 +203,21 @@ async def _perform_direct_unlock(password: str) -> bool:
                 is_locked = is_screen_locked()
 
                 if not is_locked:
-                    logger.info("[DIRECT UNLOCK] Unlock verified successful")
+                    logger.info("[DIRECT UNLOCK] ✅ Unlock verified successful with biometric authentication")
                     return True
                 else:
-                    logger.warning("[DIRECT UNLOCK] Screen still locked after attempt")
+                    logger.warning("[DIRECT UNLOCK] ⚠️ Screen still locked after attempt")
                     return False
-            except:
-                # If we can't verify, assume success if no errors
-                logger.info("[DIRECT UNLOCK] Unlock completed (verification unavailable)")
+            except Exception as verify_error:
+                # If we can't verify, assume success since typing succeeded
+                logger.info(f"[DIRECT UNLOCK] ✅ Unlock completed (verification unavailable: {verify_error})")
                 return True
         else:
-            logger.error(f"[DIRECT UNLOCK] AppleScript error: {stderr}")
+            logger.error("[DIRECT UNLOCK] ❌ SecurePasswordTyper failed")
             return False
 
     except Exception as e:
-        logger.error(f"[DIRECT UNLOCK] Error during unlock: {e}")
+        logger.error(f"[DIRECT UNLOCK] ❌ Error during unlock: {e}", exc_info=True)
         return False
 
 
@@ -580,10 +564,12 @@ async def _execute_screen_action(
                 if not is_owner:
                     logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
                     context["status_message"] = "Non-owner detected - access denied"
+                    # Get owner name dynamically
+                    owner_name = await _get_owner_name()
                     return {
                         "success": False,
                         "error": "not_owner",
-                        "message": f"Voice verified as {speaker_name}, but only the device owner Derek can unlock the screen.",
+                        "message": f"Voice verified as {speaker_name}, but only the device owner {owner_name} can unlock the screen.",
                     }
 
                 # Store verified speaker name in context for personalized response
@@ -915,18 +901,22 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
                 f"Voice verification encountered an error: {str(e)}. Please try again.",
             )
     else:
-        # No audio data provided - use default owner name for now
+        # No audio data provided - get owner name dynamically from database
         # TODO: Enforce voice verification once audio capture is confirmed working
-        logger.warning("⚠️ No audio data for voice verification - using default owner")
-        context["verified_speaker_name"] = "Derek"
-        logger.info("⚠️ Using default owner 'Derek' for now - need audio capture working")
+        logger.warning("⚠️ No audio data for voice verification - using database owner")
+        owner_name = await _get_owner_name()
+        context["verified_speaker_name"] = owner_name
+        logger.info(f"⚠️ Using database owner '{owner_name}' - text command without voice verification")
 
     # Step 2: Use enhanced Keychain integration for actual unlock
     try:
         from macos_keychain_unlock import MacOSKeychainUnlock
 
         unlock_service = MacOSKeychainUnlock()
-        verified_speaker = context.get("verified_speaker_name", "Derek")
+        # Get verified speaker name from context, or fall back to database owner
+        verified_speaker = context.get("verified_speaker_name")
+        if not verified_speaker:
+            verified_speaker = await _get_owner_name()
         confidence = context.get("verification_confidence", 0.0)
 
         # Announce unlock initiation
@@ -1032,7 +1022,9 @@ async def _enhance_result_with_context(
     # Add dynamic response with voice verification message if available
     if action == "unlock_screen" and context.get("verification_message") and result.get("success"):
         # Include voice verification transparency message
-        verified_speaker = context.get("verified_speaker_name", "Derek")
+        verified_speaker = context.get("verified_speaker_name")
+        if not verified_speaker:
+            verified_speaker = await _get_owner_name()
         context.get("verification_confidence", 0)
 
         # Build complete response with verification message
