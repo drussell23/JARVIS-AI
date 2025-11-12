@@ -6220,6 +6220,213 @@ class AsyncSystemManager:
                         print(f"  {Colors.YELLOW}⚠ CloudSQL Proxy:{Colors.ENDC} Status check failed - {str(e)[:50]}")
                         logger.debug(f"CloudSQL health check error: {e}")
 
+                    # === HYBRID CLOUD GCP VM MONITORING ===
+                    try:
+                        from backend.core.gcp_vm_manager import _gcp_vm_manager
+                        from backend.core.intelligent_gcp_optimizer import _optimizer
+                        from backend.core.component_warmup import get_warmup_system
+
+                        # Check if VM manager is initialized
+                        if _gcp_vm_manager is not None:
+                            vm_manager = _gcp_vm_manager
+                            stats = vm_manager.get_stats()
+                            managed_vms = vm_manager.managed_vms
+
+                            # Overall GCP status
+                            if len(managed_vms) > 0:
+                                total_cost = sum(vm.total_cost for vm in managed_vms.values())
+                                vm_count = stats['managed_vms']
+
+                                print(f"  {Colors.GREEN}✓ GCP Hybrid Cloud:{Colors.ENDC} {vm_count} VM(s) active (${total_cost:.4f} session)")
+
+                                # Show each VM
+                                for vm_name, vm in managed_vms.items():
+                                    vm.update_cost()  # Update cost before display
+
+                                    # VM status icon
+                                    if vm.is_healthy:
+                                        vm_icon = f"{Colors.GREEN}✅"
+                                        vm_status = "HEALTHY"
+                                    else:
+                                        vm_icon = f"{Colors.WARNING}⚠️ "
+                                        vm_status = f"UNHEALTHY ({vm.state.value})"
+
+                                    print(f"    ├─ {vm_icon} VM: {vm.name}")
+                                    print(f"    │  ├─ Status: {vm_status}")
+                                    print(f"    │  ├─ External IP: {vm.ip_address or 'N/A'}")
+                                    print(f"    │  ├─ Uptime: {vm.uptime_hours:.2f}h")
+                                    print(f"    │  ├─ Cost: ${vm.total_cost:.4f} (${vm.cost_per_hour:.3f}/hour)")
+
+                                    # Components offloaded
+                                    if vm.components:
+                                        comp_count = len(vm.components)
+                                        comp_preview = ", ".join(vm.components[:3])
+                                        if comp_count > 3:
+                                            comp_preview += f", +{comp_count-3} more"
+                                        print(f"    │  ├─ Components: {comp_count} offloaded")
+                                        print(f"    │  │  └─ {comp_preview}")
+
+                                    # Trigger reason
+                                    if vm.trigger_reason:
+                                        reason_short = vm.trigger_reason[:60] + "..." if len(vm.trigger_reason) > 60 else vm.trigger_reason
+                                        print(f"    │  └─ Trigger: {reason_short}")
+
+                            else:
+                                # No VMs active
+                                total_lifetime_cost = stats.get('total_cost', 0.0)
+                                total_created = stats.get('total_created', 0)
+
+                                if total_created > 0:
+                                    print(f"  {Colors.CYAN}ℹ GCP Hybrid Cloud:{Colors.ENDC} No active VMs")
+                                    print(f"    ├─ Session stats: {total_created} created, ${total_lifetime_cost:.4f} lifetime cost")
+                                else:
+                                    print(f"  {Colors.CYAN}ℹ GCP Hybrid Cloud:{Colors.ENDC} No VMs created this session")
+
+                            # Optimizer cost report
+                            if _optimizer is not None:
+                                optimizer = _optimizer
+                                cost_report = optimizer.get_cost_report()
+
+                                current_spend = cost_report['current_spend']
+                                budget_limit = cost_report['budget_limit']
+                                remaining = cost_report['remaining_budget']
+                                vm_count_today = cost_report['vm_creation_count']
+
+                                # Budget status
+                                budget_pct = (current_spend / budget_limit * 100) if budget_limit > 0 else 0
+
+                                if budget_pct >= 100:
+                                    budget_icon = f"{Colors.FAIL}🚨"
+                                    budget_status = f"{Colors.FAIL}EXHAUSTED{Colors.ENDC}"
+                                elif budget_pct >= 80:
+                                    budget_icon = f"{Colors.WARNING}⚠️ "
+                                    budget_status = f"{Colors.WARNING}HIGH{Colors.ENDC}"
+                                elif budget_pct >= 60:
+                                    budget_icon = f"{Colors.YELLOW}🟡"
+                                    budget_status = f"{Colors.YELLOW}MODERATE{Colors.ENDC}"
+                                else:
+                                    budget_icon = f"{Colors.GREEN}✓"
+                                    budget_status = f"{Colors.GREEN}HEALTHY{Colors.ENDC}"
+
+                                print(f"    ├─ {budget_icon} Daily Budget: {budget_status} ${current_spend:.2f} / ${budget_limit:.2f} ({budget_pct:.0f}%)")
+                                print(f"    │  └─ Remaining: ${remaining:.2f}")
+
+                                # VM creation quota
+                                max_vms = 10  # From thresholds
+                                quota_pct = (vm_count_today / max_vms * 100)
+
+                                if quota_pct >= 100:
+                                    quota_color = Colors.FAIL
+                                elif quota_pct >= 70:
+                                    quota_color = Colors.WARNING
+                                else:
+                                    quota_color = Colors.GREEN
+
+                                print(f"    ├─ VM Creation Quota: {quota_color}{vm_count_today}/{max_vms} today ({quota_pct:.0f}%){Colors.ENDC}")
+
+                                # Decision stats
+                                total_decisions = cost_report['total_decisions']
+                                false_alarms = cost_report.get('false_alarms', 0)
+                                missed_opps = cost_report.get('missed_opportunities', 0)
+
+                                if total_decisions > 0:
+                                    accuracy = ((total_decisions - false_alarms - missed_opps) / total_decisions * 100)
+                                    acc_color = Colors.GREEN if accuracy >= 80 else Colors.YELLOW if accuracy >= 60 else Colors.WARNING
+                                    print(f"    └─ Optimizer: {acc_color}{accuracy:.0f}% accuracy{Colors.ENDC} ({total_decisions} decisions)")
+
+                        else:
+                            # VM manager not initialized - check if warmup tried to use it
+                            warmup_system = get_warmup_system()
+
+                            # Check if we're in memory pressure mode
+                            import psutil
+                            mem_percent = psutil.virtual_memory().percent
+
+                            if mem_percent >= 80:
+                                print(f"  {Colors.WARNING}⚠️  GCP Hybrid Cloud:{Colors.ENDC} High memory ({mem_percent:.1f}%) but VM manager not initialized")
+                            else:
+                                print(f"  {Colors.CYAN}ℹ GCP Hybrid Cloud:{Colors.ENDC} Standby (RAM: {mem_percent:.1f}%)")
+
+                    except ImportError:
+                        # GCP components not available
+                        pass
+                    except Exception as e:
+                        print(f"  {Colors.YELLOW}⚠ GCP Hybrid Cloud:{Colors.ENDC} Status check failed - {str(e)[:50]}")
+                        logger.debug(f"GCP monitoring error: {e}")
+
+                    # === COMPONENT WARMUP STATUS ===
+                    try:
+                        from backend.core.component_warmup import get_warmup_system
+
+                        warmup = get_warmup_system()
+
+                        if warmup.warmup_complete.is_set():
+                            # Warmup finished
+                            ready_count = sum(1 for status in warmup.component_status.values()
+                                            if status.value == "ready")
+                            total_count = len(warmup.components)
+                            failed_count = len(warmup.failed_components)
+
+                            if failed_count == 0:
+                                status_icon = f"{Colors.GREEN}✓"
+                                status_text = "ALL READY"
+                            elif ready_count > 0:
+                                status_icon = f"{Colors.YELLOW}⚠️ "
+                                status_text = "PARTIAL"
+                            else:
+                                status_icon = f"{Colors.FAIL}✗"
+                                status_text = "FAILED"
+
+                            warmup_time = warmup.total_load_time
+                            critical_time = warmup.critical_load_time
+
+                            print(f"  {status_icon} Component Warmup:{Colors.ENDC} {status_text} ({ready_count}/{total_count} ready)")
+                            print(f"    ├─ Total time: {warmup_time:.2f}s (critical: {critical_time:.2f}s)")
+
+                            if failed_count > 0:
+                                print(f"    ├─ {Colors.WARNING}Failed: {failed_count} component(s){Colors.ENDC}")
+                                for failed in warmup.failed_components[:3]:  # Show first 3
+                                    print(f"    │  └─ {failed}")
+
+                            # Show component breakdown by priority
+                            from backend.core.component_warmup import ComponentStatus, ComponentPriority
+                            priority_counts = {}
+                            for name, comp in warmup.components.items():
+                                priority = comp.priority.name
+                                status = warmup.component_status.get(name, ComponentStatus.PENDING)
+
+                                if priority not in priority_counts:
+                                    priority_counts[priority] = {"ready": 0, "total": 0}
+
+                                priority_counts[priority]["total"] += 1
+                                if status == ComponentStatus.READY:
+                                    priority_counts[priority]["ready"] += 1
+
+                            print(f"    └─ By priority:")
+                            for priority in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "DEFERRED"]:
+                                if priority in priority_counts:
+                                    counts = priority_counts[priority]
+                                    pct = (counts["ready"] / counts["total"] * 100) if counts["total"] > 0 else 0
+
+                                    if pct == 100:
+                                        priority_color = Colors.GREEN
+                                    elif pct >= 50:
+                                        priority_color = Colors.YELLOW
+                                    else:
+                                        priority_color = Colors.WARNING
+
+                                    print(f"       ├─ {priority}: {priority_color}{counts['ready']}/{counts['total']} ({pct:.0f}%){Colors.ENDC}")
+
+                        else:
+                            # Warmup still in progress or not started
+                            print(f"  {Colors.CYAN}ℹ Component Warmup:{Colors.ENDC} In progress...")
+
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        print(f"  {Colors.YELLOW}⚠ Component Warmup:{Colors.ENDC} Status unavailable")
+                        logger.debug(f"Component warmup monitoring error: {e}")
+
                     # Alert on repeated failures
                     for service, failures in consecutive_failures.items():
                         if failures >= 3:
