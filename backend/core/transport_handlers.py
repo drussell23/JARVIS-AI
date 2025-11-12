@@ -30,7 +30,22 @@ async def applescript_handler(action: str, context: Dict[str, Any], **kwargs) ->
             from macos_keychain_unlock import MacOSKeychainUnlock
 
             unlock_service = MacOSKeychainUnlock()
-            verified_speaker = context.get("verified_speaker_name", "Derek")
+            # Get verified speaker from context (should be set by voice verification)
+            verified_speaker = context.get("verified_speaker_name", "User")
+            
+            # If no verified speaker, try to get from database
+            if verified_speaker == "User":
+                try:
+                    from intelligence.learning_database import get_learning_database
+                    db = await get_learning_database()
+                    profiles = await db.get_all_speaker_profiles()
+                    for profile in profiles:
+                        if profile.get('is_primary_user'):
+                            full_name = profile.get('speaker_name', 'User')
+                            verified_speaker = full_name.split()[0] if ' ' in full_name else full_name
+                            break
+                except Exception as e:
+                    logger.warning(f"Could not get owner name from database: {e}")
 
             logger.info(
                 f"[APPLESCRIPT] Calling MacOSKeychainUnlock.unlock_screen() for {verified_speaker}"
