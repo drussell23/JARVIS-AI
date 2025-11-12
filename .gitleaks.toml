@@ -93,6 +93,13 @@ regexes = [
   '''Type password characters''',
   '''type password characters''',
   '''Failed to type password''',
+  # Allow password mentions in documentation (often with ANSI color codes)
+  '''(?i)\[1;3;m[pP]assword\[0m''',
+  '''(?i)password.*retrieved from keychain''',
+  '''(?i)secure.*password''',
+  '''(?i)memory-safe.*password''',
+  '''(?i)password.*retrieval''',
+  '''(?i)test.*password''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
