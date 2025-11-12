@@ -2152,20 +2152,24 @@ class JARVISLearningDatabase:
 
             cloudsql_config = gcp_config.get("cloud_sql", {})
 
-            # Initialize hybrid sync
+            # Initialize ADVANCED hybrid sync (V2.0)
             sqlite_sync_path = self.db_dir / "voice_biometrics_sync.db"
             self.hybrid_sync = HybridDatabaseSync(
                 sqlite_path=sqlite_sync_path,
                 cloudsql_config=cloudsql_config,
                 sync_interval_seconds=30,
                 max_retry_attempts=5,
-                batch_size=50
+                batch_size=50,
+                max_connections=3,  # 🚀 Reduced from 10 to prevent exhaustion
+                enable_faiss_cache=True  # 🚀 Enable sub-millisecond FAISS cache
             )
 
             await self.hybrid_sync.initialize()
-            logger.info("✅ Hybrid sync enabled - voice biometrics have instant local fallback")
+            logger.info("✅ Advanced hybrid sync V2.0 enabled - zero live queries mode")
             logger.info(f"   Local: {sqlite_sync_path}")
             logger.info(f"   Cloud: {cloudsql_config.get('instance_name', 'unknown')}")
+            logger.info(f"   Max Connections: 3 (connection orchestrator)")
+            logger.info(f"   FAISS Cache: {'Enabled' if self.hybrid_sync.enable_faiss_cache else 'Disabled'}")
 
         except Exception as e:
             logger.warning(f"⚠️  Hybrid sync initialization failed: {e}")
