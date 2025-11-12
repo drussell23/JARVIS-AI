@@ -84,7 +84,10 @@ regexes = [
   '''db_password = get_db_password\(\)''',
   # Allow password from config getter (not hardcoded)
   '''password=self\.config\[''',
+  '''password=self\.cloudsql_config\.get\("password"\)''',
+  '''password.*=.*self\.cloudsql_config\.get\("password"\)''',
   '''\.get\('password',''',
+  '''\.get\("password"\)''',
   # Allow keychain password checks (not exposing actual passwords)
   '''has_password\s*=''',
   '''if not has_password''',
