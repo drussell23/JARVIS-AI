@@ -2176,6 +2176,26 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "memory_manager"):
         await app.state.memory_manager.stop_monitoring()
 
+    # Clean up any remaining asyncio event loops in threads
+    logger.info("🧹 Cleaning up asyncio threads...")
+    try:
+        import threading
+
+        # Give asyncio tasks a moment to finish
+        await asyncio.sleep(0.5)
+
+        # Count remaining threads for logging
+        remaining_threads = [t for t in threading.enumerate() if t.name.startswith('asyncio_')]
+        if remaining_threads:
+            logger.info(f"   • {len(remaining_threads)} asyncio threads cleaning up...")
+
+            # Wait a bit longer for them to finish
+            await asyncio.sleep(1.0)
+
+        logger.info("✅ Thread cleanup complete")
+    except Exception as e:
+        logger.error(f"Error during thread cleanup: {e}")
+
 
 # Apply vision monitoring fix
 try:
