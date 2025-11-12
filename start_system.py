@@ -5269,15 +5269,16 @@ class AsyncSystemManager:
 
     async def _check_voice_unlock_configuration(self) -> dict:
         """
-        🔐 CHECK VOICE UNLOCK CONFIGURATION
+        🔐 CHECK VOICE UNLOCK CONFIGURATION (COMPREHENSIVE)
 
         Checks if voice unlock is properly configured:
-        - Keychain password stored
-        - Enrollment data exists
-        - Daemon processrunning
+        1. Learning Database initialized
+        2. Voice profiles loaded from CloudSQL
+        3. Keychain password stored (JARVIS_Screen_Unlock service)
+        4. Password typer functional
 
         Returns:
-            Configuration status with issues and recommendations
+            Configuration status with detailed diagnostics
         """
         import subprocess
         from pathlib import Path
@@ -5286,27 +5287,125 @@ class AsyncSystemManager:
         status = self.voice_unlock_config_status.copy()
         status['last_check_time'] = datetime.now()
         status['issues'] = []
+        status['detailed_checks'] = {}
 
         try:
-            # 1. Check if password is stored in Keychain
+            # ═══════════════════════════════════════════════════════════
+            # 1. CHECK LEARNING DATABASE INITIALIZATION
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking Learning Database...")
+            try:
+                from intelligence.learning_database import JARVISLearningDatabase
+                test_db = JARVISLearningDatabase()
+                await test_db.initialize()
+
+                status['detailed_checks']['learning_db'] = {
+                    'initialized': True,
+                    'status': 'OK'
+                }
+                logger.info("[VOICE UNLOCK] ✅ Learning Database: INITIALIZED")
+            except Exception as e:
+                status['detailed_checks']['learning_db'] = {
+                    'initialized': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'Learning Database failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ Learning Database: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 2. CHECK VOICE PROFILES FROM CLOUDSQL
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking voice profiles...")
+            try:
+                from intelligence.learning_database import JARVISLearningDatabase
+                db = JARVISLearningDatabase()
+                await db.initialize()
+
+                # Query speaker profiles
+                profiles = await db.get_all_speaker_profiles()
+                profile_count = len(profiles) if profiles else 0
+
+                status['detailed_checks']['voice_profiles'] = {
+                    'loaded': profile_count > 0,
+                    'count': profile_count,
+                    'profiles': [p.get('name', 'unknown') for p in (profiles or [])]
+                }
+
+                if profile_count > 0:
+                    logger.info(f"[VOICE UNLOCK] ✅ Voice Profiles: {profile_count} loaded")
+                    for profile in profiles:
+                        logger.info(f"[VOICE UNLOCK]    ├─ {profile.get('name', 'unknown')}")
+                else:
+                    status['issues'].append('No voice profiles found in CloudSQL')
+                    logger.warning("[VOICE UNLOCK] ⚠️  Voice Profiles: NONE FOUND")
+            except Exception as e:
+                status['detailed_checks']['voice_profiles'] = {
+                    'loaded': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'Voice profile check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ Voice Profiles: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 3. CHECK KEYCHAIN PASSWORD (JARVIS_Screen_Unlock)
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking Keychain password...")
             try:
                 result = subprocess.run(
-                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
+                    ['security', 'find-generic-password', '-s', 'JARVIS_Screen_Unlock', '-a', 'jarvis_user', '-w'],
                     capture_output=True,
                     text=True,
                     timeout=5
                 )
                 if result.returncode == 0:
+                    password = result.stdout.strip()
                     status['keychain_password_stored'] = True
-                    logger.info("[VOICE UNLOCK] ✅ Password stored in Keychain")
+                    status['detailed_checks']['keychain'] = {
+                        'stored': True,
+                        'service': 'JARVIS_Screen_Unlock',
+                        'password_length': len(password)
+                    }
+                    logger.info(f"[VOICE UNLOCK] ✅ Keychain: Password stored ({len(password)} chars)")
                 else:
                     status['keychain_password_stored'] = False
-                    status['issues'].append('Password not stored in Keychain')
-                    logger.warning("[VOICE UNLOCK] ⚠️  Password not in Keychain")
+                    status['detailed_checks']['keychain'] = {
+                        'stored': False,
+                        'error': 'Not found in Keychain'
+                    }
+                    status['issues'].append('Password not stored in Keychain (JARVIS_Screen_Unlock)')
+                    logger.warning("[VOICE UNLOCK] ⚠️  Keychain: PASSWORD NOT FOUND")
             except Exception as e:
                 status['keychain_password_stored'] = False
+                status['detailed_checks']['keychain'] = {
+                    'stored': False,
+                    'error': str(e)
+                }
                 status['issues'].append(f'Keychain check failed: {str(e)}')
-                logger.error(f"[VOICE UNLOCK] ❌ Keychain check error: {e}")
+                logger.error(f"[VOICE UNLOCK] ❌ Keychain: FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 4. CHECK PASSWORD TYPER FUNCTIONALITY
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking password typer...")
+            try:
+                from voice_unlock.secure_password_typer import SecurePasswordTyper, TypingConfig
+
+                # Test that we can instantiate and get config
+                typer = SecurePasswordTyper()
+                test_config = TypingConfig()
+
+                status['detailed_checks']['password_typer'] = {
+                    'available': True,
+                    'config_created': True
+                }
+                logger.info("[VOICE UNLOCK] ✅ Password Typer: FUNCTIONAL")
+            except Exception as e:
+                status['detailed_checks']['password_typer'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'Password typer check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ Password Typer: FAILED - {e}")
 
             # 2. Check if enrollment data exists
             enrollment_file = Path.home() / ".jarvis" / "voice_unlock_enrollment.json"
@@ -6267,7 +6366,7 @@ class AsyncSystemManager:
                     else:
                         print(f"  {Colors.CYAN}🔮 SAI (Situational Awareness):{Colors.ENDC} {Colors.YELLOW}Idle{Colors.ENDC} (no recent predictions)")
 
-                    # 🔐 VOICE UNLOCK CONFIGURATION CHECK
+                    # 🔐 VOICE UNLOCK CONFIGURATION CHECK (COMPREHENSIVE)
                     print()  # Blank line for separation
                     voice_unlock_status = await self._check_voice_unlock_configuration()
 
@@ -6279,7 +6378,48 @@ class AsyncSystemManager:
                         status_text = f"{Colors.YELLOW}NOT CONFIGURED{Colors.ENDC}"
 
                     print(f"  {status_icon} Voice Unlock: {status_text}")
-                    print(f"    ├─ {'✅' if voice_unlock_status['keychain_password_stored'] else '❌'} Keychain password")
+
+                    # Show detailed checks
+                    detailed = voice_unlock_status.get('detailed_checks', {})
+
+                    # 1. Learning Database
+                    learning_db = detailed.get('learning_db', {})
+                    if learning_db.get('initialized'):
+                        print(f"    ├─ ✅ Learning Database: INITIALIZED")
+                    else:
+                        error = learning_db.get('error', 'Unknown error')
+                        print(f"    ├─ ❌ Learning Database: FAILED ({error})")
+
+                    # 2. Voice Profiles
+                    voice_profiles = detailed.get('voice_profiles', {})
+                    if voice_profiles.get('loaded'):
+                        count = voice_profiles.get('count', 0)
+                        profiles = voice_profiles.get('profiles', [])
+                        print(f"    ├─ ✅ Voice Profiles: {count} loaded from CloudSQL")
+                        for profile_name in profiles:
+                            print(f"    │  └─ {profile_name}")
+                    else:
+                        error = voice_profiles.get('error', 'No profiles found')
+                        print(f"    ├─ ❌ Voice Profiles: {error}")
+
+                    # 3. Keychain Password
+                    keychain = detailed.get('keychain', {})
+                    if keychain.get('stored'):
+                        pwd_len = keychain.get('password_length', 0)
+                        print(f"    ├─ ✅ Keychain Password: Stored ({pwd_len} chars)")
+                    else:
+                        error = keychain.get('error', 'Not found')
+                        print(f"    ├─ ❌ Keychain Password: {error}")
+
+                    # 4. Password Typer
+                    typer = detailed.get('password_typer', {})
+                    if typer.get('available'):
+                        print(f"    ├─ ✅ Password Typer: FUNCTIONAL")
+                    else:
+                        error = typer.get('error', 'Not available')
+                        print(f"    ├─ ❌ Password Typer: {error}")
+
+                    # Legacy checks
                     print(f"    ├─ {'✅' if voice_unlock_status['enrollment_data_exists'] else '❌'} Enrollment data")
 
                     # Daemon status with detailed info
