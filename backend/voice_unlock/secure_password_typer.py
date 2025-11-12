@@ -828,11 +828,21 @@ async def type_password_securely(
         ...     print("Password typed securely")
     """
     typer = get_secure_typer()
-    return await typer.type_password_secure(
+
+    # Create config with randomize_timing setting
+    config = TypingConfig(
+        randomize_timing=randomize_timing,
+        submit_after_typing=submit
+    )
+
+    # Call with proper signature
+    success, metrics = await typer.type_password_secure(
         password=password,
         submit=submit,
-        randomize_timing=randomize_timing
+        config_override=config
     )
+
+    return success
 
 
 async def main():
