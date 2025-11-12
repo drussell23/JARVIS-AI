@@ -5399,6 +5399,21 @@ class JARVISLearningDatabase:
                         "feature_statistics": row.get("feature_statistics"),
                     }
 
+                    # Add compatibility mappings for components expecting different field names
+                    profile["name"] = profile["speaker_name"]  # Map speaker_name -> name
+                    profile["embedding"] = profile["voiceprint_embedding"]  # Map voiceprint_embedding -> embedding
+
+                    # Convert embedding to list if it's bytes
+                    if profile["embedding"] and isinstance(profile["embedding"], (bytes, memoryview)):
+                        import numpy as np
+                        # Convert bytes to numpy array (assuming float32)
+                        try:
+                            embedding_array = np.frombuffer(profile["embedding"], dtype=np.float32)
+                            profile["embedding"] = embedding_array.tolist()
+                        except:
+                            logger.warning(f"Could not convert embedding for {profile['speaker_name']}")
+                            profile["embedding"] = None
+
                     # Log if acoustic features are present
                     has_acoustic = any([
                         profile.get("pitch_mean_hz"),
