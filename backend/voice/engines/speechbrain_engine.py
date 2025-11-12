@@ -587,8 +587,12 @@ class SpeechBrainEngine(BaseSTTEngine):
         Loads the ECAPA-TDNN speaker encoder for speaker verification and
         embedding extraction. Called automatically when speaker features are used.
 
+        Uses a dedicated thread pool with timeout to prevent deadlocks from
+        blocking I/O operations during model loading.
+
         Raises:
             Exception: If speaker encoder loading fails
+            asyncio.TimeoutError: If loading takes longer than 120 seconds
         """
         if self.speaker_encoder_loaded:
             return
@@ -597,6 +601,8 @@ class SpeechBrainEngine(BaseSTTEngine):
             from speechbrain.inference.speaker import EncoderClassifier
             import platform
             import sys
+            from concurrent.futures import ThreadPoolExecutor
+            import threading
 
             logger.info("🔄 Loading speaker encoder (ECAPA-TDNN)...")
 
@@ -608,60 +614,88 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             # IMPORTANT: Force CPU for speaker encoder
             # MPS (Apple Silicon) doesn't support FFT operations needed for ECAPA-TDNN
-            # PyTorch 2.9.0+ on ARM64 has known segfault issues during model loading
             encoder_device = "cpu"
             logger.info(f"   Using device: {encoder_device} (FFT operations required)")
 
-            # Apply PyTorch 2.9.0+ Apple Silicon workaround
-            if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
-                logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
+            # Create dedicated thread pool for model loading to avoid event loop conflicts
+            # Using max_workers=1 ensures sequential loading and prevents thread exhaustion
+            executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="speechbrain_loader"
+            )
 
-                # Disable MPS fallback warnings during model loading
+            def _load_model_sync():
+                """Synchronous model loading function to run in dedicated thread."""
+                # Set thread-local PyTorch settings to avoid conflicts
+                torch.set_num_threads(1)  # Prevent thread pool exhaustion
+
                 import os
-                old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
-                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-
-                # Force CPU-only mode to avoid MPS backend issues
-                if hasattr(torch.backends, 'mps'):
-                    torch.backends.mps.is_built = lambda: False
+                old_mps_fallback = None
 
                 try:
-                    loop = asyncio.get_event_loop()
+                    # Apply PyTorch workarounds if needed
+                    if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                        logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
+                        old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
+                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
 
-                    # Load with explicit CPU device and safe checkpoint loading
-                    self.speaker_encoder = await loop.run_in_executor(
-                        None,
-                        lambda: EncoderClassifier.from_hparams(
-                            source="speechbrain/spkrec-ecapa-voxceleb",
-                            savedir=str(self.cache_dir / "speaker_encoder"),
-                            run_opts={
-                                "device": "cpu",
-                                "data_parallel_backend": False,
-                                "distributed_launch": False,
-                            },
-                        ),
-                    )
+                        if hasattr(torch.backends, 'mps'):
+                            torch.backends.mps.is_built = lambda: False
 
-                    logger.info("   ✅ Workaround successful - model loaded on CPU")
+                    # Load model with appropriate run_opts
+                    run_opts = {"device": "cpu"}
+                    if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                        run_opts.update({
+                            "data_parallel_backend": False,
+                            "distributed_launch": False,
+                        })
 
-                finally:
-                    # Restore MPS setting
-                    if old_mps_fallback is not None:
-                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
-                    else:
-                        os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
+                    logger.info(f"   Loading from thread: {threading.current_thread().name}")
 
-            else:
-                # Standard loading for other platforms
-                loop = asyncio.get_event_loop()
-                self.speaker_encoder = await loop.run_in_executor(
-                    None,
-                    lambda: EncoderClassifier.from_hparams(
+                    model = EncoderClassifier.from_hparams(
                         source="speechbrain/spkrec-ecapa-voxceleb",
                         savedir=str(self.cache_dir / "speaker_encoder"),
-                        run_opts={"device": encoder_device},
-                    ),
+                        run_opts=run_opts,
+                    )
+
+                    logger.info("   ✅ Model loaded successfully in dedicated thread")
+                    return model
+
+                finally:
+                    # Restore environment
+                    if old_mps_fallback is not None:
+                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
+                    elif 'PYTORCH_MPS_HIGH_WATERMARK_RATIO' in os.environ:
+                        os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
+
+            try:
+                # Load model with timeout to prevent infinite hangs
+                loop = asyncio.get_running_loop()
+                logger.info("   Submitting model loading task to dedicated thread pool...")
+
+                # Use asyncio.wait_for to enforce timeout
+                self.speaker_encoder = await asyncio.wait_for(
+                    loop.run_in_executor(executor, _load_model_sync),
+                    timeout=120.0  # 2 minute timeout for model loading
                 )
+
+                logger.info("   ✅ Model loaded and transferred to main thread")
+
+            except asyncio.TimeoutError:
+                logger.error(
+                    "❌ Speaker encoder loading timed out after 120 seconds!\n"
+                    "   This usually indicates a deadlock or blocking operation.\n"
+                    "   Possible causes:\n"
+                    "   - Event loop conflict with torch.load()\n"
+                    "   - Thread pool exhaustion\n"
+                    "   - Corrupted model files\n"
+                    "   \n"
+                    "   Try clearing the cache: rm -rf ~/.cache/jarvis/speechbrain"
+                )
+                raise
+            finally:
+                # Always shutdown executor to prevent thread leaks
+                executor.shutdown(wait=False)
 
             self.speaker_encoder_loaded = True
             logger.info("✅ Speaker encoder loaded successfully")
