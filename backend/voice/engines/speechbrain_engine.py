@@ -595,24 +595,73 @@ class SpeechBrainEngine(BaseSTTEngine):
 
         try:
             from speechbrain.inference.speaker import EncoderClassifier
+            import platform
+            import sys
 
             logger.info("🔄 Loading speaker encoder (ECAPA-TDNN)...")
-            loop = asyncio.get_event_loop()
+
+            # Detect system information for diagnostics
+            is_apple_silicon = platform.machine() == 'arm64' and sys.platform == 'darwin'
+            pytorch_version = torch.__version__
+
+            logger.info(f"   System: {platform.machine()}, PyTorch: {pytorch_version}")
 
             # IMPORTANT: Force CPU for speaker encoder
             # MPS (Apple Silicon) doesn't support FFT operations needed for ECAPA-TDNN
-            # This ensures embeddings can be extracted successfully
+            # PyTorch 2.9.0+ on ARM64 has known segfault issues during model loading
             encoder_device = "cpu"
             logger.info(f"   Using device: {encoder_device} (FFT operations required)")
 
-            self.speaker_encoder = await loop.run_in_executor(
-                None,
-                lambda: EncoderClassifier.from_hparams(
-                    source="speechbrain/spkrec-ecapa-voxceleb",
-                    savedir=str(self.cache_dir / "speaker_encoder"),
-                    run_opts={"device": encoder_device},
-                ),
-            )
+            # Apply PyTorch 2.9.0+ Apple Silicon workaround
+            if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
+
+                # Disable MPS fallback warnings during model loading
+                import os
+                old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+
+                # Force CPU-only mode to avoid MPS backend issues
+                if hasattr(torch.backends, 'mps'):
+                    torch.backends.mps.is_built = lambda: False
+
+                try:
+                    loop = asyncio.get_event_loop()
+
+                    # Load with explicit CPU device and safe checkpoint loading
+                    self.speaker_encoder = await loop.run_in_executor(
+                        None,
+                        lambda: EncoderClassifier.from_hparams(
+                            source="speechbrain/spkrec-ecapa-voxceleb",
+                            savedir=str(self.cache_dir / "speaker_encoder"),
+                            run_opts={
+                                "device": "cpu",
+                                "data_parallel_backend": False,
+                                "distributed_launch": False,
+                            },
+                        ),
+                    )
+
+                    logger.info("   ✅ Workaround successful - model loaded on CPU")
+
+                finally:
+                    # Restore MPS setting
+                    if old_mps_fallback is not None:
+                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
+                    else:
+                        os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
+
+            else:
+                # Standard loading for other platforms
+                loop = asyncio.get_event_loop()
+                self.speaker_encoder = await loop.run_in_executor(
+                    None,
+                    lambda: EncoderClassifier.from_hparams(
+                        source="speechbrain/spkrec-ecapa-voxceleb",
+                        savedir=str(self.cache_dir / "speaker_encoder"),
+                        run_opts={"device": encoder_device},
+                    ),
+                )
 
             self.speaker_encoder_loaded = True
             logger.info("✅ Speaker encoder loaded successfully")
@@ -633,6 +682,18 @@ class SpeechBrainEngine(BaseSTTEngine):
                 "   This may prevent speaker verification from working.\n"
                 "   Check that all dependencies are installed: pip install speechbrain soundfile"
             )
+
+            # Provide helpful diagnostics for common issues
+            if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                logger.error(
+                    "\n   🔍 APPLE SILICON + PYTORCH 2.9.0+ DETECTED:\n"
+                    "   This combination has known segfault issues during model loading.\n"
+                    "   \n"
+                    "   RECOMMENDED FIXES:\n"
+                    "   1. Downgrade PyTorch: pip install torch==2.3.1 torchaudio==2.3.1\n"
+                    "   2. Or set environment variable: export PYTORCH_ENABLE_MPS_FALLBACK=0\n"
+                    "   3. Or upgrade to PyTorch 2.12+ when available (fix expected)\n"
+                )
             raise
 
     def _get_optimal_device(self) -> str:
