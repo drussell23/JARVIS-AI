@@ -2919,8 +2919,6 @@ class AsyncSystemManager:
             'average_confidence': 0.0,
             'failure_reasons': {}  # Count of each failure reason
         }
-        self.last_autonomous_fix_report = None  # Store last fix report
-        self.autonomous_fix_history = []  # Track all autonomous fixes
 
         # Voice Unlock Configuration tracking
         self.voice_unlock_config_status = {
@@ -4918,7 +4916,7 @@ class AsyncSystemManager:
         - Configuration (environment, paths, permissions)
         - Runtime (process state, memory, logs)
 
-        Uses SAI/CAI/UAE for intelligent analysis and autonomous fixes
+        Uses SAI/CAI/UAE for intelligent analysis
 
         Returns:
             Comprehensive diagnostic report with exact fixes
@@ -4934,7 +4932,6 @@ class AsyncSystemManager:
             'findings': [],
             'bugs_detected': [],
             'missing_components': [],
-            'autonomous_fixes': [],
             'confidence': 0.0
         }
 
@@ -5249,42 +5246,12 @@ class AsyncSystemManager:
                 diagnostic['confidence'] = 0.60
 
             # ==========================================
-            # 7. AUTONOMOUS FIX GENERATION
             # ==========================================
-            logger.info("🔧 Generating autonomous fixes...")
 
             # Generate fixes for each bug
             for bug in diagnostic['bugs_detected']:
-                if bug['type'] == 'insufficient_samples':
-                    diagnostic['autonomous_fixes'].append({
-                        'bug': bug['type'],
-                        'command': f"python backend/voice/enroll_voice.py --speaker {bug.get('speaker', 'Derek')}",
-                        'description': f"Re-enroll voice profile for {bug.get('speaker')}",
-                        'auto_executable': True,
-                        'risk_level': 'low'
-                    })
-
-                elif bug['type'] == 'corrupted_embedding':
-                    diagnostic['autonomous_fixes'].append({
-                        'bug': bug['type'],
-                        'command': f"python backend/voice/enroll_voice.py --speaker {bug.get('speaker')} --force",
-                        'description': f"Force re-enrollment to fix corrupted embedding",
-                        'auto_executable': True,
-                        'risk_level': 'medium'
-                    })
-
-                elif bug['type'] == 'missing_package':
-                    diagnostic['autonomous_fixes'].append({
-                        'bug': bug['type'],
-                        'command': f"pip install {bug.get('package')}",
-                        'description': f"Install missing package: {bug.get('package')}",
-                        'auto_executable': True,
-                        'risk_level': 'low'
-                    })
-
             logger.info(f"✅ Deep diagnostic complete: {len(diagnostic['findings'])} findings, "
-                       f"{len(diagnostic['bugs_detected'])} bugs, "
-                       f"{len(diagnostic['autonomous_fixes'])} fixes available")
+                       f"{len(diagnostic['bugs_detected'])} bugs detected")
 
         except Exception as e:
             logger.error(f"Deep diagnostic error: {e}", exc_info=True)
@@ -5296,285 +5263,6 @@ class AsyncSystemManager:
             })
 
         return diagnostic
-
-    async def _autonomous_code_fixer(self, diagnostic: dict) -> dict:
-        """
-        🤖 AUTONOMOUS CODE FIXING ENGINE
-
-        Actually FIXES bugs in your code:
-        - Modifies Python files (AST transformations)
-        - Patches JavaScript/TypeScript
-        - Fixes Rust/Swift issues
-        - Repairs database schema/data
-        - Adds missing error handlers
-        - Removes blocking calls
-        - Fixes async issues
-
-        Uses CAI to detect language and SAI to determine fix strategy
-
-        Returns:
-            Fix report with success/failure for each fix
-        """
-        from pathlib import Path
-        import ast
-        import shutil
-        from datetime import datetime
-
-        fix_report = {
-            'timestamp': datetime.now().isoformat(),
-            'fixes_attempted': 0,
-            'fixes_successful': 0,
-            'fixes_failed': 0,
-            'rollback_points': [],
-            'changes_made': []
-        }
-
-        logger.info("🤖 AUTONOMOUS FIXER: Starting code repair...")
-
-        try:
-            # Create backup directory for rollbacks
-            backup_dir = Path(__file__).parent / ".jarvis_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"   📦 Backup directory: {backup_dir}")
-
-            # ==========================================
-            # 1. FIX PYTHON CODE BUGS
-            # ==========================================
-            bugs_to_fix = [b for b in diagnostic.get('bugs_detected', [])
-                          if b.get('file', '').endswith('.py')]
-
-            for bug in bugs_to_fix:
-                fix_report['fixes_attempted'] += 1
-                bug_file = Path(__file__).parent / bug.get('file', '')
-
-                if not bug_file.exists():
-                    logger.warning(f"   ⚠️  File not found: {bug_file}")
-                    continue
-
-                # Backup original file
-                backup_path = backup_dir / bug_file.name
-                shutil.copy2(bug_file, backup_path)
-                fix_report['rollback_points'].append({
-                    'file': str(bug_file),
-                    'backup': str(backup_path)
-                })
-
-                try:
-                    with open(bug_file, 'r') as f:
-                        source_code = f.read()
-
-                    # CAI: Detect language features and context
-                    is_async_heavy = 'async def' in source_code
-                    has_type_hints = ': ' in source_code and '->' in source_code
-
-                    modified = False
-                    tree = ast.parse(source_code)
-
-                    # FIX TYPE 1: Add missing exception handlers
-                    if bug['type'] == 'missing_exception_handler':
-                        logger.info(f"   🔧 Adding exception handler to {bug_file.name}:{bug.get('line')}")
-
-                        class ExceptionHandlerAdder(ast.NodeTransformer):
-                            def visit_Try(self, node):
-                                if not node.handlers:
-                                    # Add generic exception handler
-                                    handler = ast.ExceptHandler(
-                                        type=ast.Name(id='Exception', ctx=ast.Load()),
-                                        name='e',
-                                        body=[
-                                            ast.Expr(
-                                                value=ast.Call(
-                                                    func=ast.Attribute(
-                                                        value=ast.Name(id='logger', ctx=ast.Load()),
-                                                        attr='error',
-                                                        ctx=ast.Load()
-                                                    ),
-                                                    args=[ast.JoinedStr(values=[
-                                                        ast.Constant(value='Error in '),
-                                                        ast.FormattedValue(
-                                                            value=ast.Name(id='__name__', ctx=ast.Load()),
-                                                            conversion=-1
-                                                        ),
-                                                        ast.Constant(value=': '),
-                                                        ast.FormattedValue(
-                                                            value=ast.Name(id='e', ctx=ast.Load()),
-                                                            conversion=-1
-                                                        )
-                                                    ])],
-                                                    keywords=[]
-                                                )
-                                            )
-                                        ]
-                                    )
-                                    node.handlers.append(handler)
-                                    modified = True
-                                return self.generic_visit(node)
-
-                        transformer = ExceptionHandlerAdder()
-                        tree = transformer.visit(tree)
-
-                    # FIX TYPE 2: Convert blocking calls to async
-                    elif bug['type'] == 'blocking_call_in_async':
-                        logger.info(f"   🔧 Converting blocking call to async in {bug_file.name}")
-
-                        class AsyncConverter(ast.NodeTransformer):
-                            def visit_Call(self, node):
-                                # Convert time.sleep() to asyncio.sleep()
-                                if (isinstance(node.func, ast.Attribute) and
-                                    node.func.attr == 'sleep'):
-                                    # Change to await asyncio.sleep()
-                                    node.func.value = ast.Name(id='asyncio', ctx=ast.Load())
-                                    modified = True
-                                return self.generic_visit(node)
-
-                        transformer = AsyncConverter()
-                        tree = transformer.visit(tree)
-
-                        # Add asyncio import if not present
-                        if 'import asyncio' not in source_code:
-                            import_node = ast.Import(names=[ast.alias(name='asyncio', asname=None)])
-                            tree.body.insert(0, import_node)
-
-                    # FIX TYPE 3: Remove hardcoded thresholds (make adaptive)
-                    elif bug['type'] == 'hardcoded_threshold':
-                        logger.info(f"   🔧 Replacing hardcoded threshold {bug.get('value')} in {bug_file.name}")
-
-                        class ThresholdReplacer(ast.NodeTransformer):
-                            def __init__(self, target_value):
-                                self.target_value = target_value
-
-                            def visit_Num(self, node):
-                                if abs(node.n - self.target_value) < 0.001:
-                                    # Replace with adaptive threshold call
-                                    return ast.Call(
-                                        func=ast.Name(id='get_adaptive_threshold', ctx=ast.Load()),
-                                        args=[],
-                                        keywords=[]
-                                    )
-                                return node
-
-                        transformer = ThresholdReplacer(bug.get('value', 0.75))
-                        tree = transformer.visit(tree)
-                        modified = True
-
-                    if modified:
-                        # Unparse AST back to code
-                        ast.fix_missing_locations(tree)
-                        fixed_code = ast.unparse(tree)
-
-                        # Write fixed code
-                        with open(bug_file, 'w') as f:
-                            f.write(fixed_code)
-
-                        logger.info(f"   ✅ Fixed {bug['type']} in {bug_file.name}")
-                        fix_report['fixes_successful'] += 1
-                        fix_report['changes_made'].append({
-                            'file': str(bug_file),
-                            'bug_type': bug['type'],
-                            'success': True
-                        })
-                    else:
-                        logger.warning(f"   ⚠️  Could not apply fix to {bug_file.name}")
-                        fix_report['fixes_failed'] += 1
-
-                except Exception as e:
-                    logger.error(f"   ❌ Fix failed for {bug_file.name}: {e}")
-                    # Rollback
-                    shutil.copy2(backup_path, bug_file)
-                    fix_report['fixes_failed'] += 1
-
-            # ==========================================
-            # 2. FIX DATABASE ISSUES
-            # ==========================================
-            db_issues = [b for b in diagnostic.get('bugs_detected', [])
-                        if b['type'] in ['corrupted_embedding', 'insufficient_samples', 'missing_database_columns']]
-
-            for issue in db_issues:
-                fix_report['fixes_attempted'] += 1
-
-                try:
-                    if issue['type'] == 'corrupted_embedding':
-                        logger.info(f"   🔧 Auto-fixing corrupted embedding for {issue.get('speaker')}")
-                        # Trigger re-enrollment
-                        import subprocess
-                        result = subprocess.run(
-                            ['python', 'backend/voice/enroll_voice.py', '--speaker', issue.get('speaker', 'Derek'), '--force'],
-                            capture_output=True,
-                            text=True,
-                            timeout=60
-                        )
-                        if result.returncode == 0:
-                            logger.info(f"   ✅ Re-enrolled {issue.get('speaker')}")
-                            fix_report['fixes_successful'] += 1
-                            fix_report['changes_made'].append({
-                                'type': 'database_repair',
-                                'action': 're-enrollment',
-                                'speaker': issue.get('speaker'),
-                                'success': True
-                            })
-                        else:
-                            raise Exception(result.stderr)
-
-                    elif issue['type'] == 'insufficient_samples':
-                        logger.info(f"   ℹ️  Insufficient samples for {issue.get('speaker')} - requires manual enrollment")
-                        fix_report['changes_made'].append({
-                            'type': 'manual_action_required',
-                            'action': 'enroll more voice samples',
-                            'speaker': issue.get('speaker'),
-                            'samples_needed': 30 - issue.get('samples', 0)
-                        })
-
-                    elif issue['type'] == 'missing_database_columns':
-                        logger.info("   🔧 Adding missing database columns")
-                        # Generate and run migration
-                        # This would create ALTER TABLE statements based on schema
-                        logger.info("   ⚠️  Database migration required - creating migration script")
-                        fix_report['changes_made'].append({
-                            'type': 'database_migration',
-                            'action': 'schema_update',
-                            'columns': issue.get('missing', [])
-                        })
-
-                except Exception as e:
-                    logger.error(f"   ❌ Database fix failed: {e}")
-                    fix_report['fixes_failed'] += 1
-
-            # ==========================================
-            # 3. INSTALL MISSING PACKAGES
-            # ==========================================
-            missing_packages = diagnostic.get('missing_components', [])
-            for missing in missing_packages:
-                if missing['type'] == 'missing_package':
-                    fix_report['fixes_attempted'] += 1
-                    try:
-                        logger.info(f"   🔧 Installing {missing['package']}")
-                        import subprocess
-                        result = subprocess.run(
-                            ['pip', 'install', missing['package']],
-                            capture_output=True,
-                            text=True,
-                            timeout=120
-                        )
-                        if result.returncode == 0:
-                            logger.info(f"   ✅ Installed {missing['package']}")
-                            fix_report['fixes_successful'] += 1
-                            fix_report['changes_made'].append({
-                                'type': 'package_installation',
-                                'package': missing['package'],
-                                'success': True
-                            })
-                        else:
-                            raise Exception(result.stderr)
-                    except Exception as e:
-                        logger.error(f"   ❌ Package installation failed: {e}")
-                        fix_report['fixes_failed'] += 1
-
-            logger.info(f"✅ Autonomous fixing complete: {fix_report['fixes_successful']}/{fix_report['fixes_attempted']} successful")
-
-        except Exception as e:
-            logger.error(f"Autonomous fixer error: {e}", exc_info=True)
-
-        return fix_report
 
     async def _check_voice_unlock_configuration(self) -> dict:
         """
@@ -6683,50 +6371,13 @@ class AsyncSystemManager:
                                         for missing in deep_diagnostic['missing_components'][:2]:
                                             print(f"    │  │  └─ {Colors.YELLOW}{missing.get('package', missing.get('file', 'unknown'))}{Colors.ENDC}")
 
-                                    # 🤖 AUTONOMOUS FIXING
                                     critical_bugs = sum(1 for b in deep_diagnostic.get('bugs_detected', []) if b.get('severity') == 'critical')
                                     if critical_bugs > 0 or deep_diagnostic.get('missing_components'):
                                         print(f"    │")
                                         print(f"    │  {Colors.YELLOW}{'▂' * 50}{Colors.ENDC}")
-                                        print(f"    │  {Colors.YELLOW}🤖 AUTONOMOUS CODE FIXER: ACTIVATING{Colors.ENDC}")
                                         print(f"    │  {Colors.YELLOW}{'▔' * 50}{Colors.ENDC}")
                                         print(f"    │  └─ Analyzing {len(deep_diagnostic.get('bugs_detected', []))} bugs...")
                                         print(f"    │     ├─ Checking {len(deep_diagnostic.get('missing_components', []))} missing components...")
-                                        print(f"    │     └─ Applying patches to your code...")
-
-                                        fix_report = await self._autonomous_code_fixer(deep_diagnostic)
-
-                                        # Store for persistent display
-                                        self.last_autonomous_fix_report = fix_report
-                                        self.autonomous_fix_history.append(fix_report)
-                                        if len(self.autonomous_fix_history) > 10:
-                                            self.autonomous_fix_history.pop(0)
-
-                                        print(f"    │")
-                                        if fix_report['fixes_successful'] > 0:
-                                            print(f"    │     {Colors.GREEN}{'='*50}{Colors.ENDC}")
-                                            print(f"    │     {Colors.GREEN}✅ SUCCESS: Applied {fix_report['fixes_successful']} fixes!{Colors.ENDC}")
-                                            print(f"    │     {Colors.GREEN}{'='*50}{Colors.ENDC}")
-                                            for change in fix_report['changes_made']:
-                                                if change.get('success'):
-                                                    bug_type = change.get('bug_type', change.get('type', 'unknown'))
-                                                    file_name = Path(change.get('file', '')).name if change.get('file') else change.get('package', 'unknown')
-                                                    print(f"    │     ├─ ✅ {bug_type}: {file_name}")
-
-                                        if fix_report['fixes_failed'] > 0:
-                                            print(f"    │     ├─ {Colors.YELLOW}⚠️  {fix_report['fixes_failed']} fixes failed{Colors.ENDC}")
-
-                                        if fix_report['rollback_points']:
-                                            print(f"    │     └─ 📦 {len(fix_report['rollback_points'])} backup(s) in .jarvis_backups/")
-                                        print(f"    │")
-
-                                    elif deep_diagnostic['autonomous_fixes']:
-                                        print(f"    │  └─ 🔧 Auto-fixes: {len(deep_diagnostic['autonomous_fixes'])} available")
-                                        for fix in deep_diagnostic['autonomous_fixes'][:2]:
-                                            risk_color = Colors.GREEN if fix['risk_level'] == 'low' else Colors.YELLOW
-                                            print(f"    │     └─ {risk_color}{fix['description']}{Colors.ENDC}")
-                                            print(f"    │        Command: {fix['command']}")
-
                                 # Show intelligent recommendations
                                 print(f"    ├─ 💡 JARVIS Recommendations:")
                                 for i, rec in enumerate(ai_analysis['recommendations'][:3]):
@@ -6750,32 +6401,6 @@ class AsyncSystemManager:
                             for reason, count in sorted_reasons[:3]:
                                 percentage = (count / stats['failed']) * 100 if stats['failed'] > 0 else 0
                                 print(f"       ├─ {reason[:50]}: {count}x ({percentage:.0f}%)")
-
-                    # PERSISTENT AUTONOMOUS FIX STATUS
-                    print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
-                    if self.last_autonomous_fix_report:
-                        fix_report = self.last_autonomous_fix_report
-                        fix_time = datetime.fromisoformat(fix_report['timestamp'])
-                        time_ago = (datetime.now() - fix_time).total_seconds()
-
-                        print(f"  {Colors.YELLOW}🤖 Last Autonomous Fix:{Colors.ENDC} {int(time_ago)}s ago")
-
-                        if fix_report['fixes_successful'] > 0:
-                            print(f"    ├─ {Colors.GREEN}✅ {fix_report['fixes_successful']} successful fixes{Colors.ENDC}")
-                            for change in fix_report['changes_made'][:5]:
-                                if change.get('success'):
-                                    print(f"    │  └─ {change.get('bug_type', change.get('type', 'fix'))}")
-
-                        if fix_report['fixes_failed'] > 0:
-                            print(f"    ├─ {Colors.YELLOW}⚠️  {fix_report['fixes_failed']} failed{Colors.ENDC}")
-
-                        total_fixes = len(self.autonomous_fix_history)
-                        total_successful = sum(f['fixes_successful'] for f in self.autonomous_fix_history)
-                        print(f"    └─ Total session: {total_successful} fixes across {total_fixes} runs")
-                    else:
-                        print(f"  {Colors.YELLOW}🤖 Autonomous Fixer:{Colors.ENDC} {Colors.CYAN}Standing by... (triggers on 3+ failures){Colors.ENDC}")
-
-                    print(f"  {Colors.CYAN}{'='*60}{Colors.ENDC}")
 
                     if stats['total_attempts'] == 0:
                         pass  # Already handled above
