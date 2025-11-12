@@ -236,9 +236,7 @@ class ConnectionOrchestrator:
 
         start_time = time.time()
         try:
-            async with asyncio.timeout(timeout):
-                conn = await self.pool.acquire()
-
+            conn = await asyncio.wait_for(self.pool.acquire(), timeout=timeout)
             latency = (time.time() - start_time) * 1000
             self.metrics.active_connections += 1
             self.metrics.query_count += 1
@@ -1169,7 +1167,7 @@ class HybridDatabaseSync:
                 # Try to reconnect if unhealthy
                 if not self.cloudsql_healthy:
                     logger.info("🔄 Attempting CloudSQL reconnection...")
-                    await self._init_cloudsql()
+                    await self._init_cloudsql_with_circuit_breaker()
 
                     if self.cloudsql_healthy:
                         logger.info("✅ CloudSQL reconnected - triggering sync reconciliation")
