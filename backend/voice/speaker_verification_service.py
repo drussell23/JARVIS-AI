@@ -193,7 +193,7 @@ class SpeakerVerificationService:
         """
         Fast initialization with background encoder pre-loading.
 
-        Loads profiles immediately, starts encoder loading in background.
+        Loads profiles immediately, defers SpeechBrain loading to background.
         JARVIS starts fast (~2s), encoder ready in ~10s total.
         """
         if self.initialized:
@@ -206,7 +206,7 @@ class SpeakerVerificationService:
             from intelligence.learning_database import get_learning_database
             self.learning_db = await get_learning_database()
 
-        # Initialize SpeechBrain engine for embeddings
+        # Create SpeechBrain engine but DON'T initialize it yet (deferred to background)
         model_config = ModelConfig(
             name="speechbrain-wav2vec2",
             engine=STTEngine.SPEECHBRAIN,
@@ -220,18 +220,18 @@ class SpeakerVerificationService:
         )
 
         self.speechbrain_engine = SpeechBrainEngine(model_config)
-        await self.speechbrain_engine.initialize()
+        # DON'T call initialize() here - defer to background thread
 
         # Load speaker profiles from database
         await self._load_speaker_profiles()
 
         self.initialized = True
         logger.info(
-            f"✅ Speaker Verification Service ready ({len(self.speaker_profiles)} profiles loaded)"
+            f"✅ Speaker Verification Service ready - {len(self.speaker_profiles)} profiles loaded (encoder loading in background)"
         )
 
-        # Start background pre-loading of encoder
-        logger.info("🔄 Pre-loading speaker encoder in background...")
+        # Start background initialization of SpeechBrain engine
+        logger.info("🔄 Loading SpeechBrain encoder in background thread...")
         self._start_background_preload()
 
         # Start background profile reload monitoring
@@ -241,14 +241,14 @@ class SpeakerVerificationService:
             logger.info("✅ Profile hot reload enabled - updates will be detected automatically")
 
     def _start_background_preload(self):
-        """Start background thread to pre-load speaker encoder with proper cleanup"""
+        """Start background thread to initialize SpeechBrain engine and pre-load speaker encoder"""
         if self._encoder_preloading or self._encoder_preloaded:
             return
 
         self._encoder_preloading = True
 
         def preload_worker():
-            """Worker function to pre-load encoder in background thread"""
+            """Worker function to initialize engine and pre-load encoder in background thread"""
             try:
                 # Run async function in thread's event loop
                 loop = asyncio.new_event_loop()
@@ -256,9 +256,16 @@ class SpeakerVerificationService:
                 self._preload_loop = loop  # Store for cleanup
 
                 try:
+                    # First initialize the SpeechBrain engine (loads models)
+                    logger.info("🔄 Background: Initializing SpeechBrain engine...")
+                    loop.run_until_complete(self.speechbrain_engine.initialize())
+                    logger.info("✅ Background: SpeechBrain engine initialized")
+
+                    # Then pre-load the speaker encoder
+                    logger.info("🔄 Background: Pre-loading speaker encoder...")
                     loop.run_until_complete(self.speechbrain_engine._load_speaker_encoder())
                     self._encoder_preloaded = True
-                    logger.info("✅ Speaker encoder pre-loaded in background - unlock is now instant!")
+                    logger.info("✅ Speaker encoder ready - voice biometric unlock now instant!")
                 finally:
                     # Clean shutdown of event loop
                     try:

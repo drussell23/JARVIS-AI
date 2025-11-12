@@ -3704,11 +3704,11 @@ class AsyncSystemManager:
             await learning_db.initialize()
             print(f"{Colors.GREEN}      ✓ Learning database initialized{Colors.ENDC}")
 
-            # Initialize speaker service
-            print(f"{Colors.CYAN}   └─ Initializing Speaker Verification Service...{Colors.ENDC}")
+            # Initialize speaker service with FAST mode (background encoder loading)
+            print(f"{Colors.CYAN}   └─ Initializing Speaker Verification Service (fast mode)...{Colors.ENDC}")
             speaker_service = SpeakerVerificationService(learning_db)
-            await speaker_service.initialize()
-            print(f"{Colors.GREEN}      ✓ Speaker verification service ready{Colors.ENDC}")
+            await speaker_service.initialize_fast()  # Fast init: profiles immediately, encoder in background
+            print(f"{Colors.GREEN}      ✓ Speaker verification ready (encoder loading in background){Colors.ENDC}")
 
             # ROBUSTNESS: Validate model and profile dimensions
             model_dim = speaker_service.current_model_dimension
