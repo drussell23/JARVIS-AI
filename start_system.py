@@ -4108,12 +4108,12 @@ class AsyncSystemManager:
         # Check if backend is accessible
         backend_url = f"http://localhost:{self.ports['main_api']}/health"
         print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
-        # Increased timeout for voice component loading (can take 60-120s on first run)
-        backend_ready = await self.wait_for_service(backend_url, timeout=180)
+        # Increased timeout for voice component loading on low RAM systems (can take 180-300s with memory pressure)
+        backend_ready = await self.wait_for_service(backend_url, timeout=300)
 
         if not backend_ready:
             print(
-                f"{Colors.WARNING}Backend did not respond at {backend_url} after 180 seconds{Colors.ENDC}"
+                f"{Colors.WARNING}Backend did not respond at {backend_url} after 300 seconds{Colors.ENDC}"
             )
             print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
 

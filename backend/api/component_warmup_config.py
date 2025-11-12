@@ -38,9 +38,9 @@ from core.component_warmup import ComponentPriority, get_warmup_system
 logger = logging.getLogger(__name__)
 
 # Configuration
-WARMUP_MODE = os.getenv("WARMUP_MODE", "hybrid").lower()  # dynamic, hybrid, manual
+WARMUP_MODE = os.getenv("WARMUP_MODE", "manual").lower()  # dynamic, hybrid, manual - DEFAULT TO MANUAL FOR LOW RAM
 ENABLE_AUTO_DISCOVERY = WARMUP_MODE in ("dynamic", "hybrid")
-ENABLE_PERFORMANCE_LEARNING = os.getenv("WARMUP_LEARNING", "true").lower() == "true"
+ENABLE_PERFORMANCE_LEARNING = os.getenv("WARMUP_LEARNING", "false").lower() == "true"  # Disable by default to save memory
 
 
 # ═══════════════════════════════════════════════════════════════════════════

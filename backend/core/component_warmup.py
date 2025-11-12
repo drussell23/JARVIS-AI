@@ -154,12 +154,43 @@ class ComponentWarmupSystem:
 
     async def warmup_all(self) -> Dict[str, Any]:
         """
-        Execute warmup for all registered components.
+        Execute warmup for all registered components with memory awareness.
 
         Returns:
             Dictionary with warmup results and metrics
         """
         self.total_start_time = time.time()
+
+        # Check memory before starting warmup
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            mem_percent = mem.percent
+            mem_available_gb = mem.available / (1024**3)
+
+            logger.info(
+                f"[WARMUP] 💾 Memory check: {mem_percent:.1f}% used, "
+                f"{mem_available_gb:.1f}GB available"
+            )
+
+            # If memory pressure is high (>80%), only load critical components
+            if mem_percent > 80:
+                logger.warning(
+                    f"[WARMUP] ⚠️  High memory pressure ({mem_percent:.1f}%) detected! "
+                    f"Limiting to CRITICAL components only for fast startup."
+                )
+                # Filter to only critical components
+                components_to_load = {
+                    name: comp for name, comp in self.components.items()
+                    if comp.priority == ComponentPriority.CRITICAL
+                }
+                logger.info(
+                    f"[WARMUP] 🎯 Loading {len(components_to_load)}/{len(self.components)} "
+                    f"components (CRITICAL only)"
+                )
+                self.components = components_to_load
+        except Exception as e:
+            logger.warning(f"[WARMUP] Could not check memory: {e}, proceeding normally")
 
         logger.info(
             f"[WARMUP] 🚀 Starting component warmup "
