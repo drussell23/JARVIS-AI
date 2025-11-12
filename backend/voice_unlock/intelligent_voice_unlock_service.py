@@ -134,9 +134,9 @@ class IntelligentVoiceUnlockService:
     async def _initialize_learning_db(self):
         """Initialize Learning Database"""
         try:
-            from intelligence.learning_database import LearningDatabase
+            from intelligence.learning_database import JARVISLearningDatabase
 
-            self.learning_db = LearningDatabase()
+            self.learning_db = JARVISLearningDatabase()
             await self.learning_db.initialize()
             logger.info("✅ Learning Database connected")
         except Exception as e:
@@ -1184,8 +1184,9 @@ class IntelligentVoiceUnlockService:
         message: str,
         speaker_name: Optional[str] = None,
         security_analysis: Optional[Dict[str, Any]] = None,
+        diagnostics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Create standardized failure response with optional security analysis"""
+        """Create standardized failure response with optional security analysis and diagnostics"""
         response = {
             "success": False,
             "reason": reason,
@@ -1196,6 +1197,9 @@ class IntelligentVoiceUnlockService:
 
         if security_analysis:
             response["security_analysis"] = security_analysis
+
+        if diagnostics:
+            response["diagnostics"] = diagnostics
 
         return response
 
