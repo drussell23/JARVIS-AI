@@ -599,7 +599,7 @@ class UnifiedWebSocketManager:
             ),
         }
 
-    async def _handle_health_check(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_health_check(self, client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle explicit health check requests"""
         if client_id in self.connection_health:
             health = self.connection_health[client_id]
@@ -618,7 +618,7 @@ class UnifiedWebSocketManager:
 
         return {"type": "health_status", "error": "Client health data not found"}
 
-    async def _handle_system_metrics(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_system_metrics(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system metrics requests"""
         metrics = self.get_system_metrics()
         return {"type": "system_metrics", "metrics": metrics, "timestamp": datetime.now().isoformat()}
@@ -1318,7 +1318,7 @@ class UnifiedWebSocketManager:
             }
 
     async def _handle_vision_analyze(
-        self, client_id: str, message: Dict[str, Any]
+        self, _client_id: str, message: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle vision analysis requests"""
         try:
@@ -1369,6 +1369,8 @@ class UnifiedWebSocketManager:
         elif action == "stop":
             connection_capabilities[client_id].discard("vision_monitoring")
             return {"type": "monitor_status", "status": "stopped", "client_id": client_id}
+        else:
+            return {"type": "monitor_status", "status": "unknown_action", "client_id": client_id}
 
     async def _vision_monitoring_loop(self, client_id: str):
         """Continuous vision monitoring loop"""
@@ -1384,7 +1386,7 @@ class UnifiedWebSocketManager:
                 break
 
     async def _handle_workspace_analysis(
-        self, client_id: str, message: Dict[str, Any]
+        self, _client_id: str, _message: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle workspace analysis requests"""
         # This would integrate with workspace analyzer
@@ -1394,7 +1396,7 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_ml_audio(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_ml_audio(self, _client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ML audio streaming"""
         audio_data = message.get("audio_data", "")
 
@@ -1405,7 +1407,7 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_audio_error(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_audio_error(self, _client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle audio error recovery"""
         error_type = message.get("error_type", "unknown")
 
@@ -1415,7 +1417,7 @@ class UnifiedWebSocketManager:
             "delay_ms": 1000,
         }
 
-    async def _handle_model_status(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_model_status(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ML model status requests"""
         # This would integrate with ML model loader
         return {
@@ -1426,7 +1428,7 @@ class UnifiedWebSocketManager:
         }
 
     async def _handle_network_status(
-        self, client_id: str, message: Dict[str, Any]
+        self, _client_id: str, _message: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle network status checks"""
         return {
@@ -1436,7 +1438,7 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_notification(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_notification(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle notification detection"""
         # This would integrate with notification detection
         return {
@@ -1445,7 +1447,7 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_ping(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_ping(self, _client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ping/pong for connection keep-alive"""
         return {"type": "pong", "timestamp": message.get("timestamp", datetime.now().isoformat())}
 
