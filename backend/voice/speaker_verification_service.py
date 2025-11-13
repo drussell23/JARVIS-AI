@@ -104,7 +104,7 @@ class SpeakerVerificationService:
         self.speechbrain_engine = None
         self.initialized = False
         self.speaker_profiles = {}  # Cache of speaker profiles
-        self.verification_threshold = 0.45  # 45% confidence for verification (adjusted for real-world audio)
+        self.verification_threshold = 0.40  # 40% confidence for verification (matches owner-aware fusion threshold)
         self.legacy_threshold = 0.40  # 40% for legacy profiles with dimension mismatch
         self.profile_quality_scores = {}  # Track profile quality (1.0 = native, <1.0 = legacy)
         self._preload_thread = None
