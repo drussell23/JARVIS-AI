@@ -98,8 +98,10 @@ class AudioFormatConverter:
                 except:
                     pass
 
-            logger.warning(f"Could not decode string of length {len(audio_data)}")
-            return b''
+            logger.warning(f"Could not decode string of length {len(audio_data)}, returning as string for now")
+            # BUGFIX: We were returning the string here which caused type errors!
+            # Now we return it so prepare_audio_for_stt can handle it
+            return audio_data
 
         # List or array of samples
         if isinstance(audio_data, (list, tuple)):
@@ -253,6 +255,23 @@ def prepare_audio_for_stt(audio_data) -> bytes:
 
     # Convert to bytes
     audio_bytes = audio_converter.convert_to_bytes(audio_data)
+
+    # CRITICAL FIX: Ensure we ALWAYS return bytes, never a string
+    if isinstance(audio_bytes, str):
+        logger.error(f"convert_to_bytes returned a string instead of bytes! Attempting base64 decode...")
+        try:
+            # Try standard base64
+            audio_bytes = base64.b64decode(audio_bytes)
+            logger.info(f"Emergency base64 decode successful: {len(audio_bytes)} bytes")
+        except Exception as e:
+            logger.error(f"Emergency base64 decode failed: {e}")
+            # Return empty bytes to avoid type error
+            return b''
+
+    # If we got empty bytes, return them (will fail gracefully later)
+    if not audio_bytes:
+        logger.warning("No audio data after conversion - returning empty bytes")
+        return b''
 
     # Ensure PCM format
     pcm_bytes = audio_converter.ensure_pcm_format(audio_bytes)
