@@ -104,6 +104,12 @@ regexes = [
   '''(?i)memory-safe.*password''',
   '''(?i)password.*retrieval''',
   '''(?i)test.*password''',
+  # Connection manager - safe password variable passing (from Secret Manager)
+  '''password\s*:\s*Optional\[str\]\s*=\s*None''',
+  '''password:\s*Database\s*password''',
+  '''password=password,''',
+  '''if\s+not\s+password:''',
+  '''password\s*=\s*get_db_password\(\)''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -149,6 +155,11 @@ paths = [
   '''test_voice_with_real_audio.py''',
   '''test_asyncpg.py''',
   '''test_voice_unlock_confidence.py''',
+  # Connection management (uses Secret Manager, no hardcoded secrets)
+  '''test_connection_manager.py''',
+  '''diagnose_connections.py''',
+  '''backend/intelligence/cloud_sql_connection_manager.py''',
+  '''backend/core/lifecycle_manager.py''',
   '''diagnose_voice_confidence.py''',
   '''diagnose_verification_failure.py''',
   '''diagnose_low_confidence.py''',

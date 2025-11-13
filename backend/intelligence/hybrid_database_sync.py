@@ -51,6 +51,13 @@ try:
 except ImportError:
     ASYNCPG_AVAILABLE = False
 
+# Import singleton connection manager
+try:
+    from intelligence.cloud_sql_connection_manager import get_connection_manager
+    CONNECTION_MANAGER_AVAILABLE = True
+except ImportError:
+    CONNECTION_MANAGER_AVAILABLE = False
+
 try:
     import faiss
     FAISS_AVAILABLE = True
@@ -950,7 +957,11 @@ class HybridDatabaseSync:
 
         # Connection management
         self.sqlite_conn: Optional[aiosqlite.Connection] = None
-        self.connection_orchestrator = ConnectionOrchestrator(cloudsql_config, max_connections)
+
+        # Use singleton connection manager instead of ConnectionOrchestrator
+        self.connection_manager = get_connection_manager() if CONNECTION_MANAGER_AVAILABLE else None
+        self.cloudsql_config = cloudsql_config
+        self.max_connections = max_connections
 
         # Circuit breaker
         self.circuit_breaker = CircuitBreaker()
@@ -1087,27 +1098,35 @@ class HybridDatabaseSync:
             raise
 
     async def _init_cloudsql_with_circuit_breaker(self):
-        """Initialize CloudSQL with connection orchestrator and circuit breaker"""
-        if not ASYNCPG_AVAILABLE:
-            logger.warning("⚠️  asyncpg not available - CloudSQL disabled")
+        """Initialize CloudSQL with singleton connection manager and circuit breaker"""
+        if not CONNECTION_MANAGER_AVAILABLE or not ASYNCPG_AVAILABLE:
+            logger.warning("⚠️  asyncpg or connection manager not available - CloudSQL disabled")
             self.circuit_breaker.record_failure()
             return
 
         try:
-            success = await self.connection_orchestrator.initialize()
+            # Initialize singleton connection manager
+            success = await self.connection_manager.initialize(
+                host=self.cloudsql_config.get("host", "127.0.0.1"),
+                port=self.cloudsql_config.get("port", 5432),
+                database=self.cloudsql_config.get("database"),
+                user=self.cloudsql_config.get("user"),
+                password=self.cloudsql_config.get("password"),
+                max_connections=self.max_connections,
+                force_reinit=False  # Reuse existing pool if available
+            )
 
             if success:
                 # Test connection through circuit breaker
                 if self.circuit_breaker.can_attempt():
                     try:
-                        conn = await self.connection_orchestrator.acquire(timeout=3.0)
-                        await conn.fetchval("SELECT 1")
-                        await self.connection_orchestrator.release(conn)
+                        async with self.connection_manager.connection() as conn:
+                            await conn.fetchval("SELECT 1")
 
                         self.circuit_breaker.record_success()
                         self.metrics.cloudsql_available = True
                         self.metrics.circuit_state = self.circuit_breaker.get_state().value
-                        logger.info("✅ CloudSQL connected via orchestrator")
+                        logger.info("✅ CloudSQL connected via singleton manager")
                     except Exception as e:
                         logger.warning(f"⚠️  CloudSQL test query failed: {e}")
                         self.circuit_breaker.record_failure()
@@ -1117,7 +1136,7 @@ class HybridDatabaseSync:
                 self.metrics.cloudsql_available = False
 
         except Exception as e:
-            logger.warning(f"⚠️  CloudSQL orchestrator failed: {e}")
+            logger.warning(f"⚠️  CloudSQL connection manager failed: {e}")
             logger.info("📱 Using cache-first offline mode (will retry in background)")
             self.circuit_breaker.record_failure()
             self.metrics.cloudsql_available = False
@@ -1204,8 +1223,12 @@ class HybridDatabaseSync:
                     continue
 
                 # Check connection load before sync
-                await self.connection_orchestrator.scale_if_needed()
-                load = self.connection_orchestrator.metrics.moving_avg_load
+                load = 0.0
+                if self.connection_manager and self.connection_manager.is_initialized:
+                    stats = self.connection_manager.get_stats()
+                    pool_size = stats.get("pool_size", 0)
+                    max_size = stats.get("max_size", 1)
+                    load = pool_size / max_size if max_size > 0 else 0.0
 
                 # Backpressure control: defer low-priority syncs if load > 80%
                 if load > 0.8:
@@ -1301,7 +1324,7 @@ class HybridDatabaseSync:
                 await self.sync_queue.put(record)
 
     async def _sync_batch_to_cloudsql(self, table: str, operation: str, records: List[SyncRecord]):
-        """Sync a batch of records to CloudSQL via connection orchestrator"""
+        """Sync a batch of records to CloudSQL via singleton connection manager"""
         # Check circuit breaker before attempting
         if not self.circuit_breaker.can_attempt():
             logger.debug("⏸️  Circuit open, deferring sync")
@@ -1309,14 +1332,17 @@ class HybridDatabaseSync:
                 await self.sync_queue.put(record)
             return
 
-        conn = None
+        if not self.connection_manager or not self.connection_manager.is_initialized:
+            logger.warning("⚠️  Connection manager not initialized")
+            self.circuit_breaker.record_failure()
+            return
+
         try:
             start_time = time.time()
 
-            # Acquire connection via orchestrator (with timeout and metrics)
-            conn = await self.connection_orchestrator.acquire(timeout=5.0)
-
-            async with conn.transaction():
+            # Acquire connection via singleton manager (automatic context management)
+            async with self.connection_manager.connection() as conn:
+                async with conn.transaction():
                     for record in records:
                         # Fetch data from SQLite
                         async with self.sqlite_conn.execute(
@@ -1420,10 +1446,8 @@ class HybridDatabaseSync:
                         (f"Max retries exceeded: {str(e)}"[:500], record.record_id, operation)
                     )
                     await self.sqlite_conn.commit()
-        finally:
-            # Always release connection back to pool
-            if conn:
-                await self.connection_orchestrator.release(conn)
+
+            # Connection automatically released by context manager
 
     async def _metrics_loop(self):
         """Background metrics collection and monitoring"""
@@ -1438,10 +1462,12 @@ class HybridDatabaseSync:
                 self.metrics.sync_queue_size = self.sync_queue.size()
                 self.metrics.priority_queue_sizes = self.sync_queue.sizes_by_priority()
 
-                # Update connection pool load
-                if self.connection_orchestrator.pool:
-                    pool_size = self.connection_orchestrator.pool.get_size()
-                    self.metrics.connection_pool_load = self.connection_orchestrator.metrics.moving_avg_load
+                # Update connection pool load from singleton manager
+                if self.connection_manager and self.connection_manager.is_initialized:
+                    stats = self.connection_manager.get_stats()
+                    pool_size = stats.get("pool_size", 0)
+                    max_size = stats.get("max_size", 1)
+                    self.metrics.connection_pool_load = pool_size / max_size if max_size > 0 else 0.0
 
                     # Phase 2: Update Prometheus metrics
                     if self.prometheus:
@@ -1854,8 +1880,8 @@ class HybridDatabaseSync:
         if self.sqlite_conn:
             await self.sqlite_conn.close()
 
-        if self.connection_orchestrator:
-            await self.connection_orchestrator.close()
+        # Singleton connection manager handles its own shutdown via signal handlers
+        # No need to manually close it here
 
         # Phase 2: Close Redis connection
         if self.redis:

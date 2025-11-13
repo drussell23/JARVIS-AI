@@ -1835,8 +1835,9 @@ class ProcessCleanupManager:
 
     def _cleanup_cloudsql_connections(self) -> Dict[str, int]:
         """
-        Clean up orphaned CloudSQL connections by terminating JARVIS processes
-        that might be holding connection leaks.
+        Clean up orphaned CloudSQL connections by:
+        1. Terminating JARVIS processes with database connections
+        2. Triggering singleton connection manager shutdown (if available)
 
         Returns:
             Dictionary with cleanup statistics
@@ -1844,11 +1845,12 @@ class ProcessCleanupManager:
         cleaned = {
             "processes_terminated": 0,
             "cloud_sql_proxy_restarted": False,
+            "connection_manager_shutdown": False,
         }
 
         logger.info("🔌 Cleaning up CloudSQL connections...")
 
-        # Find all JARVIS processes that might be holding database connections
+        # Step 1: Find and terminate JARVIS processes with database connections
         for proc in psutil.process_iter(["pid", "name", "cmdline", "connections"]):
             try:
                 if self._is_jarvis_process(proc):
@@ -1881,9 +1883,36 @@ class ProcessCleanupManager:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        # Give CloudSQL time to release connections
-        if cleaned["processes_terminated"] > 0:
-            logger.info(f"⏳ Waiting 5 seconds for CloudSQL to release {cleaned['processes_terminated']} connections...")
+        # Step 2: Trigger singleton connection manager shutdown (if available)
+        try:
+            from intelligence.cloud_sql_connection_manager import get_connection_manager
+
+            manager = get_connection_manager()
+            if manager.is_initialized:
+                logger.info("🔌 Shutting down singleton CloudSQL connection manager...")
+                # Use asyncio to run async shutdown
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(manager.shutdown())
+                    else:
+                        asyncio.run(manager.shutdown())
+                    cleaned["connection_manager_shutdown"] = True
+                except RuntimeError:
+                    # No event loop, create one
+                    asyncio.run(manager.shutdown())
+                    cleaned["connection_manager_shutdown"] = True
+                except Exception as e:
+                    logger.warning(f"Failed to shutdown connection manager: {e}")
+        except ImportError:
+            logger.debug("Connection manager not available (expected during startup)")
+        except Exception as e:
+            logger.warning(f"Error shutting down connection manager: {e}")
+
+        # Step 3: Give CloudSQL time to release connections
+        if cleaned["processes_terminated"] > 0 or cleaned["connection_manager_shutdown"]:
+            logger.info(f"⏳ Waiting 5 seconds for CloudSQL to release connections...")
             time.sleep(5)
 
         return cleaned

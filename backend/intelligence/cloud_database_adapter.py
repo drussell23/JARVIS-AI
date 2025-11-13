@@ -22,6 +22,14 @@ except ImportError:
     ASYNCPG_AVAILABLE = False
     logging.warning("asyncpg not available - install with: pip install asyncpg")
 
+# Import singleton connection manager
+try:
+    from intelligence.cloud_sql_connection_manager import get_connection_manager
+    CONNECTION_MANAGER_AVAILABLE = True
+except ImportError:
+    CONNECTION_MANAGER_AVAILABLE = False
+    logging.warning("CloudSQL connection manager not available")
+
 try:
     pass
 
@@ -123,9 +131,12 @@ class CloudDatabaseAdapter:
 
     def __init__(self, config: Optional[DatabaseConfig] = None):
         self.config = config or DatabaseConfig()
-        self.pool: Optional[Any] = None
+        self.pool: Optional[Any] = None  # Deprecated: kept for backward compatibility
         self.connector: Optional[Any] = None
         self._local_connection: Optional[aiosqlite.Connection] = None
+
+        # Use singleton connection manager for CloudSQL
+        self.connection_manager = get_connection_manager() if CONNECTION_MANAGER_AVAILABLE else None
 
         logger.info(f"🔧 DatabaseAdapter initialized (type: {self.config.db_type})")
 
@@ -183,63 +194,49 @@ class CloudDatabaseAdapter:
         logger.info(f"📂 Using local SQLite: {self.config.sqlite_path}")
 
     async def _init_cloud_sql(self):
-        """Initialize Cloud SQL connection pool with timeout protection and auto-start proxy"""
+        """Initialize Cloud SQL connection via singleton connection manager"""
         import asyncio
 
+        if not CONNECTION_MANAGER_AVAILABLE or not self.connection_manager:
+            logger.error("❌ CloudSQL connection manager not available")
+            await self._init_sqlite()
+            return
+
         try:
-            logger.info(f"☁️  Connecting to Cloud SQL: {self.config.connection_name}")
+            logger.info(f"☁️  Connecting to Cloud SQL via singleton manager: {self.config.connection_name}")
 
             # ROBUSTNESS: Ensure Cloud SQL proxy is running before attempting connection
             await self._ensure_proxy_running()
 
-            # Use direct connection via Cloud SQL Proxy (simpler and no event loop issues)
-            # Cloud SQL Proxy must be running locally: ~/.local/bin/cloud-sql-proxy <connection-name>
-            # Debug: Log what host we're actually using
             logger.info(
                 f"   Connecting via proxy at {self.config.db_host}:{self.config.db_port}"
             )
             logger.info(f"   Database: {self.config.db_name}, User: {self.config.db_user}")
             logger.info(f"   Connection name: {self.config.connection_name}")
 
-            # CRITICAL FIX: Add timeout protection to prevent infinite hangs
-            # If Cloud SQL proxy isn't running, this will timeout and fallback to SQLite
-            try:
-                self.pool = await asyncio.wait_for(
-                    asyncpg.create_pool(
-                        host=self.config.db_host,
-                        port=self.config.db_port,
-                        database=self.config.db_name,
-                        user=self.config.db_user,
-                        password=self.config.db_password,
-                        min_size=2,
-                        max_size=10,
-                        command_timeout=60,
-                        timeout=5.0,  # Connection timeout per connection attempt
-                    ),
-                    timeout=10.0  # Overall pool creation timeout
-                )
-                logger.info("✅ Cloud SQL connection pool created")
+            # Use singleton connection manager (reuses existing pool if available)
+            success = await self.connection_manager.initialize(
+                host=self.config.db_host,
+                port=self.config.db_port,
+                database=self.config.db_name,
+                user=self.config.db_user,
+                password=self.config.db_password,
+                max_connections=3,  # Strict limit for db-f1-micro
+                force_reinit=False  # Reuse existing pool
+            )
 
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "⏱️  Cloud SQL connection timeout (10s exceeded)\n"
-                    "   This usually means:\n"
-                    "   1. Cloud SQL proxy is not running\n"
-                    "   2. Database credentials are incorrect\n"
-                    "   3. Network connectivity issues\n"
-                    "   → Falling back to local SQLite"
-                )
+            if success:
+                # Set pool reference for backward compatibility
+                self.pool = self.connection_manager.pool
+                logger.info("✅ Cloud SQL singleton connection manager initialized")
+            else:
+                logger.warning("⚠️  Cloud SQL connection manager initialization failed")
+                logger.info("📂 Falling back to local SQLite")
                 self.pool = None
                 await self._init_sqlite()
 
-        except asyncio.TimeoutError:
-            # Outer timeout catch for any other timeout scenarios
-            logger.warning("⏱️  Cloud SQL initialization timeout - falling back to SQLite")
-            self.pool = None
-            await self._init_sqlite()
-
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Cloud SQL: {e}")
+            logger.error(f"❌ Failed to initialize Cloud SQL connection manager: {e}")
             logger.error(f"   Connection details: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}, user={self.config.db_user}")
             logger.info("📂 Falling back to local SQLite")
             self.pool = None
@@ -248,8 +245,12 @@ class CloudDatabaseAdapter:
     @asynccontextmanager
     async def connection(self):
         """Get database connection (context manager)"""
-        if self.pool:
-            # Cloud SQL (PostgreSQL) via connection pool
+        if self.connection_manager and self.connection_manager.is_initialized:
+            # Cloud SQL (PostgreSQL) via singleton connection manager
+            async with self.connection_manager.connection() as conn:
+                yield CloudSQLConnection(conn)
+        elif self.pool:
+            # Backward compatibility: use pool directly if manager not available
             async with self.pool.acquire() as conn:
                 yield CloudSQLConnection(conn)
         else:
@@ -259,9 +260,8 @@ class CloudDatabaseAdapter:
 
     async def close(self):
         """Close database connections"""
-        if self.pool:
-            await self.pool.close()
-            logger.info("✅ Cloud SQL pool closed")
+        # Singleton connection manager handles its own shutdown via signal handlers
+        # No need to manually close it here
 
         if self._local_connection:
             await self._local_connection.close()
@@ -270,6 +270,8 @@ class CloudDatabaseAdapter:
     @property
     def is_cloud(self) -> bool:
         """Check if using cloud database"""
+        if self.connection_manager:
+            return self.connection_manager.is_initialized
         return self.pool is not None
 
 
