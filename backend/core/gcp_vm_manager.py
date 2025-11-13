@@ -266,7 +266,7 @@ class GCPVMManager:
             logger.info(f"✅ GCP API clients initialized (Project: {self.config.project_id})")
 
             # Initialize integrations
-            self.cost_tracker = await get_cost_tracker()
+            self.cost_tracker = get_cost_tracker()
             logger.info("✅ Cost tracker integrated")
 
             self.gcp_optimizer = get_gcp_optimizer(config={"project_id": self.config.project_id})

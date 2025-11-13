@@ -892,3 +892,108 @@ class OCRStrategyManager:
                 chain.add_primary(use_cache, name="cache", timeout=1.0)
 
         # 3. Fallback 2: Local OCR
+        if self.tesseract:
+            async def extract_with_tesseract():
+                logger.info(f"[OCR-STRATEGY] Attempting Tesseract OCR: {image_hash[:8]}")
+
+                text, confidence = await self.tesseract.extract_text(image_path)
+
+                # Cache Tesseract result
+                cached = CachedOCR(
+                    text=text,
+                    image_hash=image_hash,
+                    timestamp=datetime.now(),
+                    method="tesseract",
+                    confidence=confidence
+                )
+                self.cache.store(cached)
+
+                return (text, confidence, "tesseract")
+
+            chain.add_fallback(extract_with_tesseract, name="tesseract", timeout=30.0)
+
+        # 4. Fallback 3: Image metadata only
+        async def extract_metadata_only():
+            logger.info(f"[OCR-STRATEGY] Falling back to metadata extraction: {image_hash[:8]}")
+
+            metadata = self.metadata_extractor.extract(image_path)
+            text = f"Image: {metadata['size']}px, {metadata['format']}"
+
+            return (text, 0.1, "metadata")
+
+        chain.add_fallback(extract_metadata_only, name="metadata", timeout=5.0)
+
+        # Execute fallback chain
+        report = await chain.execute()
+
+        if report.final_result:
+            text, confidence, method = report.final_result
+            return OCRResult(
+                text=text,
+                confidence=confidence,
+                method=method,
+                success=True,
+                error=None,
+                execution_time=0.0  # Will be set by caller
+            )
+        else:
+            return OCRResult(
+                text="",
+                confidence=0.0,
+                method="none",
+                success=False,
+                error=f"All OCR methods failed: {report.errors}",
+                execution_time=0.0
+            )
+
+
+# ============================================================================
+# GLOBAL INSTANCE
+# ============================================================================
+
+_global_manager: Optional[OCRStrategyManager] = None
+
+
+def get_ocr_strategy_manager() -> Optional[OCRStrategyManager]:
+    """Get the global OCR strategy manager instance.
+
+    Returns:
+        The global OCRStrategyManager instance if initialized, None otherwise
+    """
+    return _global_manager
+
+
+def initialize_ocr_strategy_manager(
+    cache_ttl: float = 300.0,
+    max_cache_entries: int = 100,
+    enable_error_matrix: bool = True,
+    anthropic_api_key: Optional[str] = None
+) -> OCRStrategyManager:
+    """Initialize the global OCR strategy manager.
+
+    Args:
+        cache_ttl: Cache time-to-live in seconds
+        max_cache_entries: Maximum number of cache entries
+        enable_error_matrix: Whether to enable Error Handling Matrix integration
+        anthropic_api_key: Optional Anthropic API key for Claude Vision
+
+    Returns:
+        The initialized OCRStrategyManager instance
+
+    Example:
+        >>> manager = initialize_ocr_strategy_manager(
+        ...     cache_ttl=600.0,
+        ...     max_cache_entries=200,
+        ...     enable_error_matrix=True
+        ... )
+        >>> print("OCR strategy manager initialized")
+    """
+    global _global_manager
+    _global_manager = OCRStrategyManager(
+        cache_ttl=cache_ttl,
+        max_cache_entries=max_cache_entries,
+        enable_error_matrix=enable_error_matrix,
+        anthropic_api_key=anthropic_api_key
+    )
+    logger.info("✅ Global OCR strategy manager initialized")
+    return _global_manager
