@@ -93,19 +93,56 @@ class WhisperAudioHandler:
         def _normalize_sync():
             logger.info(f"🔊 Audio normalization: {len(audio_bytes)} bytes")
 
-            # Step 1: Try to detect format and decode with soundfile first
+            # Step 1: Try to detect format and decode
             audio_array = None
             detected_sr = None
             detected_format = None
 
-            # Try soundfile first (handles WAV, FLAC, OGG with embedded metadata)
+            # Try pydub first (handles WebM/Opus, MP3, MP4, etc.)
             try:
-                audio_buf = io.BytesIO(audio_bytes)
-                audio_array, detected_sr = sf.read(audio_buf, dtype='float32')
-                detected_format = "soundfile (with metadata)"
-                logger.info(f"✅ Decoded with soundfile: {detected_sr}Hz, {audio_array.shape}")
+                from pydub import AudioSegment
+                import tempfile
+                import os
+
+                # Write to temp file for pydub
+                with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+                    tmp.write(audio_bytes)
+                    tmp_path = tmp.name
+
+                # Load with pydub (uses ffmpeg under the hood)
+                audio = AudioSegment.from_file(tmp_path)
+                os.unlink(tmp_path)
+
+                # Convert to numpy array
+                audio_array = np.array(audio.get_array_of_samples(), dtype=np.float32)
+
+                # Normalize to [-1.0, 1.0]
+                if audio.sample_width == 1:  # 8-bit
+                    audio_array = audio_array / 128.0
+                elif audio.sample_width == 2:  # 16-bit
+                    audio_array = audio_array / 32768.0
+                elif audio.sample_width == 4:  # 32-bit
+                    audio_array = audio_array / 2147483648.0
+
+                # Handle stereo
+                if audio.channels == 2:
+                    audio_array = audio_array.reshape((-1, 2)).mean(axis=1)
+
+                detected_sr = audio.frame_rate
+                detected_format = "pydub (WebM/Opus/MP3/etc)"
+                logger.info(f"✅ Decoded with pydub: {detected_sr}Hz, {len(audio_array)} samples, {audio.channels} channels")
             except Exception as e:
-                logger.debug(f"soundfile decode failed: {e}")
+                logger.debug(f"pydub decode failed: {e}")
+
+            # Try soundfile second (handles WAV, FLAC, OGG with embedded metadata)
+            if audio_array is None:
+                try:
+                    audio_buf = io.BytesIO(audio_bytes)
+                    audio_array, detected_sr = sf.read(audio_buf, dtype='float32')
+                    detected_format = "soundfile (with metadata)"
+                    logger.info(f"✅ Decoded with soundfile: {detected_sr}Hz, {audio_array.shape}")
+                except Exception as e:
+                    logger.debug(f"soundfile decode failed: {e}")
 
             # Step 2: If soundfile fails, try raw PCM formats
             if audio_array is None:
@@ -326,13 +363,26 @@ class WhisperAudioHandler:
                 logger.info(f"   Audio min: {normalized_audio.min():.6f}, max: {normalized_audio.max():.6f}")
                 logger.info(f"   Audio duration: {len(normalized_audio) / 16000:.2f}s @ 16kHz")
 
-                # Pass audio array directly to Whisper instead of WAV file
-                # This bypasses potential WAV file corruption issues
+                # CRITICAL FIX: Whisper requires audio to be padded/trimmed to N_SAMPLES
+                # Whisper internally pads to 30 seconds (480000 samples at 16kHz)
+                # But we need to ensure it's at least long enough to avoid edge cases
+                audio_to_transcribe = normalized_audio
+
+                # Ensure minimum length (at least 0.5 seconds)
+                min_samples = 8000  # 0.5 seconds at 16kHz
+                if len(audio_to_transcribe) < min_samples:
+                    logger.warning(f"⚠️ Audio too short ({len(audio_to_transcribe)} samples), padding to {min_samples}")
+                    audio_to_transcribe = np.pad(audio_to_transcribe, (0, min_samples - len(audio_to_transcribe)))
+
+                # Pass audio array directly to Whisper
+                # Use word_timestamps to get better results
                 result = model.transcribe(
-                    normalized_audio,
+                    audio_to_transcribe,
                     language="en",
                     fp16=False,
-                    verbose=True  # Show progress
+                    word_timestamps=False,  # Faster without word timestamps
+                    condition_on_previous_text=False,  # Don't use context from previous
+                    temperature=0.0  # Deterministic (no randomness)
                 )
                 logger.info(f"   Raw Whisper result: {result}")
                 return result["text"].strip() # Strip leading/trailing whitespace from text
