@@ -84,14 +84,11 @@ class CloudSQLConnectionManager:
 
     def _register_shutdown_handlers(self):
         """Register signal handlers for graceful shutdown"""
-        # Register atexit handler
+        # Register atexit handler only (don't override existing signal handlers)
+        # This ensures cleanup happens even if process crashes or exits unexpectedly
         atexit.register(self._sync_shutdown)
 
-        # Register signal handlers for SIGINT and SIGTERM
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, self._signal_handler)
-
-        logger.info("✅ Shutdown handlers registered (SIGINT, SIGTERM, atexit)")
+        logger.info("✅ Shutdown handler registered (atexit only - respecting existing signal handlers)")
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""

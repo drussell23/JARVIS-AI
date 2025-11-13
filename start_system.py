@@ -7906,7 +7906,21 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 print(f"   └─ {Colors.YELLOW}⚠️  Could not retrieve VM status: {e}{Colors.ENDC}")
                 logger.debug(f"GCP VM status check failed: {e}")
 
-        # Close all open file handles first
+        # Shutdown singleton connection manager
+        print(f"\n{Colors.CYAN}🔌 [1.8/6] Shutting down database connections...{Colors.ENDC}")
+        try:
+            from intelligence.cloud_sql_connection_manager import get_connection_manager
+            conn_manager = get_connection_manager()
+            if conn_manager.is_initialized:
+                await conn_manager.shutdown()
+                print(f"   └─ {Colors.GREEN}✓ Database connections closed{Colors.ENDC}")
+            else:
+                print(f"   └─ {Colors.CYAN}ℹ️  No active database connections{Colors.ENDC}")
+        except Exception as e:
+            print(f"   └─ {Colors.YELLOW}⚠ Database shutdown warning: {e}{Colors.ENDC}")
+            logger.debug(f"Connection manager shutdown failed: {e}")
+
+        # Close all open file handles
         print(f"\n{Colors.CYAN}📁 [2/6] Closing file handles...{Colors.ENDC}")
         file_count = len(self.open_files)
         for file_handle in self.open_files:
