@@ -490,19 +490,26 @@ class HybridSTTRouter:
                     )
                     logger.info(f"✅ Robust Whisper succeeded: '{final_result.text}'")
                 else:
-                    raise ValueError("Robust Whisper returned empty text")
+                    logger.error("❌ Robust Whisper returned None - audio validation failed")
+                    raise ValueError("Robust Whisper returned None - invalid audio data")
 
             except Exception as e:
-                logger.error(f"Robust Whisper fallback failed: {e}")
-                # Try one more time with hardcoded unlock command for testing
-                logger.warning("🔧 Using hardcoded test command: 'unlock my screen'")
+                logger.error(f"❌ Robust Whisper fallback failed: {e}")
+                logger.error("🚨 TRANSCRIPTION FAILURE - Audio data appears invalid or corrupted")
+                logger.error("   Possible causes:")
+                logger.error("   1. Audio format incompatible (need PCM int16, 16kHz)")
+                logger.error("   2. Audio contains only silence")
+                logger.error("   3. Audio data is corrupted or truncated")
+                logger.error("   4. Microphone permissions not granted")
+                # Return a proper error result instead of hardcoded text
                 final_result = STTResult(
-                    text="unlock my screen",  # Hardcode for testing
-                    confidence=0.50,
+                    text="[transcription failed]",
+                    confidence=0.0,
                     engine=STTEngine.WHISPER_LOCAL,
-                    model_name="test-hardcoded",
+                    model_name="fallback",
                     latency_ms=(time.time() - start_time) * 1000,
-                    audio_duration_ms=3000,
+                    audio_duration_ms=0,
+                    metadata={"error": str(e), "reason": "audio_validation_failed"}
                 )
 
         # Calculate total latency

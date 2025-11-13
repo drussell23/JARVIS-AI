@@ -85,45 +85,70 @@ class WhisperAudioHandler:
             raise ValueError(f"Unsupported audio data type: {type(audio_data)}")
 
     def create_wav_from_bytes(self, audio_bytes, sample_rate=16000):
-        """Create a WAV file from raw audio bytes"""
+        """Create a WAV file from raw audio bytes with robust format detection"""
+
+        logger.info(f"🔍 Audio preprocessing: {len(audio_bytes)} bytes")
 
         # Try to interpret as different formats
         audio_array = None
+        detected_format = None
 
-        # Try as raw PCM int16
+        # Try as raw PCM int16 (most common format from browsers)
         try:
             audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-            audio_array = audio_array.astype(np.float32) / 32768.0
-            logger.debug("Interpreted as int16 PCM")
-        except:
+            # Validate it's reasonable audio data
+            if len(audio_array) > 100:  # At least 100 samples
+                audio_array = audio_array.astype(np.float32) / 32768.0
+                detected_format = "int16 PCM"
+                logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
+            else:
+                audio_array = None
+        except Exception as e:
+            logger.debug(f"Not int16 PCM: {e}")
             pass
 
         # Try as raw PCM float32
         if audio_array is None:
             try:
                 audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
-                logger.debug("Interpreted as float32 PCM")
-            except:
+                if len(audio_array) > 100:
+                    detected_format = "float32 PCM"
+                    logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
+                else:
+                    audio_array = None
+            except Exception as e:
+                logger.debug(f"Not float32 PCM: {e}")
                 pass
 
         # Try as raw PCM int8
         if audio_array is None:
             try:
                 audio_array = np.frombuffer(audio_bytes, dtype=np.int8)
-                audio_array = audio_array.astype(np.float32) / 128.0
-                logger.debug("Interpreted as int8 PCM")
-            except:
+                if len(audio_array) > 100:
+                    audio_array = audio_array.astype(np.float32) / 128.0
+                    detected_format = "int8 PCM"
+                    logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
+                else:
+                    audio_array = None
+            except Exception as e:
+                logger.debug(f"Not int8 PCM: {e}")
                 pass
 
-        # If we still don't have audio, create silence
+        # If we still don't have audio, FAIL instead of creating silence
         if audio_array is None:
-            logger.warning("Could not interpret audio bytes, creating silence")
-            audio_array = np.zeros(sample_rate * 3, dtype=np.float32)  # 3 seconds of silence
+            logger.error("❌ Could not interpret audio bytes - invalid audio format")
+            raise ValueError("Audio format not recognized - cannot decode audio bytes")
 
         # Ensure audio is the right length
         if len(audio_array) == 0:
-            logger.warning("Empty audio array, creating silence")
-            audio_array = np.zeros(sample_rate * 3, dtype=np.float32)
+            logger.error("❌ Empty audio array - no audio data to transcribe")
+            raise ValueError("Empty audio data - cannot transcribe silence")
+
+        # Validate audio has actual content (not just silence)
+        audio_energy = np.abs(audio_array).mean()
+        if audio_energy < 0.001:  # Threshold for silence detection
+            logger.error(f"❌ Audio appears to be silence (energy: {audio_energy:.6f})")
+            raise ValueError("Audio contains only silence - cannot transcribe")
 
         # Save to temp WAV file
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
@@ -155,9 +180,10 @@ class WhisperAudioHandler:
             return text
 
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            # Return a test phrase to verify the system works
-            return "unlock my screen"  # Default to unlock command for testing
+            logger.error(f"❌ Whisper transcription failed: {e}")
+            logger.error("   This indicates audio format issues or invalid audio data")
+            # Return None to signal failure - do NOT return hardcoded text
+            return None
 
 # Global instance
 _whisper_handler = WhisperAudioHandler()
