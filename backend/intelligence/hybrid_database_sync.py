@@ -1037,6 +1037,15 @@ class HybridDatabaseSync:
         if self.faiss_cache:
             await self._preload_faiss_cache()
 
+            # Bootstrap voice profiles from CloudSQL if SQLite cache is empty
+            if self.faiss_cache.size() == 0:
+                logger.info("📥 SQLite cache empty - attempting bootstrap from CloudSQL...")
+                bootstrap_success = await self.bootstrap_voice_profiles_from_cloudsql()
+                if bootstrap_success:
+                    logger.info("✅ Voice profiles bootstrapped - ready for offline authentication")
+                else:
+                    logger.warning("⚠️  Bootstrap failed - voice authentication requires CloudSQL connection")
+
         # Start background services
         self.sync_task = asyncio.create_task(self._sync_loop())
         self.health_check_task = asyncio.create_task(self._health_check_loop())
@@ -1172,6 +1181,91 @@ class HybridDatabaseSync:
 
         except Exception as e:
             logger.error(f"❌ FAISS cache preload failed: {e}")
+
+    async def bootstrap_voice_profiles_from_cloudsql(self) -> bool:
+        """
+        Bootstrap voice profiles from CloudSQL to SQLite cache.
+        Called on first startup when SQLite is empty.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.connection_manager or not self.connection_manager.is_initialized:
+            logger.warning("⚠️  CloudSQL not available - cannot bootstrap voice profiles")
+            return False
+
+        try:
+            logger.info("🔄 Bootstrapping voice profiles from CloudSQL...")
+            start_time = time.time()
+
+            # Query all speaker profiles from CloudSQL
+            async with self.connection_manager.connection() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        speaker_id,
+                        speaker_name,
+                        voiceprint_embedding,
+                        acoustic_features,
+                        total_samples,
+                        last_updated
+                    FROM speaker_profiles
+                    ORDER BY speaker_id
+                """)
+
+            if not rows:
+                logger.warning("⚠️  No voice profiles found in CloudSQL")
+                return False
+
+            # Insert into SQLite
+            synced_count = 0
+            for row in rows:
+                try:
+                    await self.sqlite_conn.execute("""
+                        INSERT OR REPLACE INTO speaker_profiles
+                        (speaker_id, speaker_name, voiceprint_embedding, acoustic_features, total_samples, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        row['speaker_id'],
+                        row['speaker_name'],
+                        row['voiceprint_embedding'],
+                        row['acoustic_features'],
+                        row['total_samples'],
+                        row['last_updated']
+                    ))
+
+                    # Also add to FAISS cache
+                    if self.faiss_cache and row['voiceprint_embedding']:
+                        embedding = np.frombuffer(bytes(row['voiceprint_embedding']), dtype=np.float32)
+                        metadata = {
+                            "speaker_name": row['speaker_name'],
+                            "acoustic_features": json.loads(row['acoustic_features']) if row['acoustic_features'] else {},
+                            "total_samples": row['total_samples']
+                        }
+                        self.faiss_cache.add_embedding(row['speaker_name'], embedding, metadata)
+
+                    synced_count += 1
+                    logger.debug(f"   Synced profile: {row['speaker_name']} ({row['total_samples']} samples)")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to sync profile {row['speaker_name']}: {e}")
+                    continue
+
+            await self.sqlite_conn.commit()
+
+            elapsed = (time.time() - start_time) * 1000
+            logger.info(f"✅ Bootstrapped {synced_count}/{len(rows)} voice profiles in {elapsed:.1f}ms")
+
+            if self.faiss_cache:
+                self.metrics.cache_size = self.faiss_cache.size()
+                logger.info(f"   FAISS cache size: {self.metrics.cache_size} embeddings")
+
+            return synced_count > 0
+
+        except Exception as e:
+            logger.error(f"❌ Voice profile bootstrap failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     async def _health_check_loop(self):
         """Background health check for CloudSQL connectivity"""
