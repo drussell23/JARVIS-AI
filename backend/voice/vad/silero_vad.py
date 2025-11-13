@@ -112,6 +112,15 @@ class SileroVAD(VADBase):
             return False, 0.0
 
         try:
+            # Silero expects exactly 512 samples (16kHz) or 256 samples (8kHz)
+            chunk_size = 512 if self.sample_rate == 16000 else 256
+
+            # Pad or truncate frame to expected size
+            if len(frame) < chunk_size:
+                frame = np.pad(frame, (0, chunk_size - len(frame)), mode='constant')
+            elif len(frame) > chunk_size:
+                frame = frame[:chunk_size]
+
             # Convert to torch tensor
             audio_tensor = torch.from_numpy(frame).float()
 
@@ -182,10 +191,26 @@ class SileroVAD(VADBase):
                 duration_ms = (len(segment_audio) / self.sample_rate) * 1000
 
                 # Get average confidence for this segment
-                # Run model on segment to get confidence
-                segment_tensor = torch.from_numpy(segment_audio).float().unsqueeze(0)
-                with torch.no_grad():
-                    confidence = self.model(segment_tensor, self.sample_rate).item()
+                # Silero expects exactly 512 samples (16kHz) or 256 samples (8kHz)
+                # We need to chunk the segment and average the confidence scores
+                chunk_size = 512 if self.sample_rate == 16000 else 256
+                confidences = []
+
+                for i in range(0, len(segment_audio), chunk_size):
+                    chunk = segment_audio[i:i + chunk_size]
+
+                    # Skip if chunk is too small
+                    if len(chunk) < chunk_size:
+                        # Pad the last chunk to chunk_size
+                        chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
+
+                    chunk_tensor = torch.from_numpy(chunk).float().unsqueeze(0)
+                    with torch.no_grad():
+                        chunk_confidence = self.model(chunk_tensor, self.sample_rate).item()
+                        confidences.append(chunk_confidence)
+
+                # Average confidence across all chunks
+                confidence = np.mean(confidences) if confidences else self.config.speech_threshold
 
                 yield SpeechSegment(
                     start_sample=start_sample,
