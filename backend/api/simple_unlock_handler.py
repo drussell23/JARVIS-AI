@@ -171,8 +171,21 @@ async def _perform_direct_unlock(password: str) -> bool:
     Returns:
         bool: True if unlock succeeded, False otherwise
     """
+    caffeinate_process = None
     try:
         logger.info("[DIRECT UNLOCK] Starting secure unlock sequence with biometric integration")
+
+        # CRITICAL: Keep screen awake during entire unlock process
+        # This prevents screen from going black while JARVIS processes audio
+        logger.info("[DIRECT UNLOCK] Starting caffeinate to prevent screen sleep...")
+        caffeinate_process = await asyncio.create_subprocess_exec(
+            "caffeinate", "-d", "-u",  # -d = prevent display sleep, -u = wake display
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+
+        # Give caffeinate a moment to activate
+        await asyncio.sleep(0.3)
 
         # Import secure password typer
         from voice_unlock.secure_password_typer import type_password_securely
@@ -219,6 +232,17 @@ async def _perform_direct_unlock(password: str) -> bool:
     except Exception as e:
         logger.error(f"[DIRECT UNLOCK] ❌ Error during unlock: {e}", exc_info=True)
         return False
+    finally:
+        # Always terminate caffeinate process to restore normal power management
+        if caffeinate_process:
+            try:
+                caffeinate_process.terminate()
+                await asyncio.sleep(0.1)  # Give it a moment to terminate gracefully
+                if caffeinate_process.returncode is None:
+                    caffeinate_process.kill()  # Force kill if still running
+                logger.info("[DIRECT UNLOCK] Caffeinate process terminated")
+            except Exception as cleanup_error:
+                logger.warning(f"[DIRECT UNLOCK] Failed to cleanup caffeinate: {cleanup_error}")
 
 
 async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str, Any]:

@@ -141,6 +141,7 @@ paths = [
   '''run_unlock_test.sh''',
   '''update_unlock_password.py''',
   '''backend/fix_unlock_password.py''',
+  '''test_password_typing.py''',
   # Secret manager code
   '''backend/core/secret_manager.py''',
   '''backend/scripts/setup_local_secrets.py''',

@@ -284,6 +284,14 @@ class IntelligentVoiceUnlockService:
         Returns:
             Result dict with success, speaker, reason, and diagnostics
         """
+        # CRITICAL: Start caffeinate IMMEDIATELY to prevent screen sleep during processing
+        caffeinate_process = await asyncio.create_subprocess_exec(
+            "caffeinate", "-d", "-u",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        logger.info("🔋 Caffeinate started to keep screen awake")
+
         if not self.initialized:
             await self.initialize()
 
@@ -509,6 +517,13 @@ class IntelligentVoiceUnlockService:
 
         # Calculate total latency
         total_latency_ms = (datetime.now() - start_time).total_seconds() * 1000
+
+        # Cleanup caffeinate
+        try:
+            caffeinate_process.terminate()
+            logger.info("🔋 Caffeinate terminated")
+        except:
+            pass
 
         return {
             "success": unlock_result["success"],
