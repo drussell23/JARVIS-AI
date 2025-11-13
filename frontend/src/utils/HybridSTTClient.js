@@ -39,10 +39,16 @@ class HybridSTTClient {
     this.onspeechend = null;
     this.onaudiostart = null;
     this.onaudioend = null;
+    this.oncommanddetected = null; // 🆕 Command detection callback
 
     // Retry tracking
     this.retryCount = 0;
     this.lastTranscript = null;
+
+    // 🆕 Command detection state (for streaming safeguard integration)
+    this.commandDetected = false;
+    this.detectedCommand = null;
+    this.commandDetectionCooldown = 2000; // 2 seconds cooldown
 
     // STT metrics
     this.stats = {
@@ -62,6 +68,17 @@ class HybridSTTClient {
    * Start audio capture and transcription
    */
   async start() {
+    // 🆕 Check if command was recently detected (cooldown period)
+    if (this.commandDetected) {
+      console.warn(`🛡️ [HybridSTT] Cannot start - command "${this.detectedCommand}" was recently detected (cooldown active)`);
+      this._triggerEvent('error', {
+        error: 'command-detected-cooldown',
+        command: this.detectedCommand,
+        message: `Command "${this.detectedCommand}" detected, cooling down...`
+      });
+      return;
+    }
+
     if (this.isRecording) {
       console.warn('🎤 [HybridSTT] Already recording');
       return;
@@ -149,7 +166,8 @@ class HybridSTTClient {
       // Auto-stop after silence or time limit (if continuous is false)
       if (!this.options.continuous) {
         setTimeout(() => {
-          if (this.isRecording && !this.isPaused) {
+          // 🆕 Check command detection flag before auto-stopping
+          if (this.isRecording && !this.isPaused && !this.commandDetected) {
             this.stop();
           }
         }, 10000); // 10 second max recording
@@ -362,6 +380,51 @@ class HybridSTTClient {
       averageLatency: 0,
       enginesUsed: {}
     };
+  }
+
+  /**
+   * 🆕 Handle stream_stop message from backend
+   *
+   * Called when backend detects a command (e.g., "unlock") and wants
+   * to stop the audio stream immediately to prevent accumulation.
+   *
+   * This is the integration point for the backend's streaming safeguard.
+   */
+  handleStreamStop(data) {
+    const { reason, command, message } = data;
+
+    console.log(`🛡️ [HybridSTT] Stream stop received:`, {
+      reason,
+      command,
+      message,
+      isRecording: this.isRecording
+    });
+
+    // Set command detection flag
+    this.commandDetected = true;
+    this.detectedCommand = command;
+
+    // Stop recording immediately if active
+    if (this.isRecording) {
+      console.log(`🛡️ [HybridSTT] Stopping recording due to command detection: "${command}"`);
+      this.stop();
+    }
+
+    // Trigger command detected event for UI feedback
+    this._triggerEvent('commanddetected', {
+      command,
+      reason,
+      message,
+      timestamp: Date.now()
+    });
+
+    // Reset command detection flag after cooldown period
+    // This prevents immediate restart of recording
+    setTimeout(() => {
+      console.log(`🛡️ [HybridSTT] Command detection cooldown expired for "${command}"`);
+      this.commandDetected = false;
+      this.detectedCommand = null;
+    }, this.commandDetectionCooldown);
   }
 }
 

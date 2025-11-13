@@ -13,6 +13,7 @@ import HybridSTTClient from '../utils/HybridSTTClient'; // Hybrid STT client (re
 import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
+import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
 // DISABLED - Environmental and audio quality adaptation (causing echo/feedback)
 // import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
 // import audioQualityAdaptation from '../utils/AudioQualityAdaptation'; // Audio quality enhancement
@@ -633,6 +634,7 @@ const JarvisVoice = () => {
   const [lastUserInteraction, setLastUserInteraction] = useState(null);
   const [showSTTDetails, setShowSTTDetails] = useState(true); // Show hybrid STT engine details
   const [useHybridSTT, setUseHybridSTT] = useState(true); // Use hybrid STT instead of browser API
+  const [detectedCommand, setDetectedCommand] = useState(null); // 🆕 Command detected by streaming safeguard
   const typingTimeoutRef = useRef(null);
 
   const wsRef = useRef(null);
@@ -1381,6 +1383,22 @@ const JarvisVoice = () => {
         setResponse(`❌ Transcription failed: ${data.message}`);
         setIsProcessing(false);
         setError(data.message);
+        break;
+
+      case 'stream_stop':
+        // 🆕 Handle stream_stop message from backend
+        // Backend detected a command (e.g., "unlock") and wants to stop audio stream
+        console.log('🛡️ [Stream Stop] Backend detected command:', data);
+
+        if (hybridSTTClientRef.current) {
+          hybridSTTClientRef.current.handleStreamStop(data);
+        }
+
+        // Update UI to show command detection
+        if (data.command) {
+          setDetectedCommand(data.command); // Show banner
+          setResponse(`🛡️ Command detected: "${data.command}" - stopping audio stream`);
+        }
         break;
 
       case 'command_response':
@@ -3274,6 +3292,15 @@ const JarvisVoice = () => {
             All advanced features now available: Wake word • ML Audio • Vision • Memory • Tools
           </div>
         </div>
+      )}
+
+      {/* 🆕 Command Detection Banner - Shows when streaming safeguard detects a command */}
+      {detectedCommand && (
+        <CommandDetectionBanner
+          command={detectedCommand}
+          onDismiss={() => setDetectedCommand(null)}
+          autoDismiss={3000}
+        />
       )}
 
       {/* Simplified Status Indicator */}
