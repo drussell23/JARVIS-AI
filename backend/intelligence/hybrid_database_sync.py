@@ -1231,6 +1231,11 @@ class HybridDatabaseSync:
             synced_count = 0
             for row in rows:
                 try:
+                    # Skip profiles with NULL embeddings (incomplete profiles)
+                    if not row['voiceprint_embedding']:
+                        logger.debug(f"   Skipping profile {row['speaker_name']}: NULL embedding")
+                        continue
+
                     # Build acoustic_features JSON from individual columns
                     acoustic_features = {
                         "pitch_mean_hz": float(row['pitch_mean_hz']) if row['pitch_mean_hz'] else 0.0,
