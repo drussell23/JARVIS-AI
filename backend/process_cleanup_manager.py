@@ -519,12 +519,13 @@ class ProcessCleanupManager:
         self.backend_path = Path(__file__).parent.absolute()
 
     def _get_swift_monitor(self):
-        """Lazy load the Swift monitor"""
-        if self.swift_monitor is None and SWIFT_AVAILABLE:
-            from core.swift_system_monitor import get_swift_system_monitor
-
-            self.swift_monitor = get_swift_system_monitor()
-        return self.swift_monitor
+        """
+        Lazy load the Swift monitor.
+        DISABLED: Swift monitor is async and causes issues in sync contexts.
+        Fallback to psutil is more reliable.
+        """
+        # DISABLED: Swift monitor is async, use psutil instead
+        return None
 
     def _calculate_code_hash(self) -> str:
         """Calculate hash of critical JARVIS files to detect code changes"""
@@ -1104,11 +1105,14 @@ class ProcessCleanupManager:
         return sorted(high_memory, key=lambda x: x["memory_mb"], reverse=True)
 
     def _find_stuck_processes(self) -> List[Dict]:
-        """Find processes that appear to be stuck or hanging"""
+        """
+        Find processes that appear to be stuck or hanging.
+        Enhanced to detect async/sync deadlocks (like SpeechBrain model loading).
+        """
         stuck = []
         current_time = time.time()
 
-        for proc in psutil.process_iter(["pid", "name", "create_time", "status"]):
+        for proc in psutil.process_iter(["pid", "name", "create_time", "status", "cmdline"]):
             try:
                 # Check if process is in uninterruptible sleep or zombie state
                 if proc.status() in [psutil.STATUS_DISK_SLEEP, psutil.STATUS_ZOMBIE]:
@@ -1118,25 +1122,57 @@ class ProcessCleanupManager:
                             "name": proc.name(),
                             "status": proc.status(),
                             "age_seconds": current_time - proc.create_time(),
+                            "reason": "uninterruptible_sleep_or_zombie",
                         }
                     )
 
                 # Check for old JARVIS processes that might be stuck
                 if self._is_jarvis_process(proc):
                     age = current_time - proc.create_time()
-                    if age > self.config["stuck_process_time"]:
+                    cmdline = " ".join(proc.cmdline())
+
+                    # Enhanced: Detect async/sync deadlock scenarios
+                    is_likely_deadlocked = False
+                    deadlock_reason = ""
+
+                    # Check for SpeechBrain-related deadlocks
+                    if "speechbrain" in cmdline.lower() or "torch" in cmdline.lower():
+                        cpu_usage = proc.cpu_percent(interval=0.5)
+                        if cpu_usage < 0.1 and age > 120:  # 2 minutes idle
+                            is_likely_deadlocked = True
+                            deadlock_reason = "speechbrain_async_deadlock"
+
+                    # Check for database connection hangs
+                    if "database" in cmdline.lower() or "psycopg" in cmdline.lower():
+                        cpu_usage = proc.cpu_percent(interval=0.5)
+                        if cpu_usage < 0.1 and age > 180:  # 3 minutes idle
+                            is_likely_deadlocked = True
+                            deadlock_reason = "database_connection_hang"
+
+                    # General stuck process detection
+                    if age > self.config["stuck_process_time"] and not is_likely_deadlocked:
                         # Check if it's actually doing something
                         cpu_usage = proc.cpu_percent(interval=1.0)
                         if cpu_usage < 0.1:  # Less than 0.1% CPU - probably stuck
-                            stuck.append(
-                                {
-                                    "pid": proc.pid,
-                                    "name": proc.name(),
-                                    "status": "likely_stuck",
-                                    "age_seconds": age,
-                                    "cpu_percent": cpu_usage,
-                                }
-                            )
+                            is_likely_deadlocked = True
+                            deadlock_reason = "general_stuck_process"
+
+                    if is_likely_deadlocked:
+                        stuck.append(
+                            {
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "status": "likely_stuck",
+                                "age_seconds": age,
+                                "cpu_percent": cpu_usage,
+                                "reason": deadlock_reason,
+                                "cmdline": cmdline[:100],
+                            }
+                        )
+                        logger.warning(
+                            f"🔴 Detected stuck process: PID {proc.pid} ({deadlock_reason}), "
+                            f"Age: {age/60:.1f}m, CPU: {cpu_usage:.1f}%"
+                        )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
@@ -1797,11 +1833,67 @@ class ProcessCleanupManager:
                 continue
         return None
 
+    def _cleanup_cloudsql_connections(self) -> Dict[str, int]:
+        """
+        Clean up orphaned CloudSQL connections by terminating JARVIS processes
+        that might be holding connection leaks.
+
+        Returns:
+            Dictionary with cleanup statistics
+        """
+        cleaned = {
+            "processes_terminated": 0,
+            "cloud_sql_proxy_restarted": False,
+        }
+
+        logger.info("🔌 Cleaning up CloudSQL connections...")
+
+        # Find all JARVIS processes that might be holding database connections
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "connections"]):
+            try:
+                if self._is_jarvis_process(proc):
+                    cmdline = " ".join(proc.cmdline())
+
+                    # Check if process has connections to CloudSQL proxy port (5432)
+                    has_db_connection = False
+                    try:
+                        for conn in proc.connections():
+                            if conn.laddr.port == 5432 or conn.raddr.port == 5432:
+                                has_db_connection = True
+                                break
+                    except (psutil.AccessDenied, AttributeError):
+                        # Can't check connections, but if it's a backend process, assume it has DB connections
+                        if "backend" in cmdline.lower() or "main.py" in cmdline:
+                            has_db_connection = True
+
+                    if has_db_connection:
+                        logger.info(f"Terminating process with DB connection: PID {proc.pid}")
+                        try:
+                            proc.terminate()
+                            proc.wait(timeout=3)
+                            cleaned["processes_terminated"] += 1
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                            cleaned["processes_terminated"] += 1
+                        except psutil.NoSuchProcess:
+                            pass
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # Give CloudSQL time to release connections
+        if cleaned["processes_terminated"] > 0:
+            logger.info(f"⏳ Waiting 5 seconds for CloudSQL to release {cleaned['processes_terminated']} connections...")
+            time.sleep(5)
+
+        return cleaned
+
     def emergency_cleanup_all_jarvis(self, force_kill: bool = False) -> Dict[str, Any]:
         """
         Emergency cleanup - kill ALL JARVIS-related processes and clean up resources.
         Use this when JARVIS has segfaulted or is in a bad state.
         Includes GCP VM cleanup for all sessions from this machine.
+        Enhanced with CloudSQL connection cleanup.
 
         Args:
             force_kill: If True, skip graceful termination and go straight to SIGKILL
@@ -1817,6 +1909,7 @@ class ProcessCleanupManager:
             "ipc_cleaned": {},
             "vms_deleted": [],
             "vm_errors": [],
+            "cloudsql_cleanup": {},
             "errors": [],
         }
 
@@ -1944,7 +2037,18 @@ class ProcessCleanupManager:
         except:
             pass
 
-        # Step 5: Remove code state file to force fresh start
+        # Step 5: Clean up CloudSQL connections
+        try:
+            cloudsql_cleanup = self._cleanup_cloudsql_connections()
+            results["cloudsql_cleanup"] = cloudsql_cleanup
+            if cloudsql_cleanup["processes_terminated"] > 0:
+                logger.info(
+                    f"🔌 Cleaned up {cloudsql_cleanup['processes_terminated']} processes with DB connections"
+                )
+        except Exception as e:
+            logger.error(f"Failed to clean CloudSQL connections: {e}")
+
+        # Step 6: Remove code state file to force fresh start
         if self.code_state_file.exists():
             try:
                 self.code_state_file.unlink()
@@ -1952,7 +2056,7 @@ class ProcessCleanupManager:
             except:
                 pass
 
-        # Step 6: Clean up ALL GCP VMs for this machine (synchronous)
+        # Step 7: Clean up ALL GCP VMs for this machine (synchronous)
         logger.info("🌐 Cleaning up all GCP VMs from this machine...")
         try:
             # Get all sessions for this machine
@@ -1998,6 +2102,10 @@ class ProcessCleanupManager:
         logger.info(f"  • Freed {len(results['ports_freed'])} ports")
         if results["ipc_cleaned"]:
             logger.info(f"  • Cleaned {sum(results['ipc_cleaned'].values())} IPC resources")
+        if results["cloudsql_cleanup"].get("processes_terminated", 0) > 0:
+            logger.info(
+                f"  • Terminated {results['cloudsql_cleanup']['processes_terminated']} processes with DB connections"
+            )
         if results["vms_deleted"]:
             logger.info(f"  • Deleted {len(results['vms_deleted'])} GCP VMs")
         if results["vm_errors"]:
