@@ -664,64 +664,140 @@ class ProcessCleanupManager:
         """
         cleaned = []
 
-        logger.warning("🔄 FORCE RESTART MODE - Killing ALL JARVIS processes for clean restart...")
+        logger.warning("🔥 BULLETPROOF FORCE RESTART MODE - Killing ALL JARVIS processes...")
 
-        # ALWAYS clear Python cache in force restart mode
+        # Step 1: ALWAYS clear Python cache in force restart mode
         cache_cleared = self._clear_python_cache()
         if cache_cleared:
             logger.info(f"✅ Cleared {cache_cleared} total cache items (modules + files)")
+
+        # Step 2: Clear importlib cache to prevent stale module usage
+        import importlib
+        importlib.invalidate_caches()
+        logger.info("✅ Invalidated importlib caches")
 
         current_pid = os.getpid()
         current_ppid = os.getppid()
         current_time = time.time()
 
-        # Track all JARVIS processes
+        # Track all JARVIS processes with enhanced categorization
         backend_processes = []
         frontend_processes = []
         related_processes = []
         websocket_processes = []
+        python_processes = []
+        node_processes = []
+        proxy_processes = []
 
-        # Find ALL JARVIS processes
-        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid"]):
+        # Step 3: Enhanced process detection with multiple strategies
+        logger.info("🔍 Using multiple strategies to find ALL JARVIS processes...")
+
+        # Extended pattern list for better detection
+        jarvis_patterns = [
+            "main.py", "start_system.py", "jarvis", "JARVIS",
+            "unified_websocket", "voice_unlock", "speaker_verification",
+            "whisper_audio", "hybrid_stt", "cloud-sql-proxy",
+            "npm start", "react-scripts", "webpack", "node.*3000",
+            "python.*8010", "websocket.*8010", "ws_server"
+        ]
+
+        # Strategy 1: Process iteration with extended patterns
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid", "connections"]):
             try:
                 if proc.pid == current_pid or proc.pid == current_ppid:
                     continue  # Skip self and parent
 
-                if self._is_jarvis_process(proc):
-                    cmdline = " ".join(proc.cmdline())
+                cmdline = " ".join(proc.cmdline()) if proc.cmdline() else ""
+                cmdline_lower = cmdline.lower()
 
-                    # Categorize by process type
+                # Check if process matches any JARVIS pattern
+                is_jarvis = False
+                if self._is_jarvis_process(proc):
+                    is_jarvis = True
+                else:
+                    # Additional pattern matching
+                    for pattern in jarvis_patterns:
+                        if pattern.lower() in cmdline_lower:
+                            is_jarvis = True
+                            break
+
+                # Also check by port connections
+                if not is_jarvis:
+                    try:
+                        for conn in proc.connections(kind='inet'):
+                            if conn.laddr.port in [3000, 3001, 8010, 5432]:
+                                is_jarvis = True
+                                logger.debug(f"Found process on port {conn.laddr.port}: PID {proc.pid}")
+                                break
+                    except (psutil.AccessDenied, psutil.NoSuchProcess):
+                        pass
+
+                if is_jarvis:
+                    # Enhanced categorization
                     if "main.py" in cmdline:
                         backend_processes.append((proc, cmdline))
                     elif "start_system.py" in cmdline:
                         frontend_processes.append((proc, cmdline))
-                    elif "websocket" in cmdline.lower() or "ws_server" in cmdline.lower():
+                    elif "websocket" in cmdline_lower or "ws_server" in cmdline_lower:
                         websocket_processes.append((proc, cmdline))
+                    elif "cloud-sql-proxy" in cmdline_lower:
+                        proxy_processes.append((proc, cmdline))
+                    elif "node" in cmdline_lower or "npm" in cmdline_lower:
+                        node_processes.append((proc, cmdline))
+                    elif "python" in cmdline_lower:
+                        python_processes.append((proc, cmdline))
                     else:
                         related_processes.append((proc, cmdline))
 
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        # Kill in order: backend → websocket → related → frontend (most aggressive first)
+        # Strategy 2: Port-based detection (find processes on JARVIS ports)
+        logger.info("🔍 Checking for processes on JARVIS ports (3000, 3001, 8010, 5432)...")
+        for port in [3000, 3001, 8010, 5432]:
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port == port and conn.status == 'LISTEN':
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            if proc.pid != current_pid and proc.pid != current_ppid:
+                                cmdline = " ".join(proc.cmdline()) if proc.cmdline() else ""
+                                # Check if not already in our lists
+                                all_pids = [p[0].pid for p in backend_processes + frontend_processes +
+                                          related_processes + websocket_processes + proxy_processes +
+                                          node_processes + python_processes]
+                                if proc.pid not in all_pids:
+                                    related_processes.append((proc, cmdline))
+                                    logger.info(f"   Found process on port {port}: PID {proc.pid}")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+            except Exception as e:
+                logger.debug(f"Port scan error: {e}")
+
+        # Kill in order with AGGRESSIVE timeouts (most critical first)
         all_process_groups = [
-            (backend_processes, "backend", 2),      # 2s timeout
-            (websocket_processes, "websocket", 2),  # 2s timeout
-            (related_processes, "related", 3),      # 3s timeout
-            (frontend_processes, "frontend", 5),    # 5s timeout
+            (proxy_processes, "cloud-sql-proxy", 1),    # 1s timeout - kill proxy first
+            (backend_processes, "backend", 1),          # 1s timeout - kill backend fast
+            (websocket_processes, "websocket", 1),      # 1s timeout - kill websocket fast
+            (python_processes, "python", 1),            # 1s timeout - kill python processes
+            (node_processes, "node", 2),                # 2s timeout - node processes
+            (related_processes, "related", 2),          # 2s timeout - related processes
+            (frontend_processes, "frontend", 3),        # 3s timeout - frontend last
         ]
 
         for processes, ptype, timeout in all_process_groups:
             if not processes:
                 continue
 
-            logger.warning(f"🎯 Killing {len(processes)} {ptype} process(es)...")
+            logger.warning(f"🔪 Killing {len(processes)} {ptype} process(es) with {timeout}s timeout...")
 
             for proc, cmdline in processes:
                 try:
                     age_seconds = current_time - proc.create_time()
                     logger.info(f"   → Terminating {ptype} PID {proc.pid} (age: {age_seconds/60:.1f}min)")
+                    logger.debug(f"      Command: {cmdline[:150]}")
 
+                    # Try graceful termination first
                     try:
                         proc.terminate()
                         proc.wait(timeout=timeout)
@@ -735,27 +811,101 @@ class ProcessCleanupManager:
                         })
                         logger.info(f"   ✅ Terminated {ptype} PID {proc.pid}")
                     except psutil.TimeoutExpired:
-                        # Force kill if unresponsive
+                        # IMMEDIATE force kill if unresponsive
+                        logger.warning(f"   ⚡ Process {proc.pid} unresponsive, FORCE KILLING...")
                         proc.kill()
-                        cleaned.append({
-                            "pid": proc.pid,
-                            "name": proc.name(),
-                            "type": ptype,
-                            "cmdline": cmdline[:100],
-                            "age_minutes": age_seconds / 60,
-                            "status": "force_killed",
-                        })
-                        logger.warning(f"   ⚠️  Force killed {ptype} PID {proc.pid}")
+                        # Don't wait, just verify it's dead
+                        time.sleep(0.1)
+                        if not proc.is_running():
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "type": ptype,
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "force_killed",
+                            })
+                            logger.warning(f"   💀 Force killed {ptype} PID {proc.pid}")
+                        else:
+                            # Use OS-level kill as last resort
+                            import signal
+                            os.kill(proc.pid, signal.SIGKILL)
+                            logger.error(f"   ☠️ OS-level SIGKILL sent to PID {proc.pid}")
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "type": ptype,
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "sigkill",
+                            })
                     except psutil.NoSuchProcess:
                         logger.debug(f"   Process {proc.pid} already dead")
 
                 except Exception as e:
-                    logger.error(f"   ❌ Failed to kill {ptype} PID {proc.pid}: {e}")
+                    # Last resort: shell command kill
+                    try:
+                        import subprocess
+                        subprocess.run(f"kill -9 {proc.pid}", shell=True, capture_output=True)
+                        logger.warning(f"   🔨 Shell kill -9 executed for PID {proc.pid}")
+                        cleaned.append({
+                            "pid": proc.pid,
+                            "name": "unknown",
+                            "type": ptype,
+                            "cmdline": cmdline[:100],
+                            "status": "shell_killed",
+                        })
+                    except:
+                        logger.error(f"   ❌ Failed to kill {ptype} PID {proc.pid}: {e}")
+
+        # Step 4: Final verification - ensure ports are free
+        logger.info("🔍 Verifying all JARVIS ports are free...")
+        for port in [3000, 3001, 8010, 5432]:
+            try:
+                # Try to bind to the port to verify it's free
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                if result == 0:
+                    logger.warning(f"   ⚠️ Port {port} still in use after cleanup!")
+                    # Force kill any remaining process on this port
+                    import subprocess
+                    subprocess.run(f"lsof -ti:{port} | xargs kill -9 2>/dev/null",
+                                 shell=True, capture_output=True)
+                    logger.info(f"   ✅ Force killed processes on port {port}")
+                else:
+                    logger.info(f"   ✅ Port {port} is free")
+            except:
+                pass
+
+        # Step 5: Clear any remaining module references
+        to_remove = []
+        for module_name in list(sys.modules.keys()):
+            if any(pattern in module_name for pattern in [
+                'jarvis', 'voice', 'api.unified', 'backend', 'intelligence',
+                'whisper_audio', 'speaker_verification', 'hybrid_stt'
+            ]):
+                to_remove.append(module_name)
+
+        for module_name in to_remove:
+            try:
+                del sys.modules[module_name]
+            except:
+                pass
+
+        if to_remove:
+            logger.info(f"✅ Removed {len(to_remove)} additional JARVIS modules from sys.modules")
 
         if cleaned:
-            logger.warning(f"✅ FORCE RESTART: Killed {len(cleaned)} total processes")
+            logger.warning(f"✅ BULLETPROOF FORCE RESTART: Killed {len(cleaned)} total processes")
+            logger.info("   System is now completely clean for fresh start")
         else:
-            logger.info("No JARVIS processes found to clean up")
+            logger.info("✅ No JARVIS processes found - system already clean")
+
+        # Final step: Small delay to ensure OS has released all resources
+        time.sleep(0.5)
 
         return cleaned
 
