@@ -7,9 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const CommandDetectionBanner = ({ command, onDismiss, autoD
-
-ismiss = 3000 }) => {
+const CommandDetectionBanner = ({ command, onDismiss, autoDismiss = 3000 }) => {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
