@@ -648,6 +648,16 @@ class IntelligentVoiceUnlockService:
         try:
             from voice.stt_config import RoutingStrategy
 
+            # CRITICAL FIX: Convert base64 string to bytes before transcription
+            if isinstance(audio_data, str):
+                import base64
+                try:
+                    audio_data = base64.b64decode(audio_data)
+                    logger.info(f"✅ Decoded base64 audio: {len(audio_data)} bytes")
+                except Exception as e:
+                    logger.error(f"❌ Failed to decode base64 audio_data: {e}")
+                    return None
+
             # Use ACCURACY strategy for unlock (security-critical)
             result = await self.stt_router.transcribe(
                 audio_data=audio_data,
