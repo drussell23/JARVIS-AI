@@ -185,7 +185,12 @@ class SyncMetrics:
     # Timestamps
     last_sync_time: Optional[datetime] = None
     last_health_check: Optional[datetime] = None
+    last_cache_refresh: Optional[datetime] = None
     uptime_seconds: float = 0.0
+
+    # Voice profile cache stats
+    voice_profiles_cached: int = 0
+    voice_cache_last_updated: Optional[datetime] = None
 
 
 @dataclass
@@ -1255,9 +1260,14 @@ class HybridDatabaseSync:
             elapsed = (time.time() - start_time) * 1000
             logger.info(f"✅ Bootstrapped {synced_count}/{len(rows)} voice profiles in {elapsed:.1f}ms")
 
+            # Update metrics
             if self.faiss_cache:
                 self.metrics.cache_size = self.faiss_cache.size()
                 logger.info(f"   FAISS cache size: {self.metrics.cache_size} embeddings")
+
+            self.metrics.voice_profiles_cached = synced_count
+            self.metrics.voice_cache_last_updated = datetime.now()
+            self.metrics.last_cache_refresh = datetime.now()
 
             return synced_count > 0
 
@@ -1267,23 +1277,142 @@ class HybridDatabaseSync:
             traceback.print_exc()
             return False
 
+    async def _warm_cache_on_reconnection(self):
+        """
+        Automatically warm voice profile cache when CloudSQL reconnects.
+        Called by health check loop when connection is restored.
+
+        Features:
+        - Checks cache staleness before syncing
+        - Only syncs if profiles are outdated or missing
+        - Updates both SQLite and FAISS cache
+        - Non-blocking background operation
+        """
+        try:
+            logger.info("🔥 Warming voice profile cache after reconnection...")
+
+            # Check if cache needs refresh
+            needs_refresh = await self._check_cache_staleness()
+
+            if not needs_refresh:
+                logger.info("✅ Voice profile cache is fresh - no refresh needed")
+                return
+
+            # Bootstrap/refresh voice profiles
+            success = await self.bootstrap_voice_profiles_from_cloudsql()
+
+            if success:
+                logger.info("✅ Voice profile cache warmed and ready for offline auth")
+                self.metrics.last_cache_refresh = datetime.now()
+            else:
+                logger.warning("⚠️  Cache warming failed - will retry on next health check")
+
+        except Exception as e:
+            logger.error(f"❌ Cache warming failed: {e}")
+
+    async def _check_cache_staleness(self) -> bool:
+        """
+        Check if voice profile cache needs refreshing.
+
+        Returns:
+            True if cache is stale or missing, False if fresh
+        """
+        try:
+            # Check 1: Is FAISS cache empty?
+            if not self.faiss_cache or self.faiss_cache.size() == 0:
+                logger.info("📊 Cache check: FAISS cache is empty - refresh needed")
+                return True
+
+            # Check 2: Is SQLite cache empty?
+            async with self.sqlite_conn.execute("SELECT COUNT(*) FROM speaker_profiles") as cursor:
+                row = await cursor.fetchone()
+                sqlite_count = row[0] if row else 0
+
+            if sqlite_count == 0:
+                logger.info("📊 Cache check: SQLite cache is empty - refresh needed")
+                return True
+
+            # Check 3: Compare counts with CloudSQL
+            if self.connection_manager and self.connection_manager.is_initialized:
+                try:
+                    async with self.connection_manager.connection() as conn:
+                        cloudsql_count = await conn.fetchval("SELECT COUNT(*) FROM speaker_profiles")
+
+                    if cloudsql_count != sqlite_count:
+                        logger.info(f"📊 Cache check: Count mismatch (CloudSQL: {cloudsql_count}, SQLite: {sqlite_count}) - refresh needed")
+                        return True
+
+                    # Check 4: Has CloudSQL been updated since last cache refresh?
+                    async with self.connection_manager.connection() as conn:
+                        latest_update = await conn.fetchval("""
+                            SELECT MAX(last_updated)
+                            FROM speaker_profiles
+                        """)
+
+                    if latest_update:
+                        # Get last refresh time from metrics or SQLite
+                        async with self.sqlite_conn.execute("""
+                            SELECT MAX(last_updated) FROM speaker_profiles
+                        """) as cursor:
+                            row = await cursor.fetchone()
+                            cache_update = row[0] if row and row[0] else None
+
+                        if not cache_update or latest_update > cache_update:
+                            logger.info("📊 Cache check: CloudSQL has newer profiles - refresh needed")
+                            return True
+
+                except Exception as e:
+                    logger.debug(f"Cache staleness check failed (CloudSQL unavailable): {e}")
+                    # Can't check CloudSQL, assume cache is okay
+                    return False
+
+            logger.info(f"📊 Cache check: Cache is fresh ({sqlite_count} profiles)")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Cache staleness check failed: {e}")
+            # On error, assume refresh needed to be safe
+            return True
+
     async def _health_check_loop(self):
-        """Background health check for CloudSQL connectivity"""
+        """
+        Background health check for CloudSQL connectivity and cache freshness.
+
+        Features:
+        - Checks CloudSQL health every 10 seconds
+        - Auto-reconnects if connection lost
+        - Warms cache on reconnection
+        - Periodically refreshes cache (every 5 minutes if CloudSQL healthy)
+        """
+        last_cache_refresh = datetime.now()
+        cache_refresh_interval = 300  # 5 minutes
+
         while not self._shutdown:
             try:
                 await asyncio.sleep(10)  # Check every 10 seconds
 
                 # Skip if already healthy and recently checked
                 if self.cloudsql_healthy and (datetime.now() - self.last_health_check).seconds < 30:
+                    # Check if it's time for periodic cache refresh
+                    time_since_refresh = (datetime.now() - last_cache_refresh).seconds
+                    if time_since_refresh > cache_refresh_interval:
+                        logger.info("🔄 Periodic cache refresh triggered")
+                        asyncio.create_task(self._warm_cache_on_reconnection())
+                        last_cache_refresh = datetime.now()
                     continue
 
                 # Try to reconnect if unhealthy
                 if not self.cloudsql_healthy:
                     logger.info("🔄 Attempting CloudSQL reconnection...")
+                    was_unhealthy = True
                     await self._init_cloudsql_with_circuit_breaker()
 
                     if self.cloudsql_healthy:
-                        logger.info("✅ CloudSQL reconnected - triggering sync reconciliation")
+                        logger.info("✅ CloudSQL reconnected - warming cache and syncing")
+
+                        # CRITICAL: Warm voice profile cache on reconnection
+                        asyncio.create_task(self._warm_cache_on_reconnection())
+
                         # Trigger immediate sync of pending changes
                         asyncio.create_task(self._reconcile_pending_syncs())
 
