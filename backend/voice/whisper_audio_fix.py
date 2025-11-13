@@ -319,23 +319,25 @@ class WhisperAudioHandler:
             # Normalize audio (use provided sample rate or auto-detect)
             normalized_audio = await self.normalize_audio(audio_bytes, sample_rate=sample_rate)
 
-            # Create WAV file from normalized audio
-            wav_path = await self.create_wav_from_normalized_audio(normalized_audio)
-
             # Transcribe with Whisper in thread pool to avoid blocking
             def _transcribe_sync():
-                logger.info(f"🎤 Transcribing WAV file: {wav_path}")
+                logger.info(f"🎤 Transcribing audio directly (bypass WAV file)")
                 logger.info(f"   Audio array shape: {normalized_audio.shape}, dtype: {normalized_audio.dtype}")
                 logger.info(f"   Audio min: {normalized_audio.min():.6f}, max: {normalized_audio.max():.6f}")
-                result = model.transcribe(wav_path, language="en", fp16=False) # Derek speaks English only for now (but Whisper is multilingual)
+                logger.info(f"   Audio duration: {len(normalized_audio) / 16000:.2f}s @ 16kHz")
+
+                # Pass audio array directly to Whisper instead of WAV file
+                # This bypasses potential WAV file corruption issues
+                result = model.transcribe(
+                    normalized_audio,
+                    language="en",
+                    fp16=False,
+                    verbose=True  # Show progress
+                )
                 logger.info(f"   Raw Whisper result: {result}")
                 return result["text"].strip() # Strip leading/trailing whitespace from text
 
             text = await asyncio.to_thread(_transcribe_sync)
-
-            # Clean up temp file
-            import os
-            os.unlink(wav_path)
 
             logger.info(f"✅ Transcribed: '{text}'")
 
