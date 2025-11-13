@@ -323,8 +323,25 @@ class CloudSQLConnectionManager:
             self.error_count += 1
             raise
 
+        except ConnectionRefusedError:
+            logger.debug("🔌 CloudSQL proxy not available (connection refused)")
+            self.error_count += 1
+            raise
+
+        except OSError as e:
+            if e.errno == 0 or "Connection refused" in str(e):
+                logger.debug("🔌 CloudSQL proxy not available")
+            else:
+                logger.error(f"❌ Connection error: {e}")
+            self.error_count += 1
+            raise
+
         except Exception as e:
-            logger.error(f"❌ Connection error: {e}")
+            # Avoid logging confusing "Connection error: 0" messages
+            if str(e) == "0" or not str(e):
+                logger.debug("🔌 CloudSQL proxy not available")
+            else:
+                logger.error(f"❌ Connection error: {e}")
             self.error_count += 1
             raise
 

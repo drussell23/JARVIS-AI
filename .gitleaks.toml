@@ -150,6 +150,7 @@ paths = [
   '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)
   '''check_db_schema.py''',
+  '''check_schema.py''',
   '''check_voice_samples.py''',
   '''test_voice_retrieval.py''',
   '''test_voice_with_real_audio.py''',
@@ -157,6 +158,7 @@ paths = [
   '''test_voice_unlock_confidence.py''',
   # Connection management (uses Secret Manager, no hardcoded secrets)
   '''test_connection_manager.py''',
+  '''test_voice_cache.py''',
   '''diagnose_connections.py''',
   '''backend/intelligence/cloud_sql_connection_manager.py''',
   '''backend/core/lifecycle_manager.py''',

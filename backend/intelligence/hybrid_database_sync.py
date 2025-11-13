@@ -1044,12 +1044,26 @@ class HybridDatabaseSync:
 
             # Bootstrap voice profiles from CloudSQL if SQLite cache is empty
             if self.faiss_cache.size() == 0:
-                logger.info("📥 SQLite cache empty - attempting bootstrap from CloudSQL...")
-                bootstrap_success = await self.bootstrap_voice_profiles_from_cloudsql()
-                if bootstrap_success:
-                    logger.info("✅ Voice profiles bootstrapped - ready for offline authentication")
+                # Check if SQLite actually has profiles (might just need FAISS reload)
+                async with self.sqlite_conn.execute("SELECT COUNT(*) FROM speaker_profiles") as cursor:
+                    row = await cursor.fetchone()
+                    sqlite_count = row[0] if row else 0
+
+                if sqlite_count > 0:
+                    # Profiles exist in SQLite, just reload FAISS cache
+                    logger.info(f"✅ Voice profiles already cached in SQLite ({sqlite_count} profiles)")
+                    logger.info("   FAISS cache will auto-load on first authentication")
                 else:
-                    logger.warning("⚠️  Bootstrap failed - voice authentication requires CloudSQL connection")
+                    # SQLite is empty - bootstrap from CloudSQL
+                    logger.info("📥 SQLite cache empty - attempting bootstrap from CloudSQL...")
+                    bootstrap_success = await self.bootstrap_voice_profiles_from_cloudsql()
+                    if bootstrap_success:
+                        logger.info("✅ Voice profiles bootstrapped - ready for offline authentication")
+                    else:
+                        logger.warning("⚠️  Bootstrap failed - voice authentication requires CloudSQL connection")
+            else:
+                logger.info(f"✅ Voice cache already loaded: {self.faiss_cache.size()} profile(s)")
+                logger.info("   Skipping bootstrap - profiles already cached locally")
 
         # Start background services
         self.sync_task = asyncio.create_task(self._sync_loop())
@@ -1355,11 +1369,14 @@ class HybridDatabaseSync:
                 logger.info("📊 Cache check: SQLite cache is empty - refresh needed")
                 return True
 
-            # Check 3: Compare counts with CloudSQL
+            # Check 3: Compare counts with CloudSQL (only valid profiles with embeddings)
             if self.connection_manager and self.connection_manager.is_initialized:
                 try:
                     async with self.connection_manager.connection() as conn:
-                        cloudsql_count = await conn.fetchval("SELECT COUNT(*) FROM speaker_profiles")
+                        cloudsql_count = await conn.fetchval("""
+                            SELECT COUNT(*) FROM speaker_profiles
+                            WHERE voiceprint_embedding IS NOT NULL
+                        """)
 
                     if cloudsql_count != sqlite_count:
                         logger.info(f"📊 Cache check: Count mismatch (CloudSQL: {cloudsql_count}, SQLite: {sqlite_count}) - refresh needed")
@@ -1370,6 +1387,7 @@ class HybridDatabaseSync:
                         latest_update = await conn.fetchval("""
                             SELECT MAX(last_updated)
                             FROM speaker_profiles
+                            WHERE voiceprint_embedding IS NOT NULL
                         """)
 
                     if latest_update:
