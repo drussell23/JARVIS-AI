@@ -54,7 +54,7 @@ class VoiceUnlockIntegration:
         self.urgent_voice_rate = 200  # For urgent/important messages
 
         # Configuration - these are now base thresholds, actual will be adaptive
-        self.base_unlock_threshold = 0.45  # Base threshold, adaptive system will adjust
+        self.base_unlock_threshold = 0.40  # Base threshold, adaptive system will adjust (matches owner-aware fusion)
         self.base_general_threshold = 0.40  # For general speaker identification
         self.min_unlock_threshold = 0.25  # Minimum threshold (safety floor)
         self.use_adaptive_thresholds = True  # Enable adaptive threshold system
