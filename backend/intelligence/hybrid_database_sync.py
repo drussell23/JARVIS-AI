@@ -1210,9 +1210,15 @@ class HybridDatabaseSync:
                         speaker_id,
                         speaker_name,
                         voiceprint_embedding,
-                        acoustic_features,
                         total_samples,
-                        last_updated
+                        last_updated,
+                        pitch_mean_hz,
+                        pitch_std_hz,
+                        formant_f1_hz,
+                        formant_f2_hz,
+                        spectral_centroid_hz,
+                        speaking_rate_wpm,
+                        energy_mean
                     FROM speaker_profiles
                     ORDER BY speaker_id
                 """)
@@ -1225,6 +1231,18 @@ class HybridDatabaseSync:
             synced_count = 0
             for row in rows:
                 try:
+                    # Build acoustic_features JSON from individual columns
+                    acoustic_features = {
+                        "pitch_mean_hz": float(row['pitch_mean_hz']) if row['pitch_mean_hz'] else 0.0,
+                        "pitch_std_hz": float(row['pitch_std_hz']) if row['pitch_std_hz'] else 0.0,
+                        "formant_f1_hz": float(row['formant_f1_hz']) if row['formant_f1_hz'] else 0.0,
+                        "formant_f2_hz": float(row['formant_f2_hz']) if row['formant_f2_hz'] else 0.0,
+                        "spectral_centroid_hz": float(row['spectral_centroid_hz']) if row['spectral_centroid_hz'] else 0.0,
+                        "speaking_rate_wpm": float(row['speaking_rate_wpm']) if row['speaking_rate_wpm'] else 0.0,
+                        "energy_mean": float(row['energy_mean']) if row['energy_mean'] else 0.0
+                    }
+                    acoustic_features_json = json.dumps(acoustic_features)
+
                     await self.sqlite_conn.execute("""
                         INSERT OR REPLACE INTO speaker_profiles
                         (speaker_id, speaker_name, voiceprint_embedding, acoustic_features, total_samples, last_updated)
@@ -1233,7 +1251,7 @@ class HybridDatabaseSync:
                         row['speaker_id'],
                         row['speaker_name'],
                         row['voiceprint_embedding'],
-                        row['acoustic_features'],
+                        acoustic_features_json,
                         row['total_samples'],
                         row['last_updated']
                     ))
@@ -1243,7 +1261,7 @@ class HybridDatabaseSync:
                         embedding = np.frombuffer(bytes(row['voiceprint_embedding']), dtype=np.float32)
                         metadata = {
                             "speaker_name": row['speaker_name'],
-                            "acoustic_features": json.loads(row['acoustic_features']) if row['acoustic_features'] else {},
+                            "acoustic_features": acoustic_features,
                             "total_samples": row['total_samples']
                         }
                         self.faiss_cache.add_embedding(row['speaker_name'], embedding, metadata)
