@@ -1,22 +1,54 @@
 {
-  "workflow_name": "CodeQL Security Analysis",
-  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19324063898",
-  "branch": "main",
-  "commit_sha": "4f89ad2",
-  "run_number": 376,
+  "workflow_name": "PR Automation & Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19325337421",
+  "branch": "fix/ci/codeql-security-analysis-run376-20251113-083135",
+  "commit_sha": "1dd4922",
+  "run_number": 431,
   "failed_count": 1,
-  "fix_branch": "fix/ci/codeql-security-analysis-run376-20251113-083135",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: CodeQL Security Analysis (Run #376)",
+  "fix_branch": "fix/ci/pr-automation-validation-run431-20251113-083316",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #431)",
   "analyses": [
     {
-      "error_patterns": [],
-      "suggested_fixes": [
-        "Check the workflow logs for more details"
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 25,
+              "content": "2025-11-13T08:32:06.9091594Z   subjectPatternError: The PR title must start with a capital letter.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 37,
+              "content": "2025-11-13T08:32:07.4047932Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: CodeQL Security Analysis (Run #376)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 29,
+              "content": "- fix: Resolve database connection timeout",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
       ],
-      "severity": "medium",
-      "category": "unknown",
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Check service availability and network connectivity"
+      ],
+      "severity": "high",
+      "category": "timeout",
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-13T08:31:35.960721"
+  "timestamp": "2025-11-13T08:33:16.812307"
 }

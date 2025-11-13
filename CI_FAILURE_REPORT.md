@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: CodeQL Security Analysis
-- **Run Number**: #376
-- **Branch**: `main`
-- **Commit**: `4f89ad29061a6e1d50467c0ea361fb8455af185a`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #431
+- **Branch**: `fix/ci/codeql-security-analysis-run376-20251113-083135`
+- **Commit**: `1dd4922299769b721511a5f41d13424e55678244`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-13T07:35:40Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19324063898)
+- **Timestamp**: 2025-11-13T08:32:01Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19325337421)
 
 ## Failure Overview
 
@@ -17,30 +17,43 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | Analyze (python) | unknown | medium | 3256s |
+| 1 | Validate PR Title | timeout | high | 3s |
 
 ## Detailed Analysis
 
-### 1. Analyze (python)
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Unknown
-**Severity**: MEDIUM
-**Started**: 2025-11-13T07:35:44Z
-**Completed**: 2025-11-13T08:30:00Z
-**Duration**: 3256 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19324063898/job/55271074718)
+**Category**: Timeout
+**Severity**: HIGH
+**Started**: 2025-11-13T08:32:05Z
+**Completed**: 2025-11-13T08:32:08Z
+**Duration**: 3 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19325337421/job/55275034742)
 
 #### Failed Steps
 
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
-*No specific error patterns detected*
+**Detected Error Patterns:**
+
+- Pattern: `ERROR|Error|error`
+  - Occurrences: 2
+  - Sample matches:
+    - Line 25: `2025-11-13T08:32:06.9091594Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-13T08:32:07.4047932Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Code`
+
+- Pattern: `timeout|timed out`
+  - Occurrences: 1
+  - Sample matches:
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
-1. Check the workflow logs for more details
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -60,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-13T08:31:35.960639*
+📊 *Report generated on 2025-11-13T08:33:16.812212*
 🤖 *JARVIS CI/CD Auto-PR Manager*
