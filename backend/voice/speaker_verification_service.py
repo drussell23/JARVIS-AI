@@ -1247,9 +1247,20 @@ class SpeakerVerificationService:
                     logger.info(f"🎤 VERIFICATION DEBUG: Starting verification for {speaker_name}")
                     logger.info(f"  📊 Audio data size: {len(audio_data)} bytes")
                     logger.info(f"  📊 Profile has {profile.get('total_samples', 0)} training samples")
-                    quality_info = self.profile_quality_scores.get(speaker_name, {"quality": 1.0})
-                    quality_score = quality_info.get("quality", 1.0) if isinstance(quality_info, dict) else quality_info
-                    logger.info(f"  📊 Profile quality score: {quality_score:.2f}")
+
+                    # BEEFED UP: Robust quality score handling
+                    quality_info = self.profile_quality_scores.get(speaker_name, {"quality": 1.0}) # Default to 1.0 if not found in dict or missing key 
+                    quality_score = quality_info.get("quality", 1.0) if isinstance(quality_info, dict) else quality_info # Default to 1.0 if not found in dict or missing key 
+
+                    # Convert to float with robust error handling
+                    try:
+                        # Convert to float with robust error handling (incase it's a string) or default to 1.0
+                        quality_score_float = float(quality_score) if quality_score is not None else 1.0
+                    except (ValueError, TypeError):
+                        logger.warning(f"  ⚠️ Invalid quality score type: {type(quality_score)}, defaulting to 1.0")
+                        quality_score_float = 1.0 # Default to 1.0 if quality score is invalid
+
+                    logger.info(f"  📊 Profile quality score: {quality_score_float:.2f}")
                     logger.info(f"  📊 Profile created: {profile.get('created_at', 'unknown')}")
                     logger.info(f"  📊 Profile embedding dim: {profile.get('embedding_dimension', 'unknown')}")
 
