@@ -334,6 +334,15 @@ class WhisperAudioHandler:
             os.unlink(wav_path)
 
             logger.info(f"✅ Transcribed: '{text}'")
+
+            # If Whisper returns empty string, it detected no speech
+            # Return None to signal failure so hybrid_stt_router can try other methods
+            if not text or text.strip() == "":
+                logger.warning("⚠️ Whisper returned empty transcription - no speech detected")
+                logger.warning(f"   Audio was {len(audio_bytes)} bytes, normalized to {len(normalized_audio)} samples")
+                logger.warning(f"   Sample rate: provided={sample_rate}, final=16000Hz")
+                return None
+
             return text
 
         except Exception as e:

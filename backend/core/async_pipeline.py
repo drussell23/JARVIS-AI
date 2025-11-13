@@ -1217,7 +1217,10 @@ class AdvancedAsyncPipeline:
                             "text": text,
                             "user_name": user_name,
                             "speaker_name": speaker_name,
-                            "metadata": metadata or {}
+                            "metadata": metadata or {},
+                            # Pass sample_rate from metadata if available
+                            "audio_sample_rate": metadata.get("audio_sample_rate") if metadata else None,
+                            "audio_mime_type": metadata.get("audio_mime_type") if metadata else None
                         }
 
                         # If we have audio data, use it; otherwise create a text-only request
