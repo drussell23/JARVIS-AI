@@ -9531,17 +9531,30 @@ async def main():
             #     print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup{Colors.ENDC}")
 
             # Check for code changes and perform intelligent cleanup
-            print(f"\n{Colors.BLUE}🔄 Checking for code changes...{Colors.ENDC}")
-            code_cleanup = manager.cleanup_old_instances_on_code_change()
+            # If --restart flag is used, FORCE cleanup regardless of code changes
+            if args.restart:
+                print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Killing all JARVIS processes...{Colors.ENDC}")
+                code_cleanup = manager.force_restart_cleanup()
+            else:
+                print(f"\n{Colors.BLUE}🔄 Checking for code changes...{Colors.ENDC}")
+                code_cleanup = manager.cleanup_old_instances_on_code_change()
+
             if code_cleanup:
                 # Categorize cleaned processes by type
                 backend_cleaned = [p for p in code_cleanup if p.get("type") == "backend"]
                 frontend_cleaned = [p for p in code_cleanup if p.get("type") == "frontend"]
                 related_cleaned = [p for p in code_cleanup if p.get("type") == "related"]
+                websocket_cleaned = [p for p in code_cleanup if p.get("type") == "websocket"]
 
-                print(f"{Colors.YELLOW}   ✨ Code changes detected - cleaned up old processes!{Colors.ENDC}")
+                if args.restart:
+                    print(f"{Colors.GREEN}   ✨ FORCE RESTART - All old processes terminated!{Colors.ENDC}")
+                else:
+                    print(f"{Colors.YELLOW}   ✨ Code changes detected - cleaned up old processes!{Colors.ENDC}")
+
                 if backend_cleaned:
                     print(f"{Colors.CYAN}   → Killed {len(backend_cleaned)} backend process(es) for fresh code reload{Colors.ENDC}")
+                if websocket_cleaned:
+                    print(f"{Colors.CYAN}   → Killed {len(websocket_cleaned)} websocket process(es){Colors.ENDC}")
                 if frontend_cleaned:
                     print(f"{Colors.CYAN}   → Killed {len(frontend_cleaned)} frontend process(es){Colors.ENDC}")
                 if related_cleaned:

@@ -648,6 +648,117 @@ class ProcessCleanupManager:
                 logger.error(f"Failed to load code state: {e}")
         return {}
 
+    def force_restart_cleanup(self, skip_code_check: bool = True) -> List[Dict]:
+        """
+        FORCE restart cleanup - ALWAYS kills all JARVIS processes.
+        Used when --restart flag is provided to ensure clean slate.
+
+        This is MORE AGGRESSIVE than cleanup_old_instances_on_code_change()
+        because it doesn't check for code changes - it ALWAYS kills everything.
+
+        Args:
+            skip_code_check: If True, skip code change detection and force cleanup
+
+        Returns:
+            List of cleaned up processes
+        """
+        cleaned = []
+
+        logger.warning("🔄 FORCE RESTART MODE - Killing ALL JARVIS processes for clean restart...")
+
+        # ALWAYS clear Python cache in force restart mode
+        cache_cleared = self._clear_python_cache()
+        if cache_cleared:
+            logger.info(f"✅ Cleared {cache_cleared} total cache items (modules + files)")
+
+        current_pid = os.getpid()
+        current_ppid = os.getppid()
+        current_time = time.time()
+
+        # Track all JARVIS processes
+        backend_processes = []
+        frontend_processes = []
+        related_processes = []
+        websocket_processes = []
+
+        # Find ALL JARVIS processes
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid"]):
+            try:
+                if proc.pid == current_pid or proc.pid == current_ppid:
+                    continue  # Skip self and parent
+
+                if self._is_jarvis_process(proc):
+                    cmdline = " ".join(proc.cmdline())
+
+                    # Categorize by process type
+                    if "main.py" in cmdline:
+                        backend_processes.append((proc, cmdline))
+                    elif "start_system.py" in cmdline:
+                        frontend_processes.append((proc, cmdline))
+                    elif "websocket" in cmdline.lower() or "ws_server" in cmdline.lower():
+                        websocket_processes.append((proc, cmdline))
+                    else:
+                        related_processes.append((proc, cmdline))
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # Kill in order: backend → websocket → related → frontend (most aggressive first)
+        all_process_groups = [
+            (backend_processes, "backend", 2),      # 2s timeout
+            (websocket_processes, "websocket", 2),  # 2s timeout
+            (related_processes, "related", 3),      # 3s timeout
+            (frontend_processes, "frontend", 5),    # 5s timeout
+        ]
+
+        for processes, ptype, timeout in all_process_groups:
+            if not processes:
+                continue
+
+            logger.warning(f"🎯 Killing {len(processes)} {ptype} process(es)...")
+
+            for proc, cmdline in processes:
+                try:
+                    age_seconds = current_time - proc.create_time()
+                    logger.info(f"   → Terminating {ptype} PID {proc.pid} (age: {age_seconds/60:.1f}min)")
+
+                    try:
+                        proc.terminate()
+                        proc.wait(timeout=timeout)
+                        cleaned.append({
+                            "pid": proc.pid,
+                            "name": proc.name(),
+                            "type": ptype,
+                            "cmdline": cmdline[:100],
+                            "age_minutes": age_seconds / 60,
+                            "status": "terminated",
+                        })
+                        logger.info(f"   ✅ Terminated {ptype} PID {proc.pid}")
+                    except psutil.TimeoutExpired:
+                        # Force kill if unresponsive
+                        proc.kill()
+                        cleaned.append({
+                            "pid": proc.pid,
+                            "name": proc.name(),
+                            "type": ptype,
+                            "cmdline": cmdline[:100],
+                            "age_minutes": age_seconds / 60,
+                            "status": "force_killed",
+                        })
+                        logger.warning(f"   ⚠️  Force killed {ptype} PID {proc.pid}")
+                    except psutil.NoSuchProcess:
+                        logger.debug(f"   Process {proc.pid} already dead")
+
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to kill {ptype} PID {proc.pid}: {e}")
+
+        if cleaned:
+            logger.warning(f"✅ FORCE RESTART: Killed {len(cleaned)} total processes")
+        else:
+            logger.info("No JARVIS processes found to clean up")
+
+        return cleaned
+
     def cleanup_old_instances_on_code_change(self) -> List[Dict]:
         """
         Cleanup old JARVIS instances when code changes are detected.
