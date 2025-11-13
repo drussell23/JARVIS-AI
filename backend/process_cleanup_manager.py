@@ -1917,6 +1917,66 @@ class ProcessCleanupManager:
 
         return cleaned
 
+    def kill_hanging_start_system_processes(self, timeout_minutes: float = 5.0) -> List[Dict]:
+        """
+        Kill hanging start_system.py processes that have been running too long.
+
+        A start_system.py process should complete within a few minutes. If it's been
+        running longer than timeout_minutes, it's likely hung during initialization.
+
+        Args:
+            timeout_minutes: Kill processes running longer than this (default: 5 minutes)
+
+        Returns:
+            List of killed process info
+        """
+        killed = []
+        timeout_seconds = timeout_minutes * 60
+        current_time = time.time()
+
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                cmdline = " ".join(proc.cmdline())
+
+                # Check if it's start_system.py
+                if "start_system.py" in cmdline and "python" in proc.name().lower():
+                    # Calculate how long it's been running
+                    age_seconds = current_time - proc.create_time()
+
+                    if age_seconds > timeout_seconds:
+                        logger.warning(
+                            f"⏱️  Found hanging start_system.py (PID: {proc.pid}, "
+                            f"running for {age_seconds/60:.1f} minutes)"
+                        )
+
+                        # Try graceful termination first
+                        try:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=3)
+                                killed.append({
+                                    "pid": proc.pid,
+                                    "age_minutes": age_seconds / 60,
+                                    "method": "SIGTERM"
+                                })
+                                logger.info(f"✅ Terminated hanging start_system.py (PID: {proc.pid})")
+                            except psutil.TimeoutExpired:
+                                # Force kill if graceful fails
+                                proc.kill()
+                                killed.append({
+                                    "pid": proc.pid,
+                                    "age_minutes": age_seconds / 60,
+                                    "method": "SIGKILL"
+                                })
+                                logger.info(f"✅ Force-killed hanging start_system.py (PID: {proc.pid})")
+                        except psutil.NoSuchProcess:
+                            pass  # Already gone
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        return killed
+
     def emergency_cleanup_all_jarvis(self, force_kill: bool = False) -> Dict[str, Any]:
         """
         Emergency cleanup - kill ALL JARVIS-related processes and clean up resources.
@@ -1939,8 +1999,18 @@ class ProcessCleanupManager:
             "vms_deleted": [],
             "vm_errors": [],
             "cloudsql_cleanup": {},
+            "hanging_start_system": [],
             "errors": [],
         }
+
+        # Step 0: Kill any hanging start_system.py processes first
+        try:
+            hanging = self.kill_hanging_start_system_processes(timeout_minutes=5.0)
+            results["hanging_start_system"] = hanging
+            if hanging:
+                logger.info(f"🧹 Killed {len(hanging)} hanging start_system.py process(es)")
+        except Exception as e:
+            logger.error(f"Failed to kill hanging start_system.py: {e}")
 
         # Step 1: Find and kill all JARVIS processes
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
