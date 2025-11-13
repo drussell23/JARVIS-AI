@@ -546,7 +546,7 @@ class ProcessCleanupManager:
 
     def _clear_python_cache(self) -> int:
         """
-        Aggressively clear all Python __pycache__ directories and .pyc files.
+        Aggressively clear all Python __pycache__ directories, .pyc files, AND runtime modules.
         This ensures fresh code is ALWAYS loaded on restart.
 
         Returns:
@@ -556,7 +556,29 @@ class ProcessCleanupManager:
 
         logger.info("🧹 Clearing all Python cache to ensure fresh code loads...")
 
-        # Clear __pycache__ directories recursively
+        # STEP 1: Clear runtime module cache from sys.modules
+        # This is critical - even if .pyc files are deleted, Python caches modules in memory
+        modules_to_remove = []
+        for module_name in list(sys.modules.keys()):
+            # Remove JARVIS-specific modules from cache
+            if any(pattern in module_name for pattern in [
+                'voice', 'intelligence', 'api', 'backend', 'core',
+                'chatbots', 'display', 'memory', 'vision', 'engines',
+                'context_intelligence', 'neural_trinity', 'macos_keychain_unlock'
+            ]):
+                modules_to_remove.append(module_name)
+
+        for module_name in modules_to_remove:
+            try:
+                del sys.modules[module_name]
+                cleared_count += 1
+            except Exception as e:
+                logger.debug(f"Could not remove module {module_name}: {e}")
+
+        if modules_to_remove:
+            logger.info(f"✅ Cleared {len(modules_to_remove)} cached modules from sys.modules")
+
+        # STEP 2: Clear __pycache__ directories recursively
         try:
             for root, dirs, files in os.walk(self.backend_path):
                 # Clear __pycache__ directories
@@ -585,7 +607,7 @@ class ProcessCleanupManager:
             logger.error(f"Error during Python cache cleanup: {e}")
 
         if cleared_count > 0:
-            logger.info(f"✅ Cleared {cleared_count} Python cache directories/files")
+            logger.info(f"✅ Cleared {cleared_count} total cache items (modules + files)")
         else:
             logger.debug("No Python cache found to clear")
 
