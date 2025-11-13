@@ -7863,6 +7863,25 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         else:
             print(f"{Colors.CYAN}🌐 [1/6] Hybrid Cloud Intelligence not active{Colors.ENDC}")
 
+        # Stop Voice Unlock Monitor
+        if hasattr(self, 'voice_unlock_monitor') and self.voice_unlock_monitor:
+            try:
+                print(f"\n{Colors.CYAN}🔐 [1.1/6] Stopping Voice Unlock Monitor...{Colors.ENDC}")
+                await self.voice_unlock_monitor.stop()
+
+                # Print final stats
+                status = self.voice_unlock_monitor.get_status()
+                if status['total_attempts'] > 0:
+                    print(f"   ├─ Session stats:")
+                    print(f"   │  • Total attempts: {status['total_attempts']}")
+                    print(f"   │  • Success rate: {status['success_rate']:.1f}%")
+                    print(f"   │  • Avg confidence: {status['avg_confidence']:.1f}%")
+                    print(f"   │  • Avg unlock time: {status['avg_unlock_time_ms']:.0f}ms")
+                print(f"   └─ {Colors.GREEN}✓ Voice unlock monitor stopped{Colors.ENDC}")
+            except Exception as e:
+                print(f"   └─ {Colors.YELLOW}⚠ Voice unlock monitor cleanup warning: {e}{Colors.ENDC}")
+                logger.warning(f"Voice unlock monitor cleanup failed: {e}")
+
         # Stop Cloud SQL proxy (CRITICAL: Must happen before database connections close)
         if self.cloud_sql_proxy_manager:
             try:
@@ -8338,6 +8357,28 @@ except Exception as e:
                 print(f"{Colors.YELLOW}   ⚠️  Error: {e}{Colors.ENDC}")
                 print(f"{Colors.YELLOW}   ⚠️  Will run in local-only mode{Colors.ENDC}")
                 self.hybrid_enabled = False
+
+        # Start Voice Unlock Monitor
+        print(f"\n{Colors.CYAN}🔐 Starting Voice Unlock Monitoring Service...{Colors.ENDC}")
+        try:
+            # Import and initialize voice unlock monitor
+            sys.path.insert(0, str(Path(__file__).parent / "backend"))
+            from voice_unlock.voice_unlock_monitor import get_voice_unlock_monitor
+
+            self.voice_unlock_monitor = get_voice_unlock_monitor()
+            await self.voice_unlock_monitor.start()
+
+            print(f"{Colors.GREEN}   ✓ Voice unlock monitor active{Colors.ENDC}")
+            print(f"   • {Colors.CYAN}Monitoring interval:{Colors.ENDC} {self.voice_unlock_monitor.monitoring_interval}s")
+            print(f"   • {Colors.CYAN}History tracking:{Colors.ENDC} Last {self.voice_unlock_monitor.history_size} attempts")
+            print(f"   • {Colors.CYAN}Metrics:{Colors.ENDC} Success rate, confidence, typing performance")
+            print(f"   • {Colors.CYAN}Logging:{Colors.ENDC} Detailed unlock flow diagnostics")
+
+        except Exception as e:
+            logger.warning(f"Voice unlock monitor initialization failed: {e}")
+            print(f"{Colors.YELLOW}   ⚠️  Error: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   ⚠️  Voice unlock will work without monitoring{Colors.ENDC}")
+            self.voice_unlock_monitor = None
 
         # Start autonomous systems if enabled
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:

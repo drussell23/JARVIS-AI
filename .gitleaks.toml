@@ -110,6 +110,13 @@ regexes = [
   '''password=password,''',
   '''if\s+not\s+password:''',
   '''password\s*=\s*get_db_password\(\)''',
+  # Allow password typing metrics in monitoring (no actual password values)
+  '''characters in password''',
+  '''typing password''',
+  '''password_typed''',
+  '''password_success''',
+  '''password_length_ms''',
+  '''password_type_ms''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -145,6 +152,7 @@ paths = [
   '''backend/voice/profile_consolidation_service.py''',
   '''backend/system_control/macos_controller.py''',
   '''backend/voice_unlock/secure_password_typer.py''',
+  '''backend/voice_unlock/voice_unlock_monitor.py''',
   '''backend/api/simple_unlock_handler.py''',
   '''test_voice_biometric_unlock_e2e.py''',
   '''start_system.py''',

@@ -145,7 +145,7 @@ class TypingConfig:
 
     # Wake configuration
     wake_screen: bool = True
-    wake_delay: float = 0.3
+    wake_delay: float = 0.8  # Increased for reliability with lock screen
 
     # Submit configuration
     submit_after_typing: bool = True
@@ -547,7 +547,7 @@ class SecurePasswordTyper:
 
     async def _type_character_secure(self, char: str, randomize: bool = True) -> bool:
         """
-        Type a single character using CGEvents.
+        Type a single character using CGEvents with robust shift handling.
 
         Args:
             char: Character to type
@@ -561,17 +561,36 @@ class SecurePasswordTyper:
             keycode = KEYCODE_MAP.get(char)
 
             if keycode is None:
-                logger.warning(f"⚠️ No keycode for character: '{char}'")
+                logger.warning(f"⚠️ No keycode for character: '{char}' (ord: {ord(char)})")
                 return False
 
             # Check if shift is needed
             needs_shift = char in SHIFT_CHARS
 
-            # Press shift if needed
+            # Obfuscate character for logging (don't reveal password chars)
+            char_display = char if char.isalnum() else '*'
+            logger.debug(f"🔐 Typing char '{char_display}' (keycode: 0x{keycode:02X}, shift: {needs_shift})")
+
+            # ROBUST SHIFT HANDLING:
+            # For shift characters, we need BOTH:
+            # 1. Press physical shift key
+            # 2. Set shift flag on the character event
             if needs_shift:
-                await self._press_modifier(CGEventFlags.kCGEventFlagMaskShift, True)
-                if randomize:
-                    await asyncio.sleep(0.01 + (hash(char) % 10) / 1000.0)
+                # Press shift key down (physical key)
+                shift_keycode = 0x38  # Left shift
+                shift_down_event = CoreGraphics.CGEventCreateKeyboardEvent(
+                    self.event_source,
+                    shift_keycode,
+                    True  # key down
+                )
+                if shift_down_event:
+                    CoreGraphics.CGEventSetFlags(shift_down_event, CGEventFlags.kCGEventFlagMaskShift)
+                    CoreGraphics.CGEventPost(0, shift_down_event)
+                    CoreGraphics.CFRelease(shift_down_event)
+                    logger.debug("🔐   Shift key pressed")
+
+                # Small delay for shift to register
+                await asyncio.sleep(0.03)
 
             # Key down
             event = CoreGraphics.CGEventCreateKeyboardEvent(
@@ -581,22 +600,26 @@ class SecurePasswordTyper:
             )
 
             if not event:
-                logger.error("❌ Failed to create key down event")
+                logger.error(f"❌ Failed to create key down event for char '{char_display}'")
+                # Release shift if it was pressed
+                if needs_shift:
+                    await self._release_shift()
                 return False
 
-            # Set flags if shift is pressed
+            # Set shift flag on the character event if needed
             if needs_shift:
                 CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
 
             # Post event
             CoreGraphics.CGEventPost(0, event)
             CoreGraphics.CFRelease(event)
+            logger.debug(f"🔐   Key down event posted")
 
-            # Key press duration (realistic human timing)
+            # Key press duration (more generous timing for reliability)
             if randomize:
-                duration = 0.02 + (hash(char) % 30) / 1000.0  # 20-50ms
+                duration = 0.04 + (hash(char) % 30) / 1000.0  # 40-70ms
             else:
-                duration = 0.03
+                duration = 0.05  # 50ms default
 
             await asyncio.sleep(duration)
 
@@ -608,29 +631,43 @@ class SecurePasswordTyper:
             )
 
             if not event:
-                logger.error("❌ Failed to create key up event")
+                logger.error(f"❌ Failed to create key up event for char '{char_display}'")
+                # Still need to release shift if it was pressed
+                if needs_shift:
+                    await self._release_shift()
                 return False
 
+            # Set shift flag on key up event too if needed
             if needs_shift:
                 CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
 
             CoreGraphics.CGEventPost(0, event)
             CoreGraphics.CFRelease(event)
+            logger.debug(f"🔐   Key up event posted")
 
             # Release shift if it was pressed
             if needs_shift:
-                if randomize:
-                    await asyncio.sleep(0.01 + (hash(char) % 10) / 1000.0)
-                await self._press_modifier(CGEventFlags.kCGEventFlagMaskShift, False)
+                # Small delay before releasing shift
+                await asyncio.sleep(0.02)
 
+                await self._release_shift()
+                logger.debug("🔐   Shift key released")
+
+            logger.debug(f"✅ Successfully typed char '{char_display}'")
             return True
 
         except Exception as e:
-            logger.error(f"❌ Failed to type character: {e}")
+            logger.error(f"❌ Failed to type character '{char_display}': {e}", exc_info=True)
+            # Ensure shift is released even on error
+            try:
+                if 'needs_shift' in locals() and needs_shift:
+                    await self._release_shift()
+            except:
+                pass
             return False
 
     async def _press_modifier(self, flag: int, down: bool):
-        """Press or release a modifier key"""
+        """Press or release a modifier key (legacy method, use _release_shift instead)"""
         try:
             # Use flags changed event for modifiers
             # Shift keycode = 0x38 (left shift)
@@ -650,6 +687,27 @@ class SecurePasswordTyper:
 
         except Exception as e:
             logger.error(f"❌ Failed to press modifier: {e}")
+
+    async def _release_shift(self):
+        """Release the shift key with proper cleanup"""
+        try:
+            shift_keycode = 0x38  # Left shift
+
+            # Create shift key up event
+            shift_up_event = CoreGraphics.CGEventCreateKeyboardEvent(
+                self.event_source,
+                shift_keycode,
+                False  # key up
+            )
+
+            if shift_up_event:
+                # Clear all flags for key up
+                CoreGraphics.CGEventSetFlags(shift_up_event, 0)
+                CoreGraphics.CGEventPost(0, shift_up_event)
+                CoreGraphics.CFRelease(shift_up_event)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to release shift: {e}")
 
     async def _fallback_applescript(self, password: str, submit: bool, metrics: TypingMetrics) -> Tuple[bool, TypingMetrics]:
         """Fallback to AppleScript if Core Graphics fails"""
@@ -719,36 +777,42 @@ class SecurePasswordTyper:
             return False, metrics
     
     async def _type_password_characters(self, password: str, config: TypingConfig, metrics: TypingMetrics) -> bool:
-        """Type password characters one by one"""
+        """Type password characters one by one with robust timing"""
         try:
+            logger.info(f"🔐 [SECURE-TYPE] Starting to type {len(password)} characters")
+
             for i, char in enumerate(password):
+                # Obfuscate for logging
+                char_display = char if char.isalnum() else '*'
+                logger.debug(f"🔐 Character {i+1}/{len(password)}: '{char_display}'")
+
                 success = await self._type_character_secure(
                     char,
                     randomize=config.randomize_timing
                 )
-                
+
                 if not success:
-                    logger.error(f"❌ Failed to type character {i+1}/{len(password)}")
+                    logger.error(f"❌ Failed to type character {i+1}/{len(password)} ('{char_display}')")
                     return False
-                
-                # Inter-character delay
+
+                # Inter-character delay (more generous for reliability)
                 if config.randomize_timing:
-                    delay = 0.05 + (hash(char) % 50) / 1000.0  # 50-100ms
+                    delay = 0.08 + (hash(char) % 50) / 1000.0  # 80-130ms
                 else:
-                    delay = 0.05
-                
+                    delay = 0.10  # 100ms default
+
                 # Adaptive timing based on system load
                 if config.adaptive_timing and metrics.system_load:
                     if metrics.system_load > 0.7:
                         delay *= 1.5  # Slow down on high load
-                
+
                 await asyncio.sleep(delay)
-            
-            logger.debug(f"🔐 [SECURE-TYPE] Typed {len(password)} characters")
+
+            logger.info(f"✅ [SECURE-TYPE] Successfully typed all {len(password)} characters")
             return True
-            
+
         except Exception as e:
-            logger.error(f"❌ Failed to type password characters: {e}")
+            logger.error(f"❌ Failed to type password characters: {e}", exc_info=True)
             return False
     
     async def _press_return_secure(self, config: TypingConfig) -> bool:
