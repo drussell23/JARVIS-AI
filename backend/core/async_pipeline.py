@@ -1247,31 +1247,93 @@ class AdvancedAsyncPipeline:
 
                     except ImportError as e:
                         logger.warning(f"🔓 [LOCK-UNLOCK-FALLBACK] Intelligent service unavailable: {e}")
-                        # Fallback to keychain unlock
+                        logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Attempting keychain unlock with audio verification...")
+                        # Fallback to keychain unlock WITH AUDIO DATA
                         try:
                             from backend.macos_keychain_unlock import MacOSKeychainUnlock
 
                             keychain_unlock = MacOSKeychainUnlock()
-                            result = await keychain_unlock.unlock_screen(verified_speaker=speaker_name or user_name)
+
+                            # Pass audio data for voice verification in fallback path
+                            if audio_data:
+                                logger.info(f"🎤 [LOCK-UNLOCK-FALLBACK] Passing {len(audio_data)} bytes of audio to keychain unlock")
+                                # Verify speaker before unlocking
+                                from voice.speaker_verification_service import get_speaker_verification_service
+                                speaker_service = await get_speaker_verification_service()
+
+                                verification_result = await speaker_service.verify_speaker(
+                                    audio_data,
+                                    speaker_name or user_name
+                                )
+
+                                if verification_result.get("is_verified", False):
+                                    confidence = verification_result.get("confidence", 0.0)
+                                    logger.info(f"✅ [LOCK-UNLOCK-FALLBACK] Voice verified: {confidence:.1%} confidence")
+                                    result = await keychain_unlock.unlock_screen(
+                                        verified_speaker=speaker_name or user_name
+                                    )
+                                else:
+                                    confidence = verification_result.get("confidence", 0.0)
+                                    logger.warning(f"🚫 [LOCK-UNLOCK-FALLBACK] Voice verification failed: {confidence:.1%}")
+                                    result = {
+                                        "success": False,
+                                        "message": f"Voice verification failed (confidence: {confidence:.1%})",
+                                        "action": "denied"
+                                    }
+                            else:
+                                logger.warning(f"⚠️ [LOCK-UNLOCK-FALLBACK] No audio data - bypassing voice verification")
+                                result = await keychain_unlock.unlock_screen(
+                                    verified_speaker=speaker_name or user_name
+                                )
 
                             success = result.get("success", False)
                             message = result.get("message", "Screen unlock attempted")
                             action = result.get("action", "unlocked")
 
-                            logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Keychain unlock used: success={success}")
+                            logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Keychain unlock result: success={success}, action={action}")
 
                         except Exception as e2:
-                            logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain fallback failed: {e2}")
-                            # Final fallback to controller
+                            logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain fallback failed: {e2}", exc_info=True)
+                            # Final fallback to controller (no voice verification)
+                            logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Final fallback to controller.unlock_screen()")
                             success, message = await controller.unlock_screen()
                             action = "unlocked"
 
                     except Exception as e:
                         logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Unlock failed: {e}", exc_info=True)
-                        # Fallback to controller method
-                        logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Trying controller.unlock_screen()...")
-                        success, message = await controller.unlock_screen()
-                        action = "unlocked"
+                        logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Exception handler - trying controller.unlock_screen()...")
+
+                        # Try voice verification even in exception fallback if we have audio
+                        if audio_data:
+                            try:
+                                logger.info(f"🎤 [LOCK-UNLOCK-FALLBACK] Attempting voice verification before controller fallback...")
+                                from voice.speaker_verification_service import get_speaker_verification_service
+                                speaker_service = await get_speaker_verification_service()
+
+                                verification_result = await speaker_service.verify_speaker(
+                                    audio_data,
+                                    speaker_name or user_name
+                                )
+
+                                if not verification_result.get("is_verified", False):
+                                    confidence = verification_result.get("confidence", 0.0)
+                                    logger.warning(f"🚫 [LOCK-UNLOCK-FALLBACK] Voice verification failed in exception handler: {confidence:.1%}")
+                                    success = False
+                                    message = f"Voice verification failed (confidence: {confidence:.1%}). Please try again."
+                                    action = "denied"
+                                else:
+                                    confidence = verification_result.get("confidence", 0.0)
+                                    logger.info(f"✅ [LOCK-UNLOCK-FALLBACK] Voice verified in exception handler: {confidence:.1%}")
+                                    success, message = await controller.unlock_screen()
+                                    action = "unlocked"
+                            except Exception as verify_error:
+                                logger.error(f"❌ [LOCK-UNLOCK-FALLBACK] Voice verification in exception handler failed: {verify_error}")
+                                success, message = await controller.unlock_screen()
+                                action = "unlocked"
+                        else:
+                            logger.warning(f"⚠️ [LOCK-UNLOCK-FALLBACK] No audio data in exception handler - proceeding without verification")
+                            success, message = await controller.unlock_screen()
+                            action = "unlocked"
 
                 step_times["execute"] = (time.time() - step_start) * 1000
                 logger.info(

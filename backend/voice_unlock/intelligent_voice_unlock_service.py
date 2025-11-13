@@ -14,12 +14,36 @@ JARVIS learns the owner's voice over time and automatically rejects
 non-owner unlock attempts without hardcoding.
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
+from collections import defaultdict
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class UnlockDiagnostics:
+    """Comprehensive diagnostics for unlock attempts"""
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    audio_size_bytes: int = 0
+    audio_duration_seconds: float = 0.0
+    transcription_text: str = ""
+    transcription_confidence: float = 0.0
+    speaker_identified: Optional[str] = None
+    speaker_confidence: float = 0.0
+    is_owner: bool = False
+    verification_passed: bool = False
+    failure_reason: Optional[str] = None
+    processing_time_ms: float = 0.0
+    stt_engine_used: Optional[str] = None
+    cai_analysis: Optional[Dict] = None
+    sai_analysis: Optional[Dict] = None
+    retry_count: int = 0
+    error_messages: list = field(default_factory=list)
 
 
 class IntelligentVoiceUnlockService:
@@ -47,6 +71,18 @@ class IntelligentVoiceUnlockService:
 
         # Learning Database
         self.learning_db = None
+
+        # Advanced error handling and retry logic
+        self.max_retries = 3
+        self.retry_delay_seconds = 0.5
+        self.circuit_breaker_threshold = 5  # failures before circuit opens
+        self.circuit_breaker_timeout = 60  # seconds
+        self._circuit_breaker_failures = defaultdict(int)
+        self._circuit_breaker_last_failure = defaultdict(float)
+
+        # Performance tracking
+        self._diagnostics_history = []
+        self._max_diagnostics_history = 100
 
         # Context-Aware Intelligence
         self.cai_handler = None
@@ -235,12 +271,18 @@ class IntelligentVoiceUnlockService:
         """
         Process voice unlock command with full intelligence stack.
 
+        Features:
+        - Retry logic with exponential backoff
+        - Circuit breaker pattern for fault tolerance
+        - Comprehensive diagnostics tracking
+        - Async/await throughout for non-blocking operation
+
         Args:
             audio_data: Audio data in any format (bytes, string, base64, etc.)
             context: Optional context (screen state, time, location, etc.)
 
         Returns:
-            Result dict with success, speaker, reason, etc.
+            Result dict with success, speaker, reason, and diagnostics
         """
         if not self.initialized:
             await self.initialize()
@@ -248,19 +290,39 @@ class IntelligentVoiceUnlockService:
         start_time = datetime.now()
         self.stats["total_unlock_attempts"] += 1
 
+        # Initialize diagnostics
+        diagnostics = UnlockDiagnostics()
+
         logger.info("🎤 Processing voice unlock command...")
 
-        # Convert audio to proper format
-        from voice.audio_format_converter import prepare_audio_for_stt
-        audio_data = prepare_audio_for_stt(audio_data)
-        logger.info(f"📊 Audio prepared: {len(audio_data)} bytes")
+        # Convert audio to proper format with error handling
+        try:
+            from voice.audio_format_converter import prepare_audio_for_stt
+            audio_data = prepare_audio_for_stt(audio_data)
+            diagnostics.audio_size_bytes = len(audio_data) if audio_data else 0
+            logger.info(f"📊 Audio prepared: {diagnostics.audio_size_bytes} bytes")
+        except Exception as e:
+            logger.error(f"❌ Audio preparation failed: {e}")
+            diagnostics.error_messages.append(f"Audio preparation failed: {str(e)}")
+            return await self._create_failure_response(
+                "audio_preparation_failed",
+                "Failed to prepare audio data",
+                diagnostics=diagnostics.__dict__
+            )
 
-        # Step 1: Transcribe audio using Hybrid STT
-        transcription_result = await self._transcribe_audio(audio_data)
+        # Step 1: Transcribe audio using Hybrid STT with retry logic
+        transcription_result = await self._transcribe_audio_with_retry(
+            audio_data, diagnostics
+        )
 
         if not transcription_result:
+            diagnostics.failure_reason = "transcription_failed"
+            diagnostics.processing_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+            self._store_diagnostics(diagnostics)
             return await self._create_failure_response(
-                "transcription_failed", "Could not transcribe audio"
+                "transcription_failed",
+                "Could not transcribe audio",
+                diagnostics=diagnostics.__dict__
             )
 
         transcribed_text = transcription_result.text
@@ -455,6 +517,113 @@ class IntelligentVoiceUnlockService:
             "scenario_analysis": scenario_analysis,
             "timestamp": datetime.now().isoformat(),
         }
+
+    def _check_circuit_breaker(self, service_name: str) -> bool:
+        """
+        Check if circuit breaker allows operation.
+
+        Returns:
+            True if operation is allowed, False if circuit is open
+        """
+        import time
+
+        current_time = time.time()
+
+        # Check if circuit is open
+        if self._circuit_breaker_failures[service_name] >= self.circuit_breaker_threshold:
+            last_failure = self._circuit_breaker_last_failure[service_name]
+
+            # Check if timeout has passed
+            if current_time - last_failure < self.circuit_breaker_timeout:
+                logger.warning(
+                    f"🔴 Circuit breaker OPEN for {service_name} "
+                    f"({self._circuit_breaker_failures[service_name]} failures)"
+                )
+                return False
+            else:
+                # Reset circuit breaker after timeout
+                logger.info(f"🟢 Circuit breaker RESET for {service_name}")
+                self._circuit_breaker_failures[service_name] = 0
+
+        return True
+
+    def _record_circuit_breaker_failure(self, service_name: str):
+        """Record a failure for circuit breaker"""
+        import time
+
+        self._circuit_breaker_failures[service_name] += 1
+        self._circuit_breaker_last_failure[service_name] = time.time()
+
+        logger.debug(
+            f"⚠️ Circuit breaker failure recorded for {service_name}: "
+            f"{self._circuit_breaker_failures[service_name]}/{self.circuit_breaker_threshold}"
+        )
+
+    def _record_circuit_breaker_success(self, service_name: str):
+        """Record a success - reset failure count"""
+        if self._circuit_breaker_failures[service_name] > 0:
+            logger.debug(f"✅ Circuit breaker success for {service_name} - resetting failures")
+            self._circuit_breaker_failures[service_name] = 0
+
+    def _store_diagnostics(self, diagnostics: UnlockDiagnostics):
+        """Store diagnostics in history for analysis"""
+        self._diagnostics_history.append(diagnostics)
+
+        # Keep only last N diagnostics
+        if len(self._diagnostics_history) > self._max_diagnostics_history:
+            self._diagnostics_history.pop(0)
+
+    async def _transcribe_audio_with_retry(
+        self, audio_data: bytes, diagnostics: UnlockDiagnostics
+    ):
+        """
+        Transcribe audio with retry logic and circuit breaker.
+
+        Args:
+            audio_data: Audio bytes to transcribe
+            diagnostics: Diagnostics object to track attempts
+
+        Returns:
+            Transcription result or None if all retries failed
+        """
+        service_name = "stt_transcription"
+
+        # Check circuit breaker
+        if not self._check_circuit_breaker(service_name):
+            diagnostics.error_messages.append(f"Circuit breaker open for {service_name}")
+            return None
+
+        for attempt in range(self.max_retries):
+            diagnostics.retry_count = attempt + 1
+
+            try:
+                logger.info(f"🔄 Transcription attempt {attempt + 1}/{self.max_retries}")
+
+                result = await self._transcribe_audio(audio_data)
+
+                if result:
+                    # Success - record and return
+                    self._record_circuit_breaker_success(service_name)
+                    diagnostics.stt_engine_used = getattr(result, 'engine_used', 'unknown')
+                    return result
+                else:
+                    logger.warning(f"⚠️  Transcription attempt {attempt + 1} returned None")
+
+            except Exception as e:
+                error_msg = f"Transcription attempt {attempt + 1} failed: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                diagnostics.error_messages.append(error_msg)
+
+            # Wait before retry (exponential backoff)
+            if attempt < self.max_retries - 1:
+                delay = self.retry_delay_seconds * (2 ** attempt)
+                logger.info(f"⏳ Waiting {delay:.1f}s before retry...")
+                await asyncio.sleep(delay)
+
+        # All retries failed
+        self._record_circuit_breaker_failure(service_name)
+        logger.error(f"❌ All {self.max_retries} transcription attempts failed")
+        return None
 
     async def _transcribe_audio(self, audio_data: bytes):
         """Transcribe audio using Hybrid STT"""
