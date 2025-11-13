@@ -310,9 +310,16 @@ class IntelligentVoiceUnlockService:
                 diagnostics=diagnostics.__dict__
             )
 
+        # Extract sample_rate from context if provided by frontend
+        sample_rate = None
+        if context:
+            sample_rate = context.get("audio_sample_rate")
+            if sample_rate:
+                logger.info(f"🎵 Using frontend-provided sample rate: {sample_rate}Hz")
+
         # Step 1: Transcribe audio using Hybrid STT with retry logic
         transcription_result = await self._transcribe_audio_with_retry(
-            audio_data, diagnostics
+            audio_data, diagnostics, sample_rate=sample_rate
         )
 
         if not transcription_result:
@@ -574,7 +581,7 @@ class IntelligentVoiceUnlockService:
             self._diagnostics_history.pop(0)
 
     async def _transcribe_audio_with_retry(
-        self, audio_data: bytes, diagnostics: UnlockDiagnostics
+        self, audio_data: bytes, diagnostics: UnlockDiagnostics, sample_rate: Optional[int] = None
     ):
         """
         Transcribe audio with retry logic and circuit breaker.
@@ -582,6 +589,7 @@ class IntelligentVoiceUnlockService:
         Args:
             audio_data: Audio bytes to transcribe
             diagnostics: Diagnostics object to track attempts
+            sample_rate: Optional sample rate from frontend (browser-reported)
 
         Returns:
             Transcription result or None if all retries failed
@@ -599,7 +607,7 @@ class IntelligentVoiceUnlockService:
             try:
                 logger.info(f"🔄 Transcription attempt {attempt + 1}/{self.max_retries}")
 
-                result = await self._transcribe_audio(audio_data)
+                result = await self._transcribe_audio(audio_data, sample_rate=sample_rate)
 
                 if result:
                     # Success - record and return
@@ -625,8 +633,14 @@ class IntelligentVoiceUnlockService:
         logger.error(f"❌ All {self.max_retries} transcription attempts failed")
         return None
 
-    async def _transcribe_audio(self, audio_data: bytes):
-        """Transcribe audio using Hybrid STT"""
+    async def _transcribe_audio(self, audio_data: bytes, sample_rate: Optional[int] = None):
+        """
+        Transcribe audio using Hybrid STT
+
+        Args:
+            audio_data: Audio bytes to transcribe
+            sample_rate: Optional sample rate from frontend (browser-reported)
+        """
         if not self.stt_router:
             logger.error("Hybrid STT not available")
             return None
@@ -639,6 +653,7 @@ class IntelligentVoiceUnlockService:
                 audio_data=audio_data,
                 strategy=RoutingStrategy.ACCURACY,
                 speaker_name=None,  # Auto-detect
+                sample_rate=sample_rate,  # Pass sample rate for proper resampling
             )
 
             return result

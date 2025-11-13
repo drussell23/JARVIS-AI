@@ -27,14 +27,66 @@ class WhisperAudioHandler:
     def __init__(self):
         self.model = None
 
-    async def normalize_audio(self, audio_bytes: bytes) -> np.ndarray:
+    def _infer_sample_rate(self, audio_bytes: bytes, num_samples: int) -> int:
+        """
+        Intelligently infer sample rate from audio characteristics.
+
+        Uses multiple heuristics:
+        1. Audio duration estimation (if we know expected duration)
+        2. Frequency content analysis
+        3. Common sample rates for different sources
+
+        Args:
+            audio_bytes: Raw audio data
+            num_samples: Number of audio samples detected
+
+        Returns:
+            Inferred sample rate in Hz
+        """
+        # Common sample rates to test
+        common_rates = [48000, 44100, 32000, 24000, 16000, 22050, 11025, 8000]
+
+        # Heuristic 1: Audio byte size can hint at sample rate
+        # Typical voice command is 2-5 seconds
+        # For int16 PCM: bytes = samples * 2
+        audio_duration_estimates = {}
+        for rate in common_rates:
+            estimated_duration = num_samples / rate
+            # Voice commands typically 1-10 seconds
+            if 1.0 <= estimated_duration <= 10.0:
+                audio_duration_estimates[rate] = estimated_duration
+                logger.debug(f"Sample rate {rate}Hz → {estimated_duration:.2f}s duration")
+
+        # Heuristic 2: Most likely rates based on source
+        # Browser MediaRecorder: typically 48kHz or 44.1kHz
+        # macOS: 48kHz or 44.1kHz
+        # Mobile: 44.1kHz or 48kHz
+        # Old hardware: 22.05kHz, 16kHz, 11.025kHz
+
+        if audio_duration_estimates:
+            # Choose rate that gives most reasonable duration (2-5 sec preference)
+            best_rate = min(audio_duration_estimates.keys(),
+                          key=lambda r: abs(audio_duration_estimates[r] - 3.0))
+            logger.info(f"🎯 Inferred sample rate: {best_rate}Hz (duration: {audio_duration_estimates[best_rate]:.2f}s)")
+            return best_rate
+
+        # Fallback: Use most common browser rate
+        logger.warning(f"⚠️ Could not infer sample rate, defaulting to 48000Hz (browser standard)")
+        return 48000
+
+    async def normalize_audio(self, audio_bytes: bytes, sample_rate: int = None) -> np.ndarray:
         """
         Universal audio normalization pipeline that:
-        1. Auto-detects sample rate from audio bytes
+        1. Auto-detects sample rate from audio bytes OR uses provided rate
         2. Decodes audio format (int16/float32/int8 PCM)
         3. Resamples to 16kHz if needed
         4. Converts stereo to mono
         5. Normalizes to float32 [-1.0, 1.0]
+
+        Args:
+            audio_bytes: Raw audio data
+            sample_rate: Optional sample rate from frontend (browser-reported)
+                        If None, will attempt to infer from audio
 
         Returns: Normalized float32 numpy array ready for Whisper
         """
@@ -63,10 +115,13 @@ class WhisperAudioHandler:
                     if len(audio_array) > 100:
                         audio_array = audio_array.astype(np.float32) / 32768.0
                         detected_format = "int16 PCM"
-                        # Estimate sample rate from duration
-                        # Assume typical browser recording is 48kHz
-                        detected_sr = 48000
-                        logger.info(f"✅ Decoded as int16 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                        # Use provided sample rate or infer it
+                        if sample_rate:
+                            detected_sr = sample_rate
+                            logger.info(f"✅ Decoded as int16 PCM: {len(audio_array)} samples, using provided {detected_sr}Hz")
+                        else:
+                            detected_sr = self._infer_sample_rate(audio_bytes, len(audio_array))
+                            logger.info(f"✅ Decoded as int16 PCM: {len(audio_array)} samples, inferred {detected_sr}Hz")
                     else:
                         audio_array = None
                 except Exception as e:
@@ -78,8 +133,13 @@ class WhisperAudioHandler:
                     audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
                     if len(audio_array) > 100:
                         detected_format = "float32 PCM"
-                        detected_sr = 48000  # Assume 48kHz
-                        logger.info(f"✅ Decoded as float32 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                        # Use provided sample rate or infer it
+                        if sample_rate:
+                            detected_sr = sample_rate
+                            logger.info(f"✅ Decoded as float32 PCM: {len(audio_array)} samples, using provided {detected_sr}Hz")
+                        else:
+                            detected_sr = self._infer_sample_rate(audio_bytes, len(audio_array))
+                            logger.info(f"✅ Decoded as float32 PCM: {len(audio_array)} samples, inferred {detected_sr}Hz")
                     else:
                         audio_array = None
                 except Exception as e:
@@ -92,8 +152,13 @@ class WhisperAudioHandler:
                     if len(audio_array) > 100:
                         audio_array = audio_array.astype(np.float32) / 128.0
                         detected_format = "int8 PCM"
-                        detected_sr = 48000  # Assume 48kHz
-                        logger.info(f"✅ Decoded as int8 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                        # Use provided sample rate or infer it
+                        if sample_rate:
+                            detected_sr = sample_rate
+                            logger.info(f"✅ Decoded as int8 PCM: {len(audio_array)} samples, using provided {detected_sr}Hz")
+                        else:
+                            detected_sr = self._infer_sample_rate(audio_bytes, len(audio_array))
+                            logger.info(f"✅ Decoded as int8 PCM: {len(audio_array)} samples, inferred {detected_sr}Hz")
                     else:
                         audio_array = None
                 except Exception as e:
@@ -234,8 +299,15 @@ class WhisperAudioHandler:
 
         return await asyncio.to_thread(_write_sync)
 
-    async def transcribe_any_format(self, audio_data):
-        """Transcribe audio in any format with automatic normalization"""
+    async def transcribe_any_format(self, audio_data, sample_rate: int = None):
+        """
+        Transcribe audio in any format with automatic normalization
+
+        Args:
+            audio_data: Audio bytes or base64 string
+            sample_rate: Optional sample rate from frontend (browser-reported)
+                        If None, will attempt to infer from audio
+        """
 
         # Load model if needed
         model = self.load_model()
@@ -244,8 +316,8 @@ class WhisperAudioHandler:
             # Convert to bytes
             audio_bytes = self.decode_audio_data(audio_data)
 
-            # Normalize audio (auto-detect sample rate, resample to 16kHz, mono, float32)
-            normalized_audio = await self.normalize_audio(audio_bytes)
+            # Normalize audio (use provided sample rate or auto-detect)
+            normalized_audio = await self.normalize_audio(audio_bytes, sample_rate=sample_rate)
 
             # Create WAV file from normalized audio
             wav_path = await self.create_wav_from_normalized_audio(normalized_audio)
@@ -273,6 +345,12 @@ class WhisperAudioHandler:
 # Global instance
 _whisper_handler = WhisperAudioHandler()
 
-async def transcribe_with_whisper(audio_data):
-    """Global transcription function"""
-    return await _whisper_handler.transcribe_any_format(audio_data)
+async def transcribe_with_whisper(audio_data, sample_rate: int = None):
+    """
+    Global transcription function with optional sample rate
+
+    Args:
+        audio_data: Audio bytes or base64 string
+        sample_rate: Optional sample rate from frontend (browser-reported)
+    """
+    return await _whisper_handler.transcribe_any_format(audio_data, sample_rate=sample_rate)

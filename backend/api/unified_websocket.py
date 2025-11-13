@@ -1018,9 +1018,13 @@ class UnifiedWebSocketManager:
 
                 # Debug: Log audio data from frontend
                 audio_data_received = message.get("audio_data")
+                sample_rate_received = message.get("sample_rate")
+                mime_type_received = message.get("mime_type")
+
                 if audio_data_received:
                     logger.info(
-                        f"[WS] Received audio data from frontend: {len(audio_data_received)} bytes"
+                        f"[WS] Received audio data from frontend: {len(audio_data_received)} bytes, "
+                        f"sample_rate={sample_rate_received}Hz, mime_type={mime_type_received}"
                     )
                 else:
                     logger.warning("[WS] No audio data in message from frontend")
@@ -1034,6 +1038,8 @@ class UnifiedWebSocketManager:
                         "client_id": client_id,
                         "websocket": websocket,
                         "stream_mode": message.get("stream", False),
+                        "audio_sample_rate": sample_rate_received,
+                        "audio_mime_type": mime_type_received,
                     },
                 )
 

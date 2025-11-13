@@ -363,6 +363,7 @@ class HybridSTTRouter:
         strategy: Optional[RoutingStrategy] = None,
         speaker_name: Optional[str] = None,
         context: Optional[Dict] = None,
+        sample_rate: Optional[int] = None,
     ) -> STTResult:
         """
         Main transcription entry point.
@@ -373,6 +374,13 @@ class HybridSTTRouter:
         3. Select optimal model
         4. Try local model first
         5. Escalate to cloud if needed
+
+        Args:
+            audio_data: Raw audio bytes
+            strategy: Routing strategy override
+            speaker_name: Optional speaker name for personalization
+            context: Additional context for routing decisions
+            sample_rate: Optional sample rate from frontend (browser-reported)
         6. Record to database for learning
         7. Return best result
         """
@@ -476,8 +484,8 @@ class HybridSTTRouter:
                 # Use the robust Whisper handler
                 from .whisper_audio_fix import transcribe_with_whisper
 
-                # Transcribe with robust handler
-                text = await transcribe_with_whisper(audio_data)
+                # Transcribe with robust handler (pass sample_rate for proper resampling)
+                text = await transcribe_with_whisper(audio_data, sample_rate=sample_rate)
 
                 if text:
                     final_result = STTResult(

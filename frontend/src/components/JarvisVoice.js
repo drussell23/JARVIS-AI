@@ -2314,7 +2314,7 @@ const JarvisVoice = () => {
     // 🎤 Stop audio capture and get the recorded audio for voice biometrics
     const audioData = await stopVoiceAudioCapture();
     if (audioData) {
-      console.log(`🎤 [VoiceCapture] Audio captured for command: ${audioData.length} chars`);
+      console.log(`🎤 [VoiceCapture] Audio captured for command: ${audioData.audio?.length || 0} chars, ${audioData.sampleRate}Hz`);
     } else {
       console.log('🎤 [VoiceCapture] No audio data captured (may not affect functionality)');
     }
@@ -2360,8 +2360,10 @@ const JarvisVoice = () => {
 
       // Include audio_data if available for voice biometric verification
       if (audioData) {
-        message.audio_data = audioData;
-        console.log('🎤 Sending command with audio data for voice verification');
+        message.audio_data = audioData.audio; // Send base64 audio
+        message.sample_rate = audioData.sampleRate; // Send actual sample rate from browser
+        message.mime_type = audioData.mimeType; // Send MIME type for decoding
+        console.log(`🎤 Sending command with audio data for voice verification (${audioData.sampleRate}Hz, ${audioData.mimeType})`);
       }
 
       wsRef.current.send(JSON.stringify(message));
@@ -2597,12 +2599,21 @@ const JarvisVoice = () => {
 
           console.log(`🎤 [VoiceCapture] Audio blob created: ${audioBlob.size} bytes`);
 
+          // Get actual sample rate from the audio stream (browser may override requested rate)
+          const actualSampleRate = voiceAudioStreamRef.current?.getAudioTracks()[0]?.getSettings().sampleRate || 16000;
+          console.log(`🎤 [VoiceCapture] Actual sample rate: ${actualSampleRate}Hz`);
+
           // Convert to base64
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64Audio = reader.result.split(',')[1]; // Remove data:audio/...;base64, prefix
             console.log(`🎤 [VoiceCapture] Converted to base64: ${base64Audio.length} chars`);
-            resolve(base64Audio);
+            // Return object with audio data and metadata
+            resolve({
+              audio: base64Audio,
+              sampleRate: actualSampleRate,
+              mimeType: voiceAudioRecorderRef.current.mimeType || 'audio/webm'
+            });
           };
           reader.onerror = () => {
             console.error('🎤 [VoiceCapture] Failed to convert to base64');
