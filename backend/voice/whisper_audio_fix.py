@@ -324,8 +324,12 @@ class WhisperAudioHandler:
 
             # Transcribe with Whisper in thread pool to avoid blocking
             def _transcribe_sync():
-                result = model.transcribe(wav_path)
-                return result["text"].strip()
+                logger.info(f"🎤 Transcribing WAV file: {wav_path}")
+                logger.info(f"   Audio array shape: {normalized_audio.shape}, dtype: {normalized_audio.dtype}")
+                logger.info(f"   Audio min: {normalized_audio.min():.6f}, max: {normalized_audio.max():.6f}")
+                result = model.transcribe(wav_path, language="en", fp16=False) # Derek speaks English only for now (but Whisper is multilingual)
+                logger.info(f"   Raw Whisper result: {result}")
+                return result["text"].strip() # Strip leading/trailing whitespace from text
 
             text = await asyncio.to_thread(_transcribe_sync)
 
