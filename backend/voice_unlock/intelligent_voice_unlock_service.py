@@ -659,11 +659,13 @@ class IntelligentVoiceUnlockService:
                     return None
 
             # Use ACCURACY strategy for unlock (security-critical)
+            # **CRITICAL**: Use 'unlock' mode for ultra-fast 2-second window + VAD filtering
             result = await self.stt_router.transcribe(
                 audio_data=audio_data,
                 strategy=RoutingStrategy.ACCURACY,
                 speaker_name=None,  # Auto-detect
                 sample_rate=sample_rate,  # Pass sample rate for proper resampling
+                mode='unlock',  # UNLOCK MODE: 2-second window, VAD filtering, maximum speed
             )
 
             return result

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
 Robust Whisper audio handler that works with any input format
+
+INTEGRATED FEATURES:
+- VAD (Voice Activity Detection) filtering via WebRTC-VAD + Silero VAD
+- Audio windowing/truncation to prevent hallucinations (5s global, 2s unlock)
+- Silence and noise removal BEFORE Whisper sees audio
+- Ultra-low latency for command and unlock flows
 """
 
 import base64
@@ -11,6 +17,7 @@ import logging
 import asyncio
 import soundfile as sf
 import io
+import os
 
 try:
     import librosa
@@ -19,13 +26,41 @@ except ImportError:
     LIBROSA_AVAILABLE = False
     logging.warning("librosa not available - will use basic resampling")
 
+# VAD and windowing imports
+try:
+    from .vad import get_vad_pipeline, VADConfig, VADPipelineConfig
+    from .audio_windowing import get_window_manager, WindowConfig
+    VAD_AVAILABLE = True
+except ImportError:
+    VAD_AVAILABLE = False
+    logging.warning("VAD/windowing not available - will skip filtering")
+
 logger = logging.getLogger(__name__)
 
 class WhisperAudioHandler:
-    """Handles any audio format for Whisper transcription"""
+    """
+    Handles any audio format for Whisper transcription
+
+    NOW WITH:
+    - VAD filtering (WebRTC-VAD + Silero VAD)
+    - Audio windowing (5s global, 2s unlock)
+    - Silence removal before transcription
+    """
 
     def __init__(self):
         self.model = None
+
+        # Initialize VAD pipeline (lazy-loaded)
+        self.vad_pipeline = None
+        self.vad_enabled = VAD_AVAILABLE and os.getenv('ENABLE_VAD', 'true').lower() == 'true'
+
+        # Initialize window manager (lazy-loaded)
+        self.window_manager = None
+        self.windowing_enabled = VAD_AVAILABLE and os.getenv('ENABLE_WINDOWING', 'true').lower() == 'true'
+
+        logger.info("🎤 Whisper Audio Handler initialized")
+        logger.info(f"   VAD enabled: {self.vad_enabled}")
+        logger.info(f"   Windowing enabled: {self.windowing_enabled}")
 
     def _infer_sample_rate(self, audio_bytes: bytes, num_samples: int) -> int:
         """
@@ -336,14 +371,107 @@ class WhisperAudioHandler:
 
         return await asyncio.to_thread(_write_sync)
 
-    async def transcribe_any_format(self, audio_data, sample_rate: int = None):
+    def _get_vad_pipeline(self):
+        """Lazy-load VAD pipeline"""
+        if self.vad_pipeline is None and self.vad_enabled:
+            try:
+                self.vad_pipeline = get_vad_pipeline()
+                logger.info("✅ VAD pipeline loaded for Whisper audio handler")
+            except Exception as e:
+                logger.error(f"Failed to load VAD pipeline: {e}")
+                self.vad_enabled = False
+        return self.vad_pipeline
+
+    def _get_window_manager(self):
+        """Lazy-load window manager"""
+        if self.window_manager is None and self.windowing_enabled:
+            try:
+                self.window_manager = get_window_manager()
+                logger.info("✅ Window manager loaded for Whisper audio handler")
+            except Exception as e:
+                logger.error(f"Failed to load window manager: {e}")
+                self.windowing_enabled = False
+        return self.window_manager
+
+    async def _apply_vad_and_windowing(
+        self,
+        audio: np.ndarray,
+        mode: str = 'general'
+    ) -> np.ndarray:
         """
-        Transcribe audio in any format with automatic normalization
+        Apply VAD filtering and windowing to audio
+
+        Process:
+        1. Apply VAD to remove silence/noise (if enabled)
+        2. Apply windowing based on mode (if enabled)
+
+        Args:
+            audio: Normalized audio (float32, 16kHz)
+            mode: 'general', 'unlock', or 'command'
+
+        Returns:
+            Filtered and windowed audio ready for Whisper
+        """
+        original_duration = len(audio) / 16000
+
+        # Step 1: VAD filtering (remove silence/noise)
+        if self.vad_enabled:
+            vad_pipeline = self._get_vad_pipeline()
+            if vad_pipeline:
+                try:
+                    logger.info(f"🔍 Applying VAD filter ({mode} mode)...")
+                    audio = await vad_pipeline.filter_audio_async(audio)
+
+                    if len(audio) == 0:
+                        logger.warning("❌ VAD filtered out ALL audio - no speech detected")
+                        return audio
+
+                    vad_duration = len(audio) / 16000
+                    logger.info(f"✅ VAD filtered: {original_duration:.2f}s → {vad_duration:.2f}s ({vad_duration/original_duration*100:.1f}% retained)")
+                except Exception as e:
+                    logger.error(f"VAD filtering failed: {e}, proceeding without VAD")
+
+        # Step 2: Windowing (truncation)
+        if self.windowing_enabled:
+            window_manager = self._get_window_manager()
+            if window_manager:
+                try:
+                    logger.info(f"🪟 Applying windowing ({mode} mode)...")
+                    audio = window_manager.prepare_for_transcription(audio, mode=mode)
+
+                    if len(audio) == 0:
+                        logger.warning("❌ Windowing resulted in empty audio")
+                        return audio
+
+                    final_duration = len(audio) / 16000
+                    logger.info(f"✅ Final audio: {final_duration:.2f}s ready for Whisper")
+                except Exception as e:
+                    logger.error(f"Windowing failed: {e}, proceeding without windowing")
+
+        return audio
+
+    async def transcribe_any_format(
+        self,
+        audio_data,
+        sample_rate: int = None,
+        mode: str = 'general'
+    ):
+        """
+        Transcribe audio in any format with automatic normalization + VAD + windowing
+
+        NOW INCLUDES:
+        - VAD filtering (WebRTC-VAD + Silero VAD) to remove silence/noise
+        - Windowing/truncation (5s global, 2s unlock, 3s command)
+        - Mode-aware optimization for ultra-low latency
 
         Args:
             audio_data: Audio bytes or base64 string
             sample_rate: Optional sample rate from frontend (browser-reported)
                         If None, will attempt to infer from audio
+            mode: Processing mode:
+                  - 'general': Standard transcription (5s window)
+                  - 'unlock': Ultra-fast unlock flow (2s window)
+                  - 'command': Command detection (3s window)
         """
 
         # Load model if needed
@@ -355,6 +483,15 @@ class WhisperAudioHandler:
 
             # Normalize audio (use provided sample rate or auto-detect)
             normalized_audio = await self.normalize_audio(audio_bytes, sample_rate=sample_rate)
+
+            # **CRITICAL**: Apply VAD + windowing BEFORE Whisper
+            # This prevents hallucinations, reduces latency, and improves accuracy
+            normalized_audio = await self._apply_vad_and_windowing(normalized_audio, mode=mode)
+
+            # Check if VAD filtered out all speech
+            if len(normalized_audio) == 0:
+                logger.warning("⚠️ VAD/windowing resulted in empty audio - no speech to transcribe")
+                return None
 
             # Transcribe with Whisper in thread pool to avoid blocking
             def _transcribe_sync():
@@ -410,12 +547,24 @@ class WhisperAudioHandler:
 # Global instance
 _whisper_handler = WhisperAudioHandler()
 
-async def transcribe_with_whisper(audio_data, sample_rate: int = None):
+async def transcribe_with_whisper(
+    audio_data,
+    sample_rate: int = None,
+    mode: str = 'general'
+):
     """
-    Global transcription function with optional sample rate
+    Global transcription function with VAD + windowing support
 
     Args:
         audio_data: Audio bytes or base64 string
         sample_rate: Optional sample rate from frontend (browser-reported)
+        mode: Processing mode ('general', 'unlock', or 'command')
+              - 'general': 5s window, standard processing
+              - 'unlock': 2s window, ultra-fast for unlock flow
+              - 'command': 3s window, optimized for command detection
     """
-    return await _whisper_handler.transcribe_any_format(audio_data, sample_rate=sample_rate)
+    return await _whisper_handler.transcribe_any_format(
+        audio_data,
+        sample_rate=sample_rate,
+        mode=mode
+    )

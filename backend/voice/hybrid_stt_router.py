@@ -364,9 +364,21 @@ class HybridSTTRouter:
         speaker_name: Optional[str] = None,
         context: Optional[Dict] = None,
         sample_rate: Optional[int] = None,
+        mode: str = 'general',
     ) -> STTResult:
         """
-        Main transcription entry point.
+        Main transcription entry point with VAD/windowing mode support.
+
+        Args:
+            audio_data: Raw audio bytes
+            strategy: Routing strategy (SPEED/ACCURACY/COST)
+            speaker_name: Known speaker name (for priority routing)
+            context: Additional context
+            sample_rate: Optional sample rate from frontend
+            mode: VAD/windowing mode ('general', 'unlock', 'command')
+                  - 'general': 5s window, standard processing
+                  - 'unlock': 2s window, ultra-fast
+                  - 'command': 3s window, optimized for commands
 
         Ultra-intelligent routing:
         1. Assess system resources
@@ -481,11 +493,15 @@ class HybridSTTRouter:
         if final_result is None:
             logger.warning("⚠️  All engines failed, attempting robust Whisper transcription...")
             try:
-                # Use the robust Whisper handler
+                # Use the robust Whisper handler WITH VAD + windowing
                 from .whisper_audio_fix import transcribe_with_whisper
 
-                # Transcribe with robust handler (pass sample_rate for proper resampling)
-                text = await transcribe_with_whisper(audio_data, sample_rate=sample_rate)
+                # Transcribe with robust handler (pass sample_rate AND mode for VAD/windowing)
+                text = await transcribe_with_whisper(
+                    audio_data,
+                    sample_rate=sample_rate,
+                    mode=mode  # Pass mode for VAD + windowing (unlock/command/general)
+                )
 
                 if text:
                     final_result = STTResult(
