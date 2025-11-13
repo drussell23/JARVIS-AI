@@ -12,6 +12,13 @@ import asyncio
 import soundfile as sf
 import io
 
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+    logging.warning("librosa not available - will use basic resampling")
+
 logger = logging.getLogger(__name__)
 
 class WhisperAudioHandler:
@@ -19,6 +26,132 @@ class WhisperAudioHandler:
 
     def __init__(self):
         self.model = None
+
+    async def normalize_audio(self, audio_bytes: bytes) -> np.ndarray:
+        """
+        Universal audio normalization pipeline that:
+        1. Auto-detects sample rate from audio bytes
+        2. Decodes audio format (int16/float32/int8 PCM)
+        3. Resamples to 16kHz if needed
+        4. Converts stereo to mono
+        5. Normalizes to float32 [-1.0, 1.0]
+
+        Returns: Normalized float32 numpy array ready for Whisper
+        """
+        def _normalize_sync():
+            logger.info(f"🔊 Audio normalization: {len(audio_bytes)} bytes")
+
+            # Step 1: Try to detect format and decode with soundfile first
+            audio_array = None
+            detected_sr = None
+            detected_format = None
+
+            # Try soundfile first (handles WAV, FLAC, OGG with embedded metadata)
+            try:
+                audio_buf = io.BytesIO(audio_bytes)
+                audio_array, detected_sr = sf.read(audio_buf, dtype='float32')
+                detected_format = "soundfile (with metadata)"
+                logger.info(f"✅ Decoded with soundfile: {detected_sr}Hz, {audio_array.shape}")
+            except Exception as e:
+                logger.debug(f"soundfile decode failed: {e}")
+
+            # Step 2: If soundfile fails, try raw PCM formats
+            if audio_array is None:
+                # Try int16 PCM (most common from browsers)
+                try:
+                    audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
+                    if len(audio_array) > 100:
+                        audio_array = audio_array.astype(np.float32) / 32768.0
+                        detected_format = "int16 PCM"
+                        # Estimate sample rate from duration
+                        # Assume typical browser recording is 48kHz
+                        detected_sr = 48000
+                        logger.info(f"✅ Decoded as int16 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                    else:
+                        audio_array = None
+                except Exception as e:
+                    logger.debug(f"int16 PCM decode failed: {e}")
+
+            # Try float32 PCM
+            if audio_array is None:
+                try:
+                    audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
+                    if len(audio_array) > 100:
+                        detected_format = "float32 PCM"
+                        detected_sr = 48000  # Assume 48kHz
+                        logger.info(f"✅ Decoded as float32 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                    else:
+                        audio_array = None
+                except Exception as e:
+                    logger.debug(f"float32 PCM decode failed: {e}")
+
+            # Try int8 PCM
+            if audio_array is None:
+                try:
+                    audio_array = np.frombuffer(audio_bytes, dtype=np.int8)
+                    if len(audio_array) > 100:
+                        audio_array = audio_array.astype(np.float32) / 128.0
+                        detected_format = "int8 PCM"
+                        detected_sr = 48000  # Assume 48kHz
+                        logger.info(f"✅ Decoded as int8 PCM: {len(audio_array)} samples, assuming {detected_sr}Hz")
+                    else:
+                        audio_array = None
+                except Exception as e:
+                    logger.debug(f"int8 PCM decode failed: {e}")
+
+            if audio_array is None:
+                logger.error("❌ Could not decode audio in any known format")
+                raise ValueError("Audio format not recognized")
+
+            # Step 3: Convert stereo to mono if needed
+            if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
+                logger.info(f"Converting stereo ({audio_array.shape[1]} channels) to mono")
+                audio_array = np.mean(audio_array, axis=1)
+
+            # Step 4: Validate audio has content
+            audio_energy = np.abs(audio_array).mean()
+            if audio_energy < 0.001:
+                logger.error(f"❌ Audio is silence (energy: {audio_energy:.6f})")
+                raise ValueError("Audio contains only silence")
+
+            logger.info(f"✅ Audio energy: {audio_energy:.6f}")
+
+            # Step 5: Resample to 16kHz if needed
+            TARGET_SR = 16000
+            if detected_sr != TARGET_SR:
+                logger.info(f"🔄 Resampling from {detected_sr}Hz to {TARGET_SR}Hz...")
+
+                if LIBROSA_AVAILABLE:
+                    # High-quality resampling with librosa
+                    audio_array = librosa.resample(
+                        audio_array,
+                        orig_sr=detected_sr,
+                        target_sr=TARGET_SR,
+                        res_type='kaiser_best'  # Highest quality
+                    )
+                    logger.info(f"✅ Resampled with librosa (kaiser_best): {len(audio_array)} samples")
+                else:
+                    # Fallback: Basic linear interpolation
+                    from scipy import signal
+                    num_samples = int(len(audio_array) * TARGET_SR / detected_sr)
+                    audio_array = signal.resample(audio_array, num_samples)
+                    logger.info(f"✅ Resampled with scipy: {len(audio_array)} samples")
+            else:
+                logger.info(f"✅ Already at {TARGET_SR}Hz - no resampling needed")
+
+            # Step 6: Ensure float32 normalization
+            audio_array = audio_array.astype(np.float32)
+
+            # Clip to [-1.0, 1.0] range
+            if np.abs(audio_array).max() > 1.0:
+                logger.warning(f"Audio exceeded [-1.0, 1.0] range, clipping...")
+                audio_array = np.clip(audio_array, -1.0, 1.0)
+
+            logger.info(f"✅ Normalization complete: {len(audio_array)} samples @ 16kHz, float32")
+            return audio_array
+
+        # Run in thread pool to avoid blocking event loop
+        return await asyncio.to_thread(_normalize_sync)
 
     def load_model(self):
         """Load Whisper model"""
@@ -84,79 +217,25 @@ class WhisperAudioHandler:
             logger.error(f"Cannot convert audio data of type {type(audio_data)} to bytes")
             raise ValueError(f"Unsupported audio data type: {type(audio_data)}")
 
-    def create_wav_from_bytes(self, audio_bytes, sample_rate=16000):
-        """Create a WAV file from raw audio bytes with robust format detection"""
+    async def create_wav_from_normalized_audio(self, audio_array: np.ndarray) -> str:
+        """
+        Create a temporary WAV file from normalized audio array
 
-        logger.info(f"🔍 Audio preprocessing: {len(audio_bytes)} bytes")
+        Args:
+            audio_array: Normalized float32 array at 16kHz
 
-        # Try to interpret as different formats
-        audio_array = None
-        detected_format = None
+        Returns:
+            Path to temporary WAV file
+        """
+        def _write_sync():
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                sf.write(tmp.name, audio_array, 16000)
+                return tmp.name
 
-        # Try as raw PCM int16 (most common format from browsers)
-        try:
-            audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-            # Validate it's reasonable audio data
-            if len(audio_array) > 100:  # At least 100 samples
-                audio_array = audio_array.astype(np.float32) / 32768.0
-                detected_format = "int16 PCM"
-                logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
-            else:
-                audio_array = None
-        except Exception as e:
-            logger.debug(f"Not int16 PCM: {e}")
-            pass
-
-        # Try as raw PCM float32
-        if audio_array is None:
-            try:
-                audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
-                if len(audio_array) > 100:
-                    detected_format = "float32 PCM"
-                    logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
-                else:
-                    audio_array = None
-            except Exception as e:
-                logger.debug(f"Not float32 PCM: {e}")
-                pass
-
-        # Try as raw PCM int8
-        if audio_array is None:
-            try:
-                audio_array = np.frombuffer(audio_bytes, dtype=np.int8)
-                if len(audio_array) > 100:
-                    audio_array = audio_array.astype(np.float32) / 128.0
-                    detected_format = "int8 PCM"
-                    logger.info(f"✅ Detected: {detected_format}, {len(audio_array)} samples")
-                else:
-                    audio_array = None
-            except Exception as e:
-                logger.debug(f"Not int8 PCM: {e}")
-                pass
-
-        # If we still don't have audio, FAIL instead of creating silence
-        if audio_array is None:
-            logger.error("❌ Could not interpret audio bytes - invalid audio format")
-            raise ValueError("Audio format not recognized - cannot decode audio bytes")
-
-        # Ensure audio is the right length
-        if len(audio_array) == 0:
-            logger.error("❌ Empty audio array - no audio data to transcribe")
-            raise ValueError("Empty audio data - cannot transcribe silence")
-
-        # Validate audio has actual content (not just silence)
-        audio_energy = np.abs(audio_array).mean()
-        if audio_energy < 0.001:  # Threshold for silence detection
-            logger.error(f"❌ Audio appears to be silence (energy: {audio_energy:.6f})")
-            raise ValueError("Audio contains only silence - cannot transcribe")
-
-        # Save to temp WAV file
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            sf.write(tmp.name, audio_array, sample_rate)
-            return tmp.name
+        return await asyncio.to_thread(_write_sync)
 
     async def transcribe_any_format(self, audio_data):
-        """Transcribe audio in any format"""
+        """Transcribe audio in any format with automatic normalization"""
 
         # Load model if needed
         model = self.load_model()
@@ -165,12 +244,18 @@ class WhisperAudioHandler:
             # Convert to bytes
             audio_bytes = self.decode_audio_data(audio_data)
 
-            # Create WAV file
-            wav_path = self.create_wav_from_bytes(audio_bytes)
+            # Normalize audio (auto-detect sample rate, resample to 16kHz, mono, float32)
+            normalized_audio = await self.normalize_audio(audio_bytes)
 
-            # Transcribe with Whisper
-            result = model.transcribe(wav_path)
-            text = result["text"].strip()
+            # Create WAV file from normalized audio
+            wav_path = await self.create_wav_from_normalized_audio(normalized_audio)
+
+            # Transcribe with Whisper in thread pool to avoid blocking
+            def _transcribe_sync():
+                result = model.transcribe(wav_path)
+                return result["text"].strip()
+
+            text = await asyncio.to_thread(_transcribe_sync)
 
             # Clean up temp file
             import os
