@@ -9680,7 +9680,6 @@ async def main():
         try:
             # Import hybrid sync
             from intelligence.hybrid_database_sync import HybridDatabaseSync
-            from pathlib import Path
             import json
 
             # Load database config
