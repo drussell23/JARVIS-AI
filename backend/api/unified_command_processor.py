@@ -4455,8 +4455,25 @@ class UnifiedCommandProcessor:
                 try:
                     from api.simple_unlock_handler import handle_unlock_command
 
+                    # Create a jarvis_instance-like object to pass audio data for voice verification
+                    class AudioContainer:
+                        def __init__(self, audio_data, speaker_name):
+                            self.last_audio_data = audio_data
+                            self.last_speaker_name = speaker_name
+
+                    # Pass audio data through jarvis_instance for voice biometric verification
+                    jarvis_instance = AudioContainer(
+                        audio_data=self.current_audio_data,
+                        speaker_name=self.current_speaker_name
+                    ) if self.current_audio_data else None
+
+                    if jarvis_instance:
+                        logger.info(f"🎤 [VOICE-UNLOCK] Passing audio data to unlock handler for verification ({len(self.current_audio_data) if self.current_audio_data else 0} bytes)")
+                    else:
+                        logger.warning(f"⚠️ [VOICE-UNLOCK] No audio data available - voice verification will be bypassed")
+
                     # Pass the command to the existing unlock handler which integrates with the daemon
-                    result = await handle_unlock_command(command_text)
+                    result = await handle_unlock_command(command_text, jarvis_instance=jarvis_instance)
 
                     # Ensure we return a properly formatted result
                     if isinstance(result, dict):
