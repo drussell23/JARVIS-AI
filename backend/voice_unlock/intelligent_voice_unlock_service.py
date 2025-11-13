@@ -707,38 +707,93 @@ class IntelligentVoiceUnlockService:
 
         return False
 
+    async def _apply_vad_for_speaker_verification(self, audio_data: bytes) -> bytes:
+        """
+        Apply VAD filtering to audio before speaker verification
+        This dramatically speeds up speaker verification by removing silence
+        and reducing audio to 2-second windows (unlock mode)
+        """
+        try:
+            from voice.whisper_audio_fix import transcribe_with_whisper
+            from voice.whisper_audio_fix import _whisper_handler
+            import numpy as np
+            import io
+            import wave
+
+            # Decode audio
+            audio_bytes = _whisper_handler.decode_audio_data(audio_data)
+
+            # Normalize to 16kHz float32
+            normalized_audio = await _whisper_handler.normalize_audio(audio_bytes, sample_rate=16000)
+
+            # Apply VAD + windowing (unlock mode = 2s)
+            filtered_audio = await _whisper_handler._apply_vad_and_windowing(
+                normalized_audio,
+                mode='unlock'  # 2-second window, ultra-fast
+            )
+
+            # If VAD filtered everything, return minimal audio
+            if len(filtered_audio) == 0:
+                logger.warning("⚠️ VAD filtered all audio for speaker verification, using minimal audio")
+                filtered_audio = np.zeros(16000, dtype=np.float32)  # 1 second of silence
+
+            # Convert back to bytes (WAV format for speaker verification)
+            with io.BytesIO() as wav_buffer: # create buffer to write to 
+                with wave.open(wav_buffer, 'wb') as wav_file: # write to buffer instead of file 
+                    wav_file.setnchannels(1) # mono WAV file (1 channel) 
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(16000) # 16kHz sample rate for speaker verification service
+                    # Convert float32 to int16
+                    audio_int16 = (filtered_audio * 32767).astype(np.int16) # convert to int16 
+                    wav_file.writeframes(audio_int16.tobytes()) # write to buffer 
+
+                wav_bytes = wav_buffer.getvalue() # get bytes from buffer 
+
+            logger.info(f"✅ VAD preprocessed audio for speaker verification: {len(audio_data)} → {len(wav_bytes)} bytes")
+            return wav_bytes # return filtered audio 
+
+        except Exception as e:
+            logger.error(f"Failed to apply VAD for speaker verification: {e}, using original audio")
+            return audio_data
+
     async def _identify_speaker(self, audio_data: bytes) -> Tuple[Optional[str], float]:
-        """Identify speaker from audio"""
+        """Identify speaker from audio with VAD preprocessing for speed"""
         if not self.speaker_engine:
             return None, 0.0
 
         try:
+            # Apply VAD filtering to speed up speaker verification (unlock mode = 2s max)
+            filtered_audio = await self._apply_vad_for_speaker_verification(audio_data)
+
             # New SpeakerVerificationService
             if hasattr(self.speaker_engine, "verify_speaker"):
-                result = await self.speaker_engine.verify_speaker(audio_data)
+                result = await self.speaker_engine.verify_speaker(filtered_audio)
                 return result.get("speaker_name"), result.get("confidence", 0.0)
 
-            # Legacy speaker recognition
-            speaker_name, confidence = await self.speaker_engine.identify_speaker(audio_data)
-            return speaker_name, confidence
+            # Legacy speaker verification service - returns (speaker_name, confidence) 
+            speaker_name, confidence = await self.speaker_engine.identify_speaker(filtered_audio) # Returns (speaker_name, confidence) 
+            return speaker_name, confidence # Returns (speaker_name, confidence)
         except Exception as e:
             logger.error(f"Speaker identification failed: {e}")
-            return None, 0.0
+            return None, 0.0 # Returns (speaker_name, confidence) 
 
     async def _get_speaker_confidence(self, audio_data: bytes, speaker_name: str) -> float:
-        """Get confidence score for identified speaker"""
+        """Get confidence score for identified speaker with VAD preprocessing"""
         if not self.speaker_engine:
             return 0.0
 
         try:
+            # Apply VAD filtering to speed up speaker verification
+            filtered_audio = await self._apply_vad_for_speaker_verification(audio_data) # Returns filtered audio bytes 
+
             # New SpeakerVerificationService
             if hasattr(self.speaker_engine, "get_speaker_name"):
-                result = await self.speaker_engine.verify_speaker(audio_data, speaker_name)
+                result = await self.speaker_engine.verify_speaker(filtered_audio, speaker_name)
                 return result.get("confidence", 0.0)
 
             # Legacy: Re-verify to get confidence
             is_match, confidence = await self.speaker_engine.verify_speaker(
-                audio_data, speaker_name
+                filtered_audio, speaker_name
             )
             return confidence
         except Exception as e:
