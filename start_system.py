@@ -9671,6 +9671,109 @@ async def main():
 
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
 
+    # CRITICAL: Bootstrap voice profiles to SQLite cache for offline authentication
+    if proxy_started:
+        print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.CYAN}🎤 Voice Profile Cache Bootstrap{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
+
+        try:
+            # Import hybrid sync
+            from intelligence.hybrid_database_sync import HybridDatabaseSync
+            from pathlib import Path
+            import json
+
+            # Load database config
+            config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    db_config = json.load(f)
+
+                cloudsql_config = db_config.get("cloud_sql", {})
+
+                # Get database password from Secret Manager
+                from core.secret_manager import get_db_password
+                password = get_db_password()
+
+                if password:
+                    cloudsql_config["password"] = password
+
+                    # Create temporary hybrid sync instance for bootstrap
+                    print(f"{Colors.CYAN}   Initializing voice cache system...{Colors.ENDC}")
+                    bootstrap_sync = HybridDatabaseSync(
+                        sqlite_path=Path.home() / ".jarvis" / "jarvis_learning.db",
+                        cloudsql_config=cloudsql_config,
+                        max_connections=3,
+                        enable_faiss_cache=True,
+                        enable_prometheus=False,
+                        enable_redis=False
+                    )
+
+                    await bootstrap_sync.initialize()
+
+                    # Check if bootstrap is needed
+                    needs_bootstrap = False
+                    if bootstrap_sync.faiss_cache and bootstrap_sync.faiss_cache.size() == 0:
+                        needs_bootstrap = True
+                        print(f"{Colors.YELLOW}   ⚠️  Voice cache is empty - bootstrap required{Colors.ENDC}")
+                    else:
+                        # Check staleness
+                        needs_bootstrap = await bootstrap_sync._check_cache_staleness()
+                        if needs_bootstrap:
+                            print(f"{Colors.YELLOW}   ⚠️  Voice cache is stale - refresh required{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.GREEN}   ✅ Voice cache is fresh and ready{Colors.ENDC}")
+
+                    # Bootstrap if needed
+                    if needs_bootstrap:
+                        print(f"{Colors.CYAN}   📥 Bootstrapping voice profiles from CloudSQL...{Colors.ENDC}")
+                        success = await bootstrap_sync.bootstrap_voice_profiles_from_cloudsql()
+
+                        if success:
+                            profiles_count = bootstrap_sync.metrics.voice_profiles_cached
+                            cache_size = bootstrap_sync.metrics.cache_size
+                            print(f"{Colors.GREEN}   ✅ Bootstrap complete!{Colors.ENDC}")
+                            print(f"{Colors.GREEN}      • Cached profiles: {profiles_count}{Colors.ENDC}")
+                            print(f"{Colors.GREEN}      • FAISS cache size: {cache_size} embeddings{Colors.ENDC}")
+                            print(f"{Colors.GREEN}      • Ready for offline authentication{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.FAIL}   ❌ Bootstrap failed - voice authentication may not work{Colors.ENDC}")
+                            print(f"{Colors.YELLOW}      Check logs for details{Colors.ENDC}")
+
+                    # Verify cache readiness
+                    print(f"\n{Colors.CYAN}   🔍 Verifying voice authentication readiness...{Colors.ENDC}")
+
+                    # Test profile read
+                    async with bootstrap_sync.sqlite_conn.execute("""
+                        SELECT speaker_name, total_samples
+                        FROM speaker_profiles
+                        LIMIT 5
+                    """) as cursor:
+                        profiles = await cursor.fetchall()
+
+                        if profiles:
+                            print(f"{Colors.GREEN}   ✅ SQLite cache ready: {len(profiles)} profile(s){Colors.ENDC}")
+                            for name, samples in profiles:
+                                print(f"{Colors.CYAN}      • {name}: {samples} samples{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.FAIL}   ❌ No profiles in cache - voice unlock will fail!{Colors.ENDC}")
+
+                    # Clean up bootstrap sync
+                    await bootstrap_sync.shutdown()
+                    print(f"{Colors.GREEN}   ✅ Voice cache system ready{Colors.ENDC}")
+
+                else:
+                    print(f"{Colors.FAIL}   ❌ Could not retrieve database password{Colors.ENDC}")
+            else:
+                print(f"{Colors.YELLOW}   ⚠️  Database config not found - skipping bootstrap{Colors.ENDC}")
+
+        except Exception as e:
+            print(f"{Colors.FAIL}   ❌ Voice cache bootstrap failed: {e}{Colors.ENDC}")
+            import traceback
+            traceback.print_exc()
+
+        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
+
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
