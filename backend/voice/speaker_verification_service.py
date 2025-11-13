@@ -1247,7 +1247,9 @@ class SpeakerVerificationService:
                     logger.info(f"🎤 VERIFICATION DEBUG: Starting verification for {speaker_name}")
                     logger.info(f"  📊 Audio data size: {len(audio_data)} bytes")
                     logger.info(f"  📊 Profile has {profile.get('total_samples', 0)} training samples")
-                    logger.info(f"  📊 Profile quality score: {self.profile_quality_scores.get(speaker_name, 1.0):.2f}")
+                    quality_info = self.profile_quality_scores.get(speaker_name, {"quality": 1.0})
+                    quality_score = quality_info.get("quality", 1.0) if isinstance(quality_info, dict) else quality_info
+                    logger.info(f"  📊 Profile quality score: {quality_score:.2f}")
                     logger.info(f"  📊 Profile created: {profile.get('created_at', 'unknown')}")
                     logger.info(f"  📊 Profile embedding dim: {profile.get('embedding_dimension', 'unknown')}")
 
