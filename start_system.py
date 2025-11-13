@@ -3710,7 +3710,7 @@ class AsyncSystemManager:
                 print(f"{Colors.GREEN}         ├─ Prometheus: {'✓ port ' + str(hs.prometheus.port) if hs.prometheus and hs.prometheus.enabled else '✗'}{Colors.ENDC}")
                 print(f"{Colors.GREEN}         ├─ Redis: {'✓ ' + hs.redis.redis_url if hs.redis and hs.redis.redis else '✗'}{Colors.ENDC}")
                 print(f"{Colors.GREEN}         ├─ ML Prefetcher: {'✓' if hs.ml_prefetcher else '✗'}{Colors.ENDC}")
-                print(f"{Colors.GREEN}         └─ Max Connections: {hs.connection_orchestrator.max_connections}{Colors.ENDC}")
+                print(f"{Colors.GREEN}         └─ Max Connections: {hs.max_connections}{Colors.ENDC}")
 
             # Initialize speaker service with FAST mode (background encoder loading)
             print(f"{Colors.CYAN}   └─ Initializing Speaker Verification Service (fast mode)...{Colors.ENDC}")
