@@ -5478,7 +5478,7 @@ class AsyncSystemManager:
                 await speaker_service.initialize()
 
                 # Check if encoder is loaded
-                encoder_ready = speaker_service.speaker_encoder is not None
+                encoder_ready = getattr(speaker_service, '_encoder_preloaded', False)
                 profiles_count = len(speaker_service.speaker_profiles) if hasattr(speaker_service, 'speaker_profiles') else 0
 
                 status['detailed_checks']['speaker_verification'] = {
@@ -9700,7 +9700,7 @@ async def main():
                     # Create temporary hybrid sync instance for bootstrap
                     print(f"{Colors.CYAN}   Initializing voice cache system...{Colors.ENDC}")
                     bootstrap_sync = HybridDatabaseSync(
-                        sqlite_path=Path.home() / ".jarvis" / "jarvis_learning.db",
+                        sqlite_path=Path.home() / ".jarvis" / "learning" / "voice_biometrics_sync.db",
                         cloudsql_config=cloudsql_config,
                         max_connections=3,
                         enable_faiss_cache=True,
