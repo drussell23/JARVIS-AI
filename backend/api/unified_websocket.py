@@ -26,6 +26,18 @@ from typing import Any, Dict, List, Optional, Set
 from core.async_pipeline import get_async_pipeline
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+# Import streaming safeguard for command detection
+try:
+    from voice.streaming_safeguard import (
+        StreamingSafeguard,
+        CommandDetectionConfig,
+        get_streaming_safeguard
+    )
+    STREAMING_SAFEGUARD_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Streaming safeguard not available: {e}")
+    STREAMING_SAFEGUARD_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -33,6 +45,9 @@ router = APIRouter()
 # Active connections management
 active_connections: Dict[str, WebSocket] = {}
 connection_capabilities: Dict[str, Set[str]] = {}
+
+# Per-connection streaming safeguards
+connection_safeguards: Dict[str, StreamingSafeguard] = {}
 
 
 # ============================================================================
@@ -122,6 +137,12 @@ class UnifiedWebSocketManager:
         self.recovery_tasks: Dict[str, asyncio.Task] = {}
         self._shutdown_event = asyncio.Event()
 
+        # Streaming safeguard (command detection for stream closure)
+        self.safeguard_enabled = (
+            STREAMING_SAFEGUARD_AVAILABLE and
+            os.getenv('ENABLE_STREAMING_SAFEGUARD', 'true').lower() == 'true'
+        )
+
         # Learning & patterns (using deque for bounded memory)
         self.disconnection_patterns: deque = deque(maxlen=self.config["max_pattern_history"])
         self.recovery_success_rate: Dict[str, float] = {}
@@ -170,7 +191,8 @@ class UnifiedWebSocketManager:
 
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
         logger.info(
-            "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | GitHub Actions: ✅"
+            "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | "
+            f"Streaming safeguard: {'✅' if self.safeguard_enabled else '❌'}"
         )
 
     def set_intelligence_engines(self, uae=None, sai=None, learning_db=None):
@@ -876,6 +898,17 @@ class UnifiedWebSocketManager:
         self.connections[client_id] = websocket
         connection_capabilities[client_id] = set()
 
+        # Initialize streaming safeguard for this connection
+        if self.safeguard_enabled:
+            try:
+                safeguard = get_streaming_safeguard()
+                safeguard.reset()  # Reset for new session
+                connection_safeguards[client_id] = safeguard
+
+                logger.debug(f"[UNIFIED-WS] Streaming safeguard initialized for {client_id}")
+            except Exception as e:
+                logger.error(f"[UNIFIED-WS] Failed to initialize safeguard for {client_id}: {e}")
+
         # Update metrics
         self.metrics["total_connections"] += 1
 
@@ -988,6 +1021,8 @@ class UnifiedWebSocketManager:
             # Cancel any ongoing recovery tasks
             self.recovery_tasks[client_id].cancel()
             del self.recovery_tasks[client_id]
+        if client_id in connection_safeguards:
+            del connection_safeguards[client_id]
 
     async def handle_message(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1042,6 +1077,43 @@ class UnifiedWebSocketManager:
                         "audio_mime_type": mime_type_received,
                     },
                 )
+
+                # 🛡️ STREAMING SAFEGUARD: Check transcription for command detection
+                if self.safeguard_enabled and client_id in connection_safeguards:
+                    safeguard = connection_safeguards[client_id]
+
+                    # Extract transcription text from result
+                    transcription_text = result.get("response", "")
+                    if not transcription_text:
+                        # Try alternate locations
+                        transcription_text = result.get("text", "")
+
+                    if transcription_text:
+                        # Check for command detection
+                        detection_event = await safeguard.check_transcription(
+                            transcription=transcription_text,
+                            confidence=result.get("confidence"),
+                            metadata={"client_id": client_id, "msg_type": msg_type}
+                        )
+
+                        if detection_event:
+                            logger.warning(
+                                f"[UNIFIED-WS] 🚨 Command detected in stream: '{detection_event.command}' | "
+                                f"Transcription: '{transcription_text}' | "
+                                f"Closing stream for {client_id}"
+                            )
+
+                            # Signal client to stop streaming
+                            if websocket:
+                                try:
+                                    await websocket.send_json({
+                                        "type": "stream_stop",
+                                        "reason": "command_detected",
+                                        "command": detection_event.command,
+                                        "message": "Command detected, stopping audio stream"
+                                    })
+                                except Exception as e:
+                                    logger.error(f"Failed to send stream_stop message: {e}")
 
                 # Return response from pipeline
                 # First check if we have a direct response
