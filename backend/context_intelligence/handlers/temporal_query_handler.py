@@ -750,3 +750,18 @@ class TemporalQueryHandler:
         visual diff analysis to detect content, layout, and state changes.
 
         Args:
+            resolved_query: Resolved query with references
+            time_range: Time range for detection
+            space_id: Optional space ID filter
+
+        Returns:
+            TemporalQueryResult with detected changes
+        """
+        # Placeholder - will be implemented when ChangeDetectionManager is ready
+        return TemporalQueryResult(
+            query_type="change_detection",
+            time_range=time_range,
+            results=[],
+            confidence=0.5,
+            metadata={"status": "not_implemented"}
+        )
