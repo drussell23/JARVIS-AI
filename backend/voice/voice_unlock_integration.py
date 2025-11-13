@@ -241,9 +241,9 @@ class VoiceUnlockIntegration:
                     command_text=command_text,
                 )
 
-                # 🔊 SPEAK WELCOME MESSAGE WITH JARVIS VOICE
+                # Silent unlock for speed - no audio feedback needed
+                # User wants instant unlock without voice delay
                 welcome_message = f"Welcome, {speaker_name}!"
-                await self._speak_jarvis(welcome_message, urgent=False)
 
                 return True, f"Screen unlocked. {welcome_message}", confidence
             else:

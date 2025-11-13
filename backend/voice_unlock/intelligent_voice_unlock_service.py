@@ -675,13 +675,35 @@ class IntelligentVoiceUnlockService:
     async def _verify_unlock_intent(
         self, transcribed_text: str, context: Optional[Dict[str, Any]]
     ) -> bool:
-        """Verify that the transcribed text is an unlock command"""
+        """Verify that the transcribed text is an unlock command with fuzzy matching for STT errors"""
         text_lower = transcribed_text.lower()
 
+        # Primary unlock phrases
         unlock_phrases = ["unlock", "open", "access", "let me in", "sign in", "log in"]
 
         # Check if any unlock phrase is present
-        return any(phrase in text_lower for phrase in unlock_phrases)
+        if any(phrase in text_lower for phrase in unlock_phrases):
+            return True
+
+        # Fuzzy matching for common Whisper STT transcription errors
+        # "unlock my screen" often becomes "I'm like my screen" or similar
+        fuzzy_patterns = [
+            "like my screen",  # "unlock" → "I'm like"
+            "like the screen",
+            "lock my screen",  # Sometimes "un" is dropped
+            "lock the screen",
+            "my screen",  # Core phrase
+            "the screen",
+        ]
+
+        # If we see these patterns + context suggests unlock, accept it
+        if any(pattern in text_lower for pattern in fuzzy_patterns):
+            # Additional context: check if "screen" keyword is present
+            if "screen" in text_lower:
+                logger.info(f"🎯 Fuzzy match detected unlock intent from: '{transcribed_text}'")
+                return True
+
+        return False
 
     async def _identify_speaker(self, audio_data: bytes) -> Tuple[Optional[str], float]:
         """Identify speaker from audio"""
