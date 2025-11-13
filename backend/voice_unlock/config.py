@@ -80,11 +80,11 @@ class EnrollmentSettings:
 
 @dataclass
 class AuthenticationSettings:
-    """Advanced biometric authentication settings for 99.9% accuracy"""
-    # Enhanced threshold configuration for high security
-    base_threshold: float = float(os.getenv('VOICE_UNLOCK_BASE_THRESHOLD', '0.90'))  # Increased from 0.75
-    high_security_threshold: float = float(os.getenv('VOICE_UNLOCK_HIGH_SEC_THRESHOLD', '0.95'))  # Renamed and increased
-    critical_ops_threshold: float = float(os.getenv('VOICE_UNLOCK_CRITICAL_THRESHOLD', '0.98'))  # New for sensitive operations
+    """Advanced biometric authentication settings with owner-aware anti-spoof fusion"""
+    # Owner-aware fusion thresholds - identity signal dominates over anti-spoofing
+    base_threshold: float = float(os.getenv('VOICE_UNLOCK_BASE_THRESHOLD', '0.40'))  # Owner threshold with fusion boost
+    high_security_threshold: float = float(os.getenv('VOICE_UNLOCK_HIGH_SEC_THRESHOLD', '0.60'))  # Elevated for non-owner
+    critical_ops_threshold: float = float(os.getenv('VOICE_UNLOCK_CRITICAL_THRESHOLD', '0.75'))  # Highest for sensitive ops
     
     # Multi-factor authentication weights
     voice_pattern_weight: float = float(os.getenv('VOICE_PATTERN_WEIGHT', '0.40'))

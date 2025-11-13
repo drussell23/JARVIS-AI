@@ -597,6 +597,170 @@ class AdvancedBiometricVerifier:
 
         return float(spoofing_score)
 
+    async def _owner_aware_antispoof_fusion(
+        self,
+        owner_match_score: float,
+        spoof_prob: float,
+        is_owner: bool,
+        speaker_model: "SpeakerModel",
+        embedding_sim: float,
+        acoustic_score: float,
+        physics_score: float
+    ) -> Tuple[float, str, Dict[str, any]]:
+        """
+        🎯 OWNER-AWARE ANTI-SPOOF FUSION
+
+        Implements intelligent fusion that prioritizes owner identity while
+        maintaining protection against attacks.
+
+        Philosophy:
+        - Owner identity is the PRIMARY signal
+        - Anti-spoofing is a SUPPORTING safety check
+        - Only extreme spoof probability (≥0.90) can block owner
+        - Boosts confidence for legitimate owner authentication
+
+        Args:
+            owner_match_score: Identity match strength (0.0-1.0)
+            spoof_prob: Anti-spoofing probability (0.0=live, 1.0=spoofed)
+            is_owner: Whether this is the enrolled device owner
+            speaker_model: Adaptive speaker model
+            embedding_sim: Deep learning embedding similarity
+            acoustic_score: Acoustic features match
+            physics_score: Voice physics plausibility
+
+        Returns:
+            (final_auth_score, decision, debug_info)
+        """
+
+        # Dynamic thresholds from speaker model (no hardcoding!)
+        OWNER_STRONG_MATCH_THRESHOLD = speaker_model.owner_strong_threshold
+        OWNER_OVERRIDABLE_SPOOF_LIMIT = speaker_model.spoof_override_limit
+        BASE_UNLOCK_THRESHOLD = speaker_model.decision_threshold
+
+        # Fusion weights - identity dominates for owner
+        if is_owner:
+            OWNER_WEIGHT = 0.75  # Identity is primary
+            LIVE_SPEECH_WEIGHT = 0.25  # Anti-spoof is secondary
+        else:
+            OWNER_WEIGHT = 0.50  # Balanced for unknown speakers
+            LIVE_SPEECH_WEIGHT = 0.50
+
+        # Derive live speech score from spoof probability
+        live_speech_score = 1.0 - spoof_prob
+
+        # Base fusion: weighted combination
+        base_auth_score = (
+            owner_match_score * OWNER_WEIGHT +
+            live_speech_score * LIVE_SPEECH_WEIGHT
+        )
+        base_auth_score = np.clip(base_auth_score, 0.0, 1.0)
+
+        # Initialize decision variables
+        final_auth_score = base_auth_score
+        decision = "deny"
+        rule_applied = "unknown"
+        confidence_boost = 0.0
+
+        # ═══════════════════════════════════════════════════════════════
+        # OWNER-AWARE DECISION LOGIC
+        # ═══════════════════════════════════════════════════════════════
+
+        if is_owner and owner_match_score >= OWNER_STRONG_MATCH_THRESHOLD:
+            # ✅ STRONG OWNER MATCH - Owner identity confirmed
+            rule_applied = "strong_owner_match"
+
+            if spoof_prob >= OWNER_OVERRIDABLE_SPOOF_LIMIT:
+                # 🚨 EXTREME SPOOF ATTACK - Even owner can't override
+                decision = "deny"
+                rule_applied = "extreme_spoof_attack"
+                logger.warning(
+                    f"🚨 SECURITY ALERT: Extreme spoofing detected for owner "
+                    f"(spoof_prob={spoof_prob:.1%}, threshold={OWNER_OVERRIDABLE_SPOOF_LIMIT:.1%})"
+                )
+
+            else:
+                # ✅ OWNER OVERRIDE - Trust identity over medium spoof scores
+                decision = "allow"
+
+                # Calculate confidence boost based on identity strength
+                # Stronger match = bigger boost
+                identity_confidence = (owner_match_score - OWNER_STRONG_MATCH_THRESHOLD) / (1.0 - OWNER_STRONG_MATCH_THRESHOLD)
+                confidence_boost = 0.10 + (identity_confidence * 0.15)  # 10-25% boost
+
+                # Ensure we're comfortably above threshold
+                minimum_score = BASE_UNLOCK_THRESHOLD + confidence_boost
+                final_auth_score = max(base_auth_score, minimum_score)
+                final_auth_score = np.clip(final_auth_score, 0.0, 1.0)
+
+                logger.info(
+                    f"✅ OWNER OVERRIDE APPLIED: {speaker_model.speaker_name} "
+                    f"(match={owner_match_score:.1%}, spoof_prob={spoof_prob:.1%}, "
+                    f"boost=+{confidence_boost:.1%}, final={final_auth_score:.1%})"
+                )
+
+        elif is_owner and owner_match_score < OWNER_STRONG_MATCH_THRESHOLD:
+            # ⚠️ WEAK OWNER MATCH - Owner but uncertain identity
+            rule_applied = "weak_owner_match"
+
+            # Slightly more lenient than unknown speaker
+            adjusted_threshold = BASE_UNLOCK_THRESHOLD - 0.05
+
+            if final_auth_score >= adjusted_threshold and spoof_prob < 0.75:
+                decision = "allow"
+                logger.info(f"⚠️ Weak owner match accepted: score={final_auth_score:.1%}")
+            else:
+                decision = "deny"
+                logger.warning(
+                    f"⚠️ Weak owner match rejected: score={final_auth_score:.1%}, "
+                    f"spoof_prob={spoof_prob:.1%}"
+                )
+
+        else:
+            # 🔒 UNKNOWN SPEAKER - Standard verification
+            rule_applied = "unknown_speaker"
+
+            if spoof_prob >= 0.80:
+                # High spoofing probability
+                decision = "deny"
+                rule_applied = "unknown_speaker_spoofed"
+                logger.warning(f"🔒 Unknown speaker with high spoof prob: {spoof_prob:.1%}")
+
+            elif final_auth_score >= BASE_UNLOCK_THRESHOLD and spoof_prob < 0.80:
+                # Good score and low-medium spoofing
+                decision = "allow"
+                logger.info(f"🔒 Unknown speaker accepted: score={final_auth_score:.1%}")
+            else:
+                # Weak identity or suspicious spoof
+                decision = "deny"
+                logger.info(
+                    f"🔒 Unknown speaker rejected: score={final_auth_score:.1%}, "
+                    f"spoof_prob={spoof_prob:.1%}"
+                )
+
+        # ═══════════════════════════════════════════════════════════════
+        # COMPILE DEBUG INFO
+        # ═══════════════════════════════════════════════════════════════
+
+        debug_info = {
+            "owner_match_score": float(owner_match_score),
+            "spoof_prob": float(spoof_prob),
+            "live_speech_score": float(live_speech_score),
+            "is_owner": is_owner,
+            "base_auth_score": float(base_auth_score),
+            "confidence_boost": float(confidence_boost),
+            "final_auth_score": float(final_auth_score),
+            "decision": decision,
+            "rule_applied": rule_applied,
+            "embedding_sim": float(embedding_sim),
+            "acoustic_score": float(acoustic_score),
+            "physics_score": float(physics_score),
+            "threshold": float(BASE_UNLOCK_THRESHOLD),
+            "owner_strong_threshold": float(OWNER_STRONG_MATCH_THRESHOLD),
+            "spoof_override_limit": float(OWNER_OVERRIDABLE_SPOOF_LIMIT),
+        }
+
+        return final_auth_score, decision, debug_info
+
     async def _bayesian_verification(
         self,
         embedding_sim: float,
@@ -610,8 +774,44 @@ class AdvancedBiometricVerifier:
         """
         Bayesian verification with uncertainty quantification
 
+        NOW ENHANCED with owner-aware anti-spoof fusion!
+
         Returns: (posterior_probability, uncertainty)
         """
+
+        # Compute spoof probability (inverse of spoofing_score)
+        spoof_prob = 1.0 - spoofing_score
+
+        # Determine if this is the owner
+        is_owner = speaker_model.is_primary_owner
+
+        # Use owner-aware fusion for final decision
+        owner_match_score = embedding_sim  # Primary identity signal
+
+        final_auth_score, fusion_decision, fusion_debug = await self._owner_aware_antispoof_fusion(
+            owner_match_score=owner_match_score,
+            spoof_prob=spoof_prob,
+            is_owner=is_owner,
+            speaker_model=speaker_model,
+            embedding_sim=embedding_sim,
+            acoustic_score=acoustic_score,
+            physics_score=physics_score
+        )
+
+        # Store fusion decision in speaker model for reference
+        speaker_model.last_fusion_debug = fusion_debug
+
+        # Log detailed fusion analysis
+        logger.info(f"🎯 FUSION ANALYSIS: {speaker_model.speaker_name}")
+        logger.info(f"   Owner: {is_owner}, Match: {owner_match_score:.1%}, Spoof: {spoof_prob:.1%}")
+        logger.info(f"   Decision: {fusion_decision}, Score: {final_auth_score:.1%}")
+        logger.info(f"   Rule: {fusion_debug['rule_applied']}")
+
+        # Calculate uncertainty based on how close we are to threshold
+        # Lower uncertainty for decisions far from threshold
+        distance_from_threshold = abs(final_auth_score - speaker_model.decision_threshold)
+        uncertainty = max(0.1, 1.0 - (distance_from_threshold * 2.0))
+        uncertainty = np.clip(uncertainty, 0.0, 1.0)
 
         # Prior probability (learned from history)
         prior = speaker_model.prior_probability
@@ -639,9 +839,10 @@ class AdvancedBiometricVerifier:
             physics_likelihood = physics_score  # Already a probability
             likelihoods.append((physics_likelihood, fusion_weights['physics']))
 
-        # Spoofing likelihood
+        # Spoofing likelihood (now using live_speech_score)
         if fusion_weights.get('spoofing', 0) > 0:
-            spoofing_likelihood = spoofing_score  # Already a probability
+            live_speech_score = 1.0 - spoof_prob
+            spoofing_likelihood = live_speech_score
             likelihoods.append((spoofing_likelihood, fusion_weights['spoofing']))
 
         # Compute weighted likelihood
@@ -658,11 +859,11 @@ class AdvancedBiometricVerifier:
 
         posterior = unnormalized_posterior / max(normalizer, 1e-10)
 
-        # Estimate uncertainty (entropy-based)
-        # High uncertainty when posterior is near 0.5
-        uncertainty = -posterior * np.log2(posterior + 1e-10) - (1 - posterior) * np.log2(1 - posterior + 1e-10)
+        # 🎯 CRITICAL: Use owner-aware fusion score as final posterior
+        # This ensures owner identity dominates the decision
+        posterior = float(np.clip(final_auth_score, 0.0, 1.0))
 
-        return float(np.clip(posterior, 0.0, 1.0)), float(uncertainty)
+        return posterior, float(uncertainty)
 
     def _score_to_likelihood(self, score: float, mean: float, std: float) -> float:
         """Convert similarity score to likelihood using Gaussian"""
@@ -879,10 +1080,13 @@ class SpeakerModel:
     Adaptive speaker model that learns over time
 
     No hardcoded thresholds - everything is learned!
+
+    NOW ENHANCED with owner-aware anti-spoof fusion parameters!
     """
 
-    def __init__(self, speaker_name: str, enrolled_features: VoiceBiometricFeatures):
+    def __init__(self, speaker_name: str, enrolled_features: VoiceBiometricFeatures, is_primary_owner: bool = False):
         self.speaker_name = speaker_name
+        self.is_primary_owner = is_primary_owner  # NEW: Owner flag
 
         # Embedding statistics (learned)
         self.embedding_samples: List[np.ndarray] = [enrolled_features.embedding]
@@ -903,6 +1107,11 @@ class SpeakerModel:
         # Decision parameters (adaptive)
         self.decision_threshold = 0.45  # Initial threshold, will adapt
         self.prior_probability = 0.5    # Prior P(genuine), will adapt
+
+        # 🎯 OWNER-AWARE ANTI-SPOOF FUSION PARAMETERS (Dynamic, No Hardcoding!)
+        # These adapt based on speaker performance and enrollment quality
+        self.owner_strong_threshold = 0.35  # When owner match is considered strong (will adapt)
+        self.spoof_override_limit = 0.90    # Spoof prob that blocks even owner (will adapt)
 
         # Fusion weights (learned from performance)
         self.fusion_weights = {
@@ -927,8 +1136,54 @@ class SpeakerModel:
         self.successful_verifications = 0
         self.last_updated = datetime.now()
 
+        # 🎯 NEW: Fusion debug info storage
+        self.last_fusion_debug: Optional[Dict[str, any]] = None
+
+        # 🎯 NEW: Owner-specific adaptation tracking
+        if is_primary_owner:
+            # Owner gets more lenient thresholds initially
+            # These will adapt based on false rejection rate
+            self.owner_strong_threshold = 0.30  # Lower threshold for owner recognition
+            self.decision_threshold = 0.40       # Slightly lower unlock threshold
+            logger.info(f"✅ Speaker model created for PRIMARY OWNER: {speaker_name}")
+        else:
+            logger.info(f"📝 Speaker model created for speaker: {speaker_name}")
+
     def get_success_rate(self) -> float:
         """Get historical success rate"""
         if self.verification_count == 0:
             return 0.5
         return self.successful_verifications / self.verification_count
+
+    def adapt_owner_thresholds(self, false_rejection_rate: float, false_acceptance_rate: float):
+        """
+        🎯 ADAPTIVE LEARNING: Adjust owner thresholds based on performance
+
+        Args:
+            false_rejection_rate: Rate of falsely rejecting owner
+            false_acceptance_rate: Rate of falsely accepting imposters
+        """
+        if not self.is_primary_owner:
+            return
+
+        # If we're rejecting owner too often, make thresholds more lenient
+        if false_rejection_rate > 0.15:  # >15% false rejections
+            self.owner_strong_threshold = max(0.25, self.owner_strong_threshold - 0.02)
+            self.decision_threshold = max(0.35, self.decision_threshold - 0.01)
+            logger.info(
+                f"📉 Adapting thresholds for {self.speaker_name}: "
+                f"FRR={false_rejection_rate:.1%} → "
+                f"owner_threshold={self.owner_strong_threshold:.2f}, "
+                f"decision_threshold={self.decision_threshold:.2f}"
+            )
+
+        # If we're accepting imposters, make thresholds stricter
+        elif false_acceptance_rate > 0.05:  # >5% false acceptances
+            self.owner_strong_threshold = min(0.50, self.owner_strong_threshold + 0.02)
+            self.decision_threshold = min(0.50, self.decision_threshold + 0.01)
+            self.spoof_override_limit = max(0.85, self.spoof_override_limit - 0.01)
+            logger.info(
+                f"📈 Tightening security for {self.speaker_name}: "
+                f"FAR={false_acceptance_rate:.1%} → "
+                f"owner_threshold={self.owner_strong_threshold:.2f}"
+            )
