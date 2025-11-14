@@ -118,14 +118,44 @@ class CloudSQLConnectionManager:
             logger.info("🛑 atexit: Running synchronous shutdown...")
             self.is_shutting_down = True
 
-            # Run async shutdown in new event loop
+            # Try to close pool gracefully
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                # Check if we can use existing event loop
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        raise RuntimeError("Event loop is closed")
+                except RuntimeError:
+                    # Create new event loop if needed
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    needs_close = True
+                else:
+                    needs_close = False
+
+                # Run shutdown
                 loop.run_until_complete(self.shutdown())
-                loop.close()
+
+                if needs_close:
+                    loop.close()
             except Exception as e:
-                logger.error(f"❌ Error during atexit shutdown: {e}")
+                # If async shutdown fails, try synchronous termination
+                logger.warning(f"⚠️  Async shutdown failed: {e}, attempting sync termination...")
+                try:
+                    # Force synchronous pool termination
+                    if self.pool:
+                        # Use private asyncpg pool method for sync termination
+                        import asyncio
+                        try:
+                            # Try to terminate synchronously
+                            self.pool._holders.clear()
+                            self.pool = None
+                            logger.info("✅ Pool terminated synchronously")
+                        except Exception as term_error:
+                            logger.debug(f"Pool termination detail: {term_error}")
+                            self.pool = None
+                except Exception as sync_error:
+                    logger.debug(f"Sync termination detail: {sync_error}")
 
     async def initialize(
         self,
@@ -402,7 +432,20 @@ class CloudSQLConnectionManager:
 
             except asyncio.TimeoutError:
                 logger.warning("⏱️  Pool close timeout - force terminating")
-                await self.pool.terminate()
+                try:
+                    await self.pool.terminate()
+                except Exception as term_err:
+                    logger.debug(f"Terminate error: {term_err}")
+
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    logger.warning("⚠️  Event loop closed, skipping async pool close")
+                else:
+                    logger.error(f"❌ Error closing pool: {e}")
+                    try:
+                        await self.pool.terminate()
+                    except:
+                        pass
 
             except Exception as e:
                 logger.error(f"❌ Error closing pool: {e}")
