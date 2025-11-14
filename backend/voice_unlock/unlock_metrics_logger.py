@@ -278,7 +278,16 @@ class UnlockMetricsLogger:
             await self._update_confidence_trends(speaker_name, current_confidence, success)
 
             # Update aggregated stats
-            await self._update_stats(entry) # Update overall stats file with this new entry 
+            await self._update_stats(entry) # Update overall stats file with this new entry
+
+            # Store in database (SQLite + CloudSQL)
+            try:
+                from voice_unlock.metrics_database import get_metrics_database
+                metrics_db = get_metrics_database()
+                await metrics_db.store_unlock_attempt(entry, stage_details)
+                logger.debug(f"✅ Stored in database (SQLite + CloudSQL)")
+            except Exception as e:
+                logger.warning(f"Failed to store in database: {e}")
 
             logger.info(f"✅ Logged unlock attempt: success={success}, speaker={speaker_name}")
             logger.info(f"   └─ Confidence: {current_confidence:.2%} (threshold: {threshold:.2%}, margin: {(current_confidence - threshold):.2%})")

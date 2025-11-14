@@ -2118,9 +2118,13 @@ class SpeakerVerificationService:
             self._preload_thread.join(timeout=2.0)
 
             if self._preload_thread.is_alive():
-                logger.warning("   Preload thread did not exit cleanly (daemon will be terminated)")
+                logger.warning("   Preload thread did not exit cleanly - marking as daemon")
+                # Ensure it's daemon so it doesn't block shutdown
+                self._preload_thread.daemon = True
             else:
                 logger.debug("   ✅ Preload thread terminated cleanly")
+
+            self._preload_thread = None
 
         # Clean up event loop if still running
         if self._preload_loop and not self._preload_loop.is_closed():

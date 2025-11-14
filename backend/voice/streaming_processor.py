@@ -87,9 +87,22 @@ class StreamingAudioProcessor:
     def stop(self):
         """Stop the streaming processor"""
         self.running = False
-        if self.processing_thread:
-            self.processing_thread.join(timeout=1.0)
-        self.executor.shutdown(wait=True)
+
+        # Wait for processing thread
+        if self.processing_thread and self.processing_thread.is_alive():
+            logger.info("Waiting for processing thread to stop...")
+            self.processing_thread.join(timeout=2.0)
+            if self.processing_thread.is_alive():
+                logger.warning("Processing thread did not stop within timeout")
+                self.processing_thread.daemon = True
+            self.processing_thread = None
+
+        # Shutdown executor and wait for worker threads
+        if self.executor:
+            logger.info(f"Shutting down thread pool executor ({self.config.worker_threads} workers)...")
+            self.executor.shutdown(wait=True, cancel_futures=True)
+            self.executor = None
+
         logger.info("Streaming processor stopped")
     
     def feed_audio(self, audio_data: np.ndarray) -> bool:

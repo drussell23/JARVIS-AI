@@ -341,11 +341,24 @@ class VideoStreamCapture:
         """Start video stream capture"""
         logger.info("[VIDEO] start_streaming called")
         logger.info(f"[VIDEO] Current state - is_capturing: {self.is_capturing}")
-        
+
         if self.is_capturing:
             logger.warning("Video capture already running")
             return True  # Return True if already capturing instead of False
-        
+
+        # CRITICAL: Clean up any existing threads before creating new ones
+        if self.capture_thread and self.capture_thread.is_alive():
+            logger.warning("Old capture thread still running - stopping it first")
+            await self.stop_streaming()
+            # Wait a bit for cleanup
+            await asyncio.sleep(0.5)
+
+        if self.process_thread and self.process_thread.is_alive():
+            logger.warning("Old process thread still running - stopping it first")
+            await self.stop_streaming()
+            # Wait a bit for cleanup
+            await asyncio.sleep(0.5)
+
         try:
             # Check memory before starting
             logger.info(f"[VIDEO] Checking memory availability...")
@@ -791,16 +804,28 @@ class VideoStreamCapture:
             if hasattr(self.capture_impl, 'stop_capture'):
                 self.capture_impl.stop_capture()
         
-        # Wait for threads
-        if self.process_thread:
+        # Wait for threads with proper cleanup
+        if self.process_thread and self.process_thread.is_alive():
+            logger.info("Waiting for process thread to stop...")
             self.process_thread.join(timeout=2.0)
-        
-        if self.capture_thread:
+            if self.process_thread.is_alive():
+                logger.warning("Process thread did not stop within timeout - will be orphaned")
+                # Mark as daemon so it doesn't block shutdown
+                self.process_thread.daemon = True
+            self.process_thread = None
+
+        if self.capture_thread and self.capture_thread.is_alive():
+            logger.info("Waiting for capture thread to stop...")
             self.capture_thread.join(timeout=2.0)
-        
+            if self.capture_thread.is_alive():
+                logger.warning("Capture thread did not stop within timeout - will be orphaned")
+                # Mark as daemon so it doesn't block shutdown
+                self.capture_thread.daemon = True
+            self.capture_thread = None
+
         # Clear buffers
         self.frame_buffer.clear()
-        
+
         logger.info("Video streaming stopped")
     
     async def _trigger_event(self, event_type: str, data: Dict[str, Any]):

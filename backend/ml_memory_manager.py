@@ -512,58 +512,127 @@ class IntelligentMLMemoryManager:
             
     def _monitor_loop(self):
         """Background monitoring loop"""
-        while not self._stop_event.is_set():
+        # Create persistent event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    stats = self.get_memory_usage()
+
+                    # Critical memory pressure
+                    if stats["system_percent"] > 70:
+                        logger.warning(f"High memory pressure: {stats['system_percent']:.1f}%")
+                        if ENHANCED_LOGGING:
+                            ml_logger.critical_memory(stats['system_percent'], "Emergency unloading low priority models")
+                        # Unload low priority models
+                        for name, state in self.models.items():
+                            if (state.loaded and
+                                state.config.priority == ModelPriority.PREEMPTIBLE):
+                                loop.run_until_complete(self.unload_model(name))
+
+                except Exception as e:
+                    logger.error(f"Monitor error: {e}")
+
+                self._stop_event.wait(5)  # Check every 5 seconds
+        finally:
+            # Clean up event loop
             try:
-                stats = self.get_memory_usage()
-                
-                # Critical memory pressure
-                if stats["system_percent"] > 70:
-                    logger.warning(f"High memory pressure: {stats['system_percent']:.1f}%")
-                    if ENHANCED_LOGGING:
-                        ml_logger.critical_memory(stats['system_percent'], "Emergency unloading low priority models")
-                    # Unload low priority models
-                    for name, state in self.models.items():
-                        if (state.loaded and 
-                            state.config.priority == ModelPriority.PREEMPTIBLE):
-                            asyncio.run(self.unload_model(name))
-                            
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
             except Exception as e:
-                logger.error(f"Monitor error: {e}")
-                
-            self._stop_event.wait(5)  # Check every 5 seconds
+                logger.debug(f"Monitor loop cleanup error: {e}")
             
     def _cleanup_loop(self):
         """Background cleanup loop"""
-        while not self._stop_event.is_set():
+        # Create persistent event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    now = datetime.now()
+
+                    # Check TTL for loaded models
+                    for name, state in self.models.items():
+                        if not state.loaded:
+                            continue
+
+                        if state.last_used:
+                            age = (now - state.last_used).total_seconds()
+                            if age > state.config.ttl_seconds:
+                                logger.info(f"Model {name} TTL expired, unloading")
+                                loop.run_until_complete(self.unload_model(name))
+
+                except Exception as e:
+                    logger.error(f"Cleanup error: {e}")
+
+                self._stop_event.wait(30)  # Check every 30 seconds
+        finally:
+            # Clean up event loop
             try:
-                now = datetime.now()
-                
-                # Check TTL for loaded models
-                for name, state in self.models.items():
-                    if not state.loaded:
-                        continue
-                        
-                    if state.last_used:
-                        age = (now - state.last_used).total_seconds()
-                        if age > state.config.ttl_seconds:
-                            logger.info(f"Model {name} TTL expired, unloading")
-                            asyncio.run(self.unload_model(name))
-                            
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
             except Exception as e:
-                logger.error(f"Cleanup error: {e}")
-                
-            self._stop_event.wait(30)  # Check every 30 seconds
+                logger.debug(f"Cleanup loop cleanup error: {e}")
             
     def shutdown(self):
         """Shutdown the memory manager"""
         logger.info("Shutting down ML Memory Manager")
         self._stop_event.set()
-        self._monitor_thread.join(timeout=5)
-        self._cleanup_thread.join(timeout=5)
-        
-        # Unload all models
-        for name in list(self.models.keys()):
-            asyncio.run(self.unload_model(name))
+
+        # Wait for monitor thread
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            logger.info("   Waiting for monitor thread...")
+            self._monitor_thread.join(timeout=5)
+            if self._monitor_thread.is_alive():
+                logger.warning("   Monitor thread did not exit cleanly")
+                self._monitor_thread.daemon = True
+            self._monitor_thread = None
+
+        # Wait for cleanup thread
+        if self._cleanup_thread and self._cleanup_thread.is_alive():
+            logger.info("   Waiting for cleanup thread...")
+            self._cleanup_thread.join(timeout=5)
+            if self._cleanup_thread.is_alive():
+                logger.warning("   Cleanup thread did not exit cleanly")
+                self._cleanup_thread.daemon = True
+            self._cleanup_thread = None
+
+        # Unload all models using existing event loop or creating new one
+        if self.models:
+            logger.info(f"   Unloading {len(self.models)} models...")
+            try:
+                # Try to get existing event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Loop is closed")
+            except RuntimeError:
+                # Create new loop if needed
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                needs_close = True
+            else:
+                needs_close = False
+
+            try:
+                for name in list(self.models.keys()):
+                    loop.run_until_complete(self.unload_model(name))
+            finally:
+                if needs_close:
+                    loop.close()
+
+        logger.info("✅ ML Memory Manager shutdown complete")
             
 
 # Global instance
