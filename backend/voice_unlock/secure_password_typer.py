@@ -574,15 +574,44 @@ class SecurePasswordTyper:
                             metrics.submit_time_ms = (time.time() - submit_start) * 1000
                             logger.info("🔐 [SECURE-TYPE] Return key pressed")
 
-                        # Success
-                        metrics.success = True
-                        self.successful_operations += 1
-                        self.last_operation_time = datetime.now()
+                            # ✅ CRITICAL: Verify screen actually unlocked
+                            await asyncio.sleep(1.5)  # Give macOS time to process password
 
-                        logger.info(
-                            f"✅ [SECURE-TYPE] Password typed successfully "
-                            f"({metrics.total_duration_ms:.0f}ms total)"
-                        )
+                            try:
+                                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+
+                                still_locked = is_screen_locked()
+
+                                if still_locked:
+                                    # Password was WRONG - screen still locked
+                                    metrics.success = False
+                                    metrics.error_message = "Password incorrect - screen still locked"
+                                    self.failed_operations += 1
+                                    logger.error("❌ [SECURE-TYPE] Password INCORRECT - screen still locked after typing")
+                                else:
+                                    # Password was CORRECT - screen unlocked
+                                    metrics.success = True
+                                    self.successful_operations += 1
+                                    self.last_operation_time = datetime.now()
+                                    logger.info(
+                                        f"✅ [SECURE-TYPE] Password CORRECT - screen unlocked "
+                                        f"({metrics.total_duration_ms:.0f}ms total)"
+                                    )
+                            except Exception as e:
+                                # If we can't verify, assume success (conservative)
+                                logger.warning(f"⚠️ Could not verify unlock status: {e}")
+                                metrics.success = True
+                                self.successful_operations += 1
+                                self.last_operation_time = datetime.now()
+                        else:
+                            # No submit - just typing, assume success
+                            metrics.success = True
+                            self.successful_operations += 1
+                            self.last_operation_time = datetime.now()
+                            logger.info(
+                                f"✅ [SECURE-TYPE] Password typed successfully "
+                                f"({metrics.total_duration_ms:.0f}ms total)"
+                            )
 
                         break
 
@@ -1285,33 +1314,38 @@ async def type_password_securely(
         config_override=config
     )
 
-    # 🤖 CONTINUOUS LEARNING: Store metrics in database if attempt_id provided
-    if attempt_id is not None:
-        try:
-            from voice_unlock.metrics_database import get_metrics_database
+    # 🤖 CONTINUOUS LEARNING: ALWAYS store metrics in database for ML training
+    # Even failures are valuable learning data!
+    try:
+        from voice_unlock.metrics_database import get_metrics_database
 
-            db = get_metrics_database()
+        db = get_metrics_database()
 
-            # Prepare session data
-            session_data = metrics.get_session_data()
+        # Prepare session data
+        session_data = metrics.get_session_data()
 
-            # Prepare character metrics
-            char_metrics_list = [cm.to_dict() for cm in metrics.character_metrics]
+        # Prepare character metrics
+        char_metrics_list = [cm.to_dict() for cm in metrics.character_metrics]
 
-            # Store in database for ML training
-            session_id = await db.store_typing_session(
-                attempt_id=attempt_id,
-                session_data=session_data,
-                character_metrics=char_metrics_list
+        # Store in database for ML training (attempt_id can be None for standalone typing)
+        session_id = await db.store_typing_session(
+            attempt_id=attempt_id,  # Can be None
+            session_data=session_data,
+            character_metrics=char_metrics_list
+        )
+
+        if session_id:
+            success_status = "✅ SUCCESS" if success else "❌ FAILURE"
+            logger.info(
+                f"📊 [ML-STORAGE] {success_status} - Stored typing session {session_id} "
+                f"with {len(char_metrics_list)} character metrics for continuous learning"
             )
+        else:
+            logger.warning("⚠️ Failed to store typing metrics in database")
 
-            if session_id:
-                logger.info(f"📊 [ML-STORAGE] Stored typing session {session_id} with {len(char_metrics_list)} character metrics")
-            else:
-                logger.warning("⚠️ Failed to store typing metrics in database")
-
-        except Exception as e:
-            logger.error(f"Failed to store typing metrics: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Failed to store typing metrics: {e}", exc_info=True)
+        # Don't let storage failure affect the return value
 
     # Return both success and metrics (for compatibility)
     return success, metrics.to_dict() if metrics else None

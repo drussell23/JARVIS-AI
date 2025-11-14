@@ -1380,14 +1380,21 @@ class IntelligentVoiceUnlockService:
                 attempt_id=attempt_id  # Enable ML metrics collection
             )
 
-            # 🤖 ML LEARNING: Update typing model with results
+            # 🤖 ML LEARNING: Update typing model with results (CRITICAL: Learn from failures too!)
             if self.ml_engine and typing_metrics:
                 try:
-                    await self.ml_engine.typing_learner.update_from_typing_session(typing_metrics)
+                    # Extract metrics for ML learning
+                    await self.ml_engine.typing_learner.update_from_typing_session(
+                        success=unlock_success,  # ACTUAL unlock status
+                        duration_ms=typing_metrics.get('total_duration_ms', 0),
+                        failed_at_char=typing_metrics.get('failed_at_character'),
+                        char_metrics=typing_metrics.get('character_metrics', [])
+                    )
                     self.stats["ml_typing_updates"] += 1
-                    logger.debug(f"🤖 ML: Password typing model updated (success: {unlock_success})")
+                    status = "✅ SUCCESS" if unlock_success else "❌ FAILURE"
+                    logger.info(f"🤖 ML: Password typing model updated - {status} - learning from attempt")
                 except Exception as e:
-                    logger.error(f"ML typing learning update failed: {e}")
+                    logger.error(f"ML typing learning update failed: {e}", exc_info=True)
 
             if unlock_success:
                 logger.info(f"✅ Screen unlocked by {speaker_name} (keychain: {service_used})")
