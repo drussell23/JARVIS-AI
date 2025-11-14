@@ -14,7 +14,6 @@ import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats dis
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
 import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
-import DeveloperMetricsOverlay from './DeveloperMetricsOverlay'; // 🔬 Developer metrics for biometric confidence
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -633,8 +632,6 @@ const JarvisVoice = () => {
   const [showSTTDetails, setShowSTTDetails] = useState(true); // Show hybrid STT engine details
   const [useHybridSTT, setUseHybridSTT] = useState(true); // Use hybrid STT instead of browser API
   const [detectedCommand, setDetectedCommand] = useState(null); // 🆕 Command detected by streaming safeguard
-  const [devMetrics, setDevMetrics] = useState(null); // 🔬 Developer metrics for biometric confidence
-  const [showDevMetrics, setShowDevMetrics] = useState(true); // Toggle developer metrics overlay
   const typingTimeoutRef = useRef(null);
 
   const wsRef = useRef(null);
@@ -1334,17 +1331,6 @@ const JarvisVoice = () => {
         const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
         setResponse(voiceUnlockText);
         setIsProcessing(false);
-
-        // 🔬 Store developer metrics if present (for UI display only - not announced)
-        if (data.dev_metrics) {
-          console.log('📊 [Dev Metrics] Biometric confidence:', data.dev_metrics);
-          setDevMetrics(data.dev_metrics);
-
-          // Auto-clear metrics after 10 seconds
-          setTimeout(() => {
-            setDevMetrics(null);
-          }, 10000);
-        }
 
         // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
@@ -3283,13 +3269,6 @@ const JarvisVoice = () => {
       <div className="status-indicator-bar">
         {continuousListening && !isWaitingForCommand && (
           <div className="status-item wake-active">
-
-      {/* 🔬 Developer Metrics Overlay - Biometric confidence (UI only, not announced) */}
-      <DeveloperMetricsOverlay
-        devMetrics={devMetrics}
-        visible={showDevMetrics}
-        onToggle={() => setShowDevMetrics(!showDevMetrics)}
-      />
             <span className="status-dot"></span>
             <span className="status-text">Say "Hey JARVIS"</span>
           </div>

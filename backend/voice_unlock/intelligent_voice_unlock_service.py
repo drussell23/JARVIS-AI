@@ -525,7 +525,7 @@ class IntelligentVoiceUnlockService:
         except:
             pass
 
-        # Build detailed developer metrics (not announced, only shown in UI)
+        # Build detailed developer metrics (logged to JSON file)
         developer_metrics = {
             "biometrics": {
                 "speaker_confidence": verification_confidence,
@@ -546,6 +546,28 @@ class IntelligentVoiceUnlockService:
                 "overall_confidence": (stt_confidence + verification_confidence) / 2,
             }
         }
+
+        # Log metrics to JSON file for developer analysis
+        try:
+            from voice_unlock.unlock_metrics_logger import get_metrics_logger
+            metrics_logger = get_metrics_logger()
+            metrics_logger.log_unlock_attempt(
+                success=unlock_result["success"],
+                speaker_name=speaker_identified,
+                transcribed_text=transcribed_text,
+                biometrics=developer_metrics["biometrics"],
+                performance=developer_metrics["performance"],
+                quality_indicators=developer_metrics["quality_indicators"],
+                processing_stages={
+                    "transcription": {"confidence": stt_confidence, "text": transcribed_text},
+                    "speaker_verification": {"confidence": verification_confidence, "speaker": speaker_identified},
+                    "owner_verification": {"is_owner": True},
+                    "unlock_execution": {"success": unlock_result["success"]}
+                },
+                error=None if unlock_result["success"] else unlock_result.get("message")
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log metrics: {e}")
 
         return {
             "success": unlock_result["success"],
