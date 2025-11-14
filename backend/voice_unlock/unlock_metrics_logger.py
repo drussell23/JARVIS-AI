@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Advanced Unlock Metrics Logger
-===============================
+Advanced Async Unlock Metrics Logger
+=====================================
 Ultra-detailed, dynamic biometric and performance metrics logger for voice unlock.
 
 Features:
+- Fully async I/O for non-blocking operation
 - Dynamic stage tracking with no hardcoding
 - Per-stage timing, success/failure, and algorithm tracking
 - Confidence evolution tracking over time
@@ -18,6 +19,8 @@ import json
 import logging
 import time
 import inspect
+import asyncio
+import aiofiles
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -61,7 +64,7 @@ class StageMetrics:
 
 class UnlockMetricsLogger:
     """
-    Advanced metrics logger with dynamic stage tracking.
+    Advanced async metrics logger with dynamic stage tracking.
 
     This logger automatically tracks:
     - All processing stages with precise timing
@@ -91,12 +94,12 @@ class UnlockMetricsLogger:
         self.log_file = self._get_daily_log_file()
 
         # Stats file for aggregated metrics
-        self.stats_file = self.log_dir / "unlock_stats.json"
+        self.stats_file = self.log_dir / "unlock_stats.json" # Store stats across sessions and speakers
 
         # Historical trends file
-        self.trends_file = self.log_dir / "confidence_trends.json"
+        self.trends_file = self.log_dir / "confidence_trends.json" # Store confidence trends
 
-        logger.info(f"📊 Advanced UnlockMetricsLogger initialized")
+        logger.info(f"📊 Advanced Async UnlockMetricsLogger initialized")
         logger.info(f"   └─ Log file: {self.log_file}")
 
     def _get_daily_log_file(self) -> Path:
@@ -131,7 +134,7 @@ class UnlockMetricsLogger:
         logger.debug(f"📊 Stage started: {stage_name} in {function_name}")
         return stage
 
-    def log_unlock_attempt(
+    async def log_unlock_attempt(
         self,
         success: bool,
         speaker_name: str,
@@ -144,7 +147,7 @@ class UnlockMetricsLogger:
         error: Optional[str] = None
     ) -> None:
         """
-        Log a complete voice unlock attempt with all stages and metrics.
+        Async log a complete voice unlock attempt with all stages and metrics.
 
         Args:
             success: Whether unlock succeeded
@@ -174,7 +177,7 @@ class UnlockMetricsLogger:
                 stage_details.append(stage_data)
 
             # Get confidence history for trend analysis
-            confidence_history = self._get_confidence_history(speaker_name)
+            confidence_history = await self._get_confidence_history(speaker_name) # List of past confidence scores for this speaker across attempts
             current_confidence = biometrics.get('speaker_confidence', 0)
             threshold = biometrics.get('threshold', 0.35)
 
@@ -256,37 +259,44 @@ class UnlockMetricsLogger:
 
                 # Metadata
                 "metadata": {
-                    "total_attempts_today": self._count_todays_attempts() + 1,
+                    "total_attempts_today": await self._count_todays_attempts() + 1, # Including this attempt being logged now
                     "session_id": self._get_session_id(),
-                    "logger_version": "2.0.0-advanced",
+                    "logger_version": "2.0.0-advanced-async", # Version of this advanced logger module (advanced-async)
                 }
             }
 
             # Load existing entries
-            entries = self._load_entries()
+            entries = await self._load_entries() # List of all unlock attempts so far today
 
             # Add new entry
             entries.append(entry)
 
             # Save back to file
-            self._save_entries(entries)
+            await self._save_entries(entries) # Overwrite today's log file with updated entries 
 
             # Update confidence trends
-            self._update_confidence_trends(speaker_name, current_confidence, success)
+            await self._update_confidence_trends(speaker_name, current_confidence, success)
 
             # Update aggregated stats
-            self._update_stats(entry)
+            await self._update_stats(entry) # Update overall stats file with this new entry 
 
             logger.info(f"✅ Logged unlock attempt: success={success}, speaker={speaker_name}")
             logger.info(f"   └─ Confidence: {current_confidence:.2%} (threshold: {threshold:.2%}, margin: {(current_confidence - threshold):.2%})")
             logger.info(f"   └─ Total duration: {total_duration_ms:.0f}ms across {len(stages)} stages")
 
+            # Log detailed stage breakdown
+            for stage in stage_details: # Each stage with detailed metrics 
+                if stage['duration_ms']: # Only log stages with recorded duration
+                    status_emoji = "✅" if stage['success'] else "❌" # Success or failure emoji 
+                    logger.info(f"   └─ {status_emoji} {stage['stage_name']}: {stage['duration_ms']:.0f}ms ({stage['percentage_of_total']:.1f}%)") # Log each stage's duration and percentage of total duration 
+
         except Exception as e:
             logger.error(f"Failed to log unlock metrics: {e}", exc_info=True)
 
-    def _get_confidence_history(self, speaker_name: str) -> List[float]:
+    # Helper methods for confidence trends and stats 
+    async def _get_confidence_history(self, speaker_name: str) -> List[float]:
         """Get historical confidence scores for a speaker"""
-        entries = self._load_entries()
+        entries = await self._load_entries() # Load today's entries 
         history = [
             e['biometrics']['speaker_confidence']
             for e in entries
@@ -359,17 +369,18 @@ class UnlockMetricsLogger:
             'percentile': percentile,
         }
 
-    def _update_confidence_trends(
+    async def _update_confidence_trends(
         self,
         speaker_name: str,
         confidence: float,
         success: bool
     ) -> None:
-        """Update the confidence trends file"""
+        """Update the confidence trends file asynchronously"""
         try:
             if self.trends_file.exists():
-                with open(self.trends_file, 'r') as f:
-                    trends = json.load(f)
+                async with aiofiles.open(self.trends_file, 'r') as f: # Read existing trends file 
+                    content = await f.read() # Read file content 
+                    trends = json.loads(content) # Parse JSON content 
             else:
                 trends = {}
 
@@ -388,19 +399,20 @@ class UnlockMetricsLogger:
             for key in ['confidence_history', 'success_history', 'timestamps']:
                 trends[speaker_name][key] = trends[speaker_name][key][-1000:]
 
-            with open(self.trends_file, 'w') as f:
-                json.dump(trends, f, indent=2)
+            async with aiofiles.open(self.trends_file, 'w') as f: # Write updated trends file 
+                await f.write(json.dumps(trends, indent=2)) # Write JSON content 
 
         except Exception as e:
             logger.warning(f"Failed to update confidence trends: {e}")
 
-    def _update_stats(self, entry: Dict[str, Any]) -> None:
-        """Update aggregated statistics"""
+    async def _update_stats(self, entry: Dict[str, Any]) -> None:
+        """Update aggregated statistics asynchronously"""
         try:
-            if self.stats_file.exists():
-                with open(self.stats_file, 'r') as f:
-                    stats = json.load(f)
-            else:
+            if self.stats_file.exists(): # Check if stats file exists 
+                async with aiofiles.open(self.stats_file, 'r') as f: # Read existing stats file 
+                    content = await f.read() # Read file content 
+                    stats = json.loads(content) # Parse JSON content 
+            else: # If stats file doesn't exist, initialize new stats 
                 stats = {
                     'total_attempts': 0,
                     'successful_attempts': 0,
@@ -448,15 +460,15 @@ class UnlockMetricsLogger:
 
             stats['last_updated'] = datetime.now().isoformat()
 
-            with open(self.stats_file, 'w') as f:
-                json.dump(stats, f, indent=2)
+            async with aiofiles.open(self.stats_file, 'w') as f:
+                await f.write(json.dumps(stats, indent=2))
 
         except Exception as e:
             logger.warning(f"Failed to update stats: {e}")
 
-    def _count_todays_attempts(self) -> int:
+    async def _count_todays_attempts(self) -> int:
         """Count attempts made today"""
-        entries = self._load_entries()
+        entries = await self._load_entries()
         return len(entries)
 
     def _get_session_id(self) -> str:
@@ -465,25 +477,26 @@ class UnlockMetricsLogger:
             self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self._session_id
 
-    def _load_entries(self) -> list:
-        """Load existing entries from today's log file."""
+    async def _load_entries(self) -> list:
+        """Load existing entries from today's log file asynchronously."""
         if self.log_file.exists():
             try:
-                with open(self.log_file, 'r') as f:
-                    return json.load(f)
+                async with aiofiles.open(self.log_file, 'r') as f:
+                    content = await f.read()
+                    return json.loads(content)
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse {self.log_file}, starting fresh")
                 return []
         return []
 
-    def _save_entries(self, entries: list) -> None:
-        """Save entries to today's log file."""
-        with open(self.log_file, 'w') as f:
-            json.dump(entries, f, indent=2, default=str)
+    async def _save_entries(self, entries: list) -> None:
+        """Save entries to today's log file asynchronously."""
+        async with aiofiles.open(self.log_file, 'w') as f:
+            await f.write(json.dumps(entries, indent=2, default=str))
 
-    def get_today_stats(self) -> Dict[str, Any]:
+    async def get_today_stats(self) -> Dict[str, Any]:
         """Get statistics for today's unlock attempts."""
-        entries = self._load_entries()
+        entries = await self._load_entries()
 
         total_attempts = len(entries)
         successful = sum(1 for e in entries if e["success"])

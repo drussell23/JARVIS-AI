@@ -354,7 +354,13 @@ class IntelligentVoiceUnlockService:
             if sample_rate:
                 logger.info(f"🎵 Using frontend-provided sample rate: {sample_rate}Hz")
 
-        # Step 1: Transcribe audio using Hybrid STT with retry logic
+        # Stage 2: Transcription using Hybrid STT
+        stage_transcription = metrics_logger.create_stage(
+            "transcription",
+            sample_rate=sample_rate,
+            audio_size=diagnostics.audio_size_bytes
+        )
+
         transcription_result = await self._transcribe_audio_with_retry(
             audio_data, diagnostics, sample_rate=sample_rate
         )
@@ -363,6 +369,10 @@ class IntelligentVoiceUnlockService:
             diagnostics.failure_reason = "transcription_failed"
             diagnostics.processing_time_ms = (datetime.now() - start_time).total_seconds() * 1000
             self._store_diagnostics(diagnostics)
+
+            stage_transcription.complete(success=False, error_message="Transcription failed")
+            stages.append(stage_transcription)
+
             return await self._create_failure_response(
                 "transcription_failed",
                 "Could not transcribe audio",
@@ -373,30 +383,84 @@ class IntelligentVoiceUnlockService:
         stt_confidence = transcription_result.confidence
         speaker_identified = transcription_result.speaker_identified
 
+        # Get STT engine used
+        stt_engine = getattr(transcription_result, 'engine_used', 'unknown')
+        if hasattr(diagnostics, 'stt_engine_used') and diagnostics.stt_engine_used:
+            stt_engine = diagnostics.stt_engine_used
+
+        stage_transcription.complete(
+            success=True,
+            algorithm_used=stt_engine,
+            confidence_score=stt_confidence,
+            output_size_bytes=len(transcribed_text.encode('utf-8')),
+            metadata={
+                'transcribed_text': transcribed_text,
+                'speaker_identified': speaker_identified
+            }
+        )
+        stages.append(stage_transcription)
+
         logger.info(f"📝 Transcribed: '{transcribed_text}' (confidence: {stt_confidence:.2f})")
         logger.info(f"👤 Speaker: {speaker_identified or 'Unknown'}")
 
-        # Step 2: Verify this is an unlock command
+        # Stage 3: Intent Verification
+        stage_intent = metrics_logger.create_stage(
+            "intent_verification",
+            text_to_verify=transcribed_text
+        )
+
         is_unlock_command = await self._verify_unlock_intent(transcribed_text, context)
+
+        stage_intent.complete(
+            success=is_unlock_command,
+            algorithm_used="NLP pattern matching",
+            metadata={'is_unlock_command': is_unlock_command}
+        )
+        stages.append(stage_intent)
 
         if not is_unlock_command:
             return await self._create_failure_response(
                 "not_unlock_command", f"Command '{transcribed_text}' is not an unlock request"
             )
 
-        # Step 3: Identify speaker (if not already identified by STT)
+        # Stage 4: Speaker Identification
+        stage_speaker_id = metrics_logger.create_stage(
+            "speaker_identification",
+            already_identified=speaker_identified is not None
+        )
+
         if not speaker_identified:
             speaker_identified, speaker_confidence = await self._identify_speaker(audio_data)
         else:
             # Verify speaker confidence
             speaker_confidence = await self._get_speaker_confidence(audio_data, speaker_identified)
 
+        stage_speaker_id.complete(
+            success=speaker_identified is not None,
+            algorithm_used="SpeechBrain speaker recognition",
+            confidence_score=speaker_confidence if speaker_identified else 0,
+            metadata={'speaker_name': speaker_identified}
+        )
+        stages.append(stage_speaker_id)
+
         logger.info(
             f"🔐 Speaker identified: {speaker_identified} (confidence: {speaker_confidence:.2f})"
         )
 
-        # Step 4: Check if speaker is the owner
+        # Stage 5: Owner Verification
+        stage_owner_check = metrics_logger.create_stage(
+            "owner_verification",
+            speaker_name=speaker_identified
+        )
+
         is_owner = await self._verify_owner(speaker_identified)
+
+        stage_owner_check.complete(
+            success=is_owner,
+            algorithm_used="Database owner lookup",
+            metadata={'is_owner': is_owner}
+        )
+        stages.append(stage_owner_check)
 
         if not is_owner:
             self.stats["rejected_attempts"] += 1
@@ -437,10 +501,32 @@ class IntelligentVoiceUnlockService:
                 security_analysis=security_analysis,
             )
 
-        # Step 5: Verify speaker with high threshold (anti-spoofing)
+        # Stage 6: Biometric Verification (anti-spoofing)
+        stage_biometric = metrics_logger.create_stage(
+            "biometric_verification",
+            speaker_name=speaker_identified,
+            audio_size=diagnostics.audio_size_bytes
+        )
+
         verification_passed, verification_confidence = await self._verify_speaker_identity(
             audio_data, speaker_identified
         )
+
+        # Get threshold dynamically
+        threshold = getattr(self.speaker_engine, 'threshold', 0.35) if self.speaker_engine else 0.35
+
+        stage_biometric.complete(
+            success=verification_passed,
+            algorithm_used="SpeechBrain ECAPA-TDNN",
+            confidence_score=verification_confidence,
+            threshold=threshold,
+            above_threshold=verification_confidence >= threshold,
+            metadata={
+                'verification_method': 'cosine_similarity',
+                'embedding_dimension': 192
+            }
+        )
+        stages.append(stage_biometric)
 
         if not verification_passed:
             self.stats["failed_authentications"] += 1
@@ -508,16 +594,57 @@ class IntelligentVoiceUnlockService:
         except Exception as e:
             logger.debug(f"Failed to track verification in monitoring: {e}")
 
-        # Step 6: Context and Scenario Analysis (CAI + SAI)
+        # Stage 7: Context Analysis (CAI)
+        stage_context = metrics_logger.create_stage(
+            "context_analysis",
+            text=transcribed_text
+        )
+
         context_analysis = await self._analyze_context(transcribed_text, context)
+
+        stage_context.complete(
+            success=True,
+            algorithm_used="CAI (Context-Aware Intelligence)",
+            metadata={'context_data': context_analysis}
+        )
+        stages.append(stage_context)
+
+        # Stage 8: Scenario Analysis (SAI)
+        stage_scenario = metrics_logger.create_stage(
+            "scenario_analysis",
+            speaker=speaker_identified
+        )
+
         scenario_analysis = await self._analyze_scenario(
             transcribed_text, context, speaker_identified
         )
 
-        # Step 7: Perform unlock
+        stage_scenario.complete(
+            success=True,
+            algorithm_used="SAI (Scenario-Aware Intelligence)",
+            metadata={'scenario_data': scenario_analysis}
+        )
+        stages.append(stage_scenario)
+
+        # Stage 9: Screen Unlock Execution
+        stage_unlock = metrics_logger.create_stage(
+            "unlock_execution",
+            speaker=speaker_identified
+        )
+
         unlock_result = await self._perform_unlock(
             speaker_identified, context_analysis, scenario_analysis
         )
+
+        stage_unlock.complete(
+            success=unlock_result["success"],
+            algorithm_used="macOS AppleScript password entry",
+            metadata={
+                'unlock_method': 'password_entry',
+                'result_message': unlock_result.get("message")
+            }
+        )
+        stages.append(stage_unlock)
 
         # Step 8: Record successful unlock attempt
         if unlock_result["success"]:
@@ -589,9 +716,9 @@ class IntelligentVoiceUnlockService:
             "speaker_engine": "SpeechBrain" if self.speaker_engine else "None",
         }
 
-        # Log advanced metrics with all stages to JSON file
+        # Log advanced metrics with all stages to JSON file (async)
         try:
-            metrics_logger.log_unlock_attempt(
+            await metrics_logger.log_unlock_attempt(
                 success=unlock_result["success"],
                 speaker_name=speaker_identified,
                 transcribed_text=transcribed_text,
