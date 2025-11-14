@@ -2282,6 +2282,7 @@ class ProcessCleanupManager:
             "vms_deleted": [],
             "vm_errors": [],
             "cloudsql_cleanup": {},
+            "ml_engine_shutdown": None,
             "hanging_start_system": [],
             "errors": [],
         }
@@ -2430,6 +2431,36 @@ class ProcessCleanupManager:
         except Exception as e:
             logger.error(f"Failed to clean CloudSQL connections: {e}")
 
+        # Step 5.5: Shutdown ML Continuous Learning Engine
+        try:
+            logger.info("🧠 Shutting down ML Continuous Learning Engine...")
+            from voice_unlock.continuous_learning_engine import shutdown_learning_engine
+
+            # Use asyncio to run async shutdown
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(shutdown_learning_engine())
+                else:
+                    asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+                results["ml_engine_shutdown"] = True
+            except RuntimeError:
+                # No event loop, create one
+                asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+                results["ml_engine_shutdown"] = True
+            except Exception as e:
+                logger.warning(f"Failed to shutdown ML Learning Engine: {e}")
+                results["ml_engine_shutdown"] = False
+        except ImportError:
+            logger.debug("ML Learning Engine not available (expected during startup)")
+            results["ml_engine_shutdown"] = None
+        except Exception as e:
+            logger.error(f"Error during ML Learning Engine cleanup: {e}")
+            results["ml_engine_shutdown"] = False
+
         # Step 6: Remove code state file to force fresh start
         if self.code_state_file.exists():
             try:
@@ -2488,6 +2519,10 @@ class ProcessCleanupManager:
             logger.info(
                 f"  • Terminated {results['cloudsql_cleanup']['processes_terminated']} processes with DB connections"
             )
+        if results["ml_engine_shutdown"] is True:
+            logger.info(f"  • ML Learning Engine shutdown complete")
+        elif results["ml_engine_shutdown"] is False:
+            logger.warning(f"  • ML Learning Engine shutdown failed")
         if results["vms_deleted"]:
             logger.info(f"  • Deleted {len(results['vms_deleted'])} GCP VMs")
         if results["vm_errors"]:
@@ -2710,6 +2745,10 @@ def emergency_cleanup(force: bool = False):
     print(f"  • Ports freed: {len(results['ports_freed'])}")
     if results["ipc_cleaned"]:
         print(f"  • IPC resources cleaned: {sum(results['ipc_cleaned'].values())}")
+    if results["ml_engine_shutdown"] is True:
+        print(f"  • ML Learning Engine shutdown: ✅")
+    elif results["ml_engine_shutdown"] is False:
+        print(f"  • ML Learning Engine shutdown: ⚠️ Failed")
     if results["vms_deleted"]:
         print(f"  • GCP VMs deleted: {len(results['vms_deleted'])}")
         for vm_id in results["vms_deleted"][:5]:  # Show first 5 VMs

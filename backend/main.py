@@ -2069,6 +2069,18 @@ async def lifespan(app: FastAPI):
     elif not THREAD_MANAGER_AVAILABLE:
         logger.warning("⚠️  Thread Manager not available - manual thread cleanup required")
 
+    # Shutdown ML Continuous Learning Engine
+    try:
+        from voice_unlock.continuous_learning_engine import shutdown_learning_engine
+
+        logger.info("🧠 Shutting down ML Continuous Learning Engine...")
+        await shutdown_learning_engine()
+        logger.info("✅ ML Continuous Learning Engine shutdown complete")
+    except ImportError:
+        logger.debug("ML Continuous Learning Engine not available")
+    except Exception as e:
+        logger.error(f"Failed to shutdown ML Learning Engine: {e}")
+
     # Cleanup Cloud SQL database connections
     try:
         if hasattr(app.state, "db_adapter") and app.state.db_adapter:

@@ -7874,6 +7874,25 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 print(f"   └─ {Colors.YELLOW}⚠ Metrics monitor cleanup warning: {e}{Colors.ENDC}")
                 logger.warning(f"Metrics monitor cleanup failed: {e}")
 
+        # Stop ML Continuous Learning Engine
+        try:
+            print(f"\n{Colors.CYAN}🧠 [1.15/6] Stopping ML Continuous Learning Engine...{Colors.ENDC}")
+
+            # Ensure backend directory is in path
+            backend_path = str(Path(__file__).parent / "backend")
+            if backend_path not in sys.path:
+                sys.path.insert(0, backend_path)
+
+            from voice_unlock.continuous_learning_engine import shutdown_learning_engine
+            print(f"   ├─ Saving ML model checkpoints...")
+            await shutdown_learning_engine()
+            print(f"   └─ {Colors.GREEN}✓ ML Learning Engine stopped (models saved){Colors.ENDC}")
+        except ImportError:
+            print(f"   └─ {Colors.BLUE}ℹ️  ML Learning Engine not available{Colors.ENDC}")
+        except Exception as e:
+            print(f"   └─ {Colors.YELLOW}⚠ ML Learning Engine cleanup warning: {e}{Colors.ENDC}")
+            logger.warning(f"ML Learning Engine cleanup failed: {e}")
+
         # Stop Cloud SQL proxy (CRITICAL: Must happen before database connections close)
         if self.cloud_sql_proxy_manager:
             try:
