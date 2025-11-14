@@ -666,6 +666,31 @@ class ProcessCleanupManager:
 
         logger.warning("🔥 BULLETPROOF FORCE RESTART MODE - Killing ALL JARVIS processes...")
 
+        # Step 0: Gracefully shutdown ML Learning Engine before killing processes
+        try:
+            logger.info("🧠 Attempting graceful ML Learning Engine shutdown...")
+            from voice_unlock.continuous_learning_engine import shutdown_learning_engine
+
+            # Use asyncio to run async shutdown
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(shutdown_learning_engine())
+                else:
+                    asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+            except RuntimeError:
+                # No event loop, create one
+                asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+            except Exception as e:
+                logger.warning(f"ML Learning Engine shutdown warning: {e}")
+        except ImportError:
+            logger.debug("ML Learning Engine not available")
+        except Exception as e:
+            logger.warning(f"Error during ML Learning Engine shutdown: {e}")
+
         # Step 1: ALWAYS clear Python cache in force restart mode
         cache_cleared = self._clear_python_cache()
         if cache_cleared:
@@ -926,6 +951,31 @@ class ProcessCleanupManager:
             return cleaned
 
         logger.warning("🔄 Code changes detected! Cleaning up old JARVIS instances...")
+
+        # Step 0: Gracefully shutdown ML Learning Engine before killing processes
+        try:
+            logger.info("🧠 Attempting graceful ML Learning Engine shutdown...")
+            from voice_unlock.continuous_learning_engine import shutdown_learning_engine
+
+            # Use asyncio to run async shutdown
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(shutdown_learning_engine())
+                else:
+                    asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+            except RuntimeError:
+                # No event loop, create one
+                asyncio.run(shutdown_learning_engine())
+                logger.info("✅ ML Learning Engine shutdown complete (models saved)")
+            except Exception as e:
+                logger.warning(f"ML Learning Engine shutdown warning: {e}")
+        except ImportError:
+            logger.debug("ML Learning Engine not available")
+        except Exception as e:
+            logger.warning(f"Error during ML Learning Engine shutdown: {e}")
 
         # Clear Python cache FIRST to ensure fresh code loads
         # This affects the frontend process, but backend subprocesses need to be killed
