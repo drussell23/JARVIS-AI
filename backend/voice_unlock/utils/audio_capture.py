@@ -193,7 +193,7 @@ class AudioCapture:
             return
             
         self.is_capturing = True
-        self.capture_thread = threading.Thread(target=self._capture_loop)
+        self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.capture_thread.start()
         logger.info("Started continuous capture")
         

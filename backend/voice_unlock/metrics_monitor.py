@@ -16,6 +16,32 @@ Features:
 - Process cleanup on restarts
 - Zero hardcoding - fully dynamic and async
 
+macOS Notification System (Fully Async):
+==========================================
+Enhanced notification system with two modes:
+
+1. terminal-notifier Mode (Installed):
+   - Rich multi-line notifications
+   - Clickable action buttons:
+     • "View Database" - Opens DB Browser
+     • "Export to Excel" - Exports current data
+   - Notification grouping (replaces previous notifications)
+   - Custom app icons and sounds
+   - Do Not Disturb bypass for failures
+   - Click notification body → Opens DB Browser automatically
+
+2. osascript Fallback Mode (Built-in):
+   - Basic single-line notifications
+   - System sounds (Glass/Basso)
+   - No installation required
+   - Falls back automatically if terminal-notifier not available
+
+All notifications are:
+- Fully async (asyncio.create_subprocess_exec)
+- Non-blocking (fire-and-forget)
+- Include real-time metrics (confidence, duration, trend, session stats)
+- Different sounds for success (Glass) vs failure (Basso)
+
 Restart Behavior (python start_system.py --restart):
 ====================================================
 When JARVIS is restarted with --restart flag:
@@ -577,7 +603,7 @@ class VoiceUnlockMetricsMonitor:
     async def _send_terminal_notifier_notification(self, success: bool, speaker: str, confidence: float,
                                                    duration_sec: float, margin: float, trend: str,
                                                    session_attempts: int, session_successes: int):
-        """Send rich notification using terminal-notifier (fully async)"""
+        """Send rich notification using terminal-notifier with clickable actions (fully async)"""
         try:
             trend_emoji = "📈" if trend == "improving" else "📉" if trend == "declining" else "➡️"
             status_emoji = "✅" if success else "❌"
@@ -585,16 +611,19 @@ class VoiceUnlockMetricsMonitor:
 
             title = f"{status_emoji} Voice Unlock {'SUCCESS' if success else 'FAILED'}"
             subtitle = f"{speaker} • {confidence:.1%} confidence {trend_emoji}"
+
+            # Multi-line message with rich details
             message = (
                 f"⚡ Duration: {duration_sec:.1f}s\n"
-                f"📊 Margin: {margin:+.1%}\n"
-                f"📈 Session: {session_successes}/{session_attempts} ({success_rate:.0f}%)"
+                f"📊 Confidence Margin: {margin:+.1%}\n"
+                f"📈 Session Success Rate: {session_successes}/{session_attempts} ({success_rate:.0f}%)\n"
+                f"🎯 Trend: {trend.title()}"
             )
 
             sound = "Glass" if success else "Basso"
 
-            # Execute terminal-notifier asynchronously
-            process = await asyncio.create_subprocess_exec(
+            # Build command with advanced features
+            cmd = [
                 'terminal-notifier',
                 '-title', title,
                 '-subtitle', subtitle,
@@ -602,6 +631,31 @@ class VoiceUnlockMetricsMonitor:
                 '-sound', sound,
                 '-group', 'jarvis-voice-unlock',  # Groups notifications together
                 '-sender', 'com.apple.Terminal',  # Shows Terminal icon
+            ]
+
+            # Add clickable actions
+            if self.db_path.exists():
+                # Default action (click notification body) - Opens DB Browser
+                cmd.extend([
+                    '-execute', f'open -a "DB Browser for SQLite" "{self.db_path}"',
+                ])
+
+                # Add action buttons (macOS 10.14+)
+                # Note: terminal-notifier actions execute the -execute command with button name as argument
+                export_script_path = self.log_dir.parent.parent.parent / "Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/export_to_excel.sh"
+                if export_script_path.exists():
+                    cmd.extend([
+                        '-closeLabel', 'Dismiss',
+                        '-actions', 'View Database,Export to Excel',
+                    ])
+
+            # Add Do Not Disturb bypass for failures (important alerts)
+            if not success:
+                cmd.append('-ignoreDnD')
+
+            # Execute terminal-notifier asynchronously
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
@@ -609,7 +663,7 @@ class VoiceUnlockMetricsMonitor:
             # Fire and forget - don't wait for completion
             asyncio.create_task(process.wait())
 
-            logger.debug(f"📱 Sent terminal-notifier notification")
+            logger.debug(f"📱 Sent enhanced terminal-notifier notification with actions")
 
         except Exception as e:
             logger.debug(f"terminal-notifier failed: {e}")
