@@ -8359,13 +8359,28 @@ except Exception as e:
 
             self.metrics_monitor = await initialize_metrics_monitor()
 
-            print(f"{Colors.GREEN}   ✓ Advanced Metrics Monitor active{Colors.ENDC}")
+            # Dynamic status based on monitor state
+            if self.metrics_monitor.degraded_mode:
+                print(f"{Colors.YELLOW}   ⚠️  Metrics Monitor running in degraded mode{Colors.ENDC}")
+                print(f"   • {Colors.YELLOW}Reason:{Colors.ENDC} {self.metrics_monitor.degradation_reason}")
+            else:
+                print(f"{Colors.GREEN}   ✓ Advanced Metrics Monitor active{Colors.ENDC}")
+
+            # DB Browser status
+            if self.metrics_monitor.db_browser_already_running:
+                print(f"   • {Colors.GREEN}DB Browser:{Colors.ENDC} Already running (PID: {self.metrics_monitor.db_browser_pid}) - Reused existing instance")
+            elif self.metrics_monitor.db_browser_pid:
+                print(f"   • {Colors.GREEN}DB Browser:{Colors.ENDC} Launched successfully (PID: {self.metrics_monitor.db_browser_pid})")
+            else:
+                print(f"   • {Colors.YELLOW}DB Browser:{Colors.ENDC} Not launched (install with: brew install --cask db-browser-for-sqlite)")
+
+            # Feature summary
             print(f"   • {Colors.CYAN}Real-time monitoring:{Colors.ENDC} Database updates on every unlock")
-            print(f"   • {Colors.CYAN}DB Browser:{Colors.ENDC} Auto-launched for live viewing")
             print(f"   • {Colors.CYAN}Storage:{Colors.ENDC} JSON + SQLite + CloudSQL (triple backup)")
             print(f"   • {Colors.CYAN}Metrics:{Colors.ENDC} Confidence trends, stage performance, biometric analysis")
             print(f"   • {Colors.CYAN}Database:{Colors.ENDC} ~/.jarvis/logs/unlock_metrics/unlock_metrics.db")
-            print(f"   • {Colors.CYAN}Notifications:{Colors.ENDC} Professional logging for each unlock attempt")
+            print(f"   • {Colors.CYAN}Protection:{Colors.ENDC} Auto-recovery from corruption, disk space validation")
+            print(f"   • {Colors.CYAN}Concurrency:{Colors.ENDC} WAL mode + retry logic for locked database")
             print(f"{Colors.BLUE}   💡 Press F5 in DB Browser to refresh and see new unlock attempts{Colors.ENDC}")
 
         except Exception as e:
