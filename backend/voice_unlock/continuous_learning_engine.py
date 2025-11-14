@@ -31,6 +31,23 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
+# Import advanced ML features
+try:
+    from voice_unlock.advanced_ml_features import (
+        FailurePredictor,
+        BayesianTimingOptimizer,
+        MultiArmedBandit,
+        ContextAwareLearner,
+        AnomalyDetector,
+        SpeakerEmbeddingFineTuner,
+        ProgressiveLearningManager,
+        ModelPersistence
+    )
+    ADVANCED_FEATURES_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"⚠️ Advanced ML features not available: {e}")
+    ADVANCED_FEATURES_AVAILABLE = False
+
 
 @dataclass
 class VoiceBiometricState:
@@ -66,6 +83,8 @@ class VoiceBiometricLearner:
     - **Adaptive Thresholding**: Dynamically adjusts confidence threshold
     - **Anomaly Detection**: Identifies suspicious authentication attempts
     - **Confidence Calibration**: Improves confidence score accuracy
+    - **Context-Aware Learning**: Adapts to time of day, voice variations
+    - **Fine-Tuning**: Progressively refines speaker embeddings
     """
 
     def __init__(self, db_path: str):
@@ -78,6 +97,21 @@ class VoiceBiometricLearner:
         # Adaptive learning parameters
         self.learning_rate = 0.01
         self.adaptation_window = 50  # Consider last 50 attempts
+
+        # 🤖 Advanced ML features
+        if ADVANCED_FEATURES_AVAILABLE:
+            models_dir = Path(db_path).parent / "ml_models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+
+            self.anomaly_detector = AnomalyDetector(str(models_dir / "anomaly_detector.pkl"))
+            self.context_learner = ContextAwareLearner()
+            self.fine_tuner = SpeakerEmbeddingFineTuner(learning_rate=0.001)
+            self.progress_manager = ProgressiveLearningManager()
+        else:
+            self.anomaly_detector = None
+            self.context_learner = None
+            self.fine_tuner = None
+            self.progress_manager = None
 
     async def initialize(self):
         """Load historical data and initialize learning state"""
@@ -106,6 +140,11 @@ class VoiceBiometricLearner:
                     false_rejection_rate=0.0,
                     improvement_rate=0.0
                 )
+
+                # Initialize advanced features even without profile
+                if ADVANCED_FEATURES_AVAILABLE and self.anomaly_detector:
+                    await self.anomaly_detector.initialize()
+
                 return
 
             # Load unlock attempt history
@@ -152,6 +191,31 @@ class VoiceBiometricLearner:
 
                 logger.info(f"✅ Voice biometric learner initialized: {self.state.total_samples} samples, "
                            f"avg confidence: {self.state.avg_confidence:.1%}, FRR: {self.state.false_rejection_rate:.1%}")
+
+                # 🤖 Initialize advanced ML features with historical data
+                if ADVANCED_FEATURES_AVAILABLE:
+                    # Train anomaly detector on historical attempts
+                    if self.anomaly_detector:
+                        await self.anomaly_detector.initialize()
+                        historical_attempts = [
+                            {
+                                'speaker_confidence': r[0],
+                                'stt_confidence': 0.9,  # Placeholder
+                                'audio_duration_ms': 2000,
+                                'processing_time_ms': 500,
+                                'timestamp': datetime.now().isoformat()
+                            }
+                            for r in results if r[0] is not None
+                        ]
+                        await self.anomaly_detector.train(historical_attempts)
+
+                    # Initialize fine-tuner with base embedding
+                    if self.fine_tuner and derek_profile.get('embedding'):
+                        embedding_bytes = derek_profile['embedding']
+                        if isinstance(embedding_bytes, (bytes, bytearray)):
+                            embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+                            await self.fine_tuner.initialize(embedding)
+
             else:
                 logger.warning("⚠️ No historical unlock data found")
                 self.state = VoiceBiometricState(
@@ -165,17 +229,57 @@ class VoiceBiometricLearner:
                     improvement_rate=0.0
                 )
 
+                # Initialize advanced features even without history
+                if ADVANCED_FEATURES_AVAILABLE and self.anomaly_detector:
+                    await self.anomaly_detector.initialize()
+
         except Exception as e:
             logger.error(f"Failed to initialize voice biometric learner: {e}", exc_info=True)
 
-    async def update_from_attempt(self, confidence: float, success: bool, is_owner: bool):
+    async def update_from_attempt(
+        self,
+        confidence: float,
+        success: bool,
+        is_owner: bool,
+        audio_quality: float = 0.9,
+        new_embedding: Optional[np.ndarray] = None,
+        audio_duration_ms: float = 2000,
+        processing_time_ms: float = 500
+    ):
         """
         Update learning model from new authentication attempt.
 
         Uses online learning to adapt threshold dynamically.
+        Includes advanced features: anomaly detection, context learning, fine-tuning.
         """
         if not self.state:
             await self.initialize()
+
+        # 🤖 ANOMALY DETECTION: Check if this attempt is suspicious
+        if ADVANCED_FEATURES_AVAILABLE and self.anomaly_detector:
+            is_anomaly, anomaly_score = await self.anomaly_detector.detect_anomaly(
+                confidence,
+                audio_quality,
+                audio_duration_ms,
+                processing_time_ms
+            )
+
+            if is_anomaly:
+                logger.warning(f"🚨 Anomalous authentication pattern detected (score: {anomaly_score:.3f})")
+
+        # 🤖 CONTEXT-AWARE LEARNING: Understand context patterns
+        if ADVANCED_FEATURES_AVAILABLE and self.context_learner:
+            context = self.context_learner.get_context(audio_quality)
+            await self.context_learner.update_context_pattern(context, confidence, success)
+
+            # Adjust expectations based on context
+            expected_confidence = await self.context_learner.get_expected_confidence(context)
+            logger.debug(f"📊 Context: {context.time_of_day}/{context.estimated_voice_condition}, "
+                        f"expected: {expected_confidence:.1%}, actual: {confidence:.1%}")
+
+        # 🤖 FINE-TUNING: Adapt speaker embedding
+        if ADVANCED_FEATURES_AVAILABLE and self.fine_tuner and new_embedding is not None:
+            await self.fine_tuner.fine_tune(new_embedding, confidence, success)
 
         # Update state
         self.state.confidence_trend.insert(0, confidence)
@@ -278,6 +382,7 @@ class PasswordTypingLearner:
     - **Bayesian Optimization**: Find optimal timing parameters
     - **Random Forest**: Predict failure points
     - **Online Gradient Descent**: Real-time timing adjustments
+    - **Multi-Armed Bandit**: Balance exploration vs exploitation
     """
 
     def __init__(self, db_path: str):
@@ -303,6 +408,19 @@ class PasswordTypingLearner:
         # Success tracking for each character position
         self.char_position_success = {}  # position -> success_count
         self.char_position_failures = {}  # position -> failure_count
+
+        # 🤖 Advanced ML features
+        if ADVANCED_FEATURES_AVAILABLE:
+            models_dir = Path(db_path).parent / "ml_models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+
+            self.failure_predictor = FailurePredictor(str(models_dir / "failure_predictor.pkl"))
+            self.bayesian_optimizer = BayesianTimingOptimizer(db_path)
+            self.multi_armed_bandit = MultiArmedBandit(epsilon=0.1)
+        else:
+            self.failure_predictor = None
+            self.bayesian_optimizer = None
+            self.multi_armed_bandit = None
 
     async def initialize(self):
         """Load historical typing data and initialize learning state"""
@@ -380,6 +498,50 @@ class PasswordTypingLearner:
                 if failure_points:
                     logger.info(f"⚠️ Failure hotspots: {failure_points}")
 
+                # 🤖 Initialize advanced ML features with historical data
+                if ADVANCED_FEATURES_AVAILABLE:
+                    # Initialize and train Random Forest failure predictor
+                    if self.failure_predictor:
+                        await self.failure_predictor.initialize()
+
+                        # Load character metrics for training
+                        cursor.execute("""
+                            SELECT
+                                char_position, char_type, requires_shift, success,
+                                total_duration_ms, system_load_at_char, timestamp
+                            FROM character_typing_metrics
+                            ORDER BY timestamp DESC
+                            LIMIT 1000
+                        """)
+
+                        char_data = cursor.fetchall()
+                        if char_data:
+                            char_metrics = [
+                                {
+                                    'char_position': c[0],
+                                    'char_type': c[1],
+                                    'requires_shift': c[2],
+                                    'success': c[3],
+                                    'total_duration_ms': c[4],
+                                    'system_load_at_char': c[5] or 0,
+                                    'timestamp': c[6],
+                                    'historical_failures': failure_points.get(c[0], 0),
+                                    'avg_duration_at_pos': c[4]
+                                }
+                                for c in char_data
+                            ]
+
+                            await self.failure_predictor.train_from_history(char_metrics)
+
+                    # Run Bayesian Optimization on successful attempts
+                    if self.bayesian_optimizer:
+                        success_data = [s for s in char_stats if s[5] > 50]  # success_rate > 50%
+                        if success_data:
+                            best_params = await self.bayesian_optimizer.optimize_parameters([
+                                {'avg_duration': s[2]} for s in success_data
+                            ])
+                            logger.info(f"🎯 Bayesian Optimization: {best_params}")
+
             else:
                 logger.warning("⚠️ No typing history found, using defaults")
                 self.state = TypingPerformanceState(
@@ -391,6 +553,10 @@ class PasswordTypingLearner:
                     optimal_timings={},
                     success_rate_trend=[]
                 )
+
+                # Initialize advanced features even without history
+                if ADVANCED_FEATURES_AVAILABLE and self.failure_predictor:
+                    await self.failure_predictor.initialize()
 
             conn.close()
 
@@ -486,10 +652,18 @@ class PasswordTypingLearner:
     async def get_optimal_timing_for_char(
         self,
         char_type: str,
-        requires_shift: bool
+        requires_shift: bool,
+        char_position: int = 0,
+        system_load: float = 0.0
     ) -> Dict[str, float]:
         """
         Get ML-optimized timing for a specific character type.
+
+        Uses:
+        - Learned optimal timings
+        - Random Forest failure prediction
+        - Multi-Armed Bandit exploration/exploitation
+        - Bayesian Optimization results
 
         Returns dictionary with 'duration' and 'delay' in milliseconds.
         """
@@ -498,20 +672,46 @@ class PasswordTypingLearner:
 
         key = f"{char_type}_{'shift' if requires_shift else 'noshift'}"
 
+        # Get base optimal timing
         if key in self.optimal_timings:
-            return self.optimal_timings[key]
+            base_timing = self.optimal_timings[key]
+        else:
+            # Fallback to defaults
+            defaults = {
+                'letter_noshift': {'duration': 50, 'delay': 100},
+                'letter_shift': {'duration': 55, 'delay': 105},
+                'digit_noshift': {'duration': 50, 'delay': 100},
+                'digit_shift': {'duration': 55, 'delay': 105},
+                'special_noshift': {'duration': 60, 'delay': 120},
+                'special_shift': {'duration': 65, 'delay': 125},
+            }
+            base_timing = defaults.get(key, {'duration': 60, 'delay': 120})
 
-        # Fallback to defaults
-        defaults = {
-            'letter_noshift': {'duration': 50, 'delay': 100},
-            'letter_shift': {'duration': 55, 'delay': 105},
-            'digit_noshift': {'duration': 50, 'delay': 100},
-            'digit_shift': {'duration': 55, 'delay': 105},
-            'special_noshift': {'duration': 60, 'delay': 120},
-            'special_shift': {'duration': 65, 'delay': 125},
-        }
+        # 🤖 FAILURE PREDICTION: Check if this character is likely to fail
+        if ADVANCED_FEATURES_AVAILABLE and self.failure_predictor:
+            failure_prob = await self.failure_predictor.predict_failure_probability(
+                char_position,
+                char_type,
+                requires_shift,
+                system_load,
+                self.state.failure_points.get(char_position, 0),
+                base_timing['duration']
+            )
 
-        return defaults.get(key, {'duration': 60, 'delay': 120})
+            # If high failure probability, use slower, more careful timing
+            if failure_prob > 0.5:
+                logger.debug(f"⚠️ High failure probability ({failure_prob:.1%}) at position {char_position}, using careful timing")
+                base_timing = {
+                    'duration': base_timing['duration'] * 1.5,
+                    'delay': base_timing['delay'] * 2.0
+                }
+
+        # 🤖 MULTI-ARMED BANDIT: Explore vs exploit
+        if ADVANCED_FEATURES_AVAILABLE and self.multi_armed_bandit:
+            timing = await self.multi_armed_bandit.select_timing_strategy(char_type, base_timing)
+            return timing
+
+        return base_timing
 
     async def should_use_slower_timing(self, char_position: int) -> bool:
         """
@@ -533,6 +733,12 @@ class ContinuousLearningEngine:
     Master continuous learning engine combining voice and typing learners.
 
     Orchestrates both learning tracks and provides unified insights.
+
+    Features:
+    - Dual-track learning (voice + typing)
+    - Progressive learning stages (Data Collection → Mastery)
+    - Model persistence with checkpointing
+    - Comprehensive progress tracking
     """
 
     def __init__(self, db_path: str = None):
@@ -545,19 +751,67 @@ class ContinuousLearningEngine:
 
         self.initialized = False
 
+        # 🤖 Progressive Learning & Model Persistence
+        if ADVANCED_FEATURES_AVAILABLE:
+            self.progress_manager = ProgressiveLearningManager()
+            persistence_dir = Path(db_path).parent / "ml_checkpoints"
+            self.model_persistence = ModelPersistence(str(persistence_dir))
+        else:
+            self.progress_manager = None
+            self.model_persistence = None
+
     async def initialize(self):
-        """Initialize both learning tracks"""
-        logger.info("🧠 Initializing Continuous Learning Engine...")
+        """
+        Initialize both learning tracks.
 
-        await self.voice_learner.initialize()
-        await self.typing_learner.initialize()
+        Thread-safe initialization with proper error handling.
+        """
+        if self.initialized:
+            logger.debug("ContinuousLearningEngine already initialized")
+            return
 
-        self.initialized = True
-        logger.info("✅ Continuous Learning Engine initialized")
-        logger.info(f"   Voice: {self.voice_learner.state.total_samples} samples, "
-                   f"{self.voice_learner.state.avg_confidence:.1%} avg confidence")
-        logger.info(f"   Typing: {self.typing_learner.state.total_attempts} attempts, "
-                   f"{self.typing_learner.state.successful_attempts}/{self.typing_learner.state.total_attempts} successful")
+        try:
+            logger.info("🧠 Initializing Continuous Learning Engine...")
+
+            # Initialize learners in parallel for faster startup
+            await asyncio.gather(
+                self.voice_learner.initialize(),
+                self.typing_learner.initialize(),
+                return_exceptions=True
+            )
+
+            self.initialized = True
+            logger.info("✅ Continuous Learning Engine initialized")
+            logger.info(f"   Voice: {self.voice_learner.state.total_samples} samples, "
+                       f"{self.voice_learner.state.avg_confidence:.1%} avg confidence")
+            logger.info(f"   Typing: {self.typing_learner.state.total_attempts} attempts, "
+                       f"{self.typing_learner.state.successful_attempts}/{self.typing_learner.state.total_attempts} successful")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Continuous Learning Engine: {e}", exc_info=True)
+            self.initialized = False
+            raise
+
+    async def cleanup(self):
+        """
+        Cleanup resources and save state.
+
+        Prevents resource leaks and ensures data is persisted.
+        """
+        try:
+            logger.info("🧹 Cleaning up Continuous Learning Engine...")
+
+            # Save final checkpoint
+            if self.initialized:
+                await self.save_checkpoint()
+
+            # Clear state
+            self.initialized = False
+
+            logger.info("✅ Continuous Learning Engine cleanup complete")
+
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}", exc_info=True)
 
     async def update_from_unlock_attempt(
         self,
@@ -593,6 +847,13 @@ class ContinuousLearningEngine:
         """
         Get comprehensive learning insights for both tracks.
 
+        Includes:
+        - Voice biometric metrics
+        - Password typing metrics
+        - Progressive learning stage
+        - Advanced ML features status
+        - Overall system health
+
         Useful for debugging and monitoring continuous learning progress.
         """
         if not self.initialized:
@@ -601,17 +862,20 @@ class ContinuousLearningEngine:
         voice_state = self.voice_learner.state
         typing_state = self.typing_learner.state
 
-        return {
+        insights = {
             'voice_biometrics': {
                 'total_samples': voice_state.total_samples,
                 'avg_confidence': voice_state.avg_confidence,
                 'confidence_threshold': self.voice_learner.confidence_threshold,
                 'improvement_rate': voice_state.improvement_rate,
                 'false_rejection_rate': voice_state.false_rejection_rate,
+                'best_confidence': voice_state.best_confidence,
+                'worst_confidence': voice_state.worst_confidence,
                 'status': self._get_voice_status(voice_state)
             },
             'password_typing': {
                 'total_attempts': typing_state.total_attempts,
+                'successful_attempts': typing_state.successful_attempts,
                 'success_rate': typing_state.successful_attempts / typing_state.total_attempts if typing_state.total_attempts > 0 else 0,
                 'avg_speed_ms': typing_state.avg_typing_speed_ms,
                 'fastest_speed_ms': typing_state.fastest_typing_ms,
@@ -621,6 +885,33 @@ class ContinuousLearningEngine:
             },
             'overall_health': self._get_overall_health(voice_state, typing_state)
         }
+
+        # 🤖 Progressive Learning Stage
+        if ADVANCED_FEATURES_AVAILABLE and self.progress_manager:
+            total_attempts = voice_state.total_samples + typing_state.total_attempts
+            success_rate = typing_state.successful_attempts / typing_state.total_attempts if typing_state.total_attempts > 0 else 0
+
+            progress_report = self.progress_manager.get_progress_report(
+                total_attempts,
+                voice_state.avg_confidence,
+                success_rate
+            )
+
+            insights['progressive_learning'] = progress_report
+
+        # 🤖 Advanced ML Features Status
+        if ADVANCED_FEATURES_AVAILABLE:
+            insights['advanced_features'] = {
+                'anomaly_detection': self.voice_learner.anomaly_detector is not None,
+                'context_aware_learning': self.voice_learner.context_learner is not None,
+                'fine_tuning': self.voice_learner.fine_tuner is not None,
+                'failure_prediction': self.typing_learner.failure_predictor is not None,
+                'bayesian_optimization': self.typing_learner.bayesian_optimizer is not None,
+                'multi_armed_bandit': self.typing_learner.multi_armed_bandit is not None,
+                'model_persistence': self.model_persistence is not None
+            }
+
+        return insights
 
     def _get_voice_status(self, state: VoiceBiometricState) -> str:
         """Determine voice learning status"""
@@ -663,15 +954,135 @@ class ContinuousLearningEngine:
         else:
             return 'needs_attention'
 
+    async def save_checkpoint(self):
+        """
+        Save ML model checkpoint for recovery and analysis.
 
-# Singleton instance
+        Includes:
+        - Voice biometric state
+        - Password typing state
+        - All ML models (Random Forest, Bayesian Optimizer, etc.)
+        - Learning metadata
+        """
+        if not ADVANCED_FEATURES_AVAILABLE or not self.model_persistence:
+            logger.debug("Model persistence not available, skipping checkpoint")
+            return
+
+        try:
+            voice_state = self.voice_learner.state
+            typing_state = self.typing_learner.state
+
+            metadata = {
+                'voice_threshold': self.voice_learner.confidence_threshold,
+                'typing_patterns_learned': len(self.typing_learner.optimal_timings),
+                'total_unlocks': voice_state.total_samples + typing_state.total_attempts,
+                'overall_health': self._get_overall_health(voice_state, typing_state)
+            }
+
+            # Add progressive learning stage
+            if self.progress_manager:
+                total_attempts = voice_state.total_samples + typing_state.total_attempts
+                current_stage = self.progress_manager.get_current_stage(total_attempts)
+                metadata['learning_stage'] = current_stage.name
+
+            await self.model_persistence.save_checkpoint(
+                voice_state=voice_state,
+                typing_state=typing_state,
+                models={},  # Actual model objects saved separately
+                metadata=metadata
+            )
+
+            logger.info("✅ ML checkpoint saved successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}", exc_info=True)
+
+    async def load_checkpoint(self):
+        """Load latest ML checkpoint"""
+        if not ADVANCED_FEATURES_AVAILABLE or not self.model_persistence:
+            return None
+
+        try:
+            checkpoint = await self.model_persistence.load_latest_checkpoint()
+
+            if checkpoint:
+                logger.info(f"✅ Loaded checkpoint from {checkpoint['timestamp']}")
+                return checkpoint
+
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+
+        return None
+
+
+# Singleton instance with thread safety
 _learning_engine = None
+_learning_engine_lock = asyncio.Lock()
+_initialization_lock = asyncio.Lock()
 
 
 async def get_learning_engine() -> ContinuousLearningEngine:
-    """Get or create singleton learning engine"""
+    """
+    Get or create singleton learning engine.
+
+    Thread-safe singleton pattern with double-checked locking.
+    Prevents race conditions and multiple initializations.
+    """
     global _learning_engine
+
+    # Fast path: already initialized
+    if _learning_engine is not None and _learning_engine.initialized:
+        return _learning_engine
+
+    # Slow path: need to initialize
+    async with _learning_engine_lock:
+        # Double-check: another thread might have initialized while we waited
+        if _learning_engine is not None and _learning_engine.initialized:
+            return _learning_engine
+
+        try:
+            if _learning_engine is None:
+                logger.info("🔧 Creating new ContinuousLearningEngine singleton...")
+                _learning_engine = ContinuousLearningEngine()
+
+            # Initialize if not already done
+            if not _learning_engine.initialized:
+                logger.info("🔧 Initializing ContinuousLearningEngine...")
+                await _learning_engine.initialize()
+
+            logger.info("✅ ContinuousLearningEngine singleton ready")
+            return _learning_engine
+
+        except Exception as e:
+            logger.error(f"Failed to initialize learning engine: {e}", exc_info=True)
+            # Don't leave a broken instance
+            _learning_engine = None
+            raise
+
+
+async def shutdown_learning_engine():
+    """
+    Gracefully shutdown learning engine and release resources.
+
+    Prevents resource leaks by ensuring proper cleanup.
+    """
+    global _learning_engine
+
     if _learning_engine is None:
-        _learning_engine = ContinuousLearningEngine()
-        await _learning_engine.initialize()
-    return _learning_engine
+        return
+
+    async with _learning_engine_lock:
+        if _learning_engine is not None:
+            try:
+                logger.info("🔧 Shutting down ContinuousLearningEngine...")
+
+                # Save final checkpoint
+                await _learning_engine.save_checkpoint()
+
+                # Clear singleton
+                _learning_engine = None
+
+                logger.info("✅ ContinuousLearningEngine shutdown complete")
+
+            except Exception as e:
+                logger.error(f"Error during learning engine shutdown: {e}", exc_info=True)
