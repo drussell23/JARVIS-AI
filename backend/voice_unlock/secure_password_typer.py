@@ -561,7 +561,8 @@ class SecurePasswordTyper:
             keycode = KEYCODE_MAP.get(char)
 
             if keycode is None:
-                logger.warning(f"⚠️ No keycode for character: '{char}' (ord: {ord(char)})")
+                logger.error(f"❌ MISSING KEYCODE for character: '{char}' (ord: {ord(char)})")
+                logger.error(f"❌ This character is not mapped in KEYCODE_MAP")
                 return False
 
             # Check if shift is needed
@@ -569,13 +570,14 @@ class SecurePasswordTyper:
 
             # Obfuscate character for logging (don't reveal password chars)
             char_display = char if char.isalnum() else '*'
-            logger.debug(f"🔐 Typing char '{char_display}' (keycode: 0x{keycode:02X}, shift: {needs_shift})")
+            logger.info(f"🔐 [CHAR-TYPE] Starting char '{char_display}' (keycode: 0x{keycode:02X}, shift: {needs_shift})")
 
             # ROBUST SHIFT HANDLING:
             # For shift characters, we need BOTH:
             # 1. Press physical shift key
             # 2. Set shift flag on the character event
             if needs_shift:
+                logger.info("🔐   [SHIFT] Character needs shift modifier")
                 # Press shift key down (physical key)
                 shift_keycode = 0x38  # Left shift
                 shift_down_event = CoreGraphics.CGEventCreateKeyboardEvent(
@@ -587,12 +589,17 @@ class SecurePasswordTyper:
                     CoreGraphics.CGEventSetFlags(shift_down_event, CGEventFlags.kCGEventFlagMaskShift)
                     CoreGraphics.CGEventPost(0, shift_down_event)
                     CoreGraphics.CFRelease(shift_down_event)
-                    logger.debug("🔐   Shift key pressed")
+                    logger.info("🔐   [SHIFT] Shift key DOWN event posted")
+                else:
+                    logger.error("❌   [SHIFT] Failed to create shift down event")
+                    return False
 
                 # Small delay for shift to register
                 await asyncio.sleep(0.03)
+                logger.info("🔐   [SHIFT] Shift registered (30ms delay)")
 
             # Key down
+            logger.info(f"🔐   [KEY-DOWN] Creating key down event for keycode 0x{keycode:02X}")
             event = CoreGraphics.CGEventCreateKeyboardEvent(
                 self.event_source,
                 keycode,
@@ -600,20 +607,25 @@ class SecurePasswordTyper:
             )
 
             if not event:
-                logger.error(f"❌ Failed to create key down event for char '{char_display}'")
+                logger.error(f"❌   [KEY-DOWN] FAILED to create key down event for char '{char_display}'")
+                logger.error(f"❌   [KEY-DOWN] CoreGraphics.CGEventCreateKeyboardEvent returned None")
                 # Release shift if it was pressed
                 if needs_shift:
                     await self._release_shift()
                 return False
 
+            logger.info(f"🔐   [KEY-DOWN] Event created successfully")
+
             # Set shift flag on the character event if needed
             if needs_shift:
                 CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
+                logger.info(f"🔐   [KEY-DOWN] Shift flag set on character event")
 
             # Post event
             CoreGraphics.CGEventPost(0, event)
+            logger.info(f"🔐   [KEY-DOWN] Event posted to system")
             CoreGraphics.CFRelease(event)
-            logger.debug(f"🔐   Key down event posted")
+            logger.info(f"🔐   [KEY-DOWN] Event released")
 
             # Key press duration (more generous timing for reliability)
             if randomize:
@@ -621,9 +633,11 @@ class SecurePasswordTyper:
             else:
                 duration = 0.05  # 50ms default
 
+            logger.info(f"🔐   [TIMING] Key press duration: {duration*1000:.1f}ms")
             await asyncio.sleep(duration)
 
             # Key up
+            logger.info(f"🔐   [KEY-UP] Creating key up event for keycode 0x{keycode:02X}")
             event = CoreGraphics.CGEventCreateKeyboardEvent(
                 self.event_source,
                 keycode,
@@ -631,29 +645,35 @@ class SecurePasswordTyper:
             )
 
             if not event:
-                logger.error(f"❌ Failed to create key up event for char '{char_display}'")
+                logger.error(f"❌   [KEY-UP] FAILED to create key up event for char '{char_display}'")
+                logger.error(f"❌   [KEY-UP] CoreGraphics.CGEventCreateKeyboardEvent returned None")
                 # Still need to release shift if it was pressed
                 if needs_shift:
                     await self._release_shift()
                 return False
 
+            logger.info(f"🔐   [KEY-UP] Event created successfully")
+
             # Set shift flag on key up event too if needed
             if needs_shift:
                 CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
+                logger.info(f"🔐   [KEY-UP] Shift flag set on key up event")
 
             CoreGraphics.CGEventPost(0, event)
+            logger.info(f"🔐   [KEY-UP] Event posted to system")
             CoreGraphics.CFRelease(event)
-            logger.debug(f"🔐   Key up event posted")
+            logger.info(f"🔐   [KEY-UP] Event released")
 
             # Release shift if it was pressed
             if needs_shift:
                 # Small delay before releasing shift
                 await asyncio.sleep(0.02)
+                logger.info("🔐   [SHIFT] Releasing shift key...")
 
                 await self._release_shift()
-                logger.debug("🔐   Shift key released")
+                logger.info("🔐   [SHIFT] Shift key released")
 
-            logger.debug(f"✅ Successfully typed char '{char_display}'")
+            logger.info(f"✅ [CHAR-TYPE] Successfully typed char '{char_display}'")
             return True
 
         except Exception as e:
@@ -780,11 +800,18 @@ class SecurePasswordTyper:
         """Type password characters one by one with robust timing"""
         try:
             logger.info(f"🔐 [SECURE-TYPE] Starting to type {len(password)} characters")
+            logger.info(f"🔐 [DEBUG] Password analysis:")
+            for i, char in enumerate(password):
+                char_type = "letter" if char.isalpha() else ("digit" if char.isdigit() else "special")
+                has_keycode = char in KEYCODE_MAP
+                needs_shift = char in SHIFT_CHARS
+                keycode = KEYCODE_MAP.get(char, None)
+                logger.info(f"🔐   Char {i+1}: type={char_type}, keycode={hex(keycode) if keycode else 'MISSING'}, shift={needs_shift}")
 
             for i, char in enumerate(password):
                 # Obfuscate for logging
                 char_display = char if char.isalnum() else '*'
-                logger.debug(f"🔐 Character {i+1}/{len(password)}: '{char_display}'")
+                logger.info(f"🔐 [TYPING] Character {i+1}/{len(password)}: '{char_display}'")
 
                 success = await self._type_character_secure(
                     char,
@@ -792,8 +819,12 @@ class SecurePasswordTyper:
                 )
 
                 if not success:
-                    logger.error(f"❌ Failed to type character {i+1}/{len(password)} ('{char_display}')")
+                    logger.error(f"❌ FAILED at character {i+1}/{len(password)} ('{char_display}')")
+                    logger.error(f"❌ Password chars typed so far: {i}/{len(password)}")
+                    logger.error(f"❌ Remaining chars: {len(password) - i}")
                     return False
+
+                logger.info(f"✅ Character {i+1} typed successfully")
 
                 # Inter-character delay (more generous for reliability)
                 if config.randomize_timing:

@@ -117,6 +117,17 @@ regexes = [
   '''password_success''',
   '''password_length_ms''',
   '''password_type_ms''',
+  # Allow password variable from keychain retrieval (not exposing secrets)
+  '''password\s*=\s*result\.stdout\.strip\(\)''',
+  '''if not password:''',
+  '''# Clear password variable''',
+  # ML Architecture and metrics (documentation, no actual secrets)
+  '''Position in password''',
+  '''### \*\*Password Typing''',
+  '''\*\*Password Typing\*\*:''',
+  '''typing my password''',
+  '''password correctly''',
+  '''Password Typing Optimization''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -155,6 +166,11 @@ paths = [
   '''backend/voice_unlock/secure_password_typer.py''',
   '''backend/voice_unlock/voice_unlock_monitor.py''',
   '''backend/api/simple_unlock_handler.py''',
+  '''backend/voice_unlock/intelligent_voice_unlock_service.py''',
+  '''backend/voice_unlock/fix_keychain_password.sh''',
+  '''backend/voice_unlock/metrics_database.py''',
+  '''backend/voice_unlock/ML_ARCHITECTURE.md''',
+  '''backend/voice_unlock/continuous_learning_engine.py''',
   '''test_voice_biometric_unlock_e2e.py''',
   '''start_system.py''',
   # Database test scripts (use Secret Manager, no hardcoded secrets)

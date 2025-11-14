@@ -1288,48 +1288,70 @@ class IntelligentVoiceUnlockService:
     async def _perform_unlock(
         self, speaker_name: str, context_analysis: Dict[str, Any], scenario_analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Perform actual screen unlock"""
+        """Perform actual screen unlock with enhanced error handling"""
         try:
             # Get password from keychain
             import subprocess
 
-            result = subprocess.run(
-                [
-                    "security",
-                    "find-generic-password",
-                    "-s",
-                    "JARVIS_Screen_Unlock",
-                    "-a",
-                    "jarvis_user",
-                    "-w",
-                ],
-                capture_output=True,
-                text=True,
-            )
+            # Try multiple keychain service names for compatibility
+            keychain_services = [
+                ("jarvis_voice_unlock", "jarvis"),  # Primary (new format)
+                ("JARVIS_Screen_Unlock", "jarvis_user"),  # Legacy format
+            ]
 
-            if result.returncode != 0:
+            password = None
+            service_used = None
+
+            for service_name, account_name in keychain_services:
+                result = subprocess.run(
+                    [
+                        "security",
+                        "find-generic-password",
+                        "-s",
+                        service_name,
+                        "-a",
+                        account_name,
+                        "-w",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+
+                if result.returncode == 0:
+                    password = result.stdout.strip()
+                    service_used = service_name
+                    logger.debug(f"Password found in keychain (service: {service_name})")
+                    break
+
+            if not password:
+                logger.error("Password not found in keychain")
+                logger.error("Tried services: jarvis_voice_unlock, JARVIS_Screen_Unlock")
+                logger.error("Run: ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/fix_keychain_password.sh")
                 return {
                     "success": False,
                     "reason": "password_not_found",
-                    "message": "Password not found in keychain",
+                    "message": "Password not found in keychain. Run fix_keychain_password.sh to fix.",
                 }
-
-            password = result.stdout.strip()
 
             # Use existing unlock handler
             from api.simple_unlock_handler import _perform_direct_unlock
 
             unlock_success = await _perform_direct_unlock(password)
 
+            if unlock_success:
+                logger.info(f"✅ Screen unlocked by {speaker_name} (keychain: {service_used})")
+            else:
+                logger.error(f"❌ Unlock failed for {speaker_name} - password may be incorrect")
+
             return {
                 "success": unlock_success,
                 "message": (
-                    f"Screen unlocked by {speaker_name}" if unlock_success else "Unlock failed"
+                    f"Screen unlocked by {speaker_name}" if unlock_success else "Unlock failed - password may be incorrect"
                 ),
             }
 
         except Exception as e:
-            logger.error(f"Unlock failed: {e}")
+            logger.error(f"Unlock failed: {e}", exc_info=True)
             return {"success": False, "reason": "unlock_error", "message": str(e)}
 
     async def _update_speaker_profile(
