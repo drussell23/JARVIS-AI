@@ -301,7 +301,19 @@ class IntelligentVoiceUnlockService:
         # Initialize diagnostics
         diagnostics = UnlockDiagnostics()
 
+        # Initialize advanced metrics logger with stage tracking
+        from voice_unlock.unlock_metrics_logger import get_metrics_logger, StageMetrics
+        metrics_logger = get_metrics_logger()
+        stages: List[StageMetrics] = []
+
         logger.info("🎤 Processing voice unlock command...")
+
+        # Stage 1: Audio Preparation
+        stage_audio_prep = metrics_logger.create_stage(
+            "audio_preparation",
+            input_type=type(audio_data).__name__,
+            input_size_raw=len(audio_data) if isinstance(audio_data, bytes) else 0
+        )
 
         # Convert audio to proper format with error handling
         try:
@@ -309,9 +321,26 @@ class IntelligentVoiceUnlockService:
             audio_data = prepare_audio_for_stt(audio_data)
             diagnostics.audio_size_bytes = len(audio_data) if audio_data else 0
             logger.info(f"📊 Audio prepared: {diagnostics.audio_size_bytes} bytes")
+
+            stage_audio_prep.complete(
+                success=True,
+                algorithm_used="prepare_audio_for_stt",
+                input_size_bytes=stage_audio_prep.metadata.get('input_size_raw', 0),
+                output_size_bytes=diagnostics.audio_size_bytes
+            )
+            stages.append(stage_audio_prep)
         except Exception as e:
             logger.error(f"❌ Audio preparation failed: {e}")
             diagnostics.error_messages.append(f"Audio preparation failed: {str(e)}")
+            stage_audio_prep.complete(success=False, error_message=str(e))
+            stages.append(stage_audio_prep)
+
+            # Log failed attempt
+            self._log_failed_unlock_attempt(
+                metrics_logger, stages, "audio_preparation_failed",
+                "Failed to prepare audio data", str(e)
+            )
+
             return await self._create_failure_response(
                 "audio_preparation_failed",
                 "Failed to prepare audio data",
@@ -525,45 +554,52 @@ class IntelligentVoiceUnlockService:
         except:
             pass
 
+        # Get speaker verification threshold dynamically
+        threshold = getattr(self.speaker_engine, 'threshold', 0.35) if self.speaker_engine else 0.35
+
         # Build detailed developer metrics (logged to JSON file)
         developer_metrics = {
             "biometrics": {
                 "speaker_confidence": verification_confidence,
                 "stt_confidence": stt_confidence,
-                "threshold": 0.35,  # Current threshold
-                "above_threshold": verification_confidence >= 0.35,
-                "confidence_margin": verification_confidence - 0.35,  # How far above/below threshold
+                "threshold": threshold,
+                "above_threshold": verification_confidence >= threshold,
+                "confidence_margin": verification_confidence - threshold,
                 "confidence_percentage": f"{verification_confidence * 100:.1f}%",
             },
             "performance": {
                 "total_latency_ms": total_latency_ms,
                 "transcription_time_ms": diagnostics.processing_time_ms if hasattr(self, 'diagnostics') else None,
-                "speaker_verification_time_ms": None,  # Can add if tracked
             },
             "quality_indicators": {
                 "audio_quality": "good" if stt_confidence > 0.7 else "fair" if stt_confidence > 0.5 else "poor",
-                "voice_match_quality": "excellent" if verification_confidence > 0.6 else "good" if verification_confidence > 0.45 else "acceptable" if verification_confidence > 0.35 else "below_threshold",
+                "voice_match_quality": "excellent" if verification_confidence > 0.6 else "good" if verification_confidence > 0.45 else "acceptable" if verification_confidence > threshold else "below_threshold",
                 "overall_confidence": (stt_confidence + verification_confidence) / 2,
             }
         }
 
-        # Log metrics to JSON file for developer analysis
+        # Get system information
+        import platform
+        import sys
+        system_info = {
+            "platform": platform.system(),
+            "platform_version": platform.version(),
+            "python_version": sys.version.split()[0],
+            "stt_engine": diagnostics.stt_engine_used,
+            "speaker_engine": "SpeechBrain" if self.speaker_engine else "None",
+        }
+
+        # Log advanced metrics with all stages to JSON file
         try:
-            from voice_unlock.unlock_metrics_logger import get_metrics_logger
-            metrics_logger = get_metrics_logger()
             metrics_logger.log_unlock_attempt(
                 success=unlock_result["success"],
                 speaker_name=speaker_identified,
                 transcribed_text=transcribed_text,
+                stages=stages,
                 biometrics=developer_metrics["biometrics"],
                 performance=developer_metrics["performance"],
                 quality_indicators=developer_metrics["quality_indicators"],
-                processing_stages={
-                    "transcription": {"confidence": stt_confidence, "text": transcribed_text},
-                    "speaker_verification": {"confidence": verification_confidence, "speaker": speaker_identified},
-                    "owner_verification": {"is_owner": True},
-                    "unlock_execution": {"success": unlock_result["success"]}
-                },
+                system_info=system_info,
                 error=None if unlock_result["success"] else unlock_result.get("message")
             )
         except Exception as e:
