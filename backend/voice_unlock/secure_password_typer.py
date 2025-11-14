@@ -46,6 +46,22 @@ from enum import IntEnum
 from typing import Optional, Dict, List, Tuple, Any
 from weakref import WeakValueDictionary
 
+try:
+    import numpy as np
+except ImportError:
+    # Fallback if numpy not available
+    class np:
+        @staticmethod
+        def mean(data):
+            return sum(data) / len(data) if data else 0
+        @staticmethod
+        def std(data):
+            if not data or len(data) < 2:
+                return 0
+            mean_val = sum(data) / len(data)
+            variance = sum((x - mean_val) ** 2 for x in data) / len(data)
+            return variance ** 0.5
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,6 +189,73 @@ class TypingConfig:
 
 
 @dataclass
+class CharacterMetric:
+    """Detailed metrics for a single character typed - for ML training"""
+
+    char_position: int
+    char_type: str  # 'letter', 'digit', 'special'
+    char_case: Optional[str]  # 'upper', 'lower', 'none'
+    requires_shift: bool
+    keycode: str  # Hex format: '0x02'
+
+    # Timing with microsecond precision
+    char_start_time_ms: float
+    char_end_time_ms: float = 0.0
+    total_duration_ms: float = 0.0
+
+    # Shift handling timing
+    shift_down_duration_ms: float = 0.0
+    shift_registered_delay_ms: float = 0.0
+    shift_up_delay_ms: float = 0.0
+
+    # Key event success tracking
+    key_down_created: bool = False
+    key_down_posted: bool = False
+    key_press_duration_ms: float = 0.0
+    key_up_created: bool = False
+    key_up_posted: bool = False
+
+    # Success/failure
+    success: bool = False
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_attempted: bool = False
+
+    # Inter-character delay
+    inter_char_delay_ms: float = 0.0
+
+    # System context
+    system_load_at_char: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for database storage"""
+        return {
+            'char_position': self.char_position,
+            'char_type': self.char_type,
+            'char_case': self.char_case,
+            'requires_shift': self.requires_shift,
+            'keycode': self.keycode,
+            'char_start_time_ms': self.char_start_time_ms,
+            'char_end_time_ms': self.char_end_time_ms,
+            'total_duration_ms': self.total_duration_ms,
+            'shift_down_duration_ms': self.shift_down_duration_ms,
+            'shift_registered_delay_ms': self.shift_registered_delay_ms,
+            'shift_up_delay_ms': self.shift_up_delay_ms,
+            'key_down_created': self.key_down_created,
+            'key_down_posted': self.key_down_posted,
+            'key_press_duration_ms': self.key_press_duration_ms,
+            'key_up_created': self.key_up_created,
+            'key_up_posted': self.key_up_posted,
+            'success': self.success,
+            'error_type': self.error_type,
+            'error_message': self.error_message,
+            'retry_attempted': self.retry_attempted,
+            'inter_char_delay_ms': self.inter_char_delay_ms,
+            'system_load_at_char': self.system_load_at_char
+        }
+
+
+@dataclass
 class TypingMetrics:
     """Metrics for password typing operations"""
 
@@ -196,6 +279,10 @@ class TypingMetrics:
     system_load: Optional[float] = None
     memory_cleared: bool = False
 
+    # 🤖 ML TRAINING: Character-level metrics
+    character_metrics: List[CharacterMetric] = field(default_factory=list)
+    failed_at_character: Optional[int] = None
+
     def finalize(self):
         """Finalize metrics"""
         self.end_time = time.time()
@@ -215,7 +302,42 @@ class TypingMetrics:
             "success": self.success,
             "error_message": self.error_message,
             "system_load": self.system_load,
-            "memory_cleared": self.memory_cleared
+            "memory_cleared": self.memory_cleared,
+            "failed_at_character": self.failed_at_character,
+            "character_count": len(self.character_metrics)
+        }
+
+    def get_session_data(self) -> Dict[str, Any]:
+        """Get session-level data for ML database"""
+        from datetime import datetime
+
+        char_durations = [c.total_duration_ms for c in self.character_metrics if c.total_duration_ms > 0]
+        inter_delays = [c.inter_char_delay_ms for c in self.character_metrics if c.inter_char_delay_ms > 0]
+        shift_durations = [c.shift_down_duration_ms for c in self.character_metrics if c.shift_down_duration_ms > 0]
+        shift_delays = [c.shift_up_delay_ms for c in self.character_metrics if c.shift_up_delay_ms > 0]
+
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'success': self.success,
+            'total_characters': self.characters_typed,
+            'characters_typed': len(self.character_metrics),
+            'typing_method': 'applescript_fallback' if self.fallback_used else 'core_graphics',
+            'fallback_used': self.fallback_used,
+            'total_typing_duration_ms': self.total_duration_ms,
+            'avg_char_duration_ms': sum(char_durations) / len(char_durations) if char_durations else 0,
+            'min_char_duration_ms': min(char_durations) if char_durations else 0,
+            'max_char_duration_ms': max(char_durations) if char_durations else 0,
+            'system_load': self.system_load,
+            'memory_pressure': 'normal',  # TODO: Detect actual memory pressure
+            'screen_locked': True,  # Assumed during password typing
+            'inter_char_delay_avg_ms': sum(inter_delays) / len(inter_delays) if inter_delays else 0,
+            'inter_char_delay_std_ms': np.std(inter_delays) if inter_delays and len(inter_delays) > 1 else 0,
+            'shift_press_duration_avg_ms': sum(shift_durations) / len(shift_durations) if shift_durations else 0,
+            'shift_release_delay_avg_ms': sum(shift_delays) / len(shift_delays) if shift_delays else 0,
+            'failed_at_character': self.failed_at_character,
+            'retry_count': self.retries,
+            'time_of_day': datetime.now().strftime('%H:%M'),
+            'day_of_week': datetime.now().strftime('%A')
         }
 
 
@@ -797,7 +919,11 @@ class SecurePasswordTyper:
             return False, metrics
     
     async def _type_password_characters(self, password: str, config: TypingConfig, metrics: TypingMetrics) -> bool:
-        """Type password characters one by one with robust timing"""
+        """
+        Type password characters with FULL ML metrics collection.
+
+        Collects microsecond-level timing data for each character for continuous learning.
+        """
         try:
             logger.info(f"🔐 [SECURE-TYPE] Starting to type {len(password)} characters")
             logger.info(f"🔐 [DEBUG] Password analysis:")
@@ -808,23 +934,84 @@ class SecurePasswordTyper:
                 keycode = KEYCODE_MAP.get(char, None)
                 logger.info(f"🔐   Char {i+1}: type={char_type}, keycode={hex(keycode) if keycode else 'MISSING'}, shift={needs_shift}")
 
+            last_char_end_time = time.time() * 1000  # milliseconds
+
             for i, char in enumerate(password):
+                char_start_time = time.time() * 1000
+
+                # Create character metric for ML training
+                char_type = "letter" if char.isalpha() else ("digit" if char.isdigit() else "special")
+                char_case = "upper" if char.isupper() else ("lower" if char.islower() else "none")
+                needs_shift = char in SHIFT_CHARS
+                keycode = KEYCODE_MAP.get(char)
+
+                char_metric = CharacterMetric(
+                    char_position=i + 1,
+                    char_type=char_type,
+                    char_case=char_case,
+                    requires_shift=needs_shift,
+                    keycode=hex(keycode) if keycode else 'MISSING',
+                    char_start_time_ms=char_start_time,
+                    system_load_at_char=metrics.system_load
+                )
+
+                # Calculate inter-character delay
+                if i > 0:
+                    char_metric.inter_char_delay_ms = char_start_time - last_char_end_time
+
                 # Obfuscate for logging
                 char_display = char if char.isalnum() else '*'
                 logger.info(f"🔐 [TYPING] Character {i+1}/{len(password)}: '{char_display}'")
 
-                success = await self._type_character_secure(
-                    char,
-                    randomize=config.randomize_timing
-                )
+                # Attempt to type character
+                try:
+                    success = await self._type_character_secure_with_metrics(
+                        char,
+                        char_metric,
+                        randomize=config.randomize_timing
+                    )
 
-                if not success:
-                    logger.error(f"❌ FAILED at character {i+1}/{len(password)} ('{char_display}')")
-                    logger.error(f"❌ Password chars typed so far: {i}/{len(password)}")
-                    logger.error(f"❌ Remaining chars: {len(password) - i}")
+                    char_metric.success = success
+
+                    if not success:
+                        logger.error(f"❌ FAILED at character {i+1}/{len(password)} ('{char_display}')")
+                        logger.error(f"❌ Password chars typed so far: {i}/{len(password)}")
+                        logger.error(f"❌ Remaining chars: {len(password) - i}")
+
+                        # Mark failure point for ML
+                        metrics.failed_at_character = i + 1
+                        char_metric.error_type = "typing_failed"
+
+                        # Add to metrics anyway (failures are valuable learning data!)
+                        char_metric.char_end_time_ms = time.time() * 1000
+                        char_metric.total_duration_ms = char_metric.char_end_time_ms - char_start_time
+                        metrics.character_metrics.append(char_metric)
+
+                        return False
+
+                    logger.info(f"✅ Character {i+1} typed successfully")
+
+                except Exception as e:
+                    logger.error(f"❌ Exception typing character {i+1}: {e}")
+                    char_metric.success = False
+                    char_metric.error_type = "exception"
+                    char_metric.error_message = str(e)
+                    metrics.failed_at_character = i + 1
+
+                    # Add to metrics
+                    char_metric.char_end_time_ms = time.time() * 1000
+                    char_metric.total_duration_ms = char_metric.char_end_time_ms - char_start_time
+                    metrics.character_metrics.append(char_metric)
+
                     return False
 
-                logger.info(f"✅ Character {i+1} typed successfully")
+                # Finalize character metric
+                char_metric.char_end_time_ms = time.time() * 1000
+                char_metric.total_duration_ms = char_metric.char_end_time_ms - char_start_time
+
+                # Add to metrics collection
+                metrics.character_metrics.append(char_metric)
+                metrics.characters_typed += 1
 
                 # Inter-character delay (more generous for reliability)
                 if config.randomize_timing:
@@ -839,11 +1026,169 @@ class SecurePasswordTyper:
 
                 await asyncio.sleep(delay)
 
+                last_char_end_time = time.time() * 1000
+
             logger.info(f"✅ [SECURE-TYPE] Successfully typed all {len(password)} characters")
+            logger.info(f"📊 [ML-DATA] Collected {len(metrics.character_metrics)} character metrics for learning")
             return True
 
         except Exception as e:
             logger.error(f"❌ Failed to type password characters: {e}", exc_info=True)
+            return False
+
+    async def _type_character_secure_with_metrics(
+        self,
+        char: str,
+        char_metric: CharacterMetric,
+        randomize: bool = True
+    ) -> bool:
+        """
+        Type character and collect detailed metrics for ML training.
+
+        This is the core method that captures microsecond-level timing data.
+        """
+        try:
+            keycode = KEYCODE_MAP.get(char)
+
+            if keycode is None:
+                logger.error(f"❌ MISSING KEYCODE for character: '{char}' (ord: {ord(char)})")
+                char_metric.error_type = "keycode_missing"
+                char_metric.error_message = f"No keycode mapping for char ord={ord(char)}"
+                return False
+
+            needs_shift = char in SHIFT_CHARS
+            char_display = char if char.isalnum() else '*'
+
+            logger.info(f"🔐 [CHAR-TYPE] Starting char '{char_display}' (keycode: 0x{keycode:02X}, shift: {needs_shift})")
+
+            shift_start_time = None
+            shift_registered_time = None
+
+            # Handle shift key
+            if needs_shift:
+                shift_start_time = time.time() * 1000
+                logger.info("🔐   [SHIFT] Character needs shift modifier")
+
+                shift_keycode = 0x38  # Left shift
+                shift_down_event = CoreGraphics.CGEventCreateKeyboardEvent(
+                    self.event_source,
+                    shift_keycode,
+                    True
+                )
+
+                if shift_down_event:
+                    CoreGraphics.CGEventSetFlags(shift_down_event, CGEventFlags.kCGEventFlagMaskShift)
+                    CoreGraphics.CGEventPost(0, shift_down_event)
+                    CoreGraphics.CFRelease(shift_down_event)
+                    logger.info("🔐   [SHIFT] Shift key DOWN event posted")
+
+                    # Record shift timing
+                    char_metric.shift_down_duration_ms = (time.time() * 1000) - shift_start_time
+                else:
+                    logger.error("❌   [SHIFT] Failed to create shift down event")
+                    char_metric.error_type = "shift_event_failed"
+                    return False
+
+                # Delay for shift to register
+                await asyncio.sleep(0.03)
+                shift_registered_time = time.time() * 1000
+                char_metric.shift_registered_delay_ms = shift_registered_time - shift_start_time
+
+                logger.info("🔐   [SHIFT] Shift registered (30ms delay)")
+
+            # Key down
+            key_down_start = time.time() * 1000
+            logger.info(f"🔐   [KEY-DOWN] Creating key down event for keycode 0x{keycode:02X}")
+
+            event = CoreGraphics.CGEventCreateKeyboardEvent(
+                self.event_source,
+                keycode,
+                True
+            )
+
+            if not event:
+                logger.error(f"❌   [KEY-DOWN] FAILED to create key down event")
+                char_metric.error_type = "key_down_create_failed"
+                if needs_shift:
+                    await self._release_shift()
+                return False
+
+            char_metric.key_down_created = True
+            logger.info(f"🔐   [KEY-DOWN] Event created successfully")
+
+            if needs_shift:
+                CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
+                logger.info(f"🔐   [KEY-DOWN] Shift flag set on character event")
+
+            CoreGraphics.CGEventPost(0, event)
+            char_metric.key_down_posted = True
+            logger.info(f"🔐   [KEY-DOWN] Event posted to system")
+            CoreGraphics.CFRelease(event)
+            logger.info(f"🔐   [KEY-DOWN] Event released")
+
+            # Key press duration
+            if randomize:
+                duration = 0.04 + (hash(char) % 30) / 1000.0  # 40-70ms
+            else:
+                duration = 0.05  # 50ms default
+
+            logger.info(f"🔐   [TIMING] Key press duration: {duration*1000:.1f}ms")
+            await asyncio.sleep(duration)
+
+            # Key up
+            key_up_start = time.time() * 1000
+            char_metric.key_press_duration_ms = key_up_start - key_down_start
+
+            logger.info(f"🔐   [KEY-UP] Creating key up event for keycode 0x{keycode:02X}")
+
+            event = CoreGraphics.CGEventCreateKeyboardEvent(
+                self.event_source,
+                keycode,
+                False
+            )
+
+            if not event:
+                logger.error(f"❌   [KEY-UP] FAILED to create key up event")
+                char_metric.error_type = "key_up_create_failed"
+                if needs_shift:
+                    await self._release_shift()
+                return False
+
+            char_metric.key_up_created = True
+            logger.info(f"🔐   [KEY-UP] Event created successfully")
+
+            if needs_shift:
+                CoreGraphics.CGEventSetFlags(event, CGEventFlags.kCGEventFlagMaskShift)
+                logger.info(f"🔐   [KEY-UP] Shift flag set on key up event")
+
+            CoreGraphics.CGEventPost(0, event)
+            char_metric.key_up_posted = True
+            logger.info(f"🔐   [KEY-UP] Event posted to system")
+            CoreGraphics.CFRelease(event)
+            logger.info(f"🔐   [KEY-UP] Event released")
+
+            # Release shift
+            if needs_shift:
+                shift_release_start = time.time() * 1000
+                await asyncio.sleep(0.02)
+                logger.info("🔐   [SHIFT] Releasing shift key...")
+
+                await self._release_shift()
+                char_metric.shift_up_delay_ms = (time.time() * 1000) - shift_release_start
+                logger.info("🔐   [SHIFT] Shift key released")
+
+            logger.info(f"✅ [CHAR-TYPE] Successfully typed char '{char_display}'")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to type character: {e}", exc_info=True)
+            char_metric.error_type = "exception"
+            char_metric.error_message = str(e)
+            try:
+                if 'needs_shift' in locals() and needs_shift:
+                    await self._release_shift()
+            except:
+                pass
             return False
     
     async def _press_return_secure(self, config: TypingConfig) -> bool:
@@ -904,23 +1249,26 @@ def get_secure_typer() -> SecurePasswordTyper:
 async def type_password_securely(
     password: str,
     submit: bool = True,
-    randomize_timing: bool = True
-) -> bool:
+    randomize_timing: bool = True,
+    attempt_id: Optional[int] = None
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """
-    Convenience function to type password securely.
+    Convenience function to type password securely with ML metrics collection.
 
     Args:
         password: Password to type
         submit: Press Enter after typing
         randomize_timing: Use human-like timing
+        attempt_id: Unlock attempt ID for ML database (if provided, stores metrics)
 
     Returns:
-        bool: Success status
+        Tuple of (success: bool, metrics_dict: Optional[Dict])
 
     Example:
-        >>> success = await type_password_securely("MySecurePass123!")
+        >>> success, metrics = await type_password_securely("MySecurePass123!", attempt_id=42)
         >>> if success:
         ...     print("Password typed securely")
+        ...     print(f"Collected {len(metrics['character_metrics'])} character metrics")
     """
     typer = get_secure_typer()
 
@@ -937,7 +1285,36 @@ async def type_password_securely(
         config_override=config
     )
 
-    return success
+    # 🤖 CONTINUOUS LEARNING: Store metrics in database if attempt_id provided
+    if attempt_id is not None:
+        try:
+            from voice_unlock.metrics_database import get_metrics_database
+
+            db = get_metrics_database()
+
+            # Prepare session data
+            session_data = metrics.get_session_data()
+
+            # Prepare character metrics
+            char_metrics_list = [cm.to_dict() for cm in metrics.character_metrics]
+
+            # Store in database for ML training
+            session_id = await db.store_typing_session(
+                attempt_id=attempt_id,
+                session_data=session_data,
+                character_metrics=char_metrics_list
+            )
+
+            if session_id:
+                logger.info(f"📊 [ML-STORAGE] Stored typing session {session_id} with {len(char_metrics_list)} character metrics")
+            else:
+                logger.warning("⚠️ Failed to store typing metrics in database")
+
+        except Exception as e:
+            logger.error(f"Failed to store typing metrics: {e}", exc_info=True)
+
+    # Return both success and metrics (for compatibility)
+    return success, metrics.to_dict() if metrics else None
 
 
 async def main():

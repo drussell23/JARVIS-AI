@@ -94,6 +94,9 @@ class IntelligentVoiceUnlockService:
         self.owner_profile = None
         self.owner_password_hash = None
 
+        # 🤖 CONTINUOUS LEARNING: ML engine for voice biometrics and password typing
+        self.ml_engine = None
+
         # Statistics
         self.stats = {
             "total_unlock_attempts": 0,
@@ -102,6 +105,8 @@ class IntelligentVoiceUnlockService:
             "successful_unlocks": 0,
             "failed_authentications": 0,
             "learning_updates": 0,
+            "ml_voice_updates": 0,
+            "ml_typing_updates": 0,
             "last_unlock_time": None,
         }
 
@@ -126,6 +131,9 @@ class IntelligentVoiceUnlockService:
 
         # Initialize SAI Analyzer
         await self._initialize_sai()
+
+        # 🤖 Initialize ML Continuous Learning Engine
+        await self._initialize_ml_engine()
 
         # Load owner profile
         await self._load_owner_profile()
@@ -201,6 +209,18 @@ class IntelligentVoiceUnlockService:
         except Exception as e:
             logger.warning(f"SAI not available: {e}")
             self.sai_analyzer = None
+
+    async def _initialize_ml_engine(self):
+        """🤖 Initialize ML Continuous Learning Engine"""
+        try:
+            from voice_unlock.continuous_learning_engine import get_learning_engine
+
+            self.ml_engine = get_learning_engine()
+            await self.ml_engine.initialize()
+            logger.info("✅ 🤖 ML Continuous Learning Engine connected")
+        except Exception as e:
+            logger.warning(f"ML Learning Engine not available: {e}")
+            self.ml_engine = None
 
     async def _load_owner_profile(self):
         """Load or create owner profile"""
@@ -528,6 +548,20 @@ class IntelligentVoiceUnlockService:
         )
         stages.append(stage_biometric)
 
+        # 🤖 ML LEARNING: Update voice biometric model (learn from this attempt)
+        if self.ml_engine:
+            try:
+                await self.ml_engine.voice_learner.update_from_attempt(
+                    confidence=verification_confidence,
+                    success=verification_passed,
+                    is_owner=True,  # We verified this is the owner (passed owner check)
+                    audio_quality=stt_confidence
+                )
+                self.stats["ml_voice_updates"] += 1
+                logger.debug(f"🤖 ML: Voice biometric model updated (confidence: {verification_confidence:.2%})")
+            except Exception as e:
+                logger.error(f"ML voice learning update failed: {e}")
+
         if not verification_passed:
             self.stats["failed_authentications"] += 1
 
@@ -626,6 +660,20 @@ class IntelligentVoiceUnlockService:
         )
         stages.append(stage_scenario)
 
+        # 🤖 ML LEARNING: Record unlock attempt BEFORE performing unlock to get attempt_id
+        # This allows password typing metrics to be linked to the unlock attempt
+        attempt_id = await self._record_unlock_attempt(
+            speaker_name=speaker_identified,
+            transcribed_text=transcribed_text,
+            success=True,  # Will be updated after unlock completes
+            rejection_reason=None,
+            audio_data=audio_data,
+            stt_confidence=stt_confidence,
+            speaker_confidence=verification_confidence,
+            context_data=context_analysis,
+            scenario_data=scenario_analysis,
+        )
+
         # Stage 9: Screen Unlock Execution
         stage_unlock = metrics_logger.create_stage(
             "unlock_execution",
@@ -633,20 +681,21 @@ class IntelligentVoiceUnlockService:
         )
 
         unlock_result = await self._perform_unlock(
-            speaker_identified, context_analysis, scenario_analysis
+            speaker_identified, context_analysis, scenario_analysis, attempt_id=attempt_id
         )
 
         stage_unlock.complete(
             success=unlock_result["success"],
-            algorithm_used="macOS AppleScript password entry",
+            algorithm_used="macOS SecurePasswordTyper with ML metrics",
             metadata={
                 'unlock_method': 'password_entry',
-                'result_message': unlock_result.get("message")
+                'result_message': unlock_result.get("message"),
+                'ml_attempt_id': attempt_id
             }
         )
         stages.append(stage_unlock)
 
-        # Step 8: Record successful unlock attempt
+        # Step 8: Update stats and speaker profile
         if unlock_result["success"]:
             self.stats["successful_unlocks"] += 1
             self.stats["last_unlock_time"] = datetime.now()
@@ -657,19 +706,6 @@ class IntelligentVoiceUnlockService:
             await self._update_speaker_profile(
                 speaker_identified, audio_data, transcribed_text, success=True
             )
-
-        # Record to database
-        await self._record_unlock_attempt(
-            speaker_name=speaker_identified,
-            transcribed_text=transcribed_text,
-            success=unlock_result["success"],
-            rejection_reason=unlock_result.get("reason") if not unlock_result["success"] else None,
-            audio_data=audio_data,
-            stt_confidence=stt_confidence,
-            speaker_confidence=verification_confidence,
-            context_data=context_analysis,
-            scenario_data=scenario_analysis,
-        )
 
         # Calculate total latency
         total_latency_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -1286,9 +1322,9 @@ class IntelligentVoiceUnlockService:
             return {"available": False, "error": str(e)}
 
     async def _perform_unlock(
-        self, speaker_name: str, context_analysis: Dict[str, Any], scenario_analysis: Dict[str, Any]
+        self, speaker_name: str, context_analysis: Dict[str, Any], scenario_analysis: Dict[str, Any], attempt_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Perform actual screen unlock with enhanced error handling"""
+        """Perform actual screen unlock with enhanced error handling and ML metrics collection"""
         try:
             # Get password from keychain
             import subprocess
@@ -1333,10 +1369,25 @@ class IntelligentVoiceUnlockService:
                     "message": "Password not found in keychain. Run fix_keychain_password.sh to fix.",
                 }
 
-            # Use existing unlock handler
-            from api.simple_unlock_handler import _perform_direct_unlock
+            # 🤖 ML LEARNING: Type password with ML metrics collection
+            # Pass attempt_id to enable character-level metrics storage
+            from voice_unlock.secure_password_typer import type_password_securely
 
-            unlock_success = await _perform_direct_unlock(password)
+            unlock_success, typing_metrics = await type_password_securely(
+                password=password,
+                submit=True,
+                randomize_timing=True,
+                attempt_id=attempt_id  # Enable ML metrics collection
+            )
+
+            # 🤖 ML LEARNING: Update typing model with results
+            if self.ml_engine and typing_metrics:
+                try:
+                    await self.ml_engine.typing_learner.update_from_typing_session(typing_metrics)
+                    self.stats["ml_typing_updates"] += 1
+                    logger.debug(f"🤖 ML: Password typing model updated (success: {unlock_success})")
+                except Exception as e:
+                    logger.error(f"ML typing learning update failed: {e}")
 
             if unlock_success:
                 logger.info(f"✅ Screen unlocked by {speaker_name} (keychain: {service_used})")
@@ -1405,10 +1456,15 @@ class IntelligentVoiceUnlockService:
         context_data: Optional[Dict[str, Any]] = None,
         scenario_data: Optional[Dict[str, Any]] = None,
         security_analysis: Optional[Dict[str, Any]] = None,
-    ):
-        """Record unlock attempt to learning database with full security analysis"""
+    ) -> Optional[int]:
+        """
+        Record unlock attempt to learning database with full security analysis
+
+        Returns:
+            Optional[int]: Attempt ID for ML metrics linkage
+        """
         if not self.learning_db:
-            return
+            return None
 
         try:
             # Record voice sample
@@ -1454,8 +1510,11 @@ class IntelligentVoiceUnlockService:
                     f"🚨 HIGH THREAT: {speaker_name} - {security_analysis.get('scenario')} - Attempt #{security_analysis.get('historical_context', {}).get('recent_attempts_24h', 0)}"
                 )
 
+            return interaction_id
+
         except Exception as e:
             logger.error(f"Failed to record unlock attempt: {e}")
+            return None
 
     async def _analyze_security_event(
         self,
