@@ -492,6 +492,151 @@ class VoiceUnlockMetricsMonitor:
                     except:
                         pass
 
+    async def _send_macos_notification(self, title: str, message: str, subtitle: str = None, sound: bool = True, critical: bool = False):
+        """
+        Send native macOS notification using osascript (fully async)
+
+        Args:
+            title: Notification title
+            message: Main notification message
+            subtitle: Optional subtitle
+            sound: Whether to play notification sound
+            critical: Whether this is a critical alert (for failures)
+        """
+        try:
+            # Choose sound based on success/failure
+            sound_name = "Glass" if not critical else "Basso"
+
+            # Build AppleScript for notification
+            script_parts = [
+                'display notification',
+                f'"{message}"',
+                f'with title "{title}"'
+            ]
+
+            if subtitle:
+                # Escape quotes in subtitle
+                subtitle_safe = subtitle.replace('"', '\\"')
+                script_parts.append(f'subtitle "{subtitle_safe}"')
+
+            if sound:
+                script_parts.append(f'sound name "{sound_name}"')
+
+            script = ' '.join(script_parts)
+
+            # Execute AppleScript asynchronously (non-blocking)
+            process = await asyncio.create_subprocess_exec(
+                'osascript', '-e', script,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+
+            # Don't wait for completion - fire and forget
+            asyncio.create_task(process.wait())
+
+            logger.debug(f"📱 Sent macOS notification: {title}")
+
+        except Exception as e:
+            logger.debug(f"Failed to send macOS notification: {e}")
+
+    async def _send_advanced_notification(self, success: bool, speaker: str, confidence: float,
+                                          duration_sec: float, margin: float, trend: str,
+                                          session_attempts: int, session_successes: int):
+        """
+        Send advanced macOS notification with rich details (fully async)
+
+        Uses terminal-notifier if available for enhanced notifications with buttons,
+        otherwise falls back to osascript
+        """
+        try:
+            # Check if terminal-notifier is available (more advanced notifications)
+            check_process = await asyncio.create_subprocess_exec(
+                'which', 'terminal-notifier',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await check_process.wait()
+            has_terminal_notifier = check_process.returncode == 0
+
+            if has_terminal_notifier:
+                # Advanced notification with terminal-notifier
+                await self._send_terminal_notifier_notification(
+                    success, speaker, confidence, duration_sec, margin,
+                    trend, session_attempts, session_successes
+                )
+            else:
+                # Fallback to basic osascript notification
+                await self._send_basic_notification(
+                    success, speaker, confidence, duration_sec, margin,
+                    trend, session_attempts, session_successes
+                )
+
+        except Exception as e:
+            logger.debug(f"Failed to send advanced notification: {e}")
+
+    async def _send_terminal_notifier_notification(self, success: bool, speaker: str, confidence: float,
+                                                   duration_sec: float, margin: float, trend: str,
+                                                   session_attempts: int, session_successes: int):
+        """Send rich notification using terminal-notifier (fully async)"""
+        try:
+            trend_emoji = "📈" if trend == "improving" else "📉" if trend == "declining" else "➡️"
+            status_emoji = "✅" if success else "❌"
+            success_rate = (session_successes / session_attempts * 100) if session_attempts > 0 else 0
+
+            title = f"{status_emoji} Voice Unlock {'SUCCESS' if success else 'FAILED'}"
+            subtitle = f"{speaker} • {confidence:.1%} confidence {trend_emoji}"
+            message = (
+                f"⚡ Duration: {duration_sec:.1f}s\n"
+                f"📊 Margin: {margin:+.1%}\n"
+                f"📈 Session: {session_successes}/{session_attempts} ({success_rate:.0f}%)"
+            )
+
+            sound = "Glass" if success else "Basso"
+
+            # Execute terminal-notifier asynchronously
+            process = await asyncio.create_subprocess_exec(
+                'terminal-notifier',
+                '-title', title,
+                '-subtitle', subtitle,
+                '-message', message,
+                '-sound', sound,
+                '-group', 'jarvis-voice-unlock',  # Groups notifications together
+                '-sender', 'com.apple.Terminal',  # Shows Terminal icon
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+
+            # Fire and forget - don't wait for completion
+            asyncio.create_task(process.wait())
+
+            logger.debug(f"📱 Sent terminal-notifier notification")
+
+        except Exception as e:
+            logger.debug(f"terminal-notifier failed: {e}")
+
+    async def _send_basic_notification(self, success: bool, speaker: str, confidence: float,
+                                       duration_sec: float, margin: float, trend: str,
+                                       session_attempts: int, session_successes: int):
+        """Send basic notification using osascript (fully async)"""
+        trend_emoji = "📈" if trend == "improving" else "📉" if trend == "declining" else "➡️"
+        success_rate = (session_successes / session_attempts * 100) if session_attempts > 0 else 0
+
+        title = f"🔐 Voice Unlock: {'SUCCESS' if success else 'FAILED'}"
+        subtitle = f"{speaker} • {confidence:.1%} confidence {trend_emoji}"
+        message = (
+            f"Duration: {duration_sec:.1f}s | "
+            f"Margin: {margin:+.1%} | "
+            f"Session: {session_successes}/{session_attempts} ({success_rate:.0f}%)"
+        )
+
+        await self._send_macos_notification(
+            title=title,
+            subtitle=subtitle,
+            message=message,
+            sound=True,
+            critical=not success
+        )
+
     async def _process_new_attempt(self, attempt_data):
         """Process and log a new unlock attempt"""
         timestamp, success, speaker, confidence, threshold, duration_ms, trend = attempt_data
@@ -522,6 +667,18 @@ class VoiceUnlockMetricsMonitor:
         margin = confidence - threshold
         margin_pct = (margin / threshold * 100) if threshold > 0 else 0
 
+        # Send advanced macOS Notification Center alert (fully async, non-blocking)
+        await self._send_advanced_notification(
+            success=success,
+            speaker=speaker,
+            confidence=confidence,
+            duration_sec=duration_sec,
+            margin=margin,
+            trend=trend,
+            session_attempts=self.session_stats['total_attempts'],
+            session_successes=self.session_stats['successful_attempts']
+        )
+
         # Professional logging
         logger.info("")
         logger.info("=" * 80)
@@ -547,6 +704,7 @@ class VoiceUnlockMetricsMonitor:
         logger.info(f"   └─ Avg Duration: {self.session_stats['avg_duration_ms']/1000:.1f}s")
         logger.info("")
         logger.info("💡 Database Updated - Press F5 in DB Browser to see latest data")
+        logger.info("📱 macOS Notification Sent - Check Notification Center")
         logger.info("=" * 80)
         logger.info("")
 

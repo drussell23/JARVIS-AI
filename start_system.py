@@ -8379,9 +8379,11 @@ except Exception as e:
             print(f"   • {Colors.CYAN}Storage:{Colors.ENDC} JSON + SQLite + CloudSQL (triple backup)")
             print(f"   • {Colors.CYAN}Metrics:{Colors.ENDC} Confidence trends, stage performance, biometric analysis")
             print(f"   • {Colors.CYAN}Database:{Colors.ENDC} ~/.jarvis/logs/unlock_metrics/unlock_metrics.db")
+            print(f"   • {Colors.CYAN}Notifications:{Colors.ENDC} macOS Notification Center alerts (async)")
             print(f"   • {Colors.CYAN}Protection:{Colors.ENDC} Auto-recovery from corruption, disk space validation")
             print(f"   • {Colors.CYAN}Concurrency:{Colors.ENDC} WAL mode + retry logic for locked database")
             print(f"{Colors.BLUE}   💡 Press F5 in DB Browser to refresh and see new unlock attempts{Colors.ENDC}")
+            print(f"{Colors.BLUE}   📱 You'll receive macOS notifications for every voice unlock attempt!{Colors.ENDC}")
 
         except Exception as e:
             logger.warning(f"Advanced metrics monitor initialization failed: {e}")
