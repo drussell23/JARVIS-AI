@@ -15,6 +15,32 @@ Features:
 - Disk space validation and database corruption recovery
 - Process cleanup on restarts
 - Zero hardcoding - fully dynamic and async
+
+Restart Behavior (python start_system.py --restart):
+====================================================
+When JARVIS is restarted with --restart flag:
+
+1. Orphan Cleanup Phase:
+   - Checks for stale PID file from previous session
+   - Detects orphaned DB Browser processes (PID validation)
+   - Gracefully terminates orphaned processes (3-second timeout)
+   - Force kills if graceful shutdown fails
+   - Cleans up stale PID tracking files
+
+2. Fresh Launch Phase:
+   - Validates system requirements (disk space, permissions)
+   - Validates database integrity (corruption detection)
+   - Checks if DB Browser is currently running
+   - Launches new DB Browser instance if needed
+   - Saves new PID to tracking file
+
+3. Process Tracking:
+   - PID file: ~/.jarvis/logs/unlock_metrics/.db_browser.pid
+   - Only closes DB Browser on shutdown if we launched it
+   - Leaves user-launched instances running
+   - Prevents duplicate instances across restarts
+
+This ensures clean restarts with no orphaned processes or multiple DB Browser windows!
 """
 
 import asyncio
@@ -48,6 +74,7 @@ class VoiceUnlockMetricsMonitor:
         """Initialize metrics monitor"""
         self.log_dir = Path.home() / ".jarvis/logs/unlock_metrics"
         self.db_path = self.log_dir / "unlock_metrics.db"
+        self.pid_file = self.log_dir / ".db_browser.pid"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # DB Browser process tracking
@@ -76,6 +103,9 @@ class VoiceUnlockMetricsMonitor:
     async def start(self):
         """Start the metrics monitoring system"""
         logger.info("🚀 Starting Voice Unlock Metrics Monitor...")
+
+        # Clean up orphaned processes from previous --restart
+        await self._cleanup_orphaned_processes()
 
         # Pre-flight checks
         await self._validate_system_requirements()
@@ -125,6 +155,11 @@ class VoiceUnlockMetricsMonitor:
                         logger.warning("DB Browser didn't close gracefully, forcing...")
                         process.kill()
                 logger.info("✅ DB Browser closed")
+
+                # Clean up PID file
+                if self.pid_file.exists():
+                    self.pid_file.unlink()
+
             except Exception as e:
                 logger.warning(f"Could not close DB Browser: {e}")
         elif self.db_browser_already_running:
@@ -132,6 +167,43 @@ class VoiceUnlockMetricsMonitor:
 
         # Log session stats
         self._log_session_summary()
+
+    async def _cleanup_orphaned_processes(self):
+        """Clean up orphaned DB Browser processes from previous --restart"""
+        try:
+            # Check if we have a stale PID file from previous run
+            if self.pid_file.exists():
+                try:
+                    with open(self.pid_file, 'r') as f:
+                        old_pid = int(f.read().strip())
+
+                    # Check if this PID still exists
+                    if psutil.pid_exists(old_pid):
+                        try:
+                            proc = psutil.Process(old_pid)
+                            # Verify it's actually DB Browser
+                            if proc.name() and 'DB Browser' in proc.name():
+                                logger.info(f"🧹 Found orphaned DB Browser from previous session (PID: {old_pid})")
+                                logger.info("   Cleaning up for fresh restart...")
+                                proc.terminate()
+                                try:
+                                    proc.wait(timeout=3)
+                                except psutil.TimeoutExpired:
+                                    proc.kill()
+                                logger.info("   ✅ Orphaned process cleaned up")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+
+                    # Remove stale PID file
+                    self.pid_file.unlink()
+
+                except (ValueError, FileNotFoundError):
+                    # Invalid PID file - just remove it
+                    if self.pid_file.exists():
+                        self.pid_file.unlink()
+
+        except Exception as e:
+            logger.debug(f"Orphan cleanup note: {e}")
 
     async def _validate_system_requirements(self):
         """Pre-flight validation checks"""
@@ -300,6 +372,13 @@ class VoiceUnlockMetricsMonitor:
             if new_pid:
                 self.db_browser_pid = new_pid
                 logger.info(f"✅ DB Browser launched successfully (PID: {new_pid})")
+
+                # Save PID to file for restart detection
+                try:
+                    with open(self.pid_file, 'w') as f:
+                        f.write(str(new_pid))
+                except Exception as e:
+                    logger.debug(f"Could not save PID file: {e}")
             else:
                 logger.info("✅ DB Browser launched successfully")
 
