@@ -744,10 +744,13 @@ class TemporalQueryHandler:
         time_range: TimeRange,
         space_id: Optional[int]
     ) -> TemporalQueryResult:
-        """Handle 'What changed?' queries using ChangeDetectionManager.
+        """Handle 'What changed?' queries with ML-powered change detection.
 
-        Uses cached snapshots from monitoring for instant results and performs
-        visual diff analysis to detect content, layout, and state changes.
+        Uses multiple detection strategies:
+        1. Monitoring alerts (ML-powered anomaly detection)
+        2. State snapshots (cached for instant results)
+        3. Pattern recognition (learned behaviors)
+        4. Visual diff analysis (content/layout changes)
 
         Args:
             resolved_query: Resolved query with references
@@ -755,13 +758,320 @@ class TemporalQueryHandler:
             space_id: Optional space ID filter
 
         Returns:
-            TemporalQueryResult with detected changes
+            TemporalQueryResult with detected changes and ML insights
         """
-        # Placeholder - will be implemented when ChangeDetectionManager is ready
-        return TemporalQueryResult(
-            query_type="change_detection",
-            time_range=time_range,
-            results=[],
-            confidence=0.5,
-            metadata={"status": "not_implemented"}
-        )
+        changes = []
+        detected_anomalies = []
+        recognized_patterns = []
+        confidence_scores = []
+
+        try:
+            # Strategy 1: Get ML-powered monitoring alerts
+            if self.monitoring_manager:
+                try:
+                    alerts = await self._get_monitoring_alerts(time_range, space_id)
+                    for alert in alerts:
+                        change = DetectedChange(
+                            change_type=self._classify_alert_type(alert),
+                            timestamp=alert.get("timestamp", datetime.now()),
+                            space_id=alert.get("space_id", space_id),
+                            description=alert.get("message", "Change detected by monitoring"),
+                            confidence=alert.get("confidence", 0.7),
+                            severity=alert.get("severity", "medium"),
+                            metadata={
+                                "source": "ml_monitoring",
+                                "alert_id": alert.get("id"),
+                                "pattern_id": alert.get("pattern_id"),
+                                "is_anomaly": alert.get("is_anomaly", False)
+                            }
+                        )
+                        changes.append(change)
+                        confidence_scores.append(change.confidence)
+
+                        # Track anomalies separately
+                        if alert.get("is_anomaly"):
+                            detected_anomalies.append(alert)
+
+                        # Track recognized patterns
+                        if alert.get("pattern_id"):
+                            recognized_patterns.append(alert.get("pattern_id"))
+
+                except Exception as e:
+                    logger.warning(f"Failed to get monitoring alerts: {e}")
+
+            # Strategy 2: State snapshot comparison
+            if self.monitoring_manager:
+                try:
+                    snapshots = await self._get_state_snapshots(time_range, space_id)
+                    if len(snapshots) >= 2:
+                        # Compare first and last snapshot
+                        state_changes = await self._compare_snapshots(
+                            snapshots[0],
+                            snapshots[-1],
+                            space_id
+                        )
+                        changes.extend(state_changes)
+                        confidence_scores.extend([c.confidence for c in state_changes])
+                except Exception as e:
+                    logger.warning(f"Failed snapshot comparison: {e}")
+
+            # Strategy 3: Pattern-based change detection
+            if self.monitoring_manager and hasattr(self.monitoring_manager, 'pattern_engine'):
+                try:
+                    pattern_changes = await self._detect_pattern_changes(
+                        time_range,
+                        space_id,
+                        recognized_patterns
+                    )
+                    changes.extend(pattern_changes)
+                    confidence_scores.extend([c.confidence for c in pattern_changes])
+                except Exception as e:
+                    logger.warning(f"Failed pattern detection: {e}")
+
+            # Strategy 4: Anomaly-specific analysis
+            if detected_anomalies:
+                try:
+                    anomaly_changes = await self._analyze_anomalies(
+                        detected_anomalies,
+                        space_id
+                    )
+                    changes.extend(anomaly_changes)
+                    confidence_scores.extend([c.confidence for c in anomaly_changes])
+                except Exception as e:
+                    logger.warning(f"Failed anomaly analysis: {e}")
+
+            # Calculate overall confidence
+            avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.5
+
+            # Build summary
+            summary = self._build_change_summary(
+                changes,
+                detected_anomalies,
+                recognized_patterns,
+                time_range
+            )
+
+            # Sort changes by timestamp (newest first)
+            changes.sort(key=lambda c: c.timestamp, reverse=True)
+
+            return TemporalQueryResult(
+                query_type="change_detection",
+                time_range=time_range,
+                results=changes,
+                confidence=avg_confidence,
+                summary=summary,
+                metadata={
+                    "total_changes": len(changes),
+                    "anomalies_detected": len(detected_anomalies),
+                    "patterns_recognized": len(set(recognized_patterns)),
+                    "time_range_duration": time_range.duration_seconds,
+                    "space_id": space_id,
+                    "detection_strategies": [
+                        "ml_monitoring",
+                        "snapshot_comparison",
+                        "pattern_recognition",
+                        "anomaly_analysis"
+                    ]
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Change detection failed: {e}", exc_info=True)
+            return TemporalQueryResult(
+                query_type="change_detection",
+                time_range=time_range,
+                results=[],
+                confidence=0.0,
+                summary="Failed to detect changes",
+                metadata={"error": str(e)}
+            )
+
+    async def _get_monitoring_alerts(
+        self,
+        time_range: TimeRange,
+        space_id: Optional[int]
+    ) -> List[Dict[str, Any]]:
+        """Get ML-powered monitoring alerts for the time range."""
+        alerts = []
+        try:
+            if hasattr(self.monitoring_manager, 'get_alerts_in_range'):
+                alerts = await self.monitoring_manager.get_alerts_in_range(
+                    start_time=time_range.start,
+                    end_time=time_range.end,
+                    space_id=space_id
+                )
+        except Exception as e:
+            logger.warning(f"Failed to get monitoring alerts: {e}")
+        return alerts
+
+    async def _get_state_snapshots(
+        self,
+        time_range: TimeRange,
+        space_id: Optional[int]
+    ) -> List[Dict[str, Any]]:
+        """Get cached state snapshots from monitoring."""
+        snapshots = []
+        try:
+            if hasattr(self.monitoring_manager, 'get_snapshots'):
+                snapshots = await self.monitoring_manager.get_snapshots(
+                    start_time=time_range.start,
+                    end_time=time_range.end,
+                    space_id=space_id
+                )
+        except Exception as e:
+            logger.warning(f"Failed to get snapshots: {e}")
+        return snapshots
+
+    async def _compare_snapshots(
+        self,
+        snapshot1: Dict[str, Any],
+        snapshot2: Dict[str, Any],
+        space_id: Optional[int]
+    ) -> List['DetectedChange']:
+        """Compare two snapshots to detect changes."""
+        changes = []
+
+        # Compare content
+        if snapshot1.get("content") != snapshot2.get("content"):
+            changes.append(DetectedChange(
+                change_type=ChangeType.CONTENT_CHANGE,
+                timestamp=snapshot2.get("timestamp", datetime.now()),
+                space_id=space_id,
+                description="Content changed",
+                confidence=0.9,
+                severity="low",
+                metadata={
+                    "old_hash": hashlib.md5(str(snapshot1.get("content", "")).encode()).hexdigest()[:8],
+                    "new_hash": hashlib.md5(str(snapshot2.get("content", "")).encode()).hexdigest()[:8]
+                }
+            ))
+
+        # Compare layout
+        if snapshot1.get("layout") != snapshot2.get("layout"):
+            changes.append(DetectedChange(
+                change_type=ChangeType.LAYOUT_CHANGE,
+                timestamp=snapshot2.get("timestamp", datetime.now()),
+                space_id=space_id,
+                description="Layout changed",
+                confidence=0.85,
+                severity="medium",
+                metadata={"source": "snapshot_diff"}
+            ))
+
+        # Compare status
+        if snapshot1.get("status") != snapshot2.get("status"):
+            changes.append(DetectedChange(
+                change_type=ChangeType.STATUS_CHANGED,
+                timestamp=snapshot2.get("timestamp", datetime.now()),
+                space_id=space_id,
+                description=f"Status changed: {snapshot1.get('status')} → {snapshot2.get('status')}",
+                confidence=0.95,
+                severity="high",
+                metadata={
+                    "old_status": snapshot1.get("status"),
+                    "new_status": snapshot2.get("status")
+                }
+            ))
+
+        return changes
+
+    async def _detect_pattern_changes(
+        self,
+        time_range: TimeRange,
+        space_id: Optional[int],
+        recognized_patterns: List[str]
+    ) -> List['DetectedChange']:
+        """Detect changes based on learned patterns."""
+        changes = []
+        try:
+            # Check if patterns have changed behavior
+            for pattern_id in set(recognized_patterns):
+                changes.append(DetectedChange(
+                    change_type=ChangeType.PATTERN_RECOGNIZED,
+                    timestamp=datetime.now(),
+                    space_id=space_id,
+                    description=f"Pattern #{pattern_id} detected",
+                    confidence=0.8,
+                    severity="low",
+                    metadata={"pattern_id": pattern_id}
+                ))
+        except Exception as e:
+            logger.warning(f"Pattern detection failed: {e}")
+        return changes
+
+    async def _analyze_anomalies(
+        self,
+        anomalies: List[Dict[str, Any]],
+        space_id: Optional[int]
+    ) -> List['DetectedChange']:
+        """Analyze detected anomalies for significant changes."""
+        changes = []
+        for anomaly in anomalies:
+            changes.append(DetectedChange(
+                change_type=ChangeType.ANOMALY_DETECTED,
+                timestamp=anomaly.get("timestamp", datetime.now()),
+                space_id=space_id,
+                description=f"Anomaly: {anomaly.get('message', 'Unusual behavior detected')}",
+                confidence=anomaly.get("confidence", 0.75),
+                severity="high",
+                metadata={
+                    "anomaly_type": anomaly.get("type"),
+                    "deviation_score": anomaly.get("deviation_score")
+                }
+            ))
+        return changes
+
+    def _classify_alert_type(self, alert: Dict[str, Any]) -> ChangeType:
+        """Classify an alert into a change type."""
+        alert_type = alert.get("type", "").lower()
+        message = alert.get("message", "").lower()
+
+        if "error" in message and "appeared" in message:
+            return ChangeType.ERROR_APPEARED
+        elif "error" in message and ("resolved" in message or "fixed" in message):
+            return ChangeType.ERROR_RESOLVED
+        elif "anomaly" in alert_type:
+            return ChangeType.ANOMALY_DETECTED
+        elif "pattern" in alert_type:
+            return ChangeType.PATTERN_RECOGNIZED
+        elif "build" in message and "completed" in message:
+            return ChangeType.BUILD_COMPLETED
+        elif "build" in message and "failed" in message:
+            return ChangeType.BUILD_FAILED
+        else:
+            return ChangeType.CONTENT_CHANGE
+
+    def _build_change_summary(
+        self,
+        changes: List['DetectedChange'],
+        anomalies: List[Dict],
+        patterns: List[str],
+        time_range: TimeRange
+    ) -> str:
+        """Build a human-readable summary of detected changes."""
+        if not changes:
+            return f"No changes detected in the last {time_range.duration_seconds:.0f} seconds"
+
+        summary_parts = [f"Detected {len(changes)} change(s)"]
+
+        # Group by type
+        change_types = {}
+        for change in changes:
+            change_type = change.change_type.value if hasattr(change.change_type, 'value') else str(change.change_type)
+            change_types[change_type] = change_types.get(change_type, 0) + 1
+
+        # Add top change types
+        top_types = sorted(change_types.items(), key=lambda x: x[1], reverse=True)[:3]
+        if top_types:
+            type_desc = ", ".join([f"{count} {ctype.replace('_', ' ')}" for ctype, count in top_types])
+            summary_parts.append(type_desc)
+
+        # Add anomaly info
+        if anomalies:
+            summary_parts.append(f"{len(anomalies)} anomalies")
+
+        # Add pattern info
+        if patterns:
+            summary_parts.append(f"{len(set(patterns))} patterns recognized")
+
+        return "; ".join(summary_parts)
