@@ -1002,6 +1002,7 @@ class SecurePasswordTyper:
                     success = await self._type_character_secure_with_metrics(
                         char,
                         char_metric,
+                        config,
                         randomize=config.randomize_timing
                     )
 
@@ -1074,6 +1075,7 @@ class SecurePasswordTyper:
         self,
         char: str,
         char_metric: CharacterMetric,
+        config: TypingConfig,
         randomize: bool = True
     ) -> bool:
         """
