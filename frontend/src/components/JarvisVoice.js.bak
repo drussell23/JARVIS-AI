@@ -3283,6 +3283,12 @@ const JarvisVoice = () => {
       <div className="status-indicator-bar">
         {continuousListening && !isWaitingForCommand && (
           <div className="status-item wake-active">
+
+      {/* 🔬 Developer Metrics Overlay - Biometric confidence (UI only, not announced) */}
+      <DeveloperMetricsOverlay
+        devMetrics={devMetrics}
+        visible={showDevMetrics}
+      />
             <span className="status-dot"></span>
             <span className="status-text">Say "Hey JARVIS"</span>
           </div>

@@ -7,29 +7,42 @@ import './DeveloperMetricsOverlay.css';
  * Displays detailed biometric and performance metrics for voice unlock
  * Only visible in development/debug mode - not announced by JARVIS
  */
-const DeveloperMetricsOverlay = ({ devMetrics, visible }) => {
-  if (!visible || !devMetrics) {
-    return null;
-  }
-
-  const { biometrics, performance, quality_indicators } = devMetrics;
+const DeveloperMetricsOverlay = ({ devMetrics, visible, onToggle }) => {
+  // Always show toggle button, but conditionally show overlay
+  const showToggle = true; // Always visible for developers
 
   // Determine confidence bar color
   const getConfidenceColor = (confidence, threshold) => {
+    if (!confidence || !threshold) return '#888';
     const margin = confidence - threshold;
-    if (margin > 0.2) return '#00ff00'; // Bright green - well above threshold
-    if (margin > 0.1) return '#7cfc00'; // Green - above threshold
+    if (margin > 0.2) return '#00ff41'; // Matrix green - well above threshold
+    if (margin > 0.1) return '#00ffff'; // Cyan - above threshold
     if (margin > 0) return '#ffd700'; // Gold - just above threshold
     return '#ff4444'; // Red - below threshold
   };
 
-  const confidenceBarColor = biometrics ? getConfidenceColor(
-    biometrics.speaker_confidence,
-    biometrics.threshold
+  const confidenceBarColor = devMetrics?.biometrics ? getConfidenceColor(
+    devMetrics.biometrics.speaker_confidence,
+    devMetrics.biometrics.threshold
   ) : '#888';
 
+  const { biometrics, performance, quality_indicators } = devMetrics || {};
+
   return (
-    <div className="dev-metrics-overlay">
+    <>
+      {/* Toggle Button - Always visible */}
+      <button
+        className={`dev-metrics-toggle ${visible ? 'active' : ''}`}
+        onClick={onToggle}
+        title="Toggle Developer Metrics"
+      >
+        <span className="toggle-icon">🔬</span>
+        {visible ? 'Hide' : 'Show'} Metrics
+      </button>
+
+      {/* Metrics Overlay - Only when visible AND has data */}
+      {visible && devMetrics && (
+        <div className="dev-metrics-overlay">
       <div className="dev-metrics-header">
         <span className="dev-metrics-title">🔬 Developer Metrics</span>
         <span className="dev-metrics-subtitle">(UI only - not announced)</span>
@@ -109,7 +122,9 @@ const DeveloperMetricsOverlay = ({ devMetrics, visible }) => {
           )}
         </div>
       )}
-    </div>
+        </div>
+      )}
+    </>
   );
 };
 

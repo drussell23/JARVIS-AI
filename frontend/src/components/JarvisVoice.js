@@ -3288,6 +3288,7 @@ const JarvisVoice = () => {
       <DeveloperMetricsOverlay
         devMetrics={devMetrics}
         visible={showDevMetrics}
+        onToggle={() => setShowDevMetrics(!showDevMetrics)}
       />
             <span className="status-dot"></span>
             <span className="status-text">Say "Hey JARVIS"</span>
