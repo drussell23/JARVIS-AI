@@ -153,15 +153,20 @@ class TypingConfig:
     """Configuration for secure password typing"""
 
     # Timing configuration (all in seconds)
-    base_keystroke_delay: float = 0.05
-    min_keystroke_delay: float = 0.03
-    max_keystroke_delay: float = 0.15
-    key_press_duration_min: float = 0.02
-    key_press_duration_max: float = 0.05
+    # 🎯 OPTIMIZED FOR LOCK SCREEN: Slower timings for reliability
+    base_keystroke_delay: float = 0.08  # Increased from 0.05 for lock screen reliability
+    min_keystroke_delay: float = 0.06  # Increased from 0.03
+    max_keystroke_delay: float = 0.20  # Increased from 0.15
+    key_press_duration_min: float = 0.04  # Increased from 0.02 (40ms minimum)
+    key_press_duration_max: float = 0.08  # Increased from 0.05 (80ms maximum)
+
+    # Shift key timing (for special characters)
+    shift_register_delay: float = 0.05  # Time to wait for shift to register (50ms)
+    shift_release_delay: float = 0.02  # Time to wait after releasing shift (20ms)
 
     # Wake configuration
     wake_screen: bool = True
-    wake_delay: float = 0.8  # Increased for reliability with lock screen
+    wake_delay: float = 1.0  # Increased from 0.8 for lock screen reliability
 
     # Submit configuration
     submit_after_typing: bool = True
@@ -1118,12 +1123,12 @@ class SecurePasswordTyper:
                     char_metric.error_type = "shift_event_failed"
                     return False
 
-                # Delay for shift to register
-                await asyncio.sleep(0.03)
+                # Delay for shift to register (configurable for reliability)
+                await asyncio.sleep(config.shift_register_delay)
                 shift_registered_time = time.time() * 1000
                 char_metric.shift_registered_delay_ms = shift_registered_time - shift_start_time
 
-                logger.info("🔐   [SHIFT] Shift registered (30ms delay)")
+                logger.info(f"🔐   [SHIFT] Shift registered ({int(config.shift_register_delay * 1000)}ms delay)")
 
             # Key down
             key_down_start = time.time() * 1000
@@ -1204,7 +1209,10 @@ class SecurePasswordTyper:
 
                 await self._release_shift()
                 char_metric.shift_up_delay_ms = (time.time() * 1000) - shift_release_start
-                logger.info("🔐   [SHIFT] Shift key released")
+
+                # Wait after releasing shift for stability
+                await asyncio.sleep(config.shift_release_delay)
+                logger.info(f"🔐   [SHIFT] Shift key released (+{int(config.shift_release_delay * 1000)}ms stabilization)")
 
             logger.info(f"✅ [CHAR-TYPE] Successfully typed char '{char_display}'")
             return True

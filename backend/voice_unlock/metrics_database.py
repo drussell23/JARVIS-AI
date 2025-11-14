@@ -168,7 +168,7 @@ class MetricsDatabase:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS password_typing_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                attempt_id INTEGER NOT NULL,
+                attempt_id INTEGER,  -- NULL allowed for standalone typing tests
                 timestamp TEXT NOT NULL,
                 success INTEGER NOT NULL,
 
@@ -212,7 +212,7 @@ class MetricsDatabase:
             CREATE TABLE IF NOT EXISTS character_typing_metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id INTEGER NOT NULL,
-                attempt_id INTEGER NOT NULL,
+                attempt_id INTEGER,  -- NULL allowed for standalone typing tests
 
                 -- Character Identity (hashed for security)
                 char_position INTEGER NOT NULL,  -- Position in password (1-indexed)
