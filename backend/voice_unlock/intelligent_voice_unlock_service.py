@@ -525,6 +525,28 @@ class IntelligentVoiceUnlockService:
         except:
             pass
 
+        # Build detailed developer metrics (not announced, only shown in UI)
+        developer_metrics = {
+            "biometrics": {
+                "speaker_confidence": verification_confidence,
+                "stt_confidence": stt_confidence,
+                "threshold": 0.35,  # Current threshold
+                "above_threshold": verification_confidence >= 0.35,
+                "confidence_margin": verification_confidence - 0.35,  # How far above/below threshold
+                "confidence_percentage": f"{verification_confidence * 100:.1f}%",
+            },
+            "performance": {
+                "total_latency_ms": total_latency_ms,
+                "transcription_time_ms": diagnostics.processing_time_ms if hasattr(self, 'diagnostics') else None,
+                "speaker_verification_time_ms": None,  # Can add if tracked
+            },
+            "quality_indicators": {
+                "audio_quality": "good" if stt_confidence > 0.7 else "fair" if stt_confidence > 0.5 else "poor",
+                "voice_match_quality": "excellent" if verification_confidence > 0.6 else "good" if verification_confidence > 0.45 else "acceptable" if verification_confidence > 0.35 else "below_threshold",
+                "overall_confidence": (stt_confidence + verification_confidence) / 2,
+            }
+        }
+
         return {
             "success": unlock_result["success"],
             "speaker_name": speaker_identified,
@@ -538,6 +560,8 @@ class IntelligentVoiceUnlockService:
             "context_analysis": context_analysis,
             "scenario_analysis": scenario_analysis,
             "timestamp": datetime.now().isoformat(),
+            # Developer metrics (UI only, not announced)
+            "dev_metrics": developer_metrics,
         }
 
     def _check_circuit_breaker(self, service_name: str) -> bool:
