@@ -267,6 +267,22 @@ try:
 except ImportError:
     SECRET_MANAGER_AVAILABLE = False
 
+# Import Advanced Thread Manager for bulletproof thread management
+try:
+    from core.thread_manager import (
+        get_thread_manager,
+        AdvancedThreadManager,
+        ThreadPolicy,
+        create_managed_thread,
+        shutdown_all_threads_async,
+        shutdown_all_threads
+    )
+    THREAD_MANAGER_AVAILABLE = True
+    logger.info("✅ Advanced Thread Manager available")
+except ImportError as e:
+    logger.warning(f"⚠️  Advanced Thread Manager not available: {e}")
+    THREAD_MANAGER_AVAILABLE = False
+
 # Load environment variables (force override of system env vars)
 try:
     from dotenv import load_dotenv
@@ -301,6 +317,57 @@ try:
 except ImportError:
     logger.warning("⚠️ Dynamic Component Manager not available - using legacy loading")
     DYNAMIC_LOADING_ENABLED = False
+
+# Initialize Advanced Thread Manager with custom policy
+thread_manager = None
+if THREAD_MANAGER_AVAILABLE:
+    try:
+        # Create custom policy optimized for JARVIS
+        thread_policy = ThreadPolicy(
+            # Shutdown timeouts (total: 20s)
+            graceful_shutdown_timeout=8.0,      # Give threads time to clean up
+            forceful_shutdown_timeout=5.0,      # Force daemon conversion
+            terminate_shutdown_timeout=4.0,     # Try force termination
+            emergency_shutdown_timeout=3.0,     # Final cleanup
+
+            # Thread limits
+            max_threads=500,                    # Reasonable limit for JARVIS
+            max_thread_lifetime=7200.0,         # 2 hours max per thread
+            warn_thread_age=1800.0,             # Warn if thread runs > 30min
+
+            # Monitoring
+            enable_health_check=True,
+            health_check_interval=60.0,         # Check every minute
+            enable_deadlock_detection=True,
+            deadlock_check_interval=120.0,      # Check every 2 minutes
+
+            # Cleanup
+            auto_cleanup_orphans=True,
+            orphan_check_interval=90.0,         # Check every 90s
+            force_daemon_on_shutdown=True,      # Convert to daemon during shutdown
+
+            # Logging
+            log_thread_creation=False,          # Reduce noise
+            log_thread_completion=False,        # Reduce noise
+            log_stack_traces=True,              # Keep for debugging
+            capture_full_stack=False,           # Only last 5 frames
+
+            # Performance
+            use_thread_pool=True,
+            thread_pool_size=None,              # Auto-detect (CPU cores × 2)
+            recycle_threads=True                # Use weak references
+        )
+
+        thread_manager = get_thread_manager(policy=thread_policy)
+        logger.info("🧵 Advanced Thread Manager initialized with custom JARVIS policy")
+        logger.info(f"   Max threads: {thread_policy.max_threads}")
+        logger.info(f"   Shutdown timeout: {thread_policy.graceful_shutdown_timeout + thread_policy.forceful_shutdown_timeout + thread_policy.terminate_shutdown_timeout + thread_policy.emergency_shutdown_timeout}s")
+        logger.info(f"   Health monitoring: {thread_policy.enable_health_check}")
+        logger.info(f"   Deadlock detection: {thread_policy.enable_deadlock_detection}")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize Thread Manager: {e}")
+        thread_manager = None
+        THREAD_MANAGER_AVAILABLE = False
 
 
 async def parallel_import_components():
@@ -1966,6 +2033,41 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(0.5)
     except Exception as e:
         logger.warning(f"Failed to broadcast shutdown notification: {e}")
+
+    # Shutdown Advanced Thread Manager with multi-phase escalation
+    if THREAD_MANAGER_AVAILABLE and thread_manager:
+        try:
+            logger.info("🧵 Shutting down Advanced Thread Manager...")
+            logger.info("   Using 4-phase escalation (20s total timeout)")
+            logger.info("   Phase 1: Graceful shutdown (8s)")
+            logger.info("   Phase 2: Forceful shutdown (5s)")
+            logger.info("   Phase 3: Terminate threads (4s)")
+            logger.info("   Phase 4: Emergency cleanup (3s)")
+
+            # Shutdown with configured 20-second timeout
+            shutdown_stats = await shutdown_all_threads_async(timeout=20.0)
+
+            logger.info("✅ Thread Manager shutdown complete")
+            logger.info(f"   • Total threads: {shutdown_stats.get('total_threads', 0)}")
+            logger.info(f"   • Gracefully stopped: {shutdown_stats.get('graceful_count', 0)}")
+            logger.info(f"   • Force stopped: {shutdown_stats.get('forceful_count', 0)}")
+            logger.info(f"   • Terminated: {shutdown_stats.get('terminated_count', 0)}")
+
+            if shutdown_stats.get('leaked_threads', 0) > 0:
+                logger.warning(f"   ⚠️  Leaked threads: {shutdown_stats['leaked_threads']}")
+            else:
+                logger.info("   ✅ No thread leaks detected!")
+
+            # Print detailed thread report
+            if thread_manager:
+                logger.info("   📊 Final Thread Report:")
+                thread_manager.print_report()
+
+        except Exception as e:
+            logger.error(f"❌ Thread Manager shutdown failed: {e}", exc_info=True)
+            logger.warning("   Some threads may still be running")
+    elif not THREAD_MANAGER_AVAILABLE:
+        logger.warning("⚠️  Thread Manager not available - manual thread cleanup required")
 
     # Cleanup Cloud SQL database connections
     try:
