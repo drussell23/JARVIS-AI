@@ -2,8 +2,8 @@
 //  HUDView.swift
 //  JARVIS-HUD
 //
-//  Main HUD interface with transcript display and status
-//  Matches JARVIS web app design with neon green terminal aesthetic
+//  Main HUD interface matching JARVIS web app design exactly
+//  Based on web app screenshots - full-screen layout with arc reactor
 //
 
 import SwiftUI
@@ -20,169 +20,263 @@ enum HUDState {
 /// Transcript message
 struct TranscriptMessage: Identifiable {
     let id = UUID()
-    let speaker: String // "USER" or "JARVIS"
+    let speaker: String // "YOU" or "JARVIS"
     let text: String
     let timestamp: Date
 }
 
-/// Main JARVIS HUD View
+/// Main JARVIS HUD View - Matches web app exactly
 struct HUDView: View {
 
-    @State private var hudState: HUDState = .idle
+    @State private var hudState: HUDState = .offline
     @State private var transcriptMessages: [TranscriptMessage] = []
-    @State private var statusText: String = "SYSTEM ONLINE"
-    @State private var isVisible: Bool = true
+    @State private var statusText: String = "SYSTEM OFFLINE - START BACKEND"
+    @State private var commandText: String = ""
 
     var body: some View {
         ZStack {
-            // Transparent background with subtle gradient
-            LinearGradient(
+            // Background with radial gradient (matching web app)
+            RadialGradient(
                 colors: [
-                    Color.jarvisBlack.opacity(0.95),
-                    Color.jarvisBlackBlue.opacity(0.85)
+                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.2),
+                    Color.black
                 ],
-                startPoint: .top,
-                endPoint: .bottom
+                center: .center,
+                startRadius: 100,
+                endRadius: 600
             )
             .ignoresSafeArea()
 
-            // Main HUD content
-            VStack(spacing: 20) {
+            VStack(spacing: 0) {
 
-                // Top status bar
-                HStack {
+                // Top section: J.A.R.V.I.S. title
+                VStack(spacing: 8) {
                     Text("J.A.R.V.I.S.")
-                        .font(.custom(JARVISTheme.Fonts.display, size: 18))
+                        .font(.system(size: 72, weight: .bold, design: .monospaced))
+                        .tracking(20) // Letter spacing
                         .foregroundColor(.jarvisGreen)
-                        .shadow(color: Color.jarvisGreenGlow(), radius: 10)
+                        .shadow(color: Color.jarvisGreenGlow(opacity: 0.8), radius: 20)
+                        .shadow(color: Color.jarvisGreenGlow(opacity: 0.6), radius: 40)
 
-                    Spacer()
-
-                    Text(statusText)
-                        .font(.custom(JARVISTheme.Fonts.monospace, size: 12))
-                        .foregroundColor(statusColor)
-                        .shadow(color: statusColor.opacity(0.6), radius: 8)
+                    Text("JUST A RATHER VERY INTELLIGENT SYSTEM")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .tracking(4)
+                        .foregroundColor(.jarvisGreen)
+                        .shadow(color: Color.jarvisGreenGlow(opacity: 0.6), radius: 10)
                 }
-                .padding(.horizontal, 30)
-                .padding(.top, 20)
-
-                // Center pulse animation
-                if hudState == .listening || hudState == .processing {
-                    if hudState == .listening {
-                        JARVISPulseCyanView()
-                            .frame(height: 150)
-                    } else {
-                        JARVISPulseView(isActive: true)
-                            .frame(height: 200)
-                    }
-                } else {
-                    JARVISPulseView(isActive: hudState == .speaking)
-                        .frame(height: 200)
-                }
-
-                // Transcript display
-                TranscriptView(messages: transcriptMessages)
-                    .frame(maxHeight: 150)
-                    .padding(.horizontal, 30)
+                .padding(.top, 60)
 
                 Spacer()
-            }
 
-            // Border glow effect
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.jarvisGreen, Color.jarvisCyan],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2
-                )
-                .shadow(color: Color.jarvisGreenGlow(), radius: 15)
-                .padding(10)
+                // Center: Arc Reactor
+                ArcReactorView(state: hudState)
+                    .frame(width: 400, height: 400)
+
+                Spacer()
+
+                // Status message below reactor
+                Text(statusText)
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .tracking(3)
+                    .foregroundColor(.jarvisGreen)
+                    .shadow(color: Color.jarvisGreenGlow(opacity: 0.6), radius: 10)
+                    .padding(.bottom, 30)
+
+                // Transcript section
+                TranscriptView(messages: transcriptMessages)
+                    .frame(height: 180)
+                    .padding(.horizontal, 60)
+                    .padding(.bottom, 20)
+
+                // Bottom: Command input (matching web app)
+                HStack(spacing: 15) {
+                    TextField("Type a command to JARVIS...", text: $commandText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.jarvisGreen.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+
+                    Button(action: sendCommand) {
+                        Text("SEND")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 30)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.jarvisGreen)
+                                    .shadow(color: Color.jarvisGreenGlow(), radius: 15)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.horizontal, 60)
+                .padding(.bottom, 40)
+            }
         }
-        .frame(width: 600, height: 400)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            // Demo messages
             addDemoMessages()
         }
     }
 
-    /// Color for status text based on state
-    private var statusColor: Color {
-        switch hudState {
-        case .offline:
-            return .jarvisError
-        case .listening:
-            return .jarvisCyan
-        case .processing:
-            return .jarvisWarning
-        case .speaking:
-            return .jarvisGreen
-        case .idle:
-            return .jarvisSuccess
+    private func sendCommand() {
+        // Handle command sending
+        if !commandText.isEmpty {
+            transcriptMessages.append(
+                TranscriptMessage(speaker: "YOU", text: commandText, timestamp: Date())
+            )
+            commandText = ""
         }
     }
 
-    /// Add demo messages for preview
+    /// Add demo messages
     private func addDemoMessages() {
         transcriptMessages = [
-            TranscriptMessage(speaker: "USER", text: "Open Safari and search for dogs", timestamp: Date()),
-            TranscriptMessage(speaker: "JARVIS", text: "Opening Safari...", timestamp: Date()),
-            TranscriptMessage(speaker: "JARVIS", text: "Searching for dogs", timestamp: Date())
+            TranscriptMessage(speaker: "YOU", text: "unlock my screen", timestamp: Date()),
+            TranscriptMessage(speaker: "JARVIS", text: "Screen unlocked by Derek J. Russell", timestamp: Date())
         ]
     }
 }
 
-/// Transcript display component
+/// Arc Reactor View - Filled circles with gradient (matching web app exactly)
+struct ArcReactorView: View {
+
+    let state: HUDState
+    @State private var isAnimating = false
+
+    var body: some View {
+        ZStack {
+            // Outer glow effect
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.jarvisGreen.opacity(0.3),
+                            Color.jarvisGreen.opacity(0.1),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 250
+                    )
+                )
+                .frame(width: 500, height: 500)
+                .blur(radius: 40)
+
+            // Ring 4 (outermost) - filled
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.2, green: 0.4, blue: 0.4),
+                            Color(red: 0.15, green: 0.3, blue: 0.3)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 180
+                    )
+                )
+                .frame(width: 360, height: 360)
+
+            // Ring 3 - filled
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.25, green: 0.5, blue: 0.5),
+                            Color(red: 0.2, green: 0.4, blue: 0.4)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 135
+                    )
+                )
+                .frame(width: 270, height: 270)
+
+            // Ring 2 - filled
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.jarvisGreen.opacity(0.6),
+                            Color(red: 0.25, green: 0.5, blue: 0.5)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 90
+                    )
+                )
+                .frame(width: 180, height: 180)
+
+            // Ring 1 - bright green
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white,
+                            Color.jarvisGreen,
+                            Color.jarvisGreen.opacity(0.8)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 45
+                    )
+                )
+                .frame(width: 90, height: 90)
+                .shadow(color: Color.jarvisGreenGlow(), radius: 30)
+                .shadow(color: Color.jarvisGreenGlow(), radius: 60)
+
+            // Center core - bright white/green
+            Circle()
+                .fill(Color.white)
+                .frame(width: 20, height: 20)
+                .shadow(color: Color.jarvisGreenGlow(), radius: 40)
+                .scaleEffect(isAnimating ? 1.1 : 1.0)
+        }
+        .onAppear {
+            withAnimation(
+                Animation.easeInOut(duration: 2.0)
+                    .repeatForever(autoreverses: true)
+            ) {
+                isAnimating = true
+            }
+        }
+    }
+}
+
+/// Transcript display component - matches web app styling
 struct TranscriptView: View {
 
     let messages: [TranscriptMessage]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(messages) { message in
-                    TranscriptMessageRow(message: message)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        VStack(alignment: .leading, spacing: 20) {
+            ForEach(messages) { message in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(message.speaker + ":")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.5))
+                        .tracking(1)
+
+                    Text(message.text)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.8))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 }
 
-/// Individual transcript message row
-struct TranscriptMessageRow: View {
-
-    let message: TranscriptMessage
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            // Speaker label
-            Text(message.speaker + ":")
-                .font(.custom(JARVISTheme.Fonts.monospace, size: 11))
-                .foregroundColor(speakerColor)
-                .frame(width: 80, alignment: .trailing)
-
-            // Message text
-            Text(message.text)
-                .font(.custom(JARVISTheme.Fonts.monospace, size: 11))
-                .foregroundColor(.jarvisGreen)
-                .shadow(color: Color.jarvisGreenGlow(opacity: 0.4), radius: 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var speakerColor: Color {
-        message.speaker == "USER" ? .jarvisCyan : .jarvisGreen
-    }
-}
-
 #Preview {
-    ZStack {
-        Color.black.ignoresSafeArea()
-        HUDView()
-    }
+    HUDView()
 }

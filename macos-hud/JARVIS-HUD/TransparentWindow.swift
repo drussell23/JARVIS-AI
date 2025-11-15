@@ -13,8 +13,11 @@ import AppKit
 class TransparentWindow: NSWindow {
 
     init() {
+        // Get screen dimensions for full-screen window
+        let screenRect = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+            contentRect: screenRect,
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -37,18 +40,14 @@ class TransparentWindow: NSWindow {
         self.isMovableByWindowBackground = false
         self.ignoresMouseEvents = false // Can be toggled for click-through
 
-        // Center on screen
-        self.center()
+        // Position at screen origin (full screen)
+        self.setFrame(screenRect, display: true)
     }
 
-    /// Make window appear in center of screen
+    /// Make window appear in center of screen (legacy - now full screen)
     override func center() {
         if let screen = NSScreen.main {
-            let screenRect = screen.frame
-            let windowRect = self.frame
-            let x = (screenRect.width - windowRect.width) / 2
-            let y = (screenRect.height - windowRect.height) / 2
-            self.setFrameOrigin(NSPoint(x: x, y: y))
+            self.setFrame(screen.frame, display: true)
         }
     }
 
