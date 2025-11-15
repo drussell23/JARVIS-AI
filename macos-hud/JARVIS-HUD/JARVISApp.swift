@@ -63,9 +63,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.titleVisibility = .hidden
             window.styleMask = [.borderless, .fullSizeContentView]
 
-            // Floating overlay - always on top, works in all Spaces
+            // Floating overlay - ALWAYS visible across ALL Spaces
             window.level = .floating
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            window.collectionBehavior = [
+                .canJoinAllSpaces,      // Appears in ALL Mission Control Spaces
+                .stationary,             // Stays in place when switching Spaces
+                .fullScreenAuxiliary,    // Works alongside full-screen apps
+                .ignoresCycle            // Not in Cmd+Tab switcher
+            ]
+
+            // CRITICAL: Prevent window from being hidden when switching Spaces
+            window.hidesOnDeactivate = false
 
             // CRITICAL: Make window FULLY click-through by default
             // This allows all clicks to pass to desktop/windows below
@@ -166,10 +174,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Toggle HUD visibility with smooth fade animation
+    /// HUD persists across all Spaces - only hidden/shown via this toggle or quit
     private func toggleHUDVisibility() {
         isHUDVisible.toggle()
 
         print("🎯 Toggling HUD visibility: \(isHUDVisible ? "SHOW" : "HIDE")")
+        print("   HUD will remain \(isHUDVisible ? "visible" : "hidden") across ALL Spaces")
 
         for window in NSApplication.shared.windows {
             if isHUDVisible {
@@ -177,15 +187,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 window.alphaValue = 0.0
                 window.orderFront(nil)
 
+                // Ensure window remains in all Spaces when shown
+                window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.3
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                     window.animator().alphaValue = 1.0
                 })
 
-                print("✅ HUD shown with fade-in animation")
+                print("✅ HUD shown with fade-in animation (visible in all Spaces)")
             } else {
                 // Hide HUD with fade-out animation
+                // IMPORTANT: Keep window in all Spaces even when hidden
+                // This ensures it's ready to show immediately when toggled back
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.3
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -194,7 +209,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     window.orderOut(nil)
                 })
 
-                print("🚫 HUD hidden with fade-out animation")
+                print("🚫 HUD hidden with fade-out animation (but still present in all Spaces)")
             }
         }
     }
