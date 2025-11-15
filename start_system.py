@@ -4142,6 +4142,156 @@ class AsyncSystemManager:
 
         print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
 
+        # ============================================================================
+        # 🧠 RAM PRESSURE DETECTION + GCP SPOT VM OFFLOADING
+        # ============================================================================
+        # Check available RAM BEFORE importing heavy backend modules
+        # If local RAM is insufficient, create GCP Spot VM for offloading
+        # This prevents macOS from killing the backend (exit code 137)
+        # ============================================================================
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.CYAN}🧠 RAM Pressure Detection & Smart Offloading{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
+
+        import psutil
+        mem = psutil.virtual_memory()
+        available_gb = mem.available / (1024**3)
+        total_gb = mem.total / (1024**3)
+        percent_free = (mem.available / mem.total) * 100
+
+        print(f"{Colors.CYAN}📊 Current RAM Status:{Colors.ENDC}")
+        print(f"{Colors.CYAN}   ├─ Total RAM: {total_gb:.1f}GB{Colors.ENDC}")
+        print(f"{Colors.CYAN}   ├─ Available: {available_gb:.1f}GB ({percent_free:.1f}%){Colors.ENDC}")
+        print(f"{Colors.CYAN}   └─ Used: {mem.percent:.1f}%{Colors.ENDC}")
+
+        # Threshold: Need at least 8GB free for backend heavy imports
+        # (ChromaDB ~2GB, FAISS ~1GB, PyTorch ~2GB, Voice models ~2-3GB, Learning DB ~2GB)
+        REQUIRED_RAM_GB = 8.0
+        run_backend_locally = True
+        gcp_vm_info = None
+
+        if available_gb < REQUIRED_RAM_GB:
+            print(f"\n{Colors.YELLOW}⚠️  RAM PRESSURE DETECTED!{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Need {REQUIRED_RAM_GB:.1f}GB free, only {available_gb:.1f}GB available{Colors.ENDC}")
+            print(f"{Colors.CYAN}☁️  Initiating GCP Spot VM offloading...{Colors.ENDC}")
+
+            # Send HUD progress update
+            try:
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"http://localhost:{self.ports['main_api']}/api/hud/progress",
+                        json={"progress": 30, "message": f"Low RAM ({available_gb:.1f}GB) - creating GCP Spot VM..."},
+                        timeout=1.0
+                    )
+            except:
+                pass  # HUD might not be ready yet
+
+            # Import GCP VM Manager
+            try:
+                sys.path.insert(0, str(self.backend_dir / "core"))
+                from gcp_vm_manager import GCPVMManager
+
+                print(f"{Colors.CYAN}   └─ Initializing GCP VM Manager...{Colors.ENDC}")
+                gcp_manager = GCPVMManager()
+
+                # Send HUD progress
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            f"http://localhost:{self.ports['main_api']}/api/hud/progress",
+                            json={"progress": 40, "message": "Creating e2-highmem-4 Spot VM (32GB RAM)..."},
+                            timeout=1.0
+                        )
+                except:
+                    pass
+
+                print(f"{Colors.CYAN}   └─ Creating Spot VM (e2-highmem-4, 32GB RAM)...{Colors.ENDC}")
+                gcp_vm_info = await gcp_manager.create_vm(
+                    purpose="backend-offload",
+                    machine_type="e2-highmem-4",  # 4 vCPU, 32GB RAM
+                    preemptible=True  # Spot instance
+                )
+
+                if gcp_vm_info:
+                    print(f"{Colors.GREEN}   ✓ GCP Spot VM created successfully!{Colors.ENDC}")
+                    print(f"{Colors.CYAN}      ├─ Instance: {gcp_vm_info['name']}{Colors.ENDC}")
+                    print(f"{Colors.CYAN}      ├─ External IP: {gcp_vm_info['external_ip']}{Colors.ENDC}")
+                    print(f"{Colors.CYAN}      ├─ Machine Type: e2-highmem-4 (4 vCPU, 32GB RAM){Colors.ENDC}")
+                    print(f"{Colors.CYAN}      └─ Cost: ~$0.029/hour (Spot pricing){Colors.ENDC}")
+
+                    # Send HUD progress
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"http://localhost:{self.ports['main_api']}/api/hud/progress",
+                                json={"progress": 60, "message": f"Deploying backend to {gcp_vm_info['name']}..."},
+                                timeout=1.0
+                            )
+                    except:
+                        pass
+
+                    print(f"\n{Colors.CYAN}   └─ Deploying backend to GCP VM...{Colors.ENDC}")
+                    await gcp_manager.deploy_backend(gcp_vm_info)
+
+                    print(f"\n{Colors.GREEN}✅ Backend running on GCP Spot VM!{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   ├─ Backend URL: http://{gcp_vm_info['external_ip']}:8010{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   ├─ Local Mac RAM saved: ~8-10GB{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   └─ macOS relieved from memory pressure{Colors.ENDC}")
+
+                    # Send HUD completion
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"http://localhost:{self.ports['main_api']}/api/hud/progress",
+                                json={"progress": 100, "message": "Backend running on GCP - Mac relieved!"},
+                                timeout=1.0
+                            )
+                    except:
+                        pass
+
+                    # Store GCP VM info for monitoring
+                    self.gcp_vm_info = gcp_vm_info
+                    self.gcp_manager = gcp_manager
+                    run_backend_locally = False
+
+                    # Start VM monitoring in background
+                    print(f"{Colors.CYAN}   └─ Starting VM health monitor...{Colors.ENDC}")
+                    asyncio.create_task(gcp_manager.monitor_vm(gcp_vm_info))
+
+                else:
+                    print(f"{Colors.YELLOW}   ⚠️  GCP VM creation failed - falling back to local{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}   ⚠️  WARNING: Backend may be killed by macOS due to RAM pressure{Colors.ENDC}")
+                    run_backend_locally = True
+
+            except Exception as e:
+                print(f"{Colors.YELLOW}   ⚠️  GCP offloading failed: {e}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   Falling back to local startup (may be unstable)...{Colors.ENDC}")
+                import traceback
+                print(f"{Colors.YELLOW}   {traceback.format_exc()}{Colors.ENDC}")
+                run_backend_locally = True
+
+        else:
+            print(f"\n{Colors.GREEN}✅ Sufficient RAM available ({available_gb:.1f}GB > {REQUIRED_RAM_GB:.1f}GB){Colors.ENDC}")
+            print(f"{Colors.GREEN}   Starting backend locally{Colors.ENDC}")
+            run_backend_locally = True
+
+        # Only start local backend if we're not using GCP
+        if not run_backend_locally:
+            print(f"\n{Colors.GREEN}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Backend offloaded to GCP - skipping local startup{Colors.ENDC}")
+            print(f"{Colors.GREEN}{'='*70}{Colors.ENDC}")
+            # Return a mock process for compatibility
+            class MockProcess:
+                def __init__(self):
+                    self.returncode = None
+                async def wait(self):
+                    # Keep monitoring GCP VM
+                    await asyncio.sleep(float('inf'))
+            return MockProcess()
+
+        print(f"\n{Colors.CYAN}🚀 Starting local backend...{Colors.ENDC}")
+
         # Start the selected script (main_optimized.py or main.py)
         # Open log file without 'with' statement to keep it open for subprocess
         log = open(log_file, "w")
