@@ -10040,9 +10040,25 @@ async def main():
                 # Rebuild if needed
                 if needs_rebuild or hud_app_path is None:
                     print(f"{Colors.CYAN}   🔨 Building macOS HUD (source changed or not built)...{Colors.ENDC}")
+
+                    # Clean extended attributes that can cause code signing to fail
+                    print(f"{Colors.CYAN}   🧹 Cleaning build artifacts...{Colors.ENDC}")
+                    subprocess.run(["find", str(hud_dir), "-name", ".DS_Store", "-delete"],
+                                 capture_output=True)
+                    if hud_app_path and hud_app_path.exists():
+                        subprocess.run(["xattr", "-cr", str(hud_app_path)],
+                                     capture_output=True)
+
+                    # Clean and rebuild
+                    print(f"{Colors.CYAN}   🔨 Compiling Swift code...{Colors.ENDC}")
                     build_result = subprocess.run(
-                        ["xcodebuild", "-scheme", "JARVIS-HUD", "-configuration", "Release",
-                         "-derivedDataPath", "build", "build"],
+                        ["xcodebuild", "clean", "build",
+                         "-scheme", "JARVIS-HUD",
+                         "-configuration", "Release",
+                         "-derivedDataPath", "build",
+                         "CODE_SIGN_IDENTITY=-",
+                         "CODE_SIGNING_REQUIRED=NO",
+                         "CODE_SIGNING_ALLOWED=NO"],
                         cwd=str(hud_dir),
                         capture_output=True,
                         text=True,
@@ -10053,25 +10069,70 @@ async def main():
                         print(f"{Colors.GREEN}   ✓ HUD built successfully{Colors.ENDC}")
                         # Update path to newly built app
                         hud_app_path = repo_root / "macos-hud/build/Build/Products/Release/JARVIS-HUD.app"
+
+                        # Remove extended attributes from new build
+                        subprocess.run(["xattr", "-cr", str(hud_app_path)],
+                                     capture_output=True)
                     else:
-                        print(f"{Colors.YELLOW}   ⚠️  Build failed, trying to use existing app{Colors.ENDC}")
+                        print(f"{Colors.YELLOW}   ⚠️  Build failed:{Colors.ENDC}")
+                        # Show last 10 lines of error
+                        error_lines = build_result.stderr.split('\n')[-10:]
+                        for line in error_lines:
+                            if line.strip():
+                                print(f"{Colors.YELLOW}      {line}{Colors.ENDC}")
+
+                        print(f"{Colors.CYAN}   🔄 Trying to use existing app...{Colors.ENDC}")
                         # Try to find any existing app
                         for search_path in search_paths:
                             full_path = repo_root / search_path
                             if full_path.exists():
                                 hud_app_path = full_path
+                                print(f"{Colors.GREEN}   ✓ Found existing app at {search_path}{Colors.ENDC}")
                                 break
                 else:
                     print(f"{Colors.GREEN}   ✓ HUD already built (up to date){Colors.ENDC}")
 
                 if hud_app_path and hud_app_path.exists():
-                    # Launch HUD app immediately
-                    subprocess.Popen(["open", "-a", str(hud_app_path)],
-                                   stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
-                    print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
+                    # Kill any existing HUD instances first
+                    print(f"{Colors.CYAN}   🔄 Checking for existing HUD instances...{Colors.ENDC}")
+                    kill_result = subprocess.run(
+                        ["pkill", "-f", "JARVIS-HUD"],
+                        capture_output=True
+                    )
+                    if kill_result.returncode == 0:
+                        print(f"{Colors.GREEN}   ✓ Killed existing HUD instance{Colors.ENDC}")
+                        import time
+                        time.sleep(0.5)  # Give it time to close
+
+                    # Launch HUD app with explicit activation
+                    print(f"{Colors.CYAN}   🚀 Launching HUD window...{Colors.ENDC}")
+                    launch_result = subprocess.run(
+                        ["open", "-a", str(hud_app_path), "--new"],
+                        capture_output=True,
+                        text=True
+                    )
+
+                    if launch_result.returncode == 0:
+                        print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
+
+                        # Wait a moment and verify it's running
+                        import time
+                        time.sleep(1)
+                        verify_result = subprocess.run(
+                            ["pgrep", "-f", "JARVIS-HUD"],
+                            capture_output=True,
+                            text=True
+                        )
+
+                        if verify_result.stdout.strip():
+                            print(f"{Colors.GREEN}   ✓ HUD process confirmed (PID: {verify_result.stdout.strip()}){Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}   ⚠️  HUD may not have started (no process found){Colors.ENDC}")
+                    else:
+                        print(f"{Colors.YELLOW}   ⚠️  Failed to launch HUD: {launch_result.stderr}{Colors.ENDC}")
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}   Searched: {search_paths}{Colors.ENDC}")
             except subprocess.TimeoutExpired:
                 print(f"{Colors.YELLOW}   ⚠️  Build timed out (taking longer than 2 minutes){Colors.ENDC}")
             except Exception as e:
