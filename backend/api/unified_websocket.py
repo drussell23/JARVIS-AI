@@ -203,6 +203,10 @@ class UnifiedWebSocketManager:
             "loading_message": "Starting JARVIS..."
         }
 
+        # Progress message buffer for late-connecting HUD clients
+        # Stores all progress updates so HUD gets smooth loading experience even if it connects late
+        self.progress_buffer: deque = deque(maxlen=100)  # Keep last 100 progress updates
+
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
         logger.info(
             "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | "
@@ -1293,6 +1297,7 @@ class UnifiedWebSocketManager:
         """
         Handle HUD client connection handshake
         Tags this client as a HUD client and sends current state
+        Also replays buffered progress messages for smooth loading experience
         """
         hud_client_id = message.get("client_id", client_id)
         hud_version = message.get("version", "unknown")
@@ -1311,6 +1316,26 @@ class UnifiedWebSocketManager:
         # Update HUD state if connection successful
         self.hud_state["status"] = "connected"
         self.hud_state["last_update"] = datetime.now().isoformat()
+
+        # Replay buffered progress messages for smooth loading experience
+        # This ensures HUD sees all progress updates even if it connected late
+        if self.progress_buffer:
+            logger.info(f"📼 Replaying {len(self.progress_buffer)} buffered progress messages to HUD")
+
+            # Get the WebSocket connection for this client
+            if client_id in self.connections:
+                ws = self.connections[client_id]
+
+                # Send all buffered progress messages in order
+                for buffered_msg in self.progress_buffer:
+                    try:
+                        await ws.send_json(buffered_msg)
+                        logger.debug(f"   ✓ Replayed: {buffered_msg['progress']}% - {buffered_msg['message']}")
+                    except Exception as e:
+                        logger.warning(f"   ⚠️  Failed to replay message: {e}")
+                        break
+
+                logger.info(f"✅ Replay complete - HUD caught up on all progress")
 
         # Send welcome with current state
         return {
@@ -1338,12 +1363,26 @@ class UnifiedWebSocketManager:
         """
         Send loading progress to all HUD clients
         Called by backend during startup
+        Buffers messages for late-connecting HUD clients
 
         Args:
             progress: Progress percentage (0-100)
             message: Status message describing current step
         """
         logger.info(f"📊 HUD Progress Update: {progress}% - {message}")
+
+        # Create progress message
+        progress_msg = {
+            "type": "loading_progress",
+            "progress": progress,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Buffer the message for late-connecting HUD clients
+        # This ensures smooth loading experience even if HUD connects after startup begins
+        self.progress_buffer.append(progress_msg)
+        logger.debug(f"   📝 Buffered progress message ({len(self.progress_buffer)} total in buffer)")
 
         # Update HUD state
         self.hud_state["loading_progress"] = progress
@@ -1359,25 +1398,17 @@ class UnifiedWebSocketManager:
         logger.info(f"   Active HUD clients: {len(hud_clients)}")
 
         if not hud_clients:
-            logger.warning("   ⚠️  No HUD clients connected - progress update will not be delivered!")
-            logger.warning("   HUD may be disconnected or not started yet")
-
-        # Broadcast to HUD clients only
-        try:
-            await self.broadcast(
-                {
-                    "type": "loading_progress",
-                    "progress": progress,
-                    "message": message,
-                    "timestamp": datetime.now().isoformat()
-                },
-                capability="hud_client"
-            )
-            logger.info(f"   ✓ Progress update broadcast to {len(hud_clients)} HUD client(s)")
-        except Exception as e:
-            logger.error(f"   ❌ Failed to broadcast progress update: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
+            logger.warning("   ⚠️  No HUD clients connected YET - message buffered for replay")
+            logger.warning("   When HUD connects, it will receive all buffered progress updates")
+        else:
+            # Broadcast to connected HUD clients
+            try:
+                await self.broadcast(progress_msg, capability="hud_client")
+                logger.info(f"   ✓ Progress update broadcast to {len(hud_clients)} HUD client(s)")
+            except Exception as e:
+                logger.error(f"   ❌ Failed to broadcast progress update: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
 
     async def send_hud_loading_complete(self, success: bool = True):
         """
