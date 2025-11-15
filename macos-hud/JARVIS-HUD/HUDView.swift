@@ -68,9 +68,9 @@ struct HUDView: View {
 
                 Spacer()
 
-                // Center: Arc Reactor
+                // Center: Arc Reactor (matches web app 420px container)
                 ArcReactorView(state: hudState)
-                    .frame(width: 400, height: 400)
+                    .frame(width: 440, height: 440)
 
                 Spacer()
 
@@ -144,124 +144,6 @@ struct HUDView: View {
             TranscriptMessage(speaker: "YOU", text: "unlock my screen", timestamp: Date()),
             TranscriptMessage(speaker: "JARVIS", text: "Screen unlocked by Derek J. Russell", timestamp: Date())
         ]
-    }
-}
-
-/// Arc Reactor View - Matching web app's cyan/teal gradient rings exactly
-struct ArcReactorView: View {
-
-    let state: HUDState
-    @State private var isAnimating = false
-
-    var body: some View {
-        ZStack {
-            // Outer glow effect (cyan/teal)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.0, green: 0.8, blue: 0.7, opacity: 0.4),
-                            Color(red: 0.0, green: 0.6, blue: 0.5, opacity: 0.2),
-                            Color.clear
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 250
-                    )
-                )
-                .frame(width: 500, height: 500)
-                .blur(radius: 50)
-
-            // Ring 4 (outermost) - dark teal/cyan gradient
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.3, green: 0.5, blue: 0.5, opacity: 0.8),
-                            Color(red: 0.2, green: 0.4, blue: 0.45, opacity: 0.6)
-                        ],
-                        center: .center,
-                        startRadius: 160,
-                        endRadius: 180
-                    )
-                )
-                .frame(width: 360, height: 360)
-
-            // Ring 3 - medium teal
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.2, green: 0.6, blue: 0.6, opacity: 0.9),
-                            Color(red: 0.25, green: 0.5, blue: 0.5, opacity: 0.7)
-                        ],
-                        center: .center,
-                        startRadius: 120,
-                        endRadius: 135
-                    )
-                )
-                .frame(width: 270, height: 270)
-
-            // Ring 2 - bright cyan/green
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.0, green: 0.9, blue: 0.7, opacity: 1.0),
-                            Color(red: 0.1, green: 0.7, blue: 0.6, opacity: 0.9)
-                        ],
-                        center: .center,
-                        startRadius: 75,
-                        endRadius: 90
-                    )
-                )
-                .frame(width: 180, height: 180)
-                .shadow(color: Color(red: 0.0, green: 0.9, blue: 0.7, opacity: 0.6), radius: 20)
-
-            // Ring 1 - bright green center
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.jarvisGreen,
-                            Color(red: 0.0, green: 0.95, blue: 0.5, opacity: 1.0),
-                            Color(red: 0.0, green: 0.8, blue: 0.6, opacity: 0.9)
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 45
-                    )
-                )
-                .frame(width: 90, height: 90)
-                .shadow(color: Color.jarvisGreenGlow(), radius: 30)
-                .shadow(color: Color.jarvisGreenGlow(), radius: 50)
-
-            // Center core - bright white with green glow
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.white,
-                            Color.jarvisGreen.opacity(0.8)
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 10
-                    )
-                )
-                .frame(width: 20, height: 20)
-                .shadow(color: Color.jarvisGreenGlow(), radius: 40)
-                .shadow(color: Color.white.opacity(0.8), radius: 20)
-                .scaleEffect(isAnimating ? 1.1 : 1.0)
-        }
-        .onAppear {
-            withAnimation(
-                Animation.easeInOut(duration: 2.0)
-                    .repeatForever(autoreverses: true)
-            ) {
-                isAnimating = true
-            }
-        }
     }
 }
 
