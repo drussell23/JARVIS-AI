@@ -40,14 +40,15 @@ class PythonBridge: ObservableObject {
 
     init() {
         // Dynamic backend configuration from environment (set by Python launcher)
-        let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8010/ws/hud"
+        // UNIFIED WEBSOCKET: Use /ws endpoint (same as web-app) instead of /ws/hud
+        let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8010/ws"
         let httpURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "http://localhost:8010"
 
         self.websocketURL = URL(string: wsURL)!
         self.apiBaseURL = URL(string: httpURL)!
 
         print("🔧 Backend Configuration:")
-        print("   WebSocket: \(wsURL)")
+        print("   WebSocket: \(wsURL) [UNIFIED ENDPOINT]")
         print("   HTTP API:  \(httpURL)")
         print("   Max reconnect attempts: \(maxReconnectAttempts)")
     }
@@ -130,13 +131,15 @@ class PythonBridge: ObservableObject {
     }
 
     /// Send initial connection message to backend
+    /// Uses unified WebSocket protocol with HUD-specific handshake
     private func sendConnectionMessage() {
         let message = [
-            "type": "connect",
-            "client": "macos-hud",
-            "version": "1.0.0"
+            "type": "hud_connect",  // HUD-specific handler in unified WebSocket
+            "client_id": "macos-hud-\(UUID().uuidString)",
+            "version": "2.0.0"
         ]
 
+        print("📤 Sending HUD connection handshake to unified WebSocket endpoint...")
         sendMessage(message)
     }
 

@@ -44,6 +44,9 @@ class HUDConnectionManager:
 
     async def connect(self, websocket: WebSocket, client_id: Optional[str] = None):
         """Accept and register new HUD connection"""
+        logger.info("=" * 80)
+        logger.info("🔌 NEW HUD CLIENT CONNECTING...")
+
         await websocket.accept()
         self.active_connections.add(websocket)
 
@@ -54,11 +57,17 @@ class HUDConnectionManager:
         }
         self.client_info[websocket] = client_info
 
-        logger.info(f"✓ HUD client connected: {client_info['id']}")
-        logger.info(f"  Total HUD clients: {len(self.active_connections)}")
+        logger.info(f"✅ HUD client connected successfully!")
+        logger.info(f"   Client ID: {client_info['id']}")
+        logger.info(f"   Client Type: {client_info['client_type']}")
+        logger.info(f"   Connected at: {client_info['connected_at']}")
+        logger.info(f"   Total active HUD clients: {len(self.active_connections)}")
+        logger.info("=" * 80)
 
         # Send current state to new client
+        logger.info(f"📤 Sending current state to new HUD client...")
         await self.send_state(websocket, hud_state)
+        logger.info(f"   ✓ Initial state sent")
 
     async def disconnect(self, websocket: WebSocket):
         """Remove disconnected client"""
@@ -68,8 +77,14 @@ class HUDConnectionManager:
             if websocket in self.client_info:
                 del self.client_info[websocket]
 
-            logger.info(f"✗ HUD client disconnected: {client_info.get('id', 'unknown')}")
-            logger.info(f"  Remaining clients: {len(self.active_connections)}")
+            logger.info("=" * 80)
+            logger.info(f"🔌 HUD CLIENT DISCONNECTED")
+            logger.info(f"   Client ID: {client_info.get('id', 'unknown')}")
+            logger.info(f"   Was connected since: {client_info.get('connected_at', 'unknown')}")
+            logger.info(f"   Remaining active clients: {len(self.active_connections)}")
+            if len(self.active_connections) == 0:
+                logger.warning("   ⚠️  NO HUD CLIENTS CONNECTED - Progress updates will not be delivered!")
+            logger.info("=" * 80)
 
     async def send_state(self, websocket: WebSocket, state: dict):
         """Send state update to specific client"""
@@ -86,19 +101,36 @@ class HUDConnectionManager:
     async def broadcast(self, message: dict):
         """Broadcast message to all connected HUD clients"""
         if not self.active_connections:
+            logger.debug(f"⚠️  Broadcast skipped - no HUD clients connected")
+            logger.debug(f"   Message type: {message.get('type', 'unknown')}")
             return
 
         message["timestamp"] = datetime.now().isoformat()
+        message_type = message.get("type", "unknown")
+
+        logger.debug(f"📡 Broadcasting '{message_type}' to {len(self.active_connections)} client(s)...")
 
         # Send to all clients concurrently
         disconnected_clients = []
+        success_count = 0
+        error_count = 0
 
         for websocket in self.active_connections:
+            client_id = self.client_info.get(websocket, {}).get("id", "unknown")
             try:
                 await websocket.send_json(message)
+                success_count += 1
+                logger.debug(f"   ✓ Sent to client {client_id}")
             except Exception as e:
-                logger.error(f"Error broadcasting to client: {e}")
+                error_count += 1
+                logger.error(f"   ❌ Error sending to client {client_id}: {e}")
                 disconnected_clients.append(websocket)
+
+        # Log summary
+        if success_count > 0:
+            logger.debug(f"   📊 Broadcast summary: {success_count} success, {error_count} errors")
+        if error_count > 0:
+            logger.warning(f"   ⚠️  {error_count} client(s) failed to receive '{message_type}' message")
 
         # Clean up disconnected clients
         for websocket in disconnected_clients:
@@ -164,11 +196,15 @@ async def hud_websocket_endpoint(websocket: WebSocket):
     client_id = None
 
     try:
+        logger.info("🌐 WebSocket endpoint /ws/hud accessed - accepting connection...")
         await hud_manager.connect(websocket)
+        logger.info("✅ HUD WebSocket connection accepted and registered")
 
         while True:
             # Receive messages from HUD
+            logger.debug("📥 Waiting for message from HUD client...")
             data = await websocket.receive_json()
+            logger.debug(f"📨 Received message from HUD: {data}")
 
             message_type = data.get("type")
 
@@ -176,14 +212,20 @@ async def hud_websocket_endpoint(websocket: WebSocket):
                 # Initial connection message
                 client_id = data.get("client_id")
                 version = data.get("version", "unknown")
-                logger.info(f"HUD client info: version={version}")
+                logger.info("=" * 80)
+                logger.info(f"🤝 HUD CLIENT HANDSHAKE")
+                logger.info(f"   Client ID: {client_id}")
+                logger.info(f"   Version: {version}")
+                logger.info("=" * 80)
 
                 # Send welcome message
-                await websocket.send_json({
+                welcome_msg = {
                     "type": "welcome",
                     "message": "Connected to JARVIS backend",
                     "server_version": "1.0.0"
-                })
+                }
+                await websocket.send_json(welcome_msg)
+                logger.info(f"📤 Welcome message sent to HUD client")
 
             elif message_type == "ping":
                 # Health check
@@ -209,12 +251,24 @@ async def hud_websocket_endpoint(websocket: WebSocket):
             else:
                 logger.warning(f"Unknown message type from HUD: {message_type}")
 
-    except WebSocketDisconnect:
-        logger.info("HUD client disconnected normally")
+    except WebSocketDisconnect as e:
+        logger.info("=" * 80)
+        logger.info("🔌 HUD CLIENT DISCONNECTED (Normal)")
+        logger.info(f"   Disconnect code: {e.code if hasattr(e, 'code') else 'N/A'}")
+        logger.info(f"   Disconnect reason: {e.reason if hasattr(e, 'reason') else 'N/A'}")
+        logger.info("=" * 80)
     except Exception as e:
-        logger.error(f"HUD WebSocket error: {e}")
+        logger.error("=" * 80)
+        logger.error(f"❌ HUD WEBSOCKET ERROR")
+        logger.error(f"   Error type: {type(e).__name__}")
+        logger.error(f"   Error message: {e}")
+        logger.error("=" * 80)
+        import traceback
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
     finally:
+        logger.info("🧹 Cleaning up HUD WebSocket connection...")
         await hud_manager.disconnect(websocket)
+        logger.info("   ✓ Cleanup complete")
 
 
 # Helper functions for other parts of the system to update HUD
@@ -248,11 +302,24 @@ async def send_loading_progress(progress: int, message: str):
         progress: Progress percentage (0-100)
         message: Status message describing current step
     """
-    await hud_manager.broadcast({
-        "type": "loading_progress",
-        "progress": progress,
-        "message": message
-    })
+    logger.info(f"📊 HUD Progress Update: {progress}% - {message}")
+    logger.info(f"   Active HUD connections: {len(hud_manager.active_connections)}")
+
+    if not hud_manager.active_connections:
+        logger.warning("   ⚠️  No HUD clients connected - progress update will not be delivered!")
+        logger.warning("   HUD may be disconnected or not started yet")
+
+    try:
+        await hud_manager.broadcast({
+            "type": "loading_progress",
+            "progress": progress,
+            "message": message
+        })
+        logger.info(f"   ✓ Progress update broadcast to {len(hud_manager.active_connections)} client(s)")
+    except Exception as e:
+        logger.error(f"   ❌ Failed to broadcast progress update: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 
 async def send_loading_complete(success: bool = True):
@@ -263,9 +330,25 @@ async def send_loading_complete(success: bool = True):
     Args:
         success: Whether startup completed successfully
     """
-    await hud_manager.broadcast({
-        "type": "loading_complete",
-        "success": success,
-        "progress": 100,
-        "message": "JARVIS is ready!" if success else "Startup failed"
-    })
+    status_msg = "JARVIS is ready!" if success else "Startup failed"
+    logger.info("=" * 80)
+    logger.info(f"🎉 HUD Loading Complete Signal: {status_msg}")
+    logger.info(f"   Success: {success}")
+    logger.info(f"   Active HUD connections: {len(hud_manager.active_connections)}")
+    logger.info("=" * 80)
+
+    if not hud_manager.active_connections:
+        logger.warning("   ⚠️  No HUD clients connected - completion signal will not be delivered!")
+
+    try:
+        await hud_manager.broadcast({
+            "type": "loading_complete",
+            "success": success,
+            "progress": 100,
+            "message": status_msg
+        })
+        logger.info(f"   ✓ Completion signal broadcast to {len(hud_manager.active_connections)} client(s)")
+    except Exception as e:
+        logger.error(f"   ❌ Failed to broadcast completion signal: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())

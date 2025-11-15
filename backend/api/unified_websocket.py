@@ -180,6 +180,9 @@ class UnifiedWebSocketManager:
             "model_status": self._handle_model_status,
             "network_status": self._handle_network_status,
             "notification": self._handle_notification,
+            # HUD-specific handlers
+            "hud_connect": self._handle_hud_connect,
+            "hud_request_state": self._handle_hud_request_state,
             # General handlers
             "ping": self._handle_ping,
             "pong": self._handle_pong,
@@ -187,6 +190,17 @@ class UnifiedWebSocketManager:
             "unsubscribe": self._handle_unsubscribe,
             "health_check": self._handle_health_check,
             "system_metrics": self._handle_system_metrics,
+        }
+
+        # HUD state tracking (shared with all HUD clients)
+        self.hud_state = {
+            "status": "offline",
+            "message": "System initializing...",
+            "transcript": [],
+            "reactor_state": "idle",
+            "last_update": None,
+            "loading_progress": 0,
+            "loading_message": "Starting JARVIS..."
         }
 
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
@@ -1271,7 +1285,196 @@ class UnifiedWebSocketManager:
         for client_id in disconnected:
             await self.disconnect(client_id)
 
-    # Handler implementations
+    # ============================================================================
+    # HUD-SPECIFIC HANDLERS
+    # ============================================================================
+
+    async def _handle_hud_connect(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle HUD client connection handshake
+        Tags this client as a HUD client and sends current state
+        """
+        hud_client_id = message.get("client_id", client_id)
+        hud_version = message.get("version", "unknown")
+
+        logger.info("=" * 80)
+        logger.info(f"🖥️  HUD CLIENT HANDSHAKE")
+        logger.info(f"   Client ID: {hud_client_id}")
+        logger.info(f"   Version: {hud_version}")
+        logger.info(f"   WebSocket Client ID: {client_id}")
+        logger.info("=" * 80)
+
+        # Tag this connection as a HUD client
+        if client_id in connection_capabilities:
+            connection_capabilities[client_id].add("hud_client")
+
+        # Update HUD state if connection successful
+        self.hud_state["status"] = "connected"
+        self.hud_state["last_update"] = datetime.now().isoformat()
+
+        # Send welcome with current state
+        return {
+            "type": "welcome",
+            "message": "Connected to JARVIS unified WebSocket",
+            "server_version": "2.0.0",
+            "current_state": self.hud_state,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _handle_hud_request_state(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle HUD state requests
+        Sends current HUD state including loading progress
+        """
+        logger.debug(f"[UNIFIED-WS] HUD client {client_id} requested current state")
+
+        return {
+            "type": "state",
+            "data": self.hud_state,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def send_hud_loading_progress(self, progress: int, message: str):
+        """
+        Send loading progress to all HUD clients
+        Called by backend during startup
+
+        Args:
+            progress: Progress percentage (0-100)
+            message: Status message describing current step
+        """
+        logger.info(f"📊 HUD Progress Update: {progress}% - {message}")
+
+        # Update HUD state
+        self.hud_state["loading_progress"] = progress
+        self.hud_state["loading_message"] = message
+        self.hud_state["last_update"] = datetime.now().isoformat()
+
+        # Count HUD clients
+        hud_clients = [
+            cid for cid, caps in connection_capabilities.items()
+            if "hud_client" in caps
+        ]
+
+        logger.info(f"   Active HUD clients: {len(hud_clients)}")
+
+        if not hud_clients:
+            logger.warning("   ⚠️  No HUD clients connected - progress update will not be delivered!")
+            logger.warning("   HUD may be disconnected or not started yet")
+
+        # Broadcast to HUD clients only
+        try:
+            await self.broadcast(
+                {
+                    "type": "loading_progress",
+                    "progress": progress,
+                    "message": message,
+                    "timestamp": datetime.now().isoformat()
+                },
+                capability="hud_client"
+            )
+            logger.info(f"   ✓ Progress update broadcast to {len(hud_clients)} HUD client(s)")
+        except Exception as e:
+            logger.error(f"   ❌ Failed to broadcast progress update: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+
+    async def send_hud_loading_complete(self, success: bool = True):
+        """
+        Send completion signal to HUD - triggers transition to main HUD
+        Called by backend when fully ready
+
+        Args:
+            success: Whether startup completed successfully
+        """
+        status_msg = "JARVIS is ready!" if success else "Startup failed"
+        logger.info("=" * 80)
+        logger.info(f"🎉 HUD Loading Complete Signal: {status_msg}")
+        logger.info(f"   Success: {success}")
+
+        # Count HUD clients
+        hud_clients = [
+            cid for cid, caps in connection_capabilities.items()
+            if "hud_client" in caps
+        ]
+        logger.info(f"   Active HUD clients: {len(hud_clients)}")
+        logger.info("=" * 80)
+
+        # Update HUD state
+        self.hud_state["loading_progress"] = 100
+        self.hud_state["loading_message"] = status_msg
+        self.hud_state["status"] = "ready" if success else "error"
+        self.hud_state["last_update"] = datetime.now().isoformat()
+
+        if not hud_clients:
+            logger.warning("   ⚠️  No HUD clients connected - completion signal will not be delivered!")
+
+        try:
+            await self.broadcast(
+                {
+                    "type": "loading_complete",
+                    "success": success,
+                    "progress": 100,
+                    "message": status_msg,
+                    "timestamp": datetime.now().isoformat()
+                },
+                capability="hud_client"
+            )
+            logger.info(f"   ✓ Completion signal broadcast to {len(hud_clients)} HUD client(s)")
+        except Exception as e:
+            logger.error(f"   ❌ Failed to broadcast completion signal: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+
+    async def send_hud_transcript(self, speaker: str, text: str):
+        """
+        Send transcript message to all HUD clients
+
+        Args:
+            speaker: Speaker name (USER, JARVIS, etc.)
+            text: Transcript text
+        """
+        transcript_entry = {
+            "speaker": speaker,
+            "text": text,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Add to state (keep last 10)
+        self.hud_state["transcript"].append(transcript_entry)
+        if len(self.hud_state["transcript"]) > 10:
+            self.hud_state["transcript"] = self.hud_state["transcript"][-10:]
+
+        # Broadcast to HUD clients
+        await self.broadcast(
+            {
+                "type": "transcript",
+                "data": transcript_entry
+            },
+            capability="hud_client"
+        )
+
+    async def set_hud_reactor_state(self, state: str):
+        """
+        Update arc reactor state (idle, listening, processing, speaking)
+
+        Args:
+            state: Reactor state
+        """
+        self.hud_state["reactor_state"] = state
+
+        await self.broadcast(
+            {
+                "type": "reactor_state",
+                "state": state,
+                "timestamp": datetime.now().isoformat()
+            },
+            capability="hud_client"
+        )
+
+    # ============================================================================
+    # VOICE/COMMAND HANDLERS
+    # ============================================================================
 
     async def _handle_voice_command(
         self, client_id: str, message: Dict[str, Any]
@@ -1576,6 +1779,67 @@ def set_jarvis_instance(jarvis_api):
     if ws_manager and ws_manager.pipeline:
         ws_manager.pipeline.jarvis = jarvis_api
         logger.info("✅ JARVIS instance set in unified WebSocket pipeline")
+
+
+# ============================================================================
+# HUD HELPER FUNCTIONS - For easy access from anywhere in backend
+# ============================================================================
+
+async def send_loading_progress(progress: int, message: str):
+    """
+    Send loading progress update to HUD during system startup
+    Used by start_system.py and backend/main.py to show real-time boot progress
+
+    Args:
+        progress: Progress percentage (0-100)
+        message: Status message describing current step
+    """
+    await ws_manager.send_hud_loading_progress(progress, message)
+
+
+async def send_loading_complete(success: bool = True):
+    """
+    Send completion signal to HUD - triggers transition to main HUD
+    Called by start_system.py when backend is fully ready
+
+    Args:
+        success: Whether startup completed successfully
+    """
+    await ws_manager.send_hud_loading_complete(success)
+
+
+async def update_hud_status(status: str, message: str = ""):
+    """Update HUD status from anywhere in the system"""
+    ws_manager.hud_state["status"] = status
+    ws_manager.hud_state["message"] = message
+    ws_manager.hud_state["last_update"] = datetime.now().isoformat()
+
+    await ws_manager.broadcast(
+        {
+            "type": "state_update",
+            "updates": {
+                "status": status,
+                "message": message
+            },
+            "timestamp": datetime.now().isoformat()
+        },
+        capability="hud_client"
+    )
+
+
+async def send_hud_transcript(speaker: str, text: str):
+    """Send transcript to HUD from anywhere in the system"""
+    await ws_manager.send_hud_transcript(speaker, text)
+
+
+async def set_hud_reactor_state(state: str):
+    """Update arc reactor state from anywhere in the system"""
+    await ws_manager.set_hud_reactor_state(state)
+
+
+async def broadcast_to_hud(message: dict):
+    """Broadcast custom message to all HUD clients"""
+    await ws_manager.broadcast(message, capability="hud_client")
 
 
 @router.websocket("/ws")

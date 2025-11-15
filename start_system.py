@@ -2887,7 +2887,7 @@ async def send_hud_progress(progress: int, message: str):
         try:
             # Lazy import to avoid circular dependencies
             sys.path.insert(0, str(Path(__file__).parent / "backend"))
-            from api.hud_websocket import send_loading_progress
+            from api.unified_websocket import send_loading_progress
             _hud_progress_broadcaster = send_loading_progress
         except Exception as e:
             # Backend not loaded yet, silently skip
@@ -2911,7 +2911,7 @@ async def send_hud_completion(success: bool = True):
     if _hud_completion_broadcaster is None:
         try:
             sys.path.insert(0, str(Path(__file__).parent / "backend"))
-            from api.hud_websocket import send_loading_complete
+            from api.unified_websocket import send_loading_complete
             _hud_completion_broadcaster = send_loading_complete
         except Exception as e:
             # Backend not loaded yet, silently skip
