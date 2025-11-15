@@ -4386,6 +4386,13 @@ class AsyncSystemManager:
         print(f"\n{Colors.BLUE}🍎 Starting macOS Native HUD...{Colors.ENDC}")
 
         try:
+            # Ensure backend is in path
+            import sys
+            from pathlib import Path
+            backend_path = Path(__file__).parent / "backend"
+            if str(backend_path) not in sys.path:
+                sys.path.insert(0, str(backend_path))
+
             from backend.ui.macos_launcher import MacOSHUDLauncher
 
             launcher = MacOSHUDLauncher(
@@ -8815,10 +8822,15 @@ except Exception as e:
             progress_tracker = asyncio.create_task(track_backend_progress())
             self.background_tasks.append(progress_tracker)
 
-            # Wait for both with proper error handling
-            backend_result, frontend_result = await asyncio.gather(
-                backend_task, frontend_task, return_exceptions=True
-            )
+            # Wait for backend and UI (if UI task exists) with proper error handling
+            if ui_task is not None:
+                backend_result, frontend_result = await asyncio.gather(
+                    backend_task, ui_task, return_exceptions=True
+                )
+            else:
+                # No UI task (shouldn't happen, but handle gracefully)
+                backend_result = await backend_task
+                frontend_result = None
 
             # Check backend result (critical)
             if isinstance(backend_result, Exception):
