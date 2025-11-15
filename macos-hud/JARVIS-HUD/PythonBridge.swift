@@ -36,8 +36,8 @@ class PythonBridge: ObservableObject {
     private var connectionHealthTimer: Timer?
     private var lastMessageTime: Date?
 
-    // Voice output
-    private var voiceManager: VoiceManager?
+    // Voice output (TODO: Add VoiceManager.swift to Xcode project)
+    // private var voiceManager: VoiceManager?
 
     // MARK: - Initialization
 
@@ -50,14 +50,14 @@ class PythonBridge: ObservableObject {
         self.websocketURL = URL(string: wsURL)!
         self.apiBaseURL = URL(string: httpURL)!
 
-        // Initialize voice manager
-        self.voiceManager = VoiceManager(apiBaseURL: self.apiBaseURL)
+        // Initialize voice manager (TODO: Add VoiceManager.swift to Xcode project)
+        // self.voiceManager = VoiceManager(apiBaseURL: self.apiBaseURL)
 
         print("🔧 Backend Configuration:")
         print("   WebSocket: \(wsURL) [UNIFIED ENDPOINT]")
         print("   HTTP API:  \(httpURL)")
         print("   Max reconnect attempts: \(maxReconnectAttempts)")
-        print("   Voice TTS: Enabled")
+        // print("   Voice TTS: Enabled")
     }
 
     // MARK: - Connection Management
@@ -314,10 +314,10 @@ class PythonBridge: ObservableObject {
         )
         transcriptMessages.append(transcriptMsg)
 
-        // Speak if requested
+        // Speak if requested (TODO: Add VoiceManager.swift to Xcode project)
         if shouldSpeak {
             print("🎤 Speaking response via TTS...")
-            voiceManager?.speak(responseText)
+            // voiceManager?.speak(responseText)
         }
     }
 
