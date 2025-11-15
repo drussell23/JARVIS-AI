@@ -2873,6 +2873,7 @@ class Colors:
 
 # Global HUD progress broadcaster
 _hud_progress_broadcaster = None
+_hud_completion_broadcaster = None
 
 
 async def send_hud_progress(progress: int, message: str):
@@ -2894,6 +2895,29 @@ async def send_hud_progress(progress: int, message: str):
 
     try:
         await _hud_progress_broadcaster(progress, message)
+    except:
+        # WebSocket not ready or no clients connected, silently skip
+        pass
+
+
+async def send_hud_completion(success: bool = True):
+    """
+    Send completion signal to macOS HUD
+    Called when backend is fully ready to transition to main HUD
+    """
+    global _hud_completion_broadcaster
+
+    if _hud_completion_broadcaster is None:
+        try:
+            sys.path.insert(0, str(Path(__file__).parent / "backend"))
+            from api.hud_websocket import send_loading_complete
+            _hud_completion_broadcaster = send_loading_complete
+        except Exception as e:
+            # Backend not loaded yet, silently skip
+            return
+
+    try:
+        await _hud_completion_broadcaster(success)
     except:
         # WebSocket not ready or no clients connected, silently skip
         pass
@@ -9035,6 +9059,9 @@ except Exception as e:
                         success=True,
                         redirect_url=f"http://localhost:{self.ports['frontend']}"
                     )
+
+                # CRITICAL: Also send completion to macOS HUD
+                await send_hud_completion(success=True)
             else:
                 # Normal startup - open frontend directly
                 await asyncio.sleep(1)  # Brief pause before opening

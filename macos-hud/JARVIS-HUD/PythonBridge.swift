@@ -19,6 +19,7 @@ class PythonBridge: ObservableObject {
     @Published var hudState: HUDState = .offline
     @Published var loadingProgress: Int = 0
     @Published var loadingMessage: String = "Initializing..."
+    @Published var loadingComplete: Bool = false  // Signals backend is ready
 
     // MARK: - Configuration
 
@@ -210,6 +211,8 @@ class PythonBridge: ObservableObject {
                     self.handleStatusUpdate(json)
                 case "loading_progress":
                     self.handleLoadingProgress(json)
+                case "loading_complete":
+                    self.handleLoadingComplete(json)
                 default:
                     break
                 }
@@ -266,6 +269,17 @@ class PythonBridge: ObservableObject {
         loadingMessage = message
 
         print("📊 Loading Progress: \(progress)% - \(message)")
+    }
+
+    private func handleLoadingComplete(_ json: [String: Any]) {
+        guard let success = json["success"] as? Bool else {
+            return
+        }
+
+        loadingComplete = true
+        loadingProgress = 100
+
+        print("✅ Backend Loading Complete! Success: \(success)")
     }
 
     // MARK: - HTTP API Calls

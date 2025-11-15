@@ -253,3 +253,19 @@ async def send_loading_progress(progress: int, message: str):
         "progress": progress,
         "message": message
     })
+
+
+async def send_loading_complete(success: bool = True):
+    """
+    Send completion signal to HUD - triggers transition to main HUD
+    Called by start_system.py when backend is fully ready
+
+    Args:
+        success: Whether startup completed successfully
+    """
+    await hud_manager.broadcast({
+        "type": "loading_complete",
+        "success": success,
+        "progress": 100,
+        "message": "JARVIS is ready!" if success else "Startup failed"
+    })

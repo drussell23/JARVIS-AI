@@ -122,9 +122,11 @@ struct LoadingHUDView: View {
                 progress = CGFloat(newProgress)
                 loadingState = .loading(progress: newProgress, message: pythonBridge.loadingMessage)
             }
-
-            // Complete when backend signals 100%
-            if newProgress >= 100 {
+        }
+        .onChange(of: pythonBridge.loadingComplete) { isComplete in
+            // Only transition when backend explicitly signals completion
+            if isComplete {
+                print("🎯 Backend signaled completion - starting transition animation")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     playCompletionAnimation()
                 }
