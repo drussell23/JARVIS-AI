@@ -4393,7 +4393,7 @@ class AsyncSystemManager:
             if str(backend_path) not in sys.path:
                 sys.path.insert(0, str(backend_path))
 
-            from backend.ui.macos_launcher import MacOSHUDLauncher
+            from ui.macos_launcher import MacOSHUDLauncher
 
             launcher = MacOSHUDLauncher(
                 backend_host="localhost",
@@ -8606,7 +8606,7 @@ except Exception as e:
             print(f"{Colors.BOLD}{Colors.CYAN}Phase 2/3: UI & Backend Startup{Colors.ENDC}")
             print(f"{Colors.BLUE}{'─'*70}{Colors.ENDC}")
 
-            # Launch UI FIRST to show loading screen
+                    # Launch UI FIRST to show loading screen
             ui_task = None
             if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
                 # macOS Native HUD - launch immediately to show loading screen
