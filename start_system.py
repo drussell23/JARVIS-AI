@@ -8594,16 +8594,27 @@ except Exception as e:
             else:
                 print(f"{Colors.GREEN}   ✓ WebSocket router started successfully{Colors.ENDC}")
 
-            # Phase 2: Start backend and frontend in parallel
+            # Phase 2: Start UI FIRST (for loading screen), then backend
             print(f"\n{Colors.BLUE}{'─'*70}{Colors.ENDC}")
-            print(f"{Colors.BOLD}{Colors.CYAN}Phase 2/3: Backend & Frontend (Parallel){Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.CYAN}Phase 2/3: UI & Backend Startup{Colors.ENDC}")
             print(f"{Colors.BLUE}{'─'*70}{Colors.ENDC}")
-            print(f"{Colors.CYAN}🔄 Starting backend and frontend concurrently...{Colors.ENDC}")
-            print(f"{Colors.CYAN}   → Backend: FastAPI server with AI services{Colors.ENDC}")
-            print(f"{Colors.CYAN}   → Frontend: User interface and voice interaction{Colors.ENDC}")
-            print(
-                f"{Colors.CYAN}   → Optimization: Parallel startup saves ~5-10 seconds{Colors.ENDC}"
-            )
+
+            # Launch UI FIRST to show loading screen
+            ui_task = None
+            if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
+                # macOS Native HUD - launch immediately to show loading screen
+                print(f"{Colors.CYAN}🍎 Launching macOS HUD (loading screen)...{Colors.ENDC}")
+                ui_task = asyncio.create_task(self.start_macos_hud())
+                # Give HUD time to launch and show loading screen
+                await asyncio.sleep(2)
+            else:
+                # Web App (default)
+                print(f"{Colors.CYAN}🔄 Starting backend and frontend concurrently...{Colors.ENDC}")
+                print(f"{Colors.CYAN}   → Backend: FastAPI server with AI services{Colors.ENDC}")
+                print(f"{Colors.CYAN}   → Frontend: User interface and voice interaction{Colors.ENDC}")
+                print(
+                    f"{Colors.CYAN}   → Optimization: Parallel startup saves ~5-10 seconds{Colors.ENDC}"
+                )
 
             # Small delay to ensure router is ready
             await asyncio.sleep(1)
@@ -8611,13 +8622,8 @@ except Exception as e:
             # Start backend
             backend_task = asyncio.create_task(self.start_backend())
 
-            # Start UI based on mode selection
-            ui_task = None
-            if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
-                # macOS Native HUD
-                ui_task = asyncio.create_task(self.start_macos_hud())
-            else:
-                # Web App (default)
+            # Start web frontend if not macOS mode
+            if not (hasattr(self, 'ui_mode') and self.ui_mode == 'macos'):
                 ui_task = asyncio.create_task(self.start_frontend())
 
             # Start ULTRA-DYNAMIC progress tracking (ZERO HARDCODING!)

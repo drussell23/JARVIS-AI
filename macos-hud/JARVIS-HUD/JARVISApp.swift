@@ -11,11 +11,21 @@ import SwiftUI
 struct JARVISApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var appState = AppState()
 
     var body: some Scene {
         WindowGroup {
-            HUDView()
-                .background(WindowAccessor())
+            Group {
+                if appState.isLoadingComplete {
+                    HUDView()
+                        .background(WindowAccessor())
+                } else {
+                    LoadingHUDView {
+                        appState.isLoadingComplete = true
+                    }
+                    .background(WindowAccessor())
+                }
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -25,32 +35,25 @@ struct JARVISApp: App {
     }
 }
 
+/// App state manager
+class AppState: ObservableObject {
+    @Published var isLoadingComplete: Bool = false
+}
+
 /// App delegate for macOS-specific configuration
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    var hudWindow: TransparentWindow?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create and configure transparent window
-        hudWindow = TransparentWindow()
-
-        // Set the content view
-        if let window = hudWindow {
-            window.contentView = NSHostingView(rootView: HUDView())
-            window.showHUD()
+        // Configure all windows as transparent overlays
+        for window in NSApplication.shared.windows {
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.level = .statusBar
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         }
 
         // Hide from Dock (optional - can be enabled later)
         // NSApp.setActivationPolicy(.accessory)
-
-        // Setup auto-hide timer
-        setupAutoHideTimer()
-    }
-
-    /// Auto-hide HUD after 10 seconds of inactivity (PRD requirement)
-    private func setupAutoHideTimer() {
-        // Implementation for auto-hide logic
-        // Will be connected to Python backend for activity detection
     }
 }
 
