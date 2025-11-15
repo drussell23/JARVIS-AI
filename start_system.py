@@ -9964,9 +9964,13 @@ async def main():
         print("Restarting JARVIS with intelligent system verification...\n")
 
         # Step 0: Start standalone loading server BEFORE killing processes
+        # IMPORTANT: Only for web-app mode, NOT for macOS HUD mode
         loading_server_url = "http://localhost:3001"
 
-        if not args.no_browser:
+        # Only start loading server and open browser for web-app mode
+        if args.ui_mode == "macos":
+            print(f"{Colors.CYAN}🍎 macOS HUD mode - Native window will appear (no browser){Colors.ENDC}")
+        elif not args.no_browser and args.ui_mode == "web-app":
             print(f"{Colors.CYAN}📡 Starting loading page server...{Colors.ENDC}")
             try:
                 loading_server_script = Path(__file__).parent / "loading_server.py"
