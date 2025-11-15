@@ -3715,77 +3715,74 @@ class AsyncSystemManager:
         )
 
         # ============================================================================
-        # 🧠 RAM PRESSURE DETECTION + GCP SPOT VM OFFLOADING (EARLY CHECK)
+        # 🎯 INTELLIGENT HYBRID ORCHESTRATION (ZERO HARDCODING)
         # ============================================================================
-        # CRITICAL: Check RAM BEFORE importing ANY heavy modules
-        # This prevents macOS from killing the process (exit code 137)
+        # Dynamic component offloading based on real-time metrics
+        # - Automatic component discovery and profiling
+        # - Intelligent GCP offloading decisions
+        # - Cost-aware with budget tracking
+        # - Integrates with existing cost tracker and GCP optimizer
         # ============================================================================
         print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.CYAN}🧠 RAM Pressure Detection (Pre-Import Check){Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.CYAN}🎯 Intelligent Hybrid Orchestration{Colors.ENDC}")
         print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
 
-        import psutil
-        mem = psutil.virtual_memory()
-        available_gb = mem.available / (1024**3)
-        total_gb = mem.total / (1024**3)
-        percent_free = (mem.available / mem.total) * 100
+        try:
+            # Initialize dynamic hybrid orchestrator
+            sys.path.insert(0, str(self.backend_dir / "core"))
+            from dynamic_hybrid_orchestrator import get_hybrid_orchestrator
 
-        print(f"{Colors.CYAN}📊 RAM Status (BEFORE heavy imports):{Colors.ENDC}")
-        print(f"{Colors.CYAN}   ├─ Total: {total_gb:.1f}GB{Colors.ENDC}")
-        print(f"{Colors.CYAN}   ├─ Available: {available_gb:.1f}GB ({percent_free:.1f}%){Colors.ENDC}")
-        print(f"{Colors.CYAN}   └─ Used: {mem.percent:.1f}%{Colors.ENDC}")
+            orchestrator = get_hybrid_orchestrator(backend_dir=self.backend_dir)
+            await orchestrator.initialize()
 
-        # Threshold: Need at least 8GB free for speaker verification + learning DB
-        REQUIRED_RAM_GB = 8.0
+            print(f"{Colors.GREEN}   ✓ Orchestrator initialized{Colors.ENDC}")
 
-        if available_gb < REQUIRED_RAM_GB:
-            print(f"\n{Colors.RED}🚨 CRITICAL: RAM PRESSURE DETECTED!{Colors.ENDC}")
-            print(f"{Colors.RED}   Available RAM ({available_gb:.1f}GB) < Required ({REQUIRED_RAM_GB:.1f}GB){Colors.ENDC}")
-            print(f"{Colors.YELLOW}   Heavy imports (JARVISLearningDatabase, SpeakerVerificationService) would cause crash!{Colors.ENDC}")
-            print(f"\n{Colors.CYAN}☁️  OFFLOADING TO GCP SPOT VM...{Colors.ENDC}")
+            # Get current status
+            status = await orchestrator.get_status()
 
-            # Skip ALL heavy local imports and offload to GCP
-            try:
-                sys.path.insert(0, str(self.backend_dir / "core"))
-                from gcp_vm_manager import GCPVMManager
+            print(f"\n{Colors.CYAN}📊 System Analysis:{Colors.ENDC}")
+            print(f"{Colors.CYAN}   ├─ Health: {status['health_status']}{Colors.ENDC}")
+            print(f"{Colors.CYAN}   ├─ RAM Available: {status['system']['ram_available_gb']:.1f}GB{Colors.ENDC}")
+            print(f"{Colors.CYAN}   ├─ Components: {status['components']['total']} discovered{Colors.ENDC}")
+            print(f"{Colors.CYAN}   └─ Budget: ${status['cost']['budget_remaining_usd']:.2f} remaining{Colors.ENDC}")
 
-                print(f"{Colors.CYAN}   └─ Creating e2-highmem-4 Spot VM (32GB RAM)...{Colors.ENDC}")
-                gcp_manager = GCPVMManager()
+            # Check if critical offloading needed
+            if status['health_status'] == 'critical':
+                print(f"\n{Colors.RED}🚨 CRITICAL RAM PRESSURE!{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   Intelligent offloading to GCP Spot VMs...{Colors.ENDC}")
 
-                gcp_vm_info = await gcp_manager.create_vm(
-                    purpose="backend-full-offload",
-                    machine_type="e2-highmem-4",
-                    preemptible=True
-                )
+                # Get offload recommendations
+                from intelligent_component_profiler import get_component_profiler
+                profiler = get_component_profiler(backend_dir=self.backend_dir)
+                report = await profiler.optimize_offloading()
 
-                if gcp_vm_info:
-                    print(f"{Colors.GREEN}   ✓ GCP VM created: {gcp_vm_info['name']}{Colors.ENDC}")
-                    print(f"{Colors.GREEN}   ✓ IP: {gcp_vm_info['external_ip']}{Colors.ENDC}")
-                    print(f"{Colors.GREEN}   ✓ Deploying full JARVIS backend to GCP...{Colors.ENDC}")
+                print(f"{Colors.CYAN}   ├─ Components to offload: {report['offload_recommendations']}{Colors.ENDC}")
+                print(f"{Colors.CYAN}   ├─ RAM to save: {report['total_ram_to_save_gb']:.1f}GB{Colors.ENDC}")
+                print(f"{Colors.CYAN}   └─ Estimated cost: ${report['estimated_total_cost']:.2f}{Colors.ENDC}")
 
-                    await gcp_manager.deploy_backend(gcp_vm_info)
+                # Queue offloads (non-blocking)
+                for rec in report['recommendations'][:5]:  # Top 5 heaviest
+                    await orchestrator.force_offload_component(rec['component'])
 
-                    print(f"\n{Colors.GREEN}✅ BACKEND RUNNING ON GCP!{Colors.ENDC}")
-                    print(f"{Colors.GREEN}   Backend URL: http://{gcp_vm_info['external_ip']}:8010{Colors.ENDC}")
-                    print(f"{Colors.GREEN}   Local Mac saved from crash!{Colors.ENDC}")
+                print(f"{Colors.GREEN}   ✓ Offload jobs queued - migrations proceeding in background{Colors.ENDC}")
 
-                    # Return mock process
-                    class MockGCPProcess:
-                        def __init__(self):
-                            self.returncode = None
-                        async def wait(self):
-                            await asyncio.sleep(float('inf'))
+            elif status['health_status'] == 'degraded':
+                print(f"\n{Colors.YELLOW}⚠️  Elevated RAM pressure - monitoring for offload opportunities{Colors.ENDC}")
 
-                    return MockGCPProcess()
-                else:
-                    print(f"{Colors.RED}❌ GCP VM creation failed!{Colors.ENDC}")
-                    print(f"{Colors.YELLOW}   WARNING: Proceeding with local startup - HIGH RISK OF CRASH!{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.GREEN}✅ System healthy - running locally with intelligent monitoring{Colors.ENDC}")
 
-            except Exception as e:
-                print(f"{Colors.RED}❌ GCP offloading error: {e}{Colors.ENDC}")
-                print(f"{Colors.YELLOW}   Proceeding locally - expect possible crash...{Colors.ENDC}")
-        else:
-            print(f"\n{Colors.GREEN}✅ RAM sufficient ({available_gb:.1f}GB) - proceeding with local startup{Colors.ENDC}")
+            print(f"\n{Colors.CYAN}🔄 Dynamic orchestration active:{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Auto-discovery: Every 5 minutes{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Health monitoring: Every 30 seconds{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Cost tracking: Integrated with existing system{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Smart migration: Background workers active{Colors.ENDC}")
+
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠️  Hybrid orchestration initialization failed: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Falling back to traditional startup...{Colors.ENDC}")
+            import traceback
+            logger.debug(traceback.format_exc())
 
         # Step 1: Pre-load voice biometrics - Start Cloud SQL proxy first
         print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
