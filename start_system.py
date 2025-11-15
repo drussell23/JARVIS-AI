@@ -10827,14 +10827,19 @@ async def main():
 
             # Auto-initialize VAD system based on UI mode
             print(f"\n{Colors.CYAN}🎤 Initializing Voice Activity Detection...{Colors.ENDC}")
+            print(f"{Colors.CYAN}   UI Mode: {args.ui_mode}{Colors.ENDC}")
             try:
                 # Import VAD auto-initializer
                 backend_path = Path(__file__).parent / "backend"
+                print(f"{Colors.CYAN}   Backend path: {backend_path}{Colors.ENDC}")
                 if str(backend_path) not in sys.path:
                     sys.path.insert(0, str(backend_path))
+                    print(f"{Colors.CYAN}   Added backend to sys.path{Colors.ENDC}")
 
+                print(f"{Colors.CYAN}   Importing auto_initialize_vad...{Colors.ENDC}")
                 from voice.vad.vad_auto_init import auto_initialize_vad
 
+                print(f"{Colors.CYAN}   Running VAD initialization...{Colors.ENDC}")
                 # Initialize VAD system asynchronously with UI mode from args
                 vad_ready = await auto_initialize_vad(ui_mode=args.ui_mode)
 
@@ -10844,7 +10849,9 @@ async def main():
                     print(f"  {Colors.YELLOW}⚠ VAD initialization incomplete - some features may be limited{Colors.ENDC}")
 
             except Exception as e:
-                print(f"  {Colors.YELLOW}⚠ VAD initialization warning: {e}{Colors.ENDC}")
+                print(f"  {Colors.FAIL}❌ VAD initialization error: {e}{Colors.ENDC}")
+                import traceback
+                traceback.print_exc()
                 # Non-critical - continue startup
 
             # Progress: 45% - Starting services
