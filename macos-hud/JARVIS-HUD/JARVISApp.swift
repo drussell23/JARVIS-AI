@@ -125,17 +125,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Setup keyboard shortcuts for HUD control
     private func setupKeyboardShortcuts() {
-        // Local event monitor for Cmd+\ (backslash)
+        // Local event monitor for keyboard shortcuts
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Check for Cmd+\ (backslash key code is 42)
-            if event.modifierFlags.contains(.command) && event.keyCode == 42 {
+            let modifiers = event.modifierFlags
+
+            // Cmd+\ (backslash key code is 42) - Toggle HUD visibility
+            if modifiers.contains(.command) && event.keyCode == 42 {
                 self.toggleHUDVisibility()
                 return nil // Consume the event
             }
+
+            // Cmd+Q+O (Q=12, O=31) - Quit HUD application
+            // Check if both Cmd and Q are pressed
+            if modifiers.contains(.command) && event.keyCode == 12 {
+                // Check if O key is also being held (key code 31)
+                let oKeyPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
+                if oKeyPressed {
+                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
+                    self.quitHUD()
+                    return nil
+                }
+            }
+
+            // Cmd+O+Q (O=31, Q=12) - Alternative order
+            if modifiers.contains(.command) && event.keyCode == 31 {
+                let qKeyPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
+                if qKeyPressed {
+                    print("🛑 Cmd+O+Q detected - Quitting JARVIS HUD")
+                    self.quitHUD()
+                    return nil
+                }
+            }
+
             return event
         }
 
-        print("⌨️ Keyboard shortcut registered: Cmd+\\ to toggle HUD visibility")
+        print("⌨️ Keyboard shortcuts registered:")
+        print("   • Cmd+\\ → Toggle HUD visibility")
+        print("   • Cmd+Q+O → Quit JARVIS HUD")
     }
 
     /// Toggle HUD visibility with smooth fade animation
@@ -172,6 +199,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Quit HUD with graceful fade-out animation
+    private func quitHUD() {
+        print("👋 Shutting down JARVIS HUD gracefully...")
+
+        // Fade out all windows with animation
+        for window in NSApplication.shared.windows {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.5
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                window.animator().alphaValue = 0.0
+            }, completionHandler: {
+                // After fade out completes, quit the application
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    print("✅ JARVIS HUD shutdown complete")
+                    NSApplication.shared.terminate(nil)
+                }
+            })
+        }
+    }
+
     private func isInteractiveElement(_ view: NSView) -> Bool {
         return view is NSButton ||
                (view is NSTextField && (view as! NSTextField).isEditable) ||
@@ -183,6 +230,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        print("🔌 JARVIS HUD terminated")
     }
 }
 
