@@ -9393,14 +9393,26 @@ async def main():
 
     # UI Mode Selection
     parser.add_argument(
-        "ui_mode",
-        nargs="?",
+        "--ui",
+        dest="ui_mode",
         choices=["web-app", "macos"],
         default="web-app",
         help="UI mode: 'web-app' for browser interface (default) or 'macos' for native macOS HUD",
     )
 
+    # Legacy positional argument support (for backward compatibility)
+    parser.add_argument(
+        "ui_mode_positional",
+        nargs="?",
+        choices=["web-app", "macos"],
+        help=argparse.SUPPRESS,  # Hidden from help
+    )
+
     args = parser.parse_args()
+
+    # Handle legacy positional ui_mode argument
+    if args.ui_mode_positional:
+        args.ui_mode = args.ui_mode_positional
 
     # Automatic Goal Inference Configuration (if not specified via command line or environment)
     import os
