@@ -2134,6 +2134,89 @@ async def lifespan(app: FastAPI):
     logger.info("⚡ INSTANT STARTUP MODE: Server will be ready in <1s!")
     start_time = time.time()
 
+    # ============================================================================
+    # 🎯 INTELLIGENT HYBRID ORCHESTRATION - FIRST THING BEFORE ANY IMPORTS!
+    # ============================================================================
+    # Initialize dynamic hybrid orchestrator BEFORE loading ANY heavy modules
+    # This allows intelligent RAM pressure detection and GCP offloading decisions
+    # ============================================================================
+    logger.info("=" * 80)
+    logger.info("🎯 Initializing Intelligent Hybrid Orchestration")
+    logger.info("=" * 80)
+
+    orchestrator = None
+    orchestration_enabled = os.getenv("HYBRID_ORCHESTRATION_ENABLED", "true").lower() == "true"
+
+    if orchestration_enabled:
+        try:
+            from pathlib import Path
+            backend_dir = Path(__file__).parent
+
+            # Add core to path
+            sys.path.insert(0, str(backend_dir / "core"))
+
+            from core.dynamic_hybrid_orchestrator import get_hybrid_orchestrator
+
+            orchestrator = get_hybrid_orchestrator(backend_dir=backend_dir)
+            await orchestrator.initialize()
+
+            # Store in app state for lifecycle management
+            app.state.orchestrator = orchestrator
+
+            # Get current status
+            status = await orchestrator.get_status()
+
+            logger.info("📊 System Analysis:")
+            logger.info(f"   ├─ Health: {status['health_status']}")
+            logger.info(f"   ├─ RAM Available: {status['system']['ram_available_gb']:.1f}GB")
+            logger.info(f"   ├─ Components: {status['components']['total']} discovered")
+            logger.info(f"   └─ Budget: ${status['cost']['budget_remaining_usd']:.2f} remaining")
+
+            # Check if critical offloading needed BEFORE any imports
+            if status['health_status'] == 'critical':
+                logger.warning("🚨 CRITICAL RAM PRESSURE!")
+                logger.info("   Intelligent offloading to GCP Spot VMs...")
+
+                # Get offload recommendations
+                from core.intelligent_component_profiler import get_component_profiler
+                profiler = get_component_profiler(backend_dir=backend_dir)
+                report = await profiler.optimize_offloading()
+
+                logger.info(f"   ├─ Components to offload: {report['offload_recommendations']}")
+                logger.info(f"   ├─ RAM to save: {report['total_ram_to_save_gb']:.1f}GB")
+                logger.info(f"   └─ Estimated cost: ${report['estimated_total_cost']:.2f}")
+
+                # Queue offloads (non-blocking)
+                for rec in report['recommendations'][:5]:  # Top 5 heaviest
+                    await orchestrator.force_offload_component(rec['component'])
+
+                logger.info("   ✓ Offload jobs queued - migrations proceeding in background")
+
+            elif status['health_status'] == 'degraded':
+                logger.warning("⚠️  Elevated RAM pressure - monitoring for offload opportunities")
+
+            else:
+                logger.info("✅ System healthy - running locally with intelligent monitoring")
+
+            logger.info("🔄 Dynamic orchestration active:")
+            logger.info("   • Auto-discovery: Every 5 minutes")
+            logger.info("   • Health monitoring: Every 30 seconds")
+            logger.info("   • Cost tracking: Integrated with existing system")
+            logger.info("   • Smart migration: Background workers active")
+            logger.info("=" * 80)
+
+        except Exception as e:
+            logger.warning(f"⚠️  Hybrid orchestration initialization failed: {e}")
+            logger.warning("   Falling back to traditional startup...")
+            import traceback
+            logger.debug(traceback.format_exc())
+    else:
+        logger.info("⚠️  Hybrid orchestration disabled via HYBRID_ORCHESTRATION_ENABLED=false")
+
+    # ============================================================================
+    # END INTELLIGENT HYBRID ORCHESTRATION
+    # ============================================================================
+
     # Store start time for background task
     app.state.startup_time = start_time
     app.state.modules_loaded = False
@@ -2265,13 +2348,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to shutdown cost tracker: {e}")
 
-    # Stop autonomous systems
-    if hasattr(app.state, "orchestrator"):
+    # Shutdown Intelligent Hybrid Orchestrator
+    if hasattr(app.state, "orchestrator") and app.state.orchestrator:
         try:
-            await app.state.orchestrator.stop()
-            logger.info("✅ Autonomous orchestrator stopped")
+            logger.info("🎯 Shutting down Intelligent Hybrid Orchestrator...")
+            await app.state.orchestrator.shutdown()
+            logger.info("✅ Intelligent Hybrid Orchestrator shutdown complete")
         except Exception as e:
-            logger.error(f"Failed to stop orchestrator: {e}")
+            logger.error(f"Failed to shutdown orchestrator: {e}")
 
     if hasattr(app.state, "mesh"):
         try:
