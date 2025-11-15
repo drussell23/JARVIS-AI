@@ -40,8 +40,8 @@ class PythonBridge: ObservableObject {
 
     init() {
         // Dynamic backend configuration from environment (set by Python launcher)
-        let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8000/ws/hud"
-        let httpURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "http://localhost:8000"
+        let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8010/ws/hud"
+        let httpURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "http://localhost:8010"
 
         self.websocketURL = URL(string: wsURL)!
         self.apiBaseURL = URL(string: httpURL)!

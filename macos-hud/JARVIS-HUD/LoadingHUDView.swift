@@ -193,13 +193,6 @@ struct LoadingHUDView: View {
             logoScale = 1.05
         }
 
-        // Simulate loading progress
-        simulateLoading()
-    }
-
-    private func simulateLoading() {
-        // DISABLED: No fallback simulation - wait for real backend data only
-        // The HUD will show "Initializing..." until backend connects and sends real progress
         print("ℹ️ Waiting for backend to connect and send real progress updates...")
     }
 
