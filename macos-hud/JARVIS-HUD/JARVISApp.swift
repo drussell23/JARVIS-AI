@@ -46,6 +46,9 @@ class AppState: ObservableObject {
 /// App delegate for macOS-specific configuration
 class AppDelegate: NSObject, NSApplicationDelegate {
 
+    private var isHUDVisible = true
+    private var localEventMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Configure all windows as TRUE HOLOGRAPHIC overlays
         // Completely invisible window frame - only JARVIS UI elements visible
@@ -88,11 +91,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start mouse tracking to enable selective event capture
         startMouseTracking()
+
+        // Setup keyboard shortcut for toggling HUD visibility (Cmd+\)
+        setupKeyboardShortcuts()
     }
 
     /// Track mouse position to enable events only over interactive UI elements
     private func startMouseTracking() {
         NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { event in
+            // Only track if HUD is visible
+            guard self.isHUDVisible else { return }
+
             // Check if mouse is over an interactive element
             for window in NSApplication.shared.windows {
                 if let contentView = window.contentView {
@@ -114,10 +123,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Setup keyboard shortcuts for HUD control
+    private func setupKeyboardShortcuts() {
+        // Local event monitor for Cmd+\ (backslash)
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Check for Cmd+\ (backslash key code is 42)
+            if event.modifierFlags.contains(.command) && event.keyCode == 42 {
+                self.toggleHUDVisibility()
+                return nil // Consume the event
+            }
+            return event
+        }
+
+        print("⌨️ Keyboard shortcut registered: Cmd+\\ to toggle HUD visibility")
+    }
+
+    /// Toggle HUD visibility with smooth fade animation
+    private func toggleHUDVisibility() {
+        isHUDVisible.toggle()
+
+        print("🎯 Toggling HUD visibility: \(isHUDVisible ? "SHOW" : "HIDE")")
+
+        for window in NSApplication.shared.windows {
+            if isHUDVisible {
+                // Show HUD with fade-in animation
+                window.alphaValue = 0.0
+                window.orderFront(nil)
+
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.3
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    window.animator().alphaValue = 1.0
+                })
+
+                print("✅ HUD shown with fade-in animation")
+            } else {
+                // Hide HUD with fade-out animation
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.3
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    window.animator().alphaValue = 0.0
+                }, completionHandler: {
+                    window.orderOut(nil)
+                })
+
+                print("🚫 HUD hidden with fade-out animation")
+            }
+        }
+    }
+
     private func isInteractiveElement(_ view: NSView) -> Bool {
         return view is NSButton ||
                (view is NSTextField && (view as! NSTextField).isEditable) ||
                (view is NSControl && !(view is NSTextField))
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Clean up event monitor
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 }
 
