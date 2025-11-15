@@ -44,8 +44,8 @@ class AppState: ObservableObject {
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Configure all windows as COMPLETELY INVISIBLE overlays
-        // Only the JARVIS UI elements will be visible
+        // Configure all windows with intelligent click-through behavior
+        // Clicks pass through to desktop except on JARVIS UI elements
         for window in NSApplication.shared.windows {
             // Make window completely transparent
             window.isOpaque = false
@@ -61,6 +61,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Always on top, works in all Spaces
             window.level = .statusBar
             window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+            // CRITICAL: Allow window to become key for keyboard input
+            // But still enable click-through for transparent areas
+            window.ignoresMouseEvents = false
 
             // Cover entire screen (full-screen transparent overlay)
             if let screen = NSScreen.main {
@@ -90,6 +94,10 @@ struct WindowAccessor: NSViewRepresentable {
                 window.styleMask.insert(.fullSizeContentView)
                 window.level = .statusBar
                 window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+                // CRITICAL: Allow window to become key for keyboard input
+                // But still enable click-through for transparent areas
+                window.ignoresMouseEvents = false
 
                 // Cover entire screen
                 if let screen = NSScreen.main {
