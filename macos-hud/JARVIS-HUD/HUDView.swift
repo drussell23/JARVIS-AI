@@ -38,8 +38,8 @@ struct HUDView: View {
             // Semi-transparent background (so desktop shows through)
             RadialGradient(
                 colors: [
-                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.15),
-                    Color.black.opacity(0.7)
+                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.1),
+                    Color.black.opacity(0.5)
                 ],
                 center: .center,
                 startRadius: 100,
