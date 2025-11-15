@@ -61,12 +61,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.styleMask = [.borderless, .fullSizeContentView]
 
             // Floating overlay - always on top, works in all Spaces
-            window.level = .floating  // Changed from .statusBar to .floating for better behavior
+            window.level = .floating
             window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
 
-            // CRITICAL: Enable TRUE click-through
-            // The ClickThroughHostingView will handle selective event capture
-            window.ignoresMouseEvents = false
+            // CRITICAL: Make window FULLY click-through by default
+            // This allows all clicks to pass to desktop/windows below
+            window.ignoresMouseEvents = true
 
             // Make window non-activating (doesn't steal focus)
             if let panel = window as? NSPanel {
@@ -85,6 +85,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Don't activate the app when launched
         NSApp.activate(ignoringOtherApps: false)
+
+        // Start mouse tracking to enable selective event capture
+        startMouseTracking()
+    }
+
+    /// Track mouse position to enable events only over interactive UI elements
+    private func startMouseTracking() {
+        NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { event in
+            // Check if mouse is over an interactive element
+            for window in NSApplication.shared.windows {
+                if let contentView = window.contentView {
+                    let mouseLocation = NSEvent.mouseLocation
+                    let windowPoint = window.convertPoint(fromScreen: mouseLocation)
+
+                    if let hitView = contentView.hitTest(windowPoint) {
+                        // Check if we hit an interactive element
+                        if self.isInteractiveElement(hitView) {
+                            // Enable mouse events for this window
+                            window.ignoresMouseEvents = false
+                            return
+                        }
+                    }
+                }
+                // No interactive element - keep click-through enabled
+                window.ignoresMouseEvents = true
+            }
+        }
+    }
+
+    private func isInteractiveElement(_ view: NSView) -> Bool {
+        return view is NSButton ||
+               (view is NSTextField && (view as! NSTextField).isEditable) ||
+               (view is NSControl && !(view is NSTextField))
     }
 }
 
@@ -122,34 +155,66 @@ struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Custom hosting view with precise click-through hit testing
+/// Custom hosting view with AGGRESSIVE click-through hit testing
+/// Only captures clicks on actual interactive UI elements
 class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Get default hit test result
+        // Get default hit test result from SwiftUI
         guard let hitView = super.hitTest(point) else {
+            // Nothing hit - definitely pass through
             return nil
         }
 
-        // If we hit ourselves (the hosting view), pass through to desktop
+        // If we hit the hosting view itself, it's empty space - pass through
         if hitView == self {
             return nil
         }
 
-        // Check if hit an interactive element
-        if isInteractive(hitView) {
-            return hitView
+        // Check if we hit an actual interactive element
+        // Walk up the view hierarchy to find interactive controls
+        var currentView: NSView? = hitView
+        while currentView != nil {
+            if isInteractive(currentView!) {
+                return currentView
+            }
+            currentView = currentView?.superview
+
+            // Stop at hosting view
+            if currentView == self {
+                break
+            }
         }
 
-        // Pass through to desktop
+        // Not an interactive element - pass through to desktop
         return nil
     }
 
     private func isInteractive(_ view: NSView) -> Bool {
-        // Capture clicks on interactive elements
-        return view is NSButton ||
-               view is NSControl ||
-               (view is NSTextField && (view as! NSTextField).isEditable)
+        // Only capture these specific interactive elements:
+
+        // Buttons
+        if view is NSButton {
+            return true
+        }
+
+        // Editable text fields
+        if let textField = view as? NSTextField, textField.isEditable {
+            return true
+        }
+
+        // Other interactive controls
+        if view is NSControl && !(view is NSTextField) {
+            return true
+        }
+
+        // Everything else passes through (text labels, images, spacers, etc.)
+        return false
+    }
+
+    /// Allow window to become key for keyboard input when needed
+    override var acceptsFirstResponder: Bool {
+        return true
     }
 }
 
