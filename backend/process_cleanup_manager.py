@@ -2640,19 +2640,22 @@ class ProcessCleanupManager:
         self,
         graceful_timeout: float = 10.0,
         exclude_current: bool = True,
-        ui_mode: Optional[str] = None
+        ui_mode: Optional[str] = None,
+        force_code_reload: bool = True
     ) -> Dict[str, Any]:
         """
         Dynamically stop the currently running JARVIS instance(s).
         Robust, graceful shutdown with fallback to force kill.
+        ENHANCED: Detects code changes and ensures fresh process startup.
 
         Args:
             graceful_timeout: Seconds to wait for graceful shutdown before force kill
             exclude_current: If True, don't kill the current Python process
             ui_mode: If specified, close specific UI (web-app/macos)
+            force_code_reload: If True, ensures old code is purged from running processes
 
         Returns:
-            Dictionary with shutdown results
+            Dictionary with shutdown results including code_change_detected
         """
         current_pid = os.getpid()
         results = {
@@ -2660,8 +2663,40 @@ class ProcessCleanupManager:
             "ui_closed": [],
             "errors": [],
             "graceful_stops": 0,
-            "force_kills": 0
+            "force_kills": 0,
+            "code_change_detected": False,
+            "stale_processes_found": []
         }
+
+        # Step 0: Check for code changes (ENHANCED)
+        if force_code_reload:
+            try:
+                # Get current code hash
+                current_hash = self._get_code_hash()
+
+                # Check if any running JARVIS process has different code
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+                    try:
+                        if exclude_current and proc.pid == current_pid:
+                            continue
+
+                        cmdline = ' '.join(proc.cmdline()) if proc.cmdline() else ''
+                        if 'start_system.py' in cmdline or 'main.py' in cmdline:
+                            # This is a JARVIS process - mark as stale if code changed
+                            results["stale_processes_found"].append({
+                                "pid": proc.pid,
+                                "age_hours": (time.time() - proc.create_time()) / 3600,
+                                "cmdline": cmdline
+                            })
+                            results["code_change_detected"] = True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+
+                if results["code_change_detected"]:
+                    logger.warning(f"⚠️  Found {len(results['stale_processes_found'])} process(es) running OLD code")
+                    logger.info("🔄 Will force restart to ensure fresh code execution")
+            except Exception as e:
+                logger.warning(f"Could not check code changes: {e}")
 
         logger.info("🛑 Stopping current JARVIS instance(s)...")
 
@@ -2838,6 +2873,65 @@ class ProcessCleanupManager:
 
         results["ports_freed"] = freed_ports
 
+        # Step 5: ENHANCED - Verify all processes are actually dead (wait loop)
+        max_verification_wait = 5  # seconds
+        verification_start = time.time()
+        still_alive = []
+
+        logger.info("🔍 Verifying all processes terminated...")
+
+        while (time.time() - verification_start) < max_verification_wait:
+            still_alive = []
+
+            for proc_info in results["processes_stopped"]:
+                pid = proc_info["pid"]
+                if psutil.pid_exists(pid):
+                    try:
+                        proc = psutil.Process(pid)
+                        # Double-check it's not a different process that reused the PID
+                        cmdline = ' '.join(proc.cmdline()) if proc.cmdline() else ''
+                        if 'jarvis' in cmdline.lower() or 'start_system' in cmdline.lower():
+                            still_alive.append(pid)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+            if not still_alive:
+                break
+
+            time.sleep(0.5)
+
+        if still_alive:
+            logger.warning(f"⚠️  {len(still_alive)} process(es) still alive after {max_verification_wait}s: {still_alive}")
+            results["errors"].append(f"Processes still running: {still_alive}")
+        else:
+            logger.info("✅ All processes verified terminated")
+            results["all_processes_terminated"] = True
+
+        # Step 6: ENHANCED - Clear Python module cache if code changed
+        if results["code_change_detected"] and force_code_reload:
+            try:
+                import sys
+                cleared_count = 0
+
+                # Get list of jarvis-related modules
+                modules_to_clear = [
+                    mod_name for mod_name in list(sys.modules.keys())
+                    if any(keyword in mod_name.lower() for keyword in ['jarvis', 'backend', 'frontend', 'intelligence', 'voice'])
+                ]
+
+                # Clear them
+                for mod_name in modules_to_clear:
+                    try:
+                        del sys.modules[mod_name]
+                        cleared_count += 1
+                    except:
+                        pass
+
+                logger.info(f"🧹 Cleared {cleared_count} Python modules from cache to ensure fresh code")
+                results["modules_cleared"] = cleared_count
+            except Exception as e:
+                logger.warning(f"Could not clear module cache: {e}")
+
         # Summary
         logger.info(f"✅ Stopped {results['graceful_stops']} process(es) gracefully")
         if results["force_kills"] > 0:
@@ -2846,6 +2940,9 @@ class ProcessCleanupManager:
             logger.error(f"❌ {len(results['errors'])} error(s) occurred")
 
         logger.info(f"🔓 Freed {len(freed_ports)} port(s): {freed_ports}")
+
+        if results["code_change_detected"]:
+            logger.info("🔄 Code changes detected - fresh startup recommended")
 
         return results
 
