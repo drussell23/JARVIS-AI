@@ -32,7 +32,7 @@ class PythonBridge: ObservableObject {
 
     // Robust connection management
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 20  // Try for ~1 minute with exponential backoff
+    private let maxReconnectAttempts = 60  // Try for ~5 minutes with exponential backoff (backend can take time to start)
     private var connectionHealthTimer: Timer?
     private var lastMessageTime: Date?
 

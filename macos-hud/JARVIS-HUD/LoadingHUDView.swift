@@ -198,39 +198,9 @@ struct LoadingHUDView: View {
     }
 
     private func simulateLoading() {
-        // Fallback simulation - only runs if backend doesn't connect within 15 seconds
-        // (Gives backend more time to start up, especially on slower machines)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-            // Only use simulated loading if no real progress received
-            if progress == 0 {
-                print("⚠️ No backend progress after 15s, using fallback simulation")
-
-                let stages = [
-                    (10, "Loading core systems..."),
-                    (25, "Initializing AI modules..."),
-                    (40, "Connecting to backend..."),
-                    (60, "Loading voice recognition..."),
-                    (80, "Finalizing setup..."),
-                    (100, "Complete!")
-                ]
-
-                for (index, stage) in stages.enumerated() {
-                    let delay = Double(index + 1) * 0.8
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            progress = CGFloat(stage.0)
-                            loadingState = .loading(progress: stage.0, message: stage.1)
-                        }
-
-                        if stage.0 == 100 {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                playCompletionAnimation()
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // DISABLED: No fallback simulation - wait for real backend data only
+        // The HUD will show "Initializing..." until backend connects and sends real progress
+        print("ℹ️ Waiting for backend to connect and send real progress updates...")
     }
 
     private func playCompletionAnimation() {

@@ -2895,7 +2895,8 @@ async def send_hud_progress(progress: int, message: str):
 
     try:
         await _hud_progress_broadcaster(progress, message)
-    except:
+        print(f"  📱 Sent to HUD: {progress}% - {message}")
+    except Exception as e:
         # WebSocket not ready or no clients connected, silently skip
         pass
 
@@ -2918,9 +2919,10 @@ async def send_hud_completion(success: bool = True):
 
     try:
         await _hud_completion_broadcaster(success)
-    except:
+        print(f"  ✅ Sent completion signal to HUD (success={success})")
+    except Exception as e:
         # WebSocket not ready or no clients connected, silently skip
-        pass
+        print(f"  ⚠️  Failed to send completion to HUD: {e}")
 
 
 class AsyncSystemManager:
