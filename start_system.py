@@ -10817,6 +10817,38 @@ async def main():
             )
             await asyncio.sleep(0.5)
 
+            # Progress: 42% - VAD Initialization
+            await broadcast_to_loading_server(
+                "vad_init",
+                "Initializing Voice Activity Detection system - preparing ML models for optimal performance",
+                42,
+                metadata={"icon": "🎤", "label": "VAD Init", "sublabel": "Loading ML models"}
+            )
+
+            # Auto-initialize VAD system based on UI mode
+            print(f"\n{Colors.CYAN}🎤 Initializing Voice Activity Detection...{Colors.ENDC}")
+            try:
+                # Import VAD auto-initializer
+                import sys
+                from pathlib import Path
+                backend_path = Path(__file__).parent / "backend"
+                if str(backend_path) not in sys.path:
+                    sys.path.insert(0, str(backend_path))
+
+                from voice.vad.vad_auto_init import auto_initialize_vad
+
+                # Initialize VAD system asynchronously with UI mode from args
+                vad_ready = await auto_initialize_vad(ui_mode=args.ui_mode)
+
+                if vad_ready:
+                    print(f"  {Colors.GREEN}✓ VAD system ready ({args.ui_mode} mode){Colors.ENDC}")
+                else:
+                    print(f"  {Colors.YELLOW}⚠ VAD initialization incomplete - some features may be limited{Colors.ENDC}")
+
+            except Exception as e:
+                print(f"  {Colors.YELLOW}⚠ VAD initialization warning: {e}{Colors.ENDC}")
+                # Non-critical - continue startup
+
             # Progress: 45% - Starting services
             await broadcast_to_loading_server(
                 "starting",
