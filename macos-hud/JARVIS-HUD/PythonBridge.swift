@@ -67,21 +67,35 @@ class PythonBridge: ObservableObject {
         isManuallyDisconnected = false
         connectionStatus = .connecting
 
-        print("🔌 Attempting connection \(reconnectAttempts + 1)/\(maxReconnectAttempts) to backend at \(websocketURL)...")
+        print(String(repeating: "=", count: 80))
+        print("🔌 HUD WEBSOCKET CONNECTION ATTEMPT")
+        print("   Attempt: \(reconnectAttempts + 1)/\(maxReconnectAttempts)")
+        print("   Target URL: \(websocketURL)")
+        print("   Endpoint: /ws (unified WebSocket)")
+        print("   Expected Backend: FastAPI server on port 8010")
+        print(String(repeating: "=", count: 80))
 
         let session = URLSession(configuration: .default)
         webSocketTask = session.webSocketTask(with: websocketURL)
 
+        // Add connection error handler
         webSocketTask?.resume()
+
+        print("✓ WebSocket task created and resumed")
+        print("📞 Starting message receiver...")
         receiveMessage()
 
         // Send initial connection message with delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            print("📤 Sending HUD handshake message...")
             self.sendConnectionMessage()
         }
 
         // Start connection health monitoring
+        print("💓 Starting connection health monitor...")
         startConnectionHealthCheck()
+
+        print("⏳ Waiting for WebSocket connection to establish...")
     }
 
     /// Disconnect from Python backend
@@ -166,20 +180,37 @@ class PythonBridge: ObservableObject {
 
     /// Receive messages from WebSocket
     private func receiveMessage() {
+        print("📥 [WebSocket] Waiting for message...")
+
         webSocketTask?.receive { [weak self] result in
             switch result {
             case .success(let message):
+                print("✅ [WebSocket] Message received successfully!")
+
                 DispatchQueue.main.async {
                     self?.connectionStatus = .connected
                     self?.lastMessageTime = Date()
                     // Reset reconnect attempts on successful message
                     self?.reconnectAttempts = 0
                 }
+
+                print("🔄 [WebSocket] Processing message...")
                 self?.handleMessage(message)
+
+                print("📥 [WebSocket] Setting up next message receiver...")
                 self?.receiveMessage() // Continue receiving
 
             case .failure(let error):
-                print("❌ WebSocket error: \(error.localizedDescription)")
+                print("❌ [WebSocket] RECEIVE ERROR")
+                print("   Error: \(error)")
+                print("   Localized: \(error.localizedDescription)")
+
+                // Check for specific error types
+                let nsError = error as NSError
+                print("   Domain: \(nsError.domain)")
+                print("   Code: \(nsError.code)")
+                print("   UserInfo: \(nsError.userInfo)")
+
                 DispatchQueue.main.async {
                     self?.connectionStatus = .error
                 }
@@ -204,30 +235,54 @@ class PythonBridge: ObservableObject {
 
     /// Parse and handle JSON message from Python
     private func handleJSONMessage(_ jsonString: String) {
+        print("📨 [WebSocket] Received raw message: \(jsonString.prefix(200))...")
+
         guard let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("❌ [WebSocket] Failed to parse JSON message")
             return
         }
+
+        print("✅ [WebSocket] JSON parsed successfully")
+        print("   Message type: \(json["type"] ?? "unknown")")
 
         DispatchQueue.main.async {
             // Handle different message types from Python backend
             if let type = json["type"] as? String {
+                print("🔀 [WebSocket] Routing message type: \(type)")
+
                 switch type {
+                case "welcome":
+                    print("👋 [WebSocket] Received welcome message!")
+                    if let message = json["message"] as? String {
+                        print("   Welcome: \(message)")
+                    }
                 case "transcript":
+                    print("📝 [WebSocket] Handling transcript")
                     self.handleTranscript(json)
                 case "state":
+                    print("🔄 [WebSocket] Handling state update")
                     self.handleStateUpdate(json)
                 case "status":
+                    print("📊 [WebSocket] Handling status update")
                     self.handleStatusUpdate(json)
                 case "loading_progress":
+                    print("⏳ [WebSocket] Handling loading progress")
                     self.handleLoadingProgress(json)
                 case "loading_complete":
+                    print("✅ [WebSocket] Handling loading complete")
                     self.handleLoadingComplete(json)
                 case "command_response", "response":
+                    print("💬 [WebSocket] Handling command response")
                     self.handleCommandResponse(json)
+                case "pong":
+                    print("🏓 [WebSocket] Received pong")
                 default:
+                    print("⚠️  [WebSocket] Unknown message type: \(type)")
                     break
                 }
+            } else {
+                print("❌ [WebSocket] Message missing 'type' field")
             }
         }
     }
