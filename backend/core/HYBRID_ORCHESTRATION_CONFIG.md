@@ -28,6 +28,8 @@ The Intelligent Hybrid Orchestration system automatically detects heavy componen
 | `CRITICAL_RAM_THRESHOLD_GB` | `2.0` | Critical RAM level - urgent offload |
 | `MIN_WEIGHT_FOR_OFFLOAD` | `40.0` | Minimum component weight score (0-100) to offload |
 | `MAX_CONCURRENT_MIGRATIONS` | `3` | Max simultaneous component migrations |
+| `COMPONENT_CACHE_MAX_AGE_DAYS` | `7` | Max age of cached component profiles (days) |
+| `ENABLE_STATIC_ANALYSIS_PROFILING` | `true` | Use static analysis for executable scripts |
 
 ### GCP Configuration
 
@@ -81,12 +83,38 @@ At startup, the system:
 - Creates initial weight profile for each component
 
 ### 2. Component Profiling
+
+The system uses a **multi-tier intelligent profiling approach**:
+
+**Tier 1: Cached Profiles** (Fastest)
+- Loads previously measured profiles from `.jarvis_cache/component_profiles.json`
+- Uses cache if age < `COMPONENT_CACHE_MAX_AGE_DAYS` (default: 7 days)
+- Zero overhead - instant profiling
+
+**Tier 2: Static Analysis** (For executable scripts)
+- Detects executable scripts that shouldn't be imported during profiling:
+  - Scripts with `if __name__ == "__main__"` blocks
+  - Scripts with `argparse` or `sys.argv` usage
+  - Download/install/setup scripts
+- Estimates weight using static code analysis:
+  - Import count, class count, file size
+  - ML library detection (torch, tensorflow, etc.)
+  - Database usage detection
+  - Conservative RAM estimates
+- **Preserves voice.coreml components** needed for biometric authentication
+- No execution during profiling
+
+**Tier 3: Live Import Profiling** (Most accurate)
+- Measures actual RAM delta during import
+- Measures import time and CPU usage
+- Calculates precise weight score (0-100)
+- Caches result for future use
+- Only used for safe-to-import modules
+
 For each component:
-- Measures RAM usage during import
-- Measures import time
-- Measures CPU usage
 - Calculates weight score (0-100)
 - Determines offload priority
+- Saves to cache for future startups
 
 ### 3. Decision Making
 Every 5 minutes (configurable), the system:

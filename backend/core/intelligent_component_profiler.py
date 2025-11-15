@@ -17,6 +17,7 @@ Features:
 import asyncio
 import importlib
 import inspect
+import json
 import logging
 import os
 import sys
@@ -44,6 +45,7 @@ class ComponentProfile:
 
     name: str
     module_path: str
+    category: str = "unknown"  # intelligence, voice, vision, etc.
     weight_score: float = 0.0  # 0-100, higher = heavier
     ram_usage_mb: float = 0.0
     import_time_ms: float = 0.0
@@ -52,6 +54,7 @@ class ComponentProfile:
     can_offload: bool = True
     offload_priority: int = 50  # 0-100, higher = offload first
     last_measured: Optional[datetime] = None
+    last_profiled: Optional[datetime] = None  # Alias for last_measured
     measurement_count: int = 0
     historical_weights: deque = field(default_factory=lambda: deque(maxlen=10))
 
@@ -215,11 +218,225 @@ class IntelligentComponentProfiler:
         logger.info(f"   Detected {len(patterns)} potential heavy components")
         return patterns
 
+    def _is_executable_script(self, module_path: str) -> bool:
+        """
+        Detect if a module is an executable script (not safe to import for profiling).
+
+        Args:
+            module_path: Python module path
+
+        Returns:
+            True if module is an executable script
+        """
+        try:
+            # Convert module path to file path
+            file_path = self.backend_dir / module_path.replace(".", "/")
+            file_path = file_path.with_suffix(".py")
+
+            if not file_path.exists():
+                return False
+
+            content = file_path.read_text()
+
+            # Executable script indicators:
+            # 1. Has if __name__ == "__main__" with actual code
+            # 2. Has argparse or sys.argv usage
+            # 3. Has download/install/create operations at module level
+            # 4. Has asyncio.run() or main() calls at module level
+
+            indicators = [
+                'if __name__ == "__main__"' in content and len(content.split('\n')) > 20,
+                'argparse.ArgumentParser' in content,
+                'sys.argv' in content and 'def main' not in content,
+                any(pattern in content for pattern in [
+                    'asyncio.run(',
+                    'urllib.request.urlretrieve(',
+                    'download_model(',
+                    'install_dependencies(',
+                    'create_database(',
+                ]),
+            ]
+
+            return any(indicators)
+
+        except Exception as e:
+            logger.debug(f"Could not analyze {module_path}: {e}")
+            return False
+
+    async def _load_cached_profile(self, module_path: str) -> Optional[ComponentProfile]:
+        """
+        Load cached profile from previous profiling session.
+
+        Args:
+            module_path: Python module path
+
+        Returns:
+            Cached ComponentProfile or None
+        """
+        try:
+            cache_file = self.backend_dir / ".jarvis_cache" / "component_profiles.json"
+
+            if not cache_file.exists():
+                return None
+
+            with open(cache_file, 'r') as f:
+                cache_data = json.load(f)
+
+            if module_path in cache_data:
+                profile_dict = cache_data[module_path]
+                profile = ComponentProfile(
+                    name=profile_dict['name'],
+                    module_path=profile_dict['module_path'],
+                    category=profile_dict['category'],
+                    ram_usage_mb=profile_dict['ram_usage_mb'],
+                    import_time_ms=profile_dict['import_time_ms'],
+                    cpu_usage_percent=profile_dict['cpu_usage_percent'],
+                    weight_score=profile_dict['weight_score'],
+                    last_profiled=datetime.fromisoformat(profile_dict['last_profiled']),
+                )
+
+                # Check if cache is fresh
+                max_age_days = int(os.getenv("COMPONENT_CACHE_MAX_AGE_DAYS", "7"))
+                age_days = (datetime.now() - profile.last_profiled).days
+                if age_days < max_age_days:
+                    logger.info(f"   ✓ Using cached profile for {module_path} (age: {age_days}d)")
+                    return profile
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Could not load cached profile: {e}")
+            return None
+
+    async def _save_profile_to_cache(self, profile: ComponentProfile):
+        """
+        Save component profile to cache for future use.
+
+        Args:
+            profile: ComponentProfile to cache
+        """
+        try:
+            cache_dir = self.backend_dir / ".jarvis_cache"
+            cache_dir.mkdir(exist_ok=True)
+
+            cache_file = cache_dir / "component_profiles.json"
+
+            # Load existing cache
+            cache_data = {}
+            if cache_file.exists():
+                with open(cache_file, 'r') as f:
+                    cache_data = json.load(f)
+
+            # Update cache
+            cache_data[profile.module_path] = {
+                'name': profile.name,
+                'module_path': profile.module_path,
+                'category': profile.category,
+                'ram_usage_mb': profile.ram_usage_mb,
+                'import_time_ms': profile.import_time_ms,
+                'cpu_usage_percent': profile.cpu_usage_percent,
+                'weight_score': profile.weight_score,
+                'last_profiled': profile.last_profiled.isoformat(),
+            }
+
+            # Save cache
+            with open(cache_file, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+        except Exception as e:
+            logger.debug(f"Could not save profile to cache: {e}")
+
+    async def _estimate_profile_from_static_analysis(self, module_path: str) -> Optional[ComponentProfile]:
+        """
+        Estimate component profile using static analysis (without importing).
+
+        Args:
+            module_path: Python module path
+
+        Returns:
+            Estimated ComponentProfile or None
+        """
+        try:
+            # Convert module path to file path
+            file_path = self.backend_dir / module_path.replace(".", "/")
+            file_path = file_path.with_suffix(".py")
+
+            if not file_path.exists():
+                return None
+
+            content = file_path.read_text()
+            lines = content.split('\n')
+
+            # Estimate based on static indicators
+            import_count = len([l for l in lines if l.strip().startswith('import ') or l.strip().startswith('from ')])
+            class_count = len([l for l in lines if l.strip().startswith('class ')])
+            function_count = len([l for l in lines if l.strip().startswith('def ')])
+            file_size_kb = len(content) / 1024
+
+            # Heavy indicators
+            has_ml_imports = any(pattern in content for pattern in [
+                'import torch', 'import tensorflow', 'import transformers',
+                'import sklearn', 'import numpy', 'import scipy'
+            ])
+            has_database = any(pattern in content for pattern in [
+                'import sqlite3', 'import psycopg2', 'import sqlalchemy',
+                'CREATE TABLE', 'Database'
+            ])
+            has_models = 'model' in content.lower() and class_count > 0
+
+            # Estimate weight score (conservative)
+            weight_score = 0.0
+
+            if has_ml_imports:
+                weight_score += 40  # ML libraries are heavy
+            if has_database:
+                weight_score += 20
+            if has_models:
+                weight_score += 15
+            if import_count > 20:
+                weight_score += 10
+            if file_size_kb > 50:
+                weight_score += 10
+            if class_count > 5:
+                weight_score += 5
+
+            weight_score = min(weight_score, 100)
+
+            # Estimate RAM (conservative - assume heavier than reality)
+            estimated_ram_mb = (import_count * 2) + (class_count * 5) + (file_size_kb * 0.5)
+            if has_ml_imports:
+                estimated_ram_mb += 200  # ML libraries are RAM-heavy
+            if has_database:
+                estimated_ram_mb += 50
+
+            profile = ComponentProfile(
+                name=module_path.split('.')[-1],
+                module_path=module_path,
+                category="unknown",
+                ram_usage_mb=estimated_ram_mb,
+                import_time_ms=import_count * 10,  # Rough estimate
+                cpu_usage_percent=0.0,  # Cannot estimate without running
+                weight_score=weight_score,
+                last_profiled=datetime.now(),
+            )
+
+            logger.info(f"   📐 Static analysis estimate for {module_path}: {weight_score:.0f} weight, {estimated_ram_mb:.0f}MB RAM")
+            return profile
+
+        except Exception as e:
+            logger.debug(f"Could not perform static analysis on {module_path}: {e}")
+            return None
+
     async def profile_component(
         self, module_path: str, force_reload: bool = False
     ) -> Optional[ComponentProfile]:
         """
         Profile a component by measuring its import cost.
+
+        Uses multi-tier approach:
+        1. Return cached profile if available and fresh
+        2. For executable scripts, use static analysis estimate
+        3. Otherwise, perform live import profiling
 
         Args:
             module_path: Python module path (e.g., "intelligence.learning_database")
@@ -233,6 +450,23 @@ class IntelligentComponentProfiler:
 
         logger.info(f"📊 Profiling component: {module_path}")
 
+        # Tier 1: Check cache
+        if not force_reload:
+            cached = await self._load_cached_profile(module_path)
+            if cached:
+                self.components[module_path] = cached
+                return cached
+
+        # Tier 2: Check if executable script (use static analysis)
+        if self._is_executable_script(module_path):
+            logger.info(f"   ⚠️  Detected executable script - using static analysis")
+            estimated = await self._estimate_profile_from_static_analysis(module_path)
+            if estimated:
+                self.components[module_path] = estimated
+                await self._save_profile_to_cache(estimated)
+                return estimated
+
+        # Tier 3: Live import profiling
         try:
             # Capture initial state
             process = psutil.Process()
@@ -258,7 +492,8 @@ class IntelligentComponentProfiler:
             # Calculate weight score (0-100)
             weight_score = self._calculate_weight_score(ram_usage_mb, import_time_ms, cpu_usage_percent)
 
-            # Determine offload priority
+            # Determine category and offload priority
+            category = self.component_patterns.get(module_path, {}).get("category", "unknown")
             base_priority = self.component_patterns.get(module_path, {}).get("base_priority", 50)
             offload_priority = min(100, base_priority + (weight_score * 0.3))
 
@@ -268,6 +503,7 @@ class IntelligentComponentProfiler:
             profile = ComponentProfile(
                 name=module_path.split(".")[-1],
                 module_path=module_path,
+                category=category,
                 weight_score=weight_score,
                 ram_usage_mb=ram_usage_mb,
                 import_time_ms=import_time_ms,
@@ -276,6 +512,7 @@ class IntelligentComponentProfiler:
                 can_offload=ram_usage_mb > 100,  # Only offload if >100MB
                 offload_priority=int(offload_priority),
                 last_measured=datetime.now(),
+                last_profiled=datetime.now(),
                 measurement_count=1,
             )
 
@@ -283,6 +520,9 @@ class IntelligentComponentProfiler:
             profile.historical_weights.append(weight_score)
 
             self.components[module_path] = profile
+
+            # Save to cache for future use
+            await self._save_profile_to_cache(profile)
 
             logger.info(f"   ✓ {module_path}: {ram_usage_mb:.1f}MB RAM, weight={weight_score:.1f}/100")
 
