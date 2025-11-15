@@ -44,16 +44,32 @@ class AppState: ObservableObject {
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Configure all windows as transparent overlays
+        // Configure all windows as COMPLETELY INVISIBLE overlays
+        // Only the JARVIS UI elements will be visible
         for window in NSApplication.shared.windows {
+            // Make window completely transparent
             window.isOpaque = false
             window.backgroundColor = .clear
+            window.hasShadow = false
+
+            // Remove all window chrome (title bar, borders, everything)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.borderless)
+            window.styleMask.insert(.fullSizeContentView)
+
+            // Always on top, works in all Spaces
             window.level = .statusBar
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary]
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+            // Cover entire screen (full-screen transparent overlay)
+            if let screen = NSScreen.main {
+                window.setFrame(screen.frame, display: true)
+            }
         }
 
-        // Hide from Dock (optional - can be enabled later)
-        // NSApp.setActivationPolicy(.accessory)
+        // Hide from Dock (floating overlay, not a regular app)
+        NSApp.setActivationPolicy(.accessory)
     }
 }
 
@@ -64,11 +80,21 @@ struct WindowAccessor: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             if let window = view.window {
-                // Configure window as transparent overlay
+                // Make window COMPLETELY INVISIBLE - no chrome, no shadow, no borders
                 window.isOpaque = false
                 window.backgroundColor = .clear
+                window.hasShadow = false
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+                window.styleMask.insert(.borderless)
+                window.styleMask.insert(.fullSizeContentView)
                 window.level = .statusBar
-                window.collectionBehavior = [.canJoinAllSpaces, .stationary]
+                window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+                // Cover entire screen
+                if let screen = NSScreen.main {
+                    window.setFrame(screen.frame, display: true)
+                }
             }
         }
         return view
