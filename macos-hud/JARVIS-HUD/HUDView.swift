@@ -35,11 +35,11 @@ struct HUDView: View {
 
     var body: some View {
         ZStack {
-            // Background with radial gradient (matching web app)
+            // Semi-transparent background (so desktop shows through)
             RadialGradient(
                 colors: [
-                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.2),
-                    Color.black
+                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.15),
+                    Color.black.opacity(0.7)
                 ],
                 center: .center,
                 startRadius: 100,
@@ -147,7 +147,7 @@ struct HUDView: View {
     }
 }
 
-/// Arc Reactor View - Filled circles with gradient (matching web app exactly)
+/// Arc Reactor View - Matching web app's cyan/teal gradient rings exactly
 struct ArcReactorView: View {
 
     let state: HUDState
@@ -155,13 +155,13 @@ struct ArcReactorView: View {
 
     var body: some View {
         ZStack {
-            // Outer glow effect
+            // Outer glow effect (cyan/teal)
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.jarvisGreen.opacity(0.3),
-                            Color.jarvisGreen.opacity(0.1),
+                            Color(red: 0.0, green: 0.8, blue: 0.7, opacity: 0.4),
+                            Color(red: 0.0, green: 0.6, blue: 0.5, opacity: 0.2),
                             Color.clear
                         ],
                         center: .center,
@@ -170,61 +170,62 @@ struct ArcReactorView: View {
                     )
                 )
                 .frame(width: 500, height: 500)
-                .blur(radius: 40)
+                .blur(radius: 50)
 
-            // Ring 4 (outermost) - filled
+            // Ring 4 (outermost) - dark teal/cyan gradient
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 0.2, green: 0.4, blue: 0.4),
-                            Color(red: 0.15, green: 0.3, blue: 0.3)
+                            Color(red: 0.3, green: 0.5, blue: 0.5, opacity: 0.8),
+                            Color(red: 0.2, green: 0.4, blue: 0.45, opacity: 0.6)
                         ],
                         center: .center,
-                        startRadius: 0,
+                        startRadius: 160,
                         endRadius: 180
                     )
                 )
                 .frame(width: 360, height: 360)
 
-            // Ring 3 - filled
+            // Ring 3 - medium teal
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 0.25, green: 0.5, blue: 0.5),
-                            Color(red: 0.2, green: 0.4, blue: 0.4)
+                            Color(red: 0.2, green: 0.6, blue: 0.6, opacity: 0.9),
+                            Color(red: 0.25, green: 0.5, blue: 0.5, opacity: 0.7)
                         ],
                         center: .center,
-                        startRadius: 0,
+                        startRadius: 120,
                         endRadius: 135
                     )
                 )
                 .frame(width: 270, height: 270)
 
-            // Ring 2 - filled
+            // Ring 2 - bright cyan/green
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.jarvisGreen.opacity(0.6),
-                            Color(red: 0.25, green: 0.5, blue: 0.5)
+                            Color(red: 0.0, green: 0.9, blue: 0.7, opacity: 1.0),
+                            Color(red: 0.1, green: 0.7, blue: 0.6, opacity: 0.9)
                         ],
                         center: .center,
-                        startRadius: 0,
+                        startRadius: 75,
                         endRadius: 90
                     )
                 )
                 .frame(width: 180, height: 180)
+                .shadow(color: Color(red: 0.0, green: 0.9, blue: 0.7, opacity: 0.6), radius: 20)
 
-            // Ring 1 - bright green
+            // Ring 1 - bright green center
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.white,
                             Color.jarvisGreen,
-                            Color.jarvisGreen.opacity(0.8)
+                            Color(red: 0.0, green: 0.95, blue: 0.5, opacity: 1.0),
+                            Color(red: 0.0, green: 0.8, blue: 0.6, opacity: 0.9)
                         ],
                         center: .center,
                         startRadius: 0,
@@ -233,13 +234,24 @@ struct ArcReactorView: View {
                 )
                 .frame(width: 90, height: 90)
                 .shadow(color: Color.jarvisGreenGlow(), radius: 30)
-                .shadow(color: Color.jarvisGreenGlow(), radius: 60)
+                .shadow(color: Color.jarvisGreenGlow(), radius: 50)
 
-            // Center core - bright white/green
+            // Center core - bright white with green glow
             Circle()
-                .fill(Color.white)
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white,
+                            Color.jarvisGreen.opacity(0.8)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 10
+                    )
+                )
                 .frame(width: 20, height: 20)
                 .shadow(color: Color.jarvisGreenGlow(), radius: 40)
+                .shadow(color: Color.white.opacity(0.8), radius: 20)
                 .scaleEffect(isAnimating ? 1.1 : 1.0)
         }
         .onAppear {
