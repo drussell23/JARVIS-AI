@@ -35,17 +35,10 @@ struct HUDView: View {
 
     var body: some View {
         ZStack {
-            // Semi-transparent background (so desktop shows through)
-            RadialGradient(
-                colors: [
-                    Color(red: 0.0, green: 0.3, blue: 0.3, opacity: 0.1),
-                    Color.black.opacity(0.5)
-                ],
-                center: .center,
-                startRadius: 100,
-                endRadius: 600
-            )
-            .ignoresSafeArea()
+            // FULLY TRANSPARENT GLASS - NO BLUR
+            // Pure transparency so desktop shows through completely
+            Color.clear
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
 

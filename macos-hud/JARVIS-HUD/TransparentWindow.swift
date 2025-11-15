@@ -23,12 +23,16 @@ class TransparentWindow: NSWindow {
             defer: false
         )
 
-        // PRD Requirement: Transparent, borderless window
+        // PRD Requirement: Fully transparent glass window
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = false
         self.titlebarAppearsTransparent = true
         self.titleVisibility = .hidden
+
+        // Enable full transparency and blur effect
+        self.alphaValue = 1.0
+        self.appearance = NSAppearance(named: .vibrantDark)
 
         // PRD Requirement: Always on top (.screenSaver or .statusBar level)
         self.level = .statusBar

@@ -29,8 +29,10 @@ struct LoadingHUDView: View {
 
     var body: some View {
         ZStack {
-            // Semi-transparent black background (50% opacity) - user can see desktop
-            Color.black.opacity(0.5).ignoresSafeArea()
+            // FULLY TRANSPARENT GLASS - NO BLUR
+            // Pure transparency so desktop shows through completely
+            Color.clear
+                .ignoresSafeArea()
 
             if !showMatrixTransition {
                 // Main loading content
