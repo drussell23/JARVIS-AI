@@ -174,25 +174,42 @@ class DynamicHybridOrchestrator:
         logger.info("✅ Orchestrator shutdown complete")
 
     async def _auto_discover_components(self):
-        """Automatically discover and profile all components"""
+        """
+        Automatically discover and profile all components.
+
+        Uses fast mode by default to avoid blocking startup - background profiling
+        will continue asynchronously while the system starts up.
+        """
         logger.info("🔍 Auto-discovering components...")
 
         if not self.profiler:
             logger.warning("Profiler not initialized - skipping discovery")
             return
 
-        discovered = await self.profiler.auto_discover_components()
+        # Use fast mode for instant startup - background profiling continues
+        fast_mode = os.getenv("PROFILING_FAST_MODE", "true").lower() == "true"
+        discovered = await self.profiler.auto_discover_components(fast_mode=fast_mode)
 
         # Update state
-        self.state.total_components = len(discovered)
-        self.state.local_components = len(discovered)  # All start local
+        self.state.total_components = len(self.profiler.component_patterns)  # Total potential
+        self.state.local_components = len(discovered)  # Currently known
         self.state.gcp_components = 0
 
-        # Initialize locations
+        # Initialize locations for discovered components
         for comp in discovered:
             self.component_locations[comp.name] = "local"
 
-        logger.info(f"   Discovered {len(discovered)} components - all starting locally")
+        if fast_mode:
+            logger.info(
+                f"   ✓ Fast discovery complete: {len(discovered)} components loaded from cache"
+            )
+            logger.info(
+                f"   🔄 Background profiling active for {self.state.total_components} total components"
+            )
+        else:
+            logger.info(
+                f"   ✓ Full profiling complete: {len(discovered)} components discovered"
+            )
 
     async def _start_background_tasks(self):
         """Start background monitoring and migration tasks"""

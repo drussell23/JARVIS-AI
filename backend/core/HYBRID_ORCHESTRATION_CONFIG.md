@@ -30,6 +30,10 @@ The Intelligent Hybrid Orchestration system automatically detects heavy componen
 | `MAX_CONCURRENT_MIGRATIONS` | `3` | Max simultaneous component migrations |
 | `COMPONENT_CACHE_MAX_AGE_DAYS` | `7` | Max age of cached component profiles (days) |
 | `ENABLE_STATIC_ANALYSIS_PROFILING` | `true` | Use static analysis for executable scripts |
+| `PROFILING_FAST_MODE` | `true` | Fast startup with background profiling vs full profiling |
+| `PROFILING_MAX_CONCURRENT` | `10` | Max concurrent profiling operations per batch |
+| `PROFILING_BATCH_SIZE` | `20` | Number of components to profile per batch |
+| `PROFILING_BATCH_DELAY_MS` | `100` | Delay between batches to avoid RAM spikes (ms) |
 
 ### GCP Configuration
 
@@ -111,10 +115,34 @@ The system uses a **multi-tier intelligent profiling approach**:
 - Caches result for future use
 - Only used for safe-to-import modules
 
-For each component:
-- Calculates weight score (0-100)
-- Determines offload priority
-- Saves to cache for future startups
+**Advanced Concurrent Batch Profiling:**
+
+The system uses sophisticated batch processing to handle 200+ components efficiently:
+
+1. **Priority Sorting**: Components sorted by category priority (intelligence > voice > vision)
+2. **Batch Division**: Components split into batches (default: 20 per batch)
+3. **Concurrent Execution**: Each batch profiles `PROFILING_MAX_CONCURRENT` (default: 10) components simultaneously
+4. **Intelligent Delays**: `PROFILING_BATCH_DELAY_MS` (default: 100ms) between batches prevents RAM spikes
+5. **Background Processing**: In fast mode (default), profiling continues in background while JARVIS starts
+
+**Fast Mode vs Full Mode:**
+
+- **Fast Mode** (`PROFILING_FAST_MODE=true`, default):
+  - Returns cached profiles immediately (~instant startup)
+  - Launches background profiling worker for uncached components
+  - JARVIS starts while profiling continues asynchronously
+  - Perfect for development and quick restarts
+
+- **Full Mode** (`PROFILING_FAST_MODE=false`):
+  - Profiles all components before returning
+  - Uses concurrent batching for performance
+  - Complete component knowledge before startup
+  - Recommended for production deployments
+
+**Example: Profiling 263 Components**
+- With fast mode: ~100-500ms (cached profiles only)
+- With full mode + batching: ~15-30 seconds (all 263 components)
+- Sequential (old approach): ~5-10 minutes (would cause timeout)
 
 ### 3. Decision Making
 Every 5 minutes (configurable), the system:

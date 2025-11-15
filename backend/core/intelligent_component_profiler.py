@@ -715,32 +715,188 @@ class IntelligentComponentProfiler:
 
         return decision
 
-    async def auto_discover_components(self) -> List[ComponentProfile]:
+    async def auto_discover_components(self, fast_mode: bool = True) -> List[ComponentProfile]:
         """
         Automatically discover all heavy components in backend.
 
+        Uses advanced concurrent profiling with intelligent batching to handle
+        hundreds of components without blocking startup.
+
+        Args:
+            fast_mode: If True, returns immediately after queuing background profiling.
+                      If False, waits for all profiling to complete.
+
         Returns:
-            List of profiled components
+            List of profiled components (may be incomplete in fast_mode)
         """
-        logger.info("🔍 Auto-discovering components...")
+        logger.info("🔍 Auto-discovering components with concurrent batch profiling...")
+
+        total_modules = len(self.component_patterns)
+        logger.info(f"   Found {total_modules} potential components to profile")
 
         discovered = []
 
-        for module_path in self.component_patterns.keys():
-            profile = await self.profile_component(module_path)
-            if profile and profile.weight_score > self.thresholds["min_weight_for_offload"]:
-                discovered.append(profile)
+        # Get concurrency settings from environment
+        max_concurrent = int(os.getenv("PROFILING_MAX_CONCURRENT", "10"))
+        batch_size = int(os.getenv("PROFILING_BATCH_SIZE", "20"))
+        delay_between_batches_ms = int(os.getenv("PROFILING_BATCH_DELAY_MS", "100"))
 
-        # Sort by weight (heaviest first)
-        discovered.sort(key=lambda p: p.weight_score, reverse=True)
+        # Prioritize modules by base priority (intelligence > voice > vision)
+        module_paths_sorted = sorted(
+            self.component_patterns.keys(),
+            key=lambda p: self.component_patterns[p].get("base_priority", 50),
+            reverse=True
+        )
 
-        logger.info(f"   Discovered {len(discovered)} heavy components")
-        for i, comp in enumerate(discovered[:10], 1):
+        # Split into batches
+        batches = [
+            module_paths_sorted[i:i + batch_size]
+            for i in range(0, len(module_paths_sorted), batch_size)
+        ]
+
+        logger.info(f"   Profiling strategy:")
+        logger.info(f"     • Total batches: {len(batches)}")
+        logger.info(f"     • Batch size: {batch_size}")
+        logger.info(f"     • Max concurrent per batch: {max_concurrent}")
+        logger.info(f"     • Delay between batches: {delay_between_batches_ms}ms")
+
+        if fast_mode:
+            # Fast mode: Start background profiling and return immediately
+            logger.info(f"   🚀 Fast mode: Starting background profiling for {total_modules} components")
+
+            # Start background task for profiling
+            asyncio.create_task(self._background_batch_profiling(batches, max_concurrent, delay_between_batches_ms))
+
+            # Return any cached profiles immediately
+            for module_path in module_paths_sorted[:50]:  # Check first 50 for cache
+                cached = await self._load_cached_profile(module_path)
+                if cached and cached.weight_score > self.thresholds["min_weight_for_offload"]:
+                    discovered.append(cached)
+                    self.components[module_path] = cached
+
+            if discovered:
+                discovered.sort(key=lambda p: p.weight_score, reverse=True)
+                logger.info(f"   ✓ Loaded {len(discovered)} components from cache immediately")
+                logger.info(f"   ⏳ Background profiling in progress for remaining components...")
+            else:
+                logger.info(f"   ⏳ No cached profiles - background profiling will discover components")
+
+            return discovered
+
+        else:
+            # Full mode: Profile all components with concurrent batching
+            logger.info(f"   🔄 Full mode: Profiling all {total_modules} components with batching...")
+
+            for batch_num, batch in enumerate(batches, 1):
+                logger.info(f"   Processing batch {batch_num}/{len(batches)} ({len(batch)} modules)...")
+
+                # Create profiling tasks with concurrency limit
+                semaphore = asyncio.Semaphore(max_concurrent)
+
+                async def profile_with_limit(module_path: str) -> Optional[ComponentProfile]:
+                    async with semaphore:
+                        try:
+                            return await self.profile_component(module_path)
+                        except Exception as e:
+                            logger.debug(f"Profiling failed for {module_path}: {e}")
+                            return None
+
+                # Profile batch concurrently
+                batch_tasks = [profile_with_limit(mp) for mp in batch]
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+                # Collect successful profiles
+                for result in batch_results:
+                    if isinstance(result, ComponentProfile):
+                        if result.weight_score > self.thresholds["min_weight_for_offload"]:
+                            discovered.append(result)
+
+                # Delay between batches to avoid RAM spike
+                if batch_num < len(batches):
+                    await asyncio.sleep(delay_between_batches_ms / 1000.0)
+
+                # Log progress
+                logger.info(f"     ✓ Batch {batch_num} complete: {len(discovered)} heavy components found so far")
+
+            # Sort by weight (heaviest first)
+            discovered.sort(key=lambda p: p.weight_score, reverse=True)
+
+            logger.info(f"   ✅ Profiling complete: {len(discovered)} heavy components discovered")
+            for i, comp in enumerate(discovered[:10], 1):
+                logger.info(
+                    f"     {i}. {comp.name}: {comp.weight_score:.1f}/100 ({comp.ram_usage_mb:.0f}MB)"
+                )
+
+            return discovered
+
+    async def _background_batch_profiling(
+        self,
+        batches: List[List[str]],
+        max_concurrent: int,
+        delay_between_batches_ms: int
+    ):
+        """
+        Background worker for batch profiling components.
+
+        This runs independently without blocking the main startup sequence.
+
+        Args:
+            batches: List of module path batches
+            max_concurrent: Max concurrent profiling operations per batch
+            delay_between_batches_ms: Delay between batches in milliseconds
+        """
+        logger.info(f"🔄 Background profiler started for {sum(len(b) for b in batches)} components")
+
+        heavy_count = 0
+        total_profiled = 0
+
+        try:
+            for batch_num, batch in enumerate(batches, 1):
+                # Create profiling tasks with concurrency limit
+                semaphore = asyncio.Semaphore(max_concurrent)
+
+                async def profile_with_limit(module_path: str) -> Optional[ComponentProfile]:
+                    async with semaphore:
+                        try:
+                            return await self.profile_component(module_path)
+                        except Exception as e:
+                            logger.debug(f"Background profiling failed for {module_path}: {e}")
+                            return None
+
+                # Profile batch concurrently
+                batch_tasks = [profile_with_limit(mp) for mp in batch]
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+                # Count heavy components
+                for result in batch_results:
+                    total_profiled += 1
+                    if isinstance(result, ComponentProfile):
+                        if result.weight_score > self.thresholds["min_weight_for_offload"]:
+                            heavy_count += 1
+
+                # Log progress every 5 batches
+                if batch_num % 5 == 0 or batch_num == len(batches):
+                    logger.info(
+                        f"   📊 Background profiling progress: {total_profiled} profiled, "
+                        f"{heavy_count} heavy components found"
+                    )
+
+                # Delay between batches
+                if batch_num < len(batches):
+                    await asyncio.sleep(delay_between_batches_ms / 1000.0)
+
             logger.info(
-                f"   {i}. {comp.name}: {comp.weight_score:.1f}/100 ({comp.ram_usage_mb:.0f}MB)"
+                f"   ✅ Background profiling complete: {heavy_count} heavy components "
+                f"discovered from {total_profiled} total"
             )
 
-        return discovered
+        except asyncio.CancelledError:
+            logger.info(f"   ⚠️  Background profiling cancelled after {total_profiled} components")
+            raise
+        except Exception as e:
+            logger.error(f"   ❌ Background profiling error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
 
     async def optimize_offloading(self) -> Dict[str, Any]:
         """
