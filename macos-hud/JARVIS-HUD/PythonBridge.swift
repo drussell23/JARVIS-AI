@@ -29,6 +29,12 @@ class PythonBridge: ObservableObject {
     private var reconnectTimer: Timer?
     private var isManuallyDisconnected = false
 
+    // Robust connection management
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 20  // Try for ~1 minute with exponential backoff
+    private var connectionHealthTimer: Timer?
+    private var lastMessageTime: Date?
+
     // MARK: - Initialization
 
     init() {
@@ -42,14 +48,17 @@ class PythonBridge: ObservableObject {
         print("🔧 Backend Configuration:")
         print("   WebSocket: \(wsURL)")
         print("   HTTP API:  \(httpURL)")
+        print("   Max reconnect attempts: \(maxReconnectAttempts)")
     }
 
     // MARK: - Connection Management
 
-    /// Connect to Python backend via WebSocket with auto-retry
+    /// Connect to Python backend via WebSocket with robust retry logic
     func connect() {
         isManuallyDisconnected = false
-        print("🔌 Connecting to backend at \(websocketURL)...")
+        connectionStatus = .connecting
+
+        print("🔌 Attempting connection \(reconnectAttempts + 1)/\(maxReconnectAttempts) to backend at \(websocketURL)...")
 
         let session = URLSession(configuration: .default)
         webSocketTask = session.webSocketTask(with: websocketURL)
@@ -57,10 +66,13 @@ class PythonBridge: ObservableObject {
         webSocketTask?.resume()
         receiveMessage()
 
-        // Send initial connection message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Send initial connection message with delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.sendConnectionMessage()
         }
+
+        // Start connection health monitoring
+        startConnectionHealthCheck()
     }
 
     /// Disconnect from Python backend
@@ -74,15 +86,45 @@ class PythonBridge: ObservableObject {
         print("🔌 Disconnected from backend")
     }
 
-    /// Automatically reconnect after disconnect (unless manual)
+    /// Automatically reconnect with exponential backoff
     private func scheduleReconnect() {
         guard !isManuallyDisconnected else { return }
+        guard reconnectAttempts < maxReconnectAttempts else {
+            print("❌ Max reconnection attempts reached (\(maxReconnectAttempts)). Backend may not be ready yet.")
+            connectionStatus = .error
+            return
+        }
 
-        print("🔄 Scheduling reconnect in 3 seconds...")
+        reconnectAttempts += 1
+
+        // Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, max 10s
+        let baseDelay: Double = 0.5
+        let delay = min(baseDelay * pow(2.0, Double(reconnectAttempts - 1)), 10.0)
+
+        print("🔄 Reconnect attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(String(format: "%.1f", delay))s...")
         reconnectTimer?.invalidate()
 
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.connect()
+        }
+    }
+
+    /// Monitor connection health and reconnect if stale
+    private func startConnectionHealthCheck() {
+        connectionHealthTimer?.invalidate()
+
+        connectionHealthTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            // If we haven't received any messages in 30 seconds, consider connection dead
+            if let lastMessage = self.lastMessageTime {
+                let timeSinceLastMessage = Date().timeIntervalSince(lastMessage)
+                if timeSinceLastMessage > 30.0 && self.connectionStatus == .connected {
+                    print("⚠️ Connection appears stale (no messages for \(Int(timeSinceLastMessage))s), reconnecting...")
+                    self.webSocketTask?.cancel(with: .goingAway, reason: nil)
+                    self.scheduleReconnect()
+                }
+            }
         }
     }
 
@@ -118,6 +160,9 @@ class PythonBridge: ObservableObject {
             case .success(let message):
                 DispatchQueue.main.async {
                     self?.connectionStatus = .connected
+                    self?.lastMessageTime = Date()
+                    // Reset reconnect attempts on successful message
+                    self?.reconnectAttempts = 0
                 }
                 self?.handleMessage(message)
                 self?.receiveMessage() // Continue receiving

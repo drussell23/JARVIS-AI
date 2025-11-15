@@ -196,10 +196,13 @@ struct LoadingHUDView: View {
     }
 
     private func simulateLoading() {
-        // Fallback simulation - only runs if backend doesn't connect within 5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+        // Fallback simulation - only runs if backend doesn't connect within 15 seconds
+        // (Gives backend more time to start up, especially on slower machines)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
             // Only use simulated loading if no real progress received
             if progress == 0 {
+                print("⚠️ No backend progress after 15s, using fallback simulation")
+
                 let stages = [
                     (10, "Loading core systems..."),
                     (25, "Initializing AI modules..."),

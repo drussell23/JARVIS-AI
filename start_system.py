@@ -10007,34 +10007,75 @@ async def main():
 
         # Launch UI immediately to show loading screen
         if args.ui_mode == "macos":
-            # macOS HUD - launch immediately to show loading screen
-            print(f"{Colors.CYAN}🍎 Launching macOS HUD (loading screen)...{Colors.ENDC}")
+            # macOS HUD - automatically rebuild and launch
+            print(f"{Colors.CYAN}🍎 Preparing macOS HUD (loading screen)...{Colors.ENDC}")
             try:
-                # Find the HUD app
+                import subprocess
                 repo_root = Path(__file__).parent
+                hud_dir = repo_root / "macos-hud"
+
+                # Check if HUD source has changed or if app doesn't exist
                 search_paths = [
                     "macos-hud/build/Build/Products/Release/JARVIS-HUD.app",
                     "macos-hud/build/Build/Products/Debug/JARVIS-HUD.app",
                 ]
 
                 hud_app_path = None
+                needs_rebuild = True
+
                 for search_path in search_paths:
                     full_path = repo_root / search_path
                     if full_path.exists():
                         hud_app_path = full_path
+                        # Check if source files are newer than app (indicates changes)
+                        app_mtime = full_path.stat().st_mtime
+                        swift_files = list(hud_dir.glob("JARVIS-HUD/**/*.swift"))
+                        if swift_files:
+                            newest_source = max(f.stat().st_mtime for f in swift_files)
+                            needs_rebuild = newest_source > app_mtime
+                        else:
+                            needs_rebuild = False
                         break
 
-                if hud_app_path:
+                # Rebuild if needed
+                if needs_rebuild or hud_app_path is None:
+                    print(f"{Colors.CYAN}   🔨 Building macOS HUD (source changed or not built)...{Colors.ENDC}")
+                    build_result = subprocess.run(
+                        ["xcodebuild", "-scheme", "JARVIS-HUD", "-configuration", "Release",
+                         "-derivedDataPath", "build", "build"],
+                        cwd=str(hud_dir),
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+
+                    if build_result.returncode == 0:
+                        print(f"{Colors.GREEN}   ✓ HUD built successfully{Colors.ENDC}")
+                        # Update path to newly built app
+                        hud_app_path = repo_root / "macos-hud/build/Build/Products/Release/JARVIS-HUD.app"
+                    else:
+                        print(f"{Colors.YELLOW}   ⚠️  Build failed, trying to use existing app{Colors.ENDC}")
+                        # Try to find any existing app
+                        for search_path in search_paths:
+                            full_path = repo_root / search_path
+                            if full_path.exists():
+                                hud_app_path = full_path
+                                break
+                else:
+                    print(f"{Colors.GREEN}   ✓ HUD already built (up to date){Colors.ENDC}")
+
+                if hud_app_path and hud_app_path.exists():
                     # Launch HUD app immediately
-                    import subprocess
                     subprocess.Popen(["open", "-a", str(hud_app_path)],
                                    stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL)
                     print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
                 else:
-                    print(f"{Colors.YELLOW}   ⚠️  HUD app not found, will try to build later{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
+            except subprocess.TimeoutExpired:
+                print(f"{Colors.YELLOW}   ⚠️  Build timed out (taking longer than 2 minutes){Colors.ENDC}")
             except Exception as e:
-                print(f"{Colors.YELLOW}   ⚠️  Could not pre-launch HUD: {e}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   ⚠️  Could not build/launch HUD: {e}{Colors.ENDC}")
 
         elif not args.no_browser and args.ui_mode == "web-app":
             print(f"{Colors.CYAN}📡 Starting loading page server...{Colors.ENDC}")
