@@ -1026,128 +1026,28 @@ async def memory_pressure_callback(pressure_level: str):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 🔥 BACKGROUND MODULE LOADER (Module-level function)
+# 🔥 COMPONENT LOADING HELPER (Reusable for INSTANT + TRADITIONAL modes)
 # ═══════════════════════════════════════════════════════════════
-async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
-    """Load all heavy modules in background with real-time HUD updates
-
-    This runs AFTER uvicorn starts listening, so HUD can connect immediately
+async def _perform_all_component_loading(app: FastAPI, start_time: float, send_progress_func=None):
     """
-    try:
-        from api.hud_websocket import send_loading_progress, send_loading_complete
+    Core component loading logic extracted from lifespan.
+    Used by BOTH instant background loading AND traditional blocking startup.
 
-        # Wait for server to be fully listening
-        await asyncio.sleep(1.0)
+    Args:
+        app: FastAPI application instance
+        start_time: Startup timestamp for elapsed time calculation
+        send_progress_func: Optional async function(progress: int, message: str) for HUD updates
 
-        logger.info("🔥 Background module loading started (server is listening!)")
-        await send_loading_progress(10, "Backend server online - starting module loading...")
-
-        # Initialize dynamic component manager if enabled
-        global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
-        if DYNAMIC_LOADING_ENABLED and get_component_manager:
-            logger.info("🧩 Initializing Dynamic Component Management System...")
-            await send_loading_progress(15, "Initializing component manager...")
-            dynamic_component_manager = get_component_manager()
-            app.state.component_manager = dynamic_component_manager
-
-            # Register memory pressure callback for GCP VM creation
-            if GCP_VM_ENABLED:
-                logger.info("☁️  GCP VM auto-creation enabled")
-                dynamic_component_manager.memory_monitor.register_callback(memory_pressure_callback)
-                logger.info("✅ Memory pressure callback registered")
-
-            # Start memory pressure monitoring
-            asyncio.create_task(dynamic_component_manager.start_monitoring())
-            logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
-            logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
-            logger.info("✅ Dynamic component loading enabled")
-            await send_loading_progress(20, "Component manager initialized")
-
-        # Continue with rest of loading...
-        # (The existing component loading code will be moved here)
-
-        app.state.modules_loaded = True
-        app.state.loading_in_progress = False
-        logger.info(f"✅ All modules loaded in background in {time.time() - start_time:.1f}s")
-
-    except Exception as e:
-        logger.error(f"❌ Background module loading failed: {e}", exc_info=True)
-        app.state.loading_in_progress = False
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """🚀 BEAST MODE: INSTANT SERVER STARTUP + BACKGROUND LOADING
-
-    Strategy:
-    1. Server starts in <1 second (WebSocket immediately available)
-    2. Heavy modules load in background AFTER server is listening
-    3. HUD connects instantly and receives real-time progress updates
-    4. GCP offloading kicks in if memory pressure detected
-
-    This ensures HUD never times out waiting for backend!
+    This function contains ALL the component loading code from the original lifespan function.
     """
-    logger.info("⚡ INSTANT STARTUP MODE: Server will be ready in <1s!")
-    start_time = time.time()
+    # Import at function level to avoid circular imports
+    from api.hud_websocket import send_loading_progress as hud_send_progress
 
-    # Store start time for background task
-    app.state.startup_time = start_time
-    app.state.modules_loaded = False
-    app.state.loading_in_progress = True
+    # Use the provided function or the default HUD sender
+    send_loading_progress = send_progress_func if send_progress_func else hud_send_progress
 
-    # Check if instant startup is enabled (default: True for HUD compatibility)
-    INSTANT_STARTUP = os.getenv("JARVIS_INSTANT_STARTUP", "true").lower() == "true"
-
-    if INSTANT_STARTUP:
-        logger.info("🚀 INSTANT MODE: Yielding immediately - heavy loading will happen in background")
-        # Launch background task BEFORE yield, it will start after server is listening
-        asyncio.create_task(load_heavy_modules_in_background(app, start_time))
-        # Yield immediately - server starts NOW
-        yield
-        # Cleanup on shutdown
-        logger.info("🛑 Shutting down JARVIS backend...")
-        return
-
-    # Otherwise, do traditional blocking startup
-    logger.info("📦 TRADITIONAL MODE: Loading all modules before server starts...")
-
-    # Define the background module loader BEFORE yield
-    async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
-        """Load all heavy modules in background with real-time HUD updates"""
-        try:
-            from api.hud_websocket import send_loading_progress, send_loading_complete
-
-            # Wait a tiny bit to ensure server is fully listening
-            await asyncio.sleep(0.5)
-
-            logger.info("🔥 Background module loading started (server is listening!)")
-            await send_loading_progress(10, "Backend server online - starting module loading...")
-
-            # Initialize dynamic component manager if enabled
-            global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
-            if DYNAMIC_LOADING_ENABLED and get_component_manager:
-                logger.info("🧩 Initializing Dynamic Component Management System...")
-                await send_loading_progress(15, "Initializing component manager...")
-                dynamic_component_manager = get_component_manager()
-                app.state.component_manager = dynamic_component_manager
-
-                # Register memory pressure callback for GCP VM creation
-                if GCP_VM_ENABLED:
-                    logger.info("☁️  GCP VM auto-creation enabled")
-                    dynamic_component_manager.memory_monitor.register_callback(memory_pressure_callback)
-                    logger.info("✅ Memory pressure callback registered")
-
-                # Start memory pressure monitoring
-                asyncio.create_task(dynamic_component_manager.start_monitoring())
-                logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
-                logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
-                logger.info("✅ Dynamic component loading enabled")
-                await send_loading_progress(20, "Component manager initialized")
-
-            # 🔥 PHASE 2: Load components in PARALLEL with HUD progress updates
-            logger.info("🚀 Phase 2: Loading components in parallel...")
-            await send_loading_progress(25, "Starting parallel component loading...")
-
+    # NOTE: Component loading code will be inserted here
+    # This gets populated by moving code from lifespan
     # Run parallel imports if enabled
     if DYNAMIC_LOADING_ENABLED and dynamic_component_manager:
         # Dynamic loading mode - load only CORE components at startup
@@ -2150,6 +2050,113 @@ async def lifespan(app: FastAPI):
         logger.warning("   → Voice unlock features will be disabled")
         app.state.db_adapter = None
         app.state.voice_verification = None
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🔥 BACKGROUND MODULE LOADER (Module-level function for INSTANT mode)
+# ═══════════════════════════════════════════════════════════════
+async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
+    """Load all heavy modules in background with real-time HUD updates
+
+    This runs AFTER uvicorn starts listening, so HUD can connect immediately
+    """
+    try:
+        from api.hud_websocket import send_loading_progress, send_loading_complete
+
+        # Wait for server to be fully listening
+        await asyncio.sleep(1.0)
+
+        logger.info("🔥 Background module loading started (server is listening!)")
+        await send_loading_progress(10, "Backend server online - starting module loading...")
+
+        # Initialize dynamic component manager if enabled
+        global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
+        if DYNAMIC_LOADING_ENABLED and get_component_manager:
+            logger.info("🧩 Initializing Dynamic Component Management System...")
+            await send_loading_progress(15, "Initializing component manager...")
+            dynamic_component_manager = get_component_manager()
+            app.state.component_manager = dynamic_component_manager
+
+            # Register memory pressure callback for GCP VM creation
+            if GCP_VM_ENABLED:
+                logger.info("☁️  GCP VM auto-creation enabled")
+                dynamic_component_manager.memory_monitor.register_callback(memory_pressure_callback)
+                logger.info("✅ Memory pressure callback registered")
+
+            # Start memory pressure monitoring
+            asyncio.create_task(dynamic_component_manager.start_monitoring())
+            logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
+            logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
+            logger.info("✅ Dynamic component loading enabled")
+            await send_loading_progress(20, "Component manager initialized")
+
+        # 🚀 LOAD ALL COMPONENTS using the helper function
+        async def progress_wrapper(progress: int, message: str):
+            """Wrapper to call HUD progress with logging"""
+            await send_loading_progress(progress, message)
+
+        # Call the component loading helper (contains all the logic from lifespan)
+        await _perform_all_component_loading(app, start_time, send_progress_func=progress_wrapper)
+
+        # 🎯 FINAL STEP: Send completion signal to HUD!
+        elapsed_time = time.time() - start_time
+        logger.info(f"✅ JARVIS Backend fully initialized in {elapsed_time:.1f}s")
+        logger.info("🚀 All systems online - ready for voice commands!")
+
+        await send_loading_complete(success=True)
+        logger.info("📱 HUD completion signal sent - triggering transition to main interface")
+
+        app.state.modules_loaded = True
+        app.state.loading_in_progress = False
+
+    except Exception as e:
+        logger.error(f"❌ Background module loading failed: {e}", exc_info=True)
+        app.state.loading_in_progress = False
+        try:
+            await send_loading_complete(success=False)
+        except:
+            pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """🚀 BEAST MODE: INSTANT SERVER STARTUP + BACKGROUND LOADING
+
+    Strategy:
+    1. Server starts in <1 second (WebSocket immediately available)
+    2. Heavy modules load in background AFTER server is listening
+    3. HUD connects instantly and receives real-time progress updates
+    4. GCP offloading kicks in if memory pressure detected
+
+    This ensures HUD never times out waiting for backend!
+    """
+    logger.info("⚡ INSTANT STARTUP MODE: Server will be ready in <1s!")
+    start_time = time.time()
+
+    # Store start time for background task
+    app.state.startup_time = start_time
+    app.state.modules_loaded = False
+    app.state.loading_in_progress = True
+
+    # Check if instant startup is enabled (default: True for HUD compatibility)
+    INSTANT_STARTUP = os.getenv("JARVIS_INSTANT_STARTUP", "true").lower() == "true"
+
+    if INSTANT_STARTUP:
+        logger.info("🚀 INSTANT MODE: Yielding immediately - heavy loading will happen in background")
+        # Launch background task BEFORE yield, it will start after server is listening
+        asyncio.create_task(load_heavy_modules_in_background(app, start_time))
+        # Yield immediately - server starts NOW
+        yield
+        # Cleanup on shutdown
+        logger.info("🛑 Shutting down JARVIS backend...")
+        return
+
+    # Otherwise, do traditional blocking startup (modules load BEFORE server starts)
+    logger.info("📦 TRADITIONAL MODE: Loading all modules before server starts...")
+
+    # 🚀 LOAD ALL COMPONENTS using helper function
+    await _perform_all_component_loading(app, start_time, send_progress_func=send_loading_progress)
 
     # 🎯 FINAL STEP: Send completion signal to HUD!
     elapsed_time = time.time() - start_time
