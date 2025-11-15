@@ -394,7 +394,7 @@ async def parallel_import_components():
     # Helper to send HUD progress
     async def send_hud_progress(progress, message):
         try:
-            from api.hud_websocket import send_loading_progress
+            from api.unified_websocket import send_loading_progress
             await send_loading_progress(progress, message)
         except:
             pass  # Silently fail if HUD not available
@@ -1041,7 +1041,7 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
     This function contains ALL the component loading code from the original lifespan function.
     """
     # Import at function level to avoid circular imports
-    from api.hud_websocket import send_loading_progress as hud_send_progress
+    from api.unified_websocket import send_loading_progress as hud_send_progress
 
     # Use the provided function or the default HUD sender
     send_loading_progress = send_progress_func if send_progress_func else hud_send_progress
@@ -2062,7 +2062,7 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
     This runs AFTER uvicorn starts listening, so HUD can connect immediately
     """
     try:
-        from api.hud_websocket import send_loading_progress, send_loading_complete
+        from api.unified_websocket import send_loading_progress, send_loading_complete
 
         # Wait for server to be fully listening
         await asyncio.sleep(1.0)
@@ -2247,7 +2247,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 All systems online - ready for voice commands!")
 
     try:
-        from api.hud_websocket import send_loading_complete
+        from api.unified_websocket import send_loading_complete
         await send_loading_complete(success=True)
         logger.info("📱 HUD completion signal sent - triggering transition to main interface")
     except Exception as e:
@@ -3099,13 +3099,9 @@ def mount_routers():
     """Mount API routers based on loaded components"""
     import os  # Ensure os is available in this scope
 
-    # macOS Native HUD WebSocket API (always available)
-    try:
-        from api.hud_websocket import router as hud_router
-        app.include_router(hud_router, tags=["hud"])
-        logger.info("✅ macOS HUD WebSocket API mounted at /ws/hud")
-    except Exception as e:
-        logger.warning(f"⚠️  Could not mount HUD WebSocket: {e}")
+    # macOS Native HUD WebSocket - Now integrated into unified WebSocket at /ws
+    # No separate /ws/hud endpoint needed - HUD uses unified WebSocket
+    logger.info("✅ macOS HUD uses unified WebSocket at /ws (see unified_websocket.py)")
 
     # Memory API
     memory = components.get("memory", {})
