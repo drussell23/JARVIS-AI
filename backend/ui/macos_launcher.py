@@ -39,6 +39,8 @@ class MacOSHUDLauncher:
         self.config = {
             "app_name": "JARVIS-HUD.app",
             "search_paths": [
+                "macos-hud/build/Build/Products/Release",  # xcodebuild with -derivedDataPath
+                "macos-hud/build/Build/Products/Debug",
                 "macos-hud/build/Release",
                 "macos-hud/build/Debug",
                 "macos-hud/Build/Products/Release",
