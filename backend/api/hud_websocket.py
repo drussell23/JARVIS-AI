@@ -237,3 +237,19 @@ async def set_hud_reactor_state(state: str):
 async def broadcast_to_hud(message: dict):
     """Broadcast custom message to all HUD clients"""
     await hud_manager.broadcast(message)
+
+
+async def send_loading_progress(progress: int, message: str):
+    """
+    Send loading progress update to HUD during system startup
+    Used by start_system.py to show real-time boot progress
+
+    Args:
+        progress: Progress percentage (0-100)
+        message: Status message describing current step
+    """
+    await hud_manager.broadcast({
+        "type": "loading_progress",
+        "progress": progress,
+        "message": message
+    })

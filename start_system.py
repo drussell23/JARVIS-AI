@@ -2871,6 +2871,34 @@ class Colors:
     MAGENTA = "\033[35m"
 
 
+# Global HUD progress broadcaster
+_hud_progress_broadcaster = None
+
+
+async def send_hud_progress(progress: int, message: str):
+    """
+    Send real-time loading progress to macOS HUD
+    Called throughout startup to update HUD loading screen
+    """
+    global _hud_progress_broadcaster
+
+    if _hud_progress_broadcaster is None:
+        try:
+            # Lazy import to avoid circular dependencies
+            sys.path.insert(0, str(Path(__file__).parent / "backend"))
+            from api.hud_websocket import send_loading_progress
+            _hud_progress_broadcaster = send_loading_progress
+        except Exception as e:
+            # Backend not loaded yet, silently skip
+            return
+
+    try:
+        await _hud_progress_broadcaster(progress, message)
+    except:
+        # WebSocket not ready or no clients connected, silently skip
+        pass
+
+
 class AsyncSystemManager:
     """Async system manager with integrated resource optimization and self-healing"""
 
@@ -9824,7 +9852,15 @@ async def main():
 
     # Helper function to broadcast progress to loading server
     async def broadcast_to_loading_server(stage, message, progress, metadata=None):
-        """Send progress update to loading server via HTTP"""
+        """Send progress update to both loading server (web-app) and macOS HUD via WebSocket"""
+        # Send to macOS HUD via WebSocket (real-time)
+        try:
+            await send_hud_progress(progress, message)
+        except Exception:
+            # Silently fail - HUD WebSocket might not be ready yet
+            pass
+
+        # Send to web-app loading server via HTTP
         try:
             import aiohttp
             url = "http://localhost:3001/api/update-progress"

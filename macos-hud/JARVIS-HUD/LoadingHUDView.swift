@@ -23,13 +23,14 @@ struct LoadingHUDView: View {
     @State private var progress: CGFloat = 0
     @State private var logoScale: CGFloat = 1.0
     @State private var showMatrixTransition: Bool = false
+    @StateObject private var pythonBridge = PythonBridge()
 
     var onComplete: () -> Void
 
     var body: some View {
         ZStack {
-            // Black background
-            Color.black.ignoresSafeArea()
+            // Semi-transparent black background (50% opacity) - user can see desktop
+            Color.black.opacity(0.5).ignoresSafeArea()
 
             if !showMatrixTransition {
                 // Main loading content
@@ -112,6 +113,22 @@ struct LoadingHUDView: View {
         }
         .onAppear {
             startLoadingAnimation()
+            // Connect to backend for real-time progress
+            pythonBridge.connect()
+        }
+        .onChange(of: pythonBridge.loadingProgress) { newProgress in
+            // Update progress from backend in real-time
+            withAnimation(.easeInOut(duration: 0.3)) {
+                progress = CGFloat(newProgress)
+                loadingState = .loading(progress: newProgress, message: pythonBridge.loadingMessage)
+            }
+
+            // Complete when backend signals 100%
+            if newProgress >= 100 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    playCompletionAnimation()
+                }
+            }
         }
     }
 
@@ -179,26 +196,32 @@ struct LoadingHUDView: View {
     }
 
     private func simulateLoading() {
-        let stages = [
-            (10, "Loading core systems..."),
-            (25, "Initializing AI modules..."),
-            (40, "Connecting to backend..."),
-            (60, "Loading voice recognition..."),
-            (80, "Finalizing setup..."),
-            (100, "Complete!")
-        ]
+        // Fallback simulation - only runs if backend doesn't connect within 5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            // Only use simulated loading if no real progress received
+            if progress == 0 {
+                let stages = [
+                    (10, "Loading core systems..."),
+                    (25, "Initializing AI modules..."),
+                    (40, "Connecting to backend..."),
+                    (60, "Loading voice recognition..."),
+                    (80, "Finalizing setup..."),
+                    (100, "Complete!")
+                ]
 
-        for (index, stage) in stages.enumerated() {
-            let delay = Double(index + 1) * 0.8
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    progress = CGFloat(stage.0)
-                    loadingState = .loading(progress: stage.0, message: stage.1)
-                }
+                for (index, stage) in stages.enumerated() {
+                    let delay = Double(index + 1) * 0.8
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            progress = CGFloat(stage.0)
+                            loadingState = .loading(progress: stage.0, message: stage.1)
+                        }
 
-                if stage.0 == 100 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        playCompletionAnimation()
+                        if stage.0 == 100 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                playCompletionAnimation()
+                            }
+                        }
                     }
                 }
             }

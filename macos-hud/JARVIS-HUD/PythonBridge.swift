@@ -17,6 +17,8 @@ class PythonBridge: ObservableObject {
     @Published var connectionStatus: ConnectionStatus = .disconnected
     @Published var transcriptMessages: [TranscriptMessage] = []
     @Published var hudState: HUDState = .offline
+    @Published var loadingProgress: Int = 0
+    @Published var loadingMessage: String = "Initializing..."
 
     // MARK: - Configuration
 
@@ -161,6 +163,8 @@ class PythonBridge: ObservableObject {
                     self.handleStateUpdate(json)
                 case "status":
                     self.handleStatusUpdate(json)
+                case "loading_progress":
+                    self.handleLoadingProgress(json)
                 default:
                     break
                 }
@@ -205,6 +209,18 @@ class PythonBridge: ObservableObject {
 
     private func handleStatusUpdate(_ json: [String: Any]) {
         // Handle status updates from Python
+    }
+
+    private func handleLoadingProgress(_ json: [String: Any]) {
+        guard let progress = json["progress"] as? Int,
+              let message = json["message"] as? String else {
+            return
+        }
+
+        loadingProgress = progress
+        loadingMessage = message
+
+        print("📊 Loading Progress: \(progress)% - \(message)")
     }
 
     // MARK: - HTTP API Calls
