@@ -24,32 +24,89 @@ class PythonBridge: ObservableObject {
     private let apiBaseURL: URL
     private var webSocketTask: URLSessionWebSocketTask?
     private var cancellables = Set<AnyCancellable>()
+    private var reconnectTimer: Timer?
+    private var isManuallyDisconnected = false
 
     // MARK: - Initialization
 
-    init(
-        websocketURL: String = "ws://localhost:8000/ws",
-        apiBaseURL: String = "http://localhost:8000"
-    ) {
-        self.websocketURL = URL(string: websocketURL)!
-        self.apiBaseURL = URL(string: apiBaseURL)!
+    init() {
+        // Dynamic backend configuration from environment (set by Python launcher)
+        let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8000/ws/hud"
+        let httpURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "http://localhost:8000"
+
+        self.websocketURL = URL(string: wsURL)!
+        self.apiBaseURL = URL(string: httpURL)!
+
+        print("🔧 Backend Configuration:")
+        print("   WebSocket: \(wsURL)")
+        print("   HTTP API:  \(httpURL)")
     }
 
     // MARK: - Connection Management
 
-    /// Connect to Python backend via WebSocket
+    /// Connect to Python backend via WebSocket with auto-retry
     func connect() {
+        isManuallyDisconnected = false
+        print("🔌 Connecting to backend at \(websocketURL)...")
+
         let session = URLSession(configuration: .default)
         webSocketTask = session.webSocketTask(with: websocketURL)
+
         webSocketTask?.resume()
-        connectionStatus = .connected
         receiveMessage()
+
+        // Send initial connection message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.sendConnectionMessage()
+        }
     }
 
     /// Disconnect from Python backend
     func disconnect() {
+        isManuallyDisconnected = true
+        reconnectTimer?.invalidate()
+        reconnectTimer = nil
+
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         connectionStatus = .disconnected
+        print("🔌 Disconnected from backend")
+    }
+
+    /// Automatically reconnect after disconnect (unless manual)
+    private func scheduleReconnect() {
+        guard !isManuallyDisconnected else { return }
+
+        print("🔄 Scheduling reconnect in 3 seconds...")
+        reconnectTimer?.invalidate()
+
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            self?.connect()
+        }
+    }
+
+    /// Send initial connection message to backend
+    private func sendConnectionMessage() {
+        let message = [
+            "type": "connect",
+            "client": "macos-hud",
+            "version": "1.0.0"
+        ]
+
+        sendMessage(message)
+    }
+
+    /// Send message to backend
+    private func sendMessage(_ dict: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let string = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        webSocketTask?.send(.string(string)) { error in
+            if let error = error {
+                print("❌ Send error: \(error)")
+            }
+        }
     }
 
     /// Receive messages from WebSocket
@@ -57,11 +114,18 @@ class PythonBridge: ObservableObject {
         webSocketTask?.receive { [weak self] result in
             switch result {
             case .success(let message):
+                DispatchQueue.main.async {
+                    self?.connectionStatus = .connected
+                }
                 self?.handleMessage(message)
                 self?.receiveMessage() // Continue receiving
+
             case .failure(let error):
-                print("WebSocket error: \(error)")
-                self?.connectionStatus = .error
+                print("❌ WebSocket error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.connectionStatus = .error
+                }
+                self?.scheduleReconnect()
             }
         }
     }

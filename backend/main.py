@@ -2863,6 +2863,14 @@ def mount_routers():
     """Mount API routers based on loaded components"""
     import os  # Ensure os is available in this scope
 
+    # macOS Native HUD WebSocket API (always available)
+    try:
+        from api.hud_websocket import router as hud_router
+        app.include_router(hud_router, tags=["hud"])
+        logger.info("✅ macOS HUD WebSocket API mounted at /ws/hud")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not mount HUD WebSocket: {e}")
+
     # Memory API
     memory = components.get("memory", {})
     if memory.get("available") and hasattr(app.state, "memory_manager"):

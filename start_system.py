@@ -2900,6 +2900,8 @@ class AsyncSystemManager:
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
+        self.ui_mode = "web-app"  # Default to web app, can be set to "macos"
+        self.macos_launcher = None  # macOS HUD launcher instance
 
         # SAI Prediction tracking
         self.last_sai_prediction = None
@@ -4379,8 +4381,37 @@ class AsyncSystemManager:
         else:
             return await self.start_backend_standard()
 
+    async def start_macos_hud(self) -> bool:
+        """Start macOS native HUD instead of web frontend"""
+        print(f"\n{Colors.BLUE}🍎 Starting macOS Native HUD...{Colors.ENDC}")
+
+        try:
+            from backend.ui.macos_launcher import MacOSHUDLauncher
+
+            launcher = MacOSHUDLauncher(
+                backend_host="localhost",
+                backend_port=self.ports["backend"]
+            )
+
+            # Launch app (async)
+            success = await launcher.launch()
+
+            if success:
+                print(f"{Colors.GREEN}✓ macOS HUD launched successfully{Colors.ENDC}")
+                print(f"{Colors.CYAN}  Backend: ws://localhost:{self.ports['backend']}/ws/hud{Colors.ENDC}")
+                # Store launcher for cleanup
+                self.macos_launcher = launcher
+                return True
+            else:
+                print(f"{Colors.RED}✗ Failed to launch macOS HUD{Colors.ENDC}")
+                return False
+
+        except Exception as e:
+            print(f"{Colors.RED}✗ macOS HUD launch error: {e}{Colors.ENDC}")
+            return False
+
     async def start_frontend(self) -> Optional[asyncio.subprocess.Process]:
-        """Start frontend service"""
+        """Start frontend service (web app)"""
         if not self.frontend_dir.exists():
             print(f"{Colors.YELLOW}Frontend directory not found, skipping...{Colors.ENDC}")
             return None
@@ -8577,9 +8608,17 @@ except Exception as e:
             # Small delay to ensure router is ready
             await asyncio.sleep(1)
 
-            # Start both services in parallel
+            # Start backend
             backend_task = asyncio.create_task(self.start_backend())
-            frontend_task = asyncio.create_task(self.start_frontend())
+
+            # Start UI based on mode selection
+            ui_task = None
+            if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
+                # macOS Native HUD
+                ui_task = asyncio.create_task(self.start_macos_hud())
+            else:
+                # Web App (default)
+                ui_task = asyncio.create_task(self.start_frontend())
 
             # Start ULTRA-DYNAMIC progress tracking (ZERO HARDCODING!)
             async def track_backend_progress():
@@ -9344,6 +9383,15 @@ async def main():
         "--disable-automation",
         action="store_true",
         help="Disable Goal Inference automation (suggestions only)",
+    )
+
+    # UI Mode Selection
+    parser.add_argument(
+        "ui_mode",
+        nargs="?",
+        choices=["web-app", "macos"],
+        default="web-app",
+        help="UI mode: 'web-app' for browser interface (default) or 'macos' for native macOS HUD",
     )
 
     args = parser.parse_args()
@@ -10482,11 +10530,18 @@ async def main():
     _manager.frontend_only = args.frontend_only
     _manager.is_restart = args.restart  # Track if this is a restart
     _manager.use_optimized = not args.standard
+    _manager.ui_mode = args.ui_mode  # Set UI mode (web-app or macos)
 
     # Set global reference for voice verification tracking
     global _global_system_manager
     _global_system_manager = _manager
     _manager.auto_cleanup = not args.no_auto_cleanup
+
+    # Log UI mode
+    if _manager.ui_mode == 'macos':
+        print(f"{Colors.CYAN}🍎 UI Mode: macOS Native HUD{Colors.ENDC}")
+    else:
+        print(f"{Colors.CYAN}🌐 UI Mode: Web Application{Colors.ENDC}")
 
     # Always use autonomous mode unless explicitly disabled
     if args.no_autonomous:
