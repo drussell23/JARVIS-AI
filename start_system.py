@@ -9670,8 +9670,32 @@ async def main():
             # Check for code changes and perform intelligent cleanup
             # If --restart flag is used, FORCE cleanup regardless of code changes
             if args.restart:
-                print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Killing all JARVIS processes...{Colors.ENDC}")
-                code_cleanup = manager.force_restart_cleanup()
+                print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Stopping current JARVIS instance(s)...{Colors.ENDC}")
+
+                # Use new robust dynamic cleanup method
+                cleanup_results = manager.stop_current_jarvis_instance(
+                    graceful_timeout=10.0,
+                    exclude_current=True,
+                    ui_mode=args.ui_mode  # Pass UI mode to close correct UI
+                )
+
+                # Format results for backward compatibility
+                code_cleanup = []
+                for proc in cleanup_results["processes_stopped"]:
+                    code_cleanup.append({
+                        "pid": proc["pid"],
+                        "name": proc["name"],
+                        "type": "backend",  # Simplified categorization
+                        "method": proc.get("method", "SIGTERM")
+                    })
+
+                print(f"{Colors.GREEN}   ✓ Stopped {cleanup_results['graceful_stops']} process(es) gracefully{Colors.ENDC}")
+                if cleanup_results["force_kills"] > 0:
+                    print(f"{Colors.YELLOW}   ⚠️  Force-killed {cleanup_results['force_kills']} process(es){Colors.ENDC}")
+                if cleanup_results["ui_closed"]:
+                    print(f"{Colors.GREEN}   ✓ Closed UI: {[ui['type'] for ui in cleanup_results['ui_closed']]}{Colors.ENDC}")
+                if cleanup_results["ports_freed"]:
+                    print(f"{Colors.GREEN}   ✓ Freed ports: {cleanup_results['ports_freed']}{Colors.ENDC}")
             else:
                 print(f"\n{Colors.BLUE}🔄 Checking for code changes...{Colors.ENDC}")
                 code_cleanup = manager.cleanup_old_instances_on_code_change()

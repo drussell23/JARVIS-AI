@@ -2636,6 +2636,219 @@ class ProcessCleanupManager:
 
         return recovery_needed
 
+    def stop_current_jarvis_instance(
+        self,
+        graceful_timeout: float = 10.0,
+        exclude_current: bool = True,
+        ui_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Dynamically stop the currently running JARVIS instance(s).
+        Robust, graceful shutdown with fallback to force kill.
+
+        Args:
+            graceful_timeout: Seconds to wait for graceful shutdown before force kill
+            exclude_current: If True, don't kill the current Python process
+            ui_mode: If specified, close specific UI (web-app/macos)
+
+        Returns:
+            Dictionary with shutdown results
+        """
+        current_pid = os.getpid()
+        results = {
+            "processes_stopped": [],
+            "ui_closed": [],
+            "errors": [],
+            "graceful_stops": 0,
+            "force_kills": 0
+        }
+
+        logger.info("🛑 Stopping current JARVIS instance(s)...")
+
+        # Step 1: Close UI applications first
+        if ui_mode == "web-app" or ui_mode is None:
+            # Close browser tabs with JARVIS
+            try:
+                import subprocess
+                # AppleScript to close JARVIS tabs in all browsers
+                applescript = '''
+                tell application "System Events"
+                    set browserList to {"Google Chrome", "Safari", "Arc", "Firefox"}
+                    repeat with browserName in browserList
+                        if exists (processes where name is browserName) then
+                            tell application browserName
+                                set windowCount to number of windows
+                                repeat with x from 1 to windowCount
+                                    set tabCount to number of tabs in window x
+                                    repeat with y from tabCount to 1 by -1
+                                        try
+                                            set tabURL to URL of tab y of window x
+                                            if tabURL contains "localhost:3000" or tabURL contains "localhost:8000" then
+                                                close tab y of window x
+                                                set end of ui_closed of results to {browser: browserName, url: tabURL}
+                                            end if
+                                        end try
+                                    end repeat
+                                end repeat
+                            end tell
+                        end if
+                    end repeat
+                end tell
+                '''
+                subprocess.run(['osascript', '-e', applescript], capture_output=True, timeout=5)
+                results["ui_closed"].append({"type": "web-app", "status": "attempted"})
+            except Exception as e:
+                logger.warning(f"Could not close browser tabs: {e}")
+
+        if ui_mode == "macos" or ui_mode is None:
+            # Close macOS HUD app
+            try:
+                for proc in psutil.process_iter(['pid', 'name']):
+                    if proc.name() == "JARVIS-HUD":
+                        logger.info(f"Closing JARVIS-HUD app (PID: {proc.pid})")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=3)
+                            results["ui_closed"].append({"type": "macos", "pid": proc.pid, "status": "closed"})
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                            results["ui_closed"].append({"type": "macos", "pid": proc.pid, "status": "force_killed"})
+            except Exception as e:
+                logger.warning(f"Could not close JARVIS-HUD: {e}")
+
+        # Step 2: Find and stop JARVIS processes
+        jarvis_processes = []
+
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+            try:
+                cmdline = ' '.join(proc.cmdline()) if proc.cmdline() else ''
+                proc_name = proc.name().lower()
+
+                # Exclude current process if requested
+                if exclude_current and proc.pid == current_pid:
+                    continue
+
+                # Check if it's a JARVIS process
+                is_jarvis = False
+
+                # Check patterns
+                for pattern in self.config["jarvis_patterns"]:
+                    if pattern.lower() in cmdline.lower() or pattern.lower() in proc_name:
+                        # Check it's not excluded
+                        is_excluded = False
+                        for excluded in self.config["jarvis_excluded_patterns"]:
+                            if excluded.lower() in cmdline.lower():
+                                is_excluded = True
+                                break
+
+                        if not is_excluded:
+                            is_jarvis = True
+                            break
+
+                # Also check ports
+                if not is_jarvis:
+                    try:
+                        for conn in proc.connections():
+                            if conn.laddr.port in self.config["jarvis_port_patterns"]:
+                                is_jarvis = True
+                                break
+                    except (psutil.AccessDenied, psutil.NoSuchProcess):
+                        pass
+
+                if is_jarvis:
+                    jarvis_processes.append({
+                        'process': proc,
+                        'pid': proc.pid,
+                        'name': proc.name(),
+                        'cmdline': cmdline,
+                        'age': time.time() - proc.create_time()
+                    })
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # Step 3: Gracefully terminate processes
+        logger.info(f"Found {len(jarvis_processes)} JARVIS process(es) to stop")
+
+        for proc_info in jarvis_processes:
+            proc = proc_info['process']
+            pid = proc_info['pid']
+
+            try:
+                logger.info(f"  → Stopping PID {pid}: {proc_info['name']}")
+
+                # Send SIGTERM (graceful)
+                proc.terminate()
+
+                try:
+                    # Wait for graceful shutdown
+                    proc.wait(timeout=graceful_timeout)
+                    results["processes_stopped"].append({
+                        "pid": pid,
+                        "name": proc_info['name'],
+                        "method": "SIGTERM",
+                        "status": "success"
+                    })
+                    results["graceful_stops"] += 1
+                    logger.info(f"    ✓ Gracefully stopped PID {pid}")
+
+                except psutil.TimeoutExpired:
+                    # Force kill if graceful fails
+                    logger.warning(f"    ⚠️  PID {pid} didn't stop gracefully, force killing...")
+                    proc.kill()
+                    proc.wait(timeout=3)  # Wait for kill to complete
+                    results["processes_stopped"].append({
+                        "pid": pid,
+                        "name": proc_info['name'],
+                        "method": "SIGKILL",
+                        "status": "force_killed"
+                    })
+                    results["force_kills"] += 1
+                    logger.info(f"    ✓ Force-killed PID {pid}")
+
+            except psutil.NoSuchProcess:
+                # Already dead
+                results["processes_stopped"].append({
+                    "pid": pid,
+                    "name": proc_info['name'],
+                    "status": "already_stopped"
+                })
+                logger.info(f"    ✓ PID {pid} already stopped")
+
+            except Exception as e:
+                error_msg = f"Failed to stop PID {pid}: {e}"
+                results["errors"].append(error_msg)
+                logger.error(f"    ✗ {error_msg}")
+
+        # Step 4: Clean up ports
+        freed_ports = []
+        for port in self.config["jarvis_port_patterns"]:
+            try:
+                # Check if port is still in use
+                port_in_use = False
+                for conn in psutil.net_connections():
+                    if conn.laddr.port == port:
+                        port_in_use = True
+                        break
+
+                if not port_in_use:
+                    freed_ports.append(port)
+            except:
+                pass
+
+        results["ports_freed"] = freed_ports
+
+        # Summary
+        logger.info(f"✅ Stopped {results['graceful_stops']} process(es) gracefully")
+        if results["force_kills"] > 0:
+            logger.warning(f"⚠️  Force-killed {results['force_kills']} process(es)")
+        if results["errors"]:
+            logger.error(f"❌ {len(results['errors'])} error(s) occurred")
+
+        logger.info(f"🔓 Freed {len(freed_ports)} port(s): {freed_ports}")
+
+        return results
+
 
 # Convenience functions for integration
 async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
