@@ -36,6 +36,9 @@ class PythonBridge: ObservableObject {
     private var connectionHealthTimer: Timer?
     private var lastMessageTime: Date?
 
+    // Voice output
+    private var voiceManager: VoiceManager?
+
     // MARK: - Initialization
 
     init() {
@@ -47,10 +50,14 @@ class PythonBridge: ObservableObject {
         self.websocketURL = URL(string: wsURL)!
         self.apiBaseURL = URL(string: httpURL)!
 
+        // Initialize voice manager
+        self.voiceManager = VoiceManager(apiBaseURL: self.apiBaseURL)
+
         print("🔧 Backend Configuration:")
         print("   WebSocket: \(wsURL) [UNIFIED ENDPOINT]")
         print("   HTTP API:  \(httpURL)")
         print("   Max reconnect attempts: \(maxReconnectAttempts)")
+        print("   Voice TTS: Enabled")
     }
 
     // MARK: - Connection Management
@@ -216,6 +223,8 @@ class PythonBridge: ObservableObject {
                     self.handleLoadingProgress(json)
                 case "loading_complete":
                     self.handleLoadingComplete(json)
+                case "command_response", "response":
+                    self.handleCommandResponse(json)
                 default:
                     break
                 }
@@ -283,6 +292,33 @@ class PythonBridge: ObservableObject {
         loadingProgress = 100
 
         print("✅ Backend Loading Complete! Success: \(success)")
+    }
+
+    private func handleCommandResponse(_ json: [String: Any]) {
+        // Extract response text
+        guard let responseText = json["response"] as? String ?? json["text"] as? String else {
+            return
+        }
+
+        // Check if we should speak the response
+        let shouldSpeak = json["speak"] as? Bool ?? false
+
+        print("📨 Received response: \(responseText.prefix(100))...")
+        print("   Should speak: \(shouldSpeak)")
+
+        // Add to transcript
+        let transcriptMsg = TranscriptMessage(
+            speaker: "JARVIS",
+            text: responseText,
+            timestamp: Date()
+        )
+        transcriptMessages.append(transcriptMsg)
+
+        // Speak if requested
+        if shouldSpeak {
+            print("🎤 Speaking response via TTS...")
+            voiceManager?.speak(responseText)
+        }
     }
 
     // MARK: - HTTP API Calls
