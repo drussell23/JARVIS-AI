@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct JARVISApp: App {
@@ -15,15 +16,17 @@ struct JARVISApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if appState.isLoadingComplete {
-                    HUDView()
+            ClickThroughContainer {
+                Group {
+                    if appState.isLoadingComplete {
+                        HUDView()
+                            .background(WindowAccessor())
+                    } else {
+                        LoadingHUDView {
+                            appState.isLoadingComplete = true
+                        }
                         .background(WindowAccessor())
-                } else {
-                    LoadingHUDView {
-                        appState.isLoadingComplete = true
                     }
-                    .background(WindowAccessor())
                 }
             }
         }
@@ -44,36 +47,44 @@ class AppState: ObservableObject {
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Configure all windows with intelligent click-through behavior
-        // Clicks pass through to desktop except on JARVIS UI elements
+        // Configure all windows as TRUE HOLOGRAPHIC overlays
+        // Completely invisible window frame - only JARVIS UI elements visible
         for window in NSApplication.shared.windows {
-            // Make window completely transparent
+            // Make window completely transparent - NO traditional window at all
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = false
 
-            // Remove all window chrome (title bar, borders, everything)
+            // Remove ALL window chrome and borders
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.styleMask.insert(.borderless)
-            window.styleMask.insert(.fullSizeContentView)
+            window.styleMask = [.borderless, .fullSizeContentView]
 
-            // Always on top, works in all Spaces
-            window.level = .statusBar
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            // Floating overlay - always on top, works in all Spaces
+            window.level = .floating  // Changed from .statusBar to .floating for better behavior
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
 
-            // CRITICAL: Allow window to become key for keyboard input
-            // But still enable click-through for transparent areas
+            // CRITICAL: Enable TRUE click-through
+            // The ClickThroughHostingView will handle selective event capture
             window.ignoresMouseEvents = false
 
-            // Cover entire screen (full-screen transparent overlay)
+            // Make window non-activating (doesn't steal focus)
+            if let panel = window as? NSPanel {
+                panel.isFloatingPanel = true
+                panel.becomesKeyOnlyIfNeeded = true
+            }
+
+            // Cover entire screen as transparent overlay
             if let screen = NSScreen.main {
                 window.setFrame(screen.frame, display: true)
             }
         }
 
-        // Hide from Dock (floating overlay, not a regular app)
+        // Hide from Dock and app switcher (pure floating overlay)
         NSApp.setActivationPolicy(.accessory)
+
+        // Don't activate the app when launched
+        NSApp.activate(ignoringOtherApps: false)
     }
 }
 
@@ -109,4 +120,54 @@ struct WindowAccessor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Custom hosting view with precise click-through hit testing
+class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Get default hit test result
+        guard let hitView = super.hitTest(point) else {
+            return nil
+        }
+
+        // If we hit ourselves (the hosting view), pass through to desktop
+        if hitView == self {
+            return nil
+        }
+
+        // Check if hit an interactive element
+        if isInteractive(hitView) {
+            return hitView
+        }
+
+        // Pass through to desktop
+        return nil
+    }
+
+    private func isInteractive(_ view: NSView) -> Bool {
+        // Capture clicks on interactive elements
+        return view is NSButton ||
+               view is NSControl ||
+               (view is NSTextField && (view as! NSTextField).isEditable)
+    }
+}
+
+/// SwiftUI wrapper for click-through hosting view
+struct ClickThroughContainer<Content: View>: NSViewRepresentable {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> ClickThroughHostingView<Content> {
+        let hostingView = ClickThroughHostingView(rootView: content)
+        hostingView.layer?.backgroundColor = .clear
+        return hostingView
+    }
+
+    func updateNSView(_ nsView: ClickThroughHostingView<Content>, context: Context) {
+        nsView.rootView = content
+    }
 }
