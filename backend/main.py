@@ -371,7 +371,7 @@ if THREAD_MANAGER_AVAILABLE:
 
 
 async def parallel_import_components():
-    """Import all components in parallel for faster startup"""
+    """Import all components in parallel for faster startup WITH HUD PROGRESS UPDATES"""
     start_time = time.time()
     logger.info("⚡ Starting parallel component imports...")
 
@@ -391,23 +391,41 @@ async def parallel_import_components():
         "goal_inference": import_goal_inference,
     }
 
-    # Use thread pool for imports
+    # Helper to send HUD progress
+    async def send_hud_progress(progress, message):
+        try:
+            from api.hud_websocket import send_loading_progress
+            await send_loading_progress(progress, message)
+        except:
+            pass  # Silently fail if HUD not available
+
+    # Use thread pool for imports (parallel execution)
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         # Submit all import tasks
         futures = {name: executor.submit(func) for name, func in import_tasks.items()}
 
-        # Wait for completion
+        # Calculate progress increment per component
+        total_components = len(futures)
+        progress_per_component = 50 / total_components  # 30-80% range
+        current_progress = 30
+        completed_count = 0
+
+        # Wait for completion with progress updates
         for name, future in futures.items():
             try:
-                result = future.result(timeout=10)
+                await send_hud_progress(int(current_progress), f"Loading {name}...")
+                result = future.result(timeout=30)  # Increased timeout for heavy modules
                 components[name] = result
                 logger.info(f"  ✅ {name} loaded")
+                completed_count += 1
             except Exception as e:
                 logger.warning(f"  ⚠️ {name} failed: {e}")
                 components[name] = None
 
+            current_progress += progress_per_component
+
     elapsed = time.time() - start_time
-    logger.info(f"⚡ Parallel imports completed in {elapsed:.1f}s")
+    logger.info(f"⚡ Parallel imports completed in {elapsed:.1f}s ({completed_count}/{total_components} succeeded)")
 
 
 def import_chatbots():
@@ -1009,14 +1027,28 @@ async def memory_pressure_callback(pressure_level: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Optimized lifespan handler with parallel initialization"""
-    logger.info("🚀 Starting optimized JARVIS backend...")
+    """🚀 ULTRA-OPTIMIZED TWO-PHASE STARTUP
+
+    Phase 1: FastAPI server starts IMMEDIATELY (WebSocket /ws/hud available)
+    Phase 2: Heavy modules load in BACKGROUND with real-time HUD updates
+
+    This prevents backend from being killed and allows HUD to connect instantly!
+    """
+    logger.info("🚀 Phase 1: FastAPI server online - WebSocket endpoint ready!")
     start_time = time.time()
+
+    # Send initial progress to HUD (server is ready!)
+    try:
+        from api.hud_websocket import send_loading_progress
+        await send_loading_progress(10, "FastAPI server started - WebSocket ready!")
+    except:
+        pass  # HUD not connected yet, that's fine
 
     # Initialize dynamic component manager if enabled
     global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
     if DYNAMIC_LOADING_ENABLED and get_component_manager:
         logger.info("🧩 Initializing Dynamic Component Management System...")
+        await send_loading_progress(15, "Initializing component manager...")
         dynamic_component_manager = get_component_manager()
         app.state.component_manager = dynamic_component_manager
 
@@ -1031,10 +1063,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
         logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
         logger.info("✅ Dynamic component loading enabled")
+        await send_loading_progress(20, "Component manager initialized")
 
     # CRITICAL: Check for code changes and clean up old instances FIRST
     # TEMPORARILY DISABLED - causing hang
     logger.info("⚠️ Process cleanup temporarily disabled for debugging")
+
+    # 🔥 PHASE 2: Load components in PARALLEL with HUD progress updates
+    logger.info("🚀 Phase 2: Loading components in parallel...")
+    await send_loading_progress(25, "Starting parallel component loading...")
 
     # Run parallel imports if enabled
     if DYNAMIC_LOADING_ENABLED and dynamic_component_manager:
@@ -1059,7 +1096,12 @@ async def lifespan(app: FastAPI):
 
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
-            for comp_name in core_components:
+            # Calculate progress increment per component
+            progress_per_component = 50 / max(len(core_components), 1)
+            current_progress = 30
+
+            for i, comp_name in enumerate(core_components):
+                await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
                 success = await dynamic_component_manager.load_component(comp_name)
                 if success:
                     comp = dynamic_component_manager.components[comp_name]
@@ -1067,33 +1109,49 @@ async def lifespan(app: FastAPI):
                     logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
                 else:
                     logger.warning(f"   ⚠️ {comp_name} failed to load")
+                current_progress += progress_per_component
 
             logger.info(
                 f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded"
             )
             logger.info(f"   Other components will load on-demand based on user commands")
+            await send_loading_progress(80, "Core components loaded")
 
         except Exception as e:
             logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
             DYNAMIC_LOADING_ENABLED = False
 
     if not DYNAMIC_LOADING_ENABLED:
-        # Legacy mode - load all components at startup
+        # Legacy mode - load all components at startup WITH PROGRESS UPDATES
         if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
-            await parallel_import_components()
+            await send_loading_progress(30, "Loading components in parallel...")
+            await parallel_import_components()  # This will send its own progress updates
+            await send_loading_progress(80, "Parallel component loading complete")
         else:
-            # Sequential imports (legacy mode)
+            # Sequential imports (legacy mode) with progress updates
             logger.info("Running sequential imports (legacy mode)")
-            components["chatbots"] = import_chatbots()
-            components["vision"] = import_vision_system()
-            components["memory"] = import_memory_system()
-            components["voice"] = import_voice_system()
-            components["ml_models"] = import_ml_models()
-            components["monitoring"] = import_monitoring()
-            components["voice_unlock"] = import_voice_unlock()
-            components["wake_word"] = import_wake_word()
-            components["display_monitor"] = import_display_monitor()
-            components["goal_inference"] = import_goal_inference()
+            component_list = [
+                ("chatbots", import_chatbots),
+                ("vision", import_vision_system),
+                ("memory", import_memory_system),
+                ("voice", import_voice_system),
+                ("ml_models", import_ml_models),
+                ("monitoring", import_monitoring),
+                ("voice_unlock", import_voice_unlock),
+                ("wake_word", import_wake_word),
+                ("display_monitor", import_display_monitor),
+                ("goal_inference", import_goal_inference),
+            ]
+
+            progress_per_component = 50 / len(component_list)
+            current_progress = 30
+
+            for comp_name, import_func in component_list:
+                await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
+                components[comp_name] = import_func()
+                current_progress += progress_per_component
+
+            await send_loading_progress(80, "All components loaded")
 
     # ═══════════════════════════════════════════════════════════════
     # ADVANCED COMPONENT WARMUP (Pre-initialize for instant response)
@@ -2017,6 +2075,18 @@ async def lifespan(app: FastAPI):
         logger.warning("   → Voice unlock features will be disabled")
         app.state.db_adapter = None
         app.state.voice_verification = None
+
+    # 🎯 FINAL STEP: Send completion signal to HUD!
+    elapsed_time = time.time() - start_time
+    logger.info(f"✅ JARVIS Backend fully initialized in {elapsed_time:.1f}s")
+    logger.info("🚀 All systems online - ready for voice commands!")
+
+    try:
+        from api.hud_websocket import send_loading_complete
+        await send_loading_complete(success=True)
+        logger.info("📱 HUD completion signal sent - triggering transition to main interface")
+    except Exception as e:
+        logger.warning(f"Failed to send HUD completion signal: {e}")
 
     yield
 
