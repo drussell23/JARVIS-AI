@@ -8612,11 +8612,10 @@ except Exception as e:
                     # Launch UI FIRST to show loading screen
             ui_task = None
             if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
-                # macOS Native HUD - launch immediately to show loading screen
-                print(f"{Colors.CYAN}🍎 Launching macOS HUD (loading screen)...{Colors.ENDC}")
-                ui_task = asyncio.create_task(self.start_macos_hud())
-                # Give HUD time to launch and show loading screen
-                await asyncio.sleep(2)
+                # macOS Native HUD - already launched before cleanup to show loading screen immediately
+                print(f"{Colors.CYAN}🍎 macOS HUD already running (showing loading screen){Colors.ENDC}")
+                # No need to launch again - it was launched before cleanup phase
+                ui_task = None
             else:
                 # Web App (default)
                 print(f"{Colors.CYAN}🔄 Starting backend and frontend concurrently...{Colors.ENDC}")
@@ -9970,9 +9969,37 @@ async def main():
         # IMPORTANT: Only for web-app mode, NOT for macOS HUD mode
         loading_server_url = "http://localhost:3001"
 
-        # Only start loading server and open browser for web-app mode
+        # Launch UI immediately to show loading screen
         if args.ui_mode == "macos":
-            print(f"{Colors.CYAN}🍎 macOS HUD mode - Native window will appear (no browser){Colors.ENDC}")
+            # macOS HUD - launch immediately to show loading screen
+            print(f"{Colors.CYAN}🍎 Launching macOS HUD (loading screen)...{Colors.ENDC}")
+            try:
+                # Find the HUD app
+                repo_root = Path(__file__).parent
+                search_paths = [
+                    "macos-hud/build/Build/Products/Release/JARVIS-HUD.app",
+                    "macos-hud/build/Build/Products/Debug/JARVIS-HUD.app",
+                ]
+
+                hud_app_path = None
+                for search_path in search_paths:
+                    full_path = repo_root / search_path
+                    if full_path.exists():
+                        hud_app_path = full_path
+                        break
+
+                if hud_app_path:
+                    # Launch HUD app immediately
+                    import subprocess
+                    subprocess.Popen(["open", "-a", str(hud_app_path)],
+                                   stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+                    print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
+                else:
+                    print(f"{Colors.YELLOW}   ⚠️  HUD app not found, will try to build later{Colors.ENDC}")
+            except Exception as e:
+                print(f"{Colors.YELLOW}   ⚠️  Could not pre-launch HUD: {e}{Colors.ENDC}")
+
         elif not args.no_browser and args.ui_mode == "web-app":
             print(f"{Colors.CYAN}📡 Starting loading page server...{Colors.ENDC}")
             try:
