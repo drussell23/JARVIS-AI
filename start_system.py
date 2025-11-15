@@ -4397,7 +4397,7 @@ class AsyncSystemManager:
 
             launcher = MacOSHUDLauncher(
                 backend_host="localhost",
-                backend_port=self.ports["backend"]
+                backend_port=self.ports["main_api"]
             )
 
             # Launch app (async)
@@ -4405,7 +4405,7 @@ class AsyncSystemManager:
 
             if success:
                 print(f"{Colors.GREEN}✓ macOS HUD launched successfully{Colors.ENDC}")
-                print(f"{Colors.CYAN}  Backend: ws://localhost:{self.ports['backend']}/ws/hud{Colors.ENDC}")
+                print(f"{Colors.CYAN}  Backend: ws://localhost:{self.ports['main_api']}/ws/hud{Colors.ENDC}")
                 # Store launcher for cleanup
                 self.macos_launcher = launcher
                 return True
@@ -4414,7 +4414,10 @@ class AsyncSystemManager:
                 return False
 
         except Exception as e:
+            import traceback
             print(f"{Colors.RED}✗ macOS HUD launch error: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Full traceback:{Colors.ENDC}")
+            traceback.print_exc()
             return False
 
     async def start_frontend(self) -> Optional[asyncio.subprocess.Process]:
