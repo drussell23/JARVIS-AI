@@ -8971,6 +8971,48 @@ except Exception as e:
                 await self.cleanup()
                 return False
 
+            # Backend is running! Now launch HUD if it's macOS mode and we have a path stored
+            if hasattr(self, 'ui_mode') and self.ui_mode == 'macos':
+                hud_app_path = globals().get('_hud_app_path_to_launch')
+                if hud_app_path:
+                    print(f"\n{Colors.CYAN}🚀 Backend ready! Now launching macOS HUD...{Colors.ENDC}")
+
+                    launch_success = False
+                    try:
+                        # Import our advanced launcher
+                        from macos_hud_launcher import launch_hud_async_safe
+
+                        # Launch HUD with all available strategies (async-aware)
+                        launch_success = await launch_hud_async_safe(hud_app_path)
+
+                        if launch_success:
+                            print(f"{Colors.GREEN}   ✅ macOS HUD launched successfully!{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → HUD connected to backend WebSocket at ws://localhost:8010/ws{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Progress updates streaming in real-time{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Use Cmd+\\ to toggle HUD visibility{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Click Arc Reactor center to quit HUD{Colors.ENDC}")
+
+                            # Give HUD a moment to connect and receive buffered messages
+                            await asyncio.sleep(2)
+                        else:
+                            print(f"{Colors.YELLOW}   ⚠️ HUD launcher couldn't start automatically{Colors.ENDC}")
+                            print(f"{Colors.YELLOW}   → You may need to manually open: {hud_app_path}{Colors.ENDC}")
+
+                    except ImportError:
+                        print(f"{Colors.YELLOW}   ⚠️ Advanced launcher not available{Colors.ENDC}")
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️ HUD launch error: {e}{Colors.ENDC}")
+
+                    # Verify HUD is running
+                    if launch_success:
+                        verify_result = subprocess.run(
+                            ["pgrep", "-f", "JARVIS-HUD"],
+                            capture_output=True,
+                            text=True
+                        )
+                        if verify_result.stdout.strip():
+                            print(f"{Colors.GREEN}   ✓ HUD process confirmed (PID: {verify_result.stdout.strip()}){Colors.ENDC}")
+
             # Loading page already opened by standalone server during restart mode
             # (See loading_server.py started before process cleanup)
 
@@ -10206,65 +10248,12 @@ async def main():
                         import time
                         time.sleep(0.5)  # Give it time to close
 
-                    # Launch HUD app with advanced launcher
-                    print(f"{Colors.CYAN}   🚀 Launching HUD window with advanced launcher...{Colors.ENDC}")
+                    # Store HUD path for later launch AFTER backend is ready
+                    print(f"{Colors.GREEN}   ✓ HUD built successfully - will launch after backend is ready{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   → HUD will be launched after WebSocket server starts on port 8010{Colors.ENDC}")
 
-                    launch_success = False
-
-                    # Try the advanced launcher first
-                    try:
-                        # Import our advanced launcher
-                        from macos_hud_launcher import launch_hud_async_safe
-
-                        # Launch HUD with all available strategies (async-aware)
-                        launch_success = await launch_hud_async_safe(hud_app_path)
-
-                        if launch_success:
-                            print(f"{Colors.GREEN}   ✅ macOS HUD launched successfully!{Colors.ENDC}")
-                            print(f"{Colors.CYAN}   → HUD will connect to backend WebSocket at ws://localhost:8010/ws{Colors.ENDC}")
-                            print(f"{Colors.CYAN}   → Progress updates will stream in real-time{Colors.ENDC}")
-                            print(f"{Colors.CYAN}   → Use Cmd+\\ to toggle HUD visibility{Colors.ENDC}")
-                            print(f"{Colors.CYAN}   → Click Arc Reactor center to quit HUD{Colors.ENDC}")
-                        else:
-                            print(f"{Colors.YELLOW}   ⚠️ Advanced launcher couldn't start HUD automatically{Colors.ENDC}")
-
-                    except ImportError:
-                        print(f"{Colors.YELLOW}   ⚠️ Advanced launcher not available, using fallback method{Colors.ENDC}")
-                    except Exception as e:
-                        print(f"{Colors.YELLOW}   ⚠️ Advanced launcher error: {e}{Colors.ENDC}")
-
-                    # Fallback to simple open if advanced launcher failed
-                    if not launch_success:
-                        print(f"{Colors.CYAN}   → Attempting simple open command fallback...{Colors.ENDC}")
-                        fallback_result = subprocess.run(
-                            ["open", str(hud_app_path)],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if fallback_result.returncode == 0:
-                            launch_success = True
-                            print(f"{Colors.GREEN}   ✓ HUD launched with fallback method{Colors.ENDC}")
-                        else:
-                            print(f"{Colors.YELLOW}   → Fallback failed: {fallback_result.stderr[:200]}{Colors.ENDC}")
-
-                    if launch_success:
-                        # Wait a moment and verify it's running
-                        import time
-                        time.sleep(1)
-                        verify_result = subprocess.run(
-                            ["pgrep", "-f", "JARVIS-HUD"],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if verify_result.stdout.strip():
-                            print(f"{Colors.GREEN}   ✓ HUD process confirmed (PID: {verify_result.stdout.strip()}){Colors.ENDC}")
-                        else:
-                            print(f"{Colors.YELLOW}   ⚠️  HUD may not have started (no process found){Colors.ENDC}")
-                    else:
-                        print(f"{Colors.YELLOW}   ⚠️  Could not launch HUD automatically{Colors.ENDC}")
-                        print(f"{Colors.YELLOW}   → You may need to manually open: {hud_app_path}{Colors.ENDC}")
+                    # Store the HUD path in a global variable for later use
+                    globals()['_hud_app_path_to_launch'] = hud_app_path
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
                     print(f"{Colors.YELLOW}   Searched: {search_paths}{Colors.ENDC}")
