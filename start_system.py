@@ -10445,6 +10445,7 @@ async def main():
                 ]
 
             except ImportError as e:
+                import time  # Ensure time is available in exception handler scope
                 print(f"  {Colors.YELLOW}⚠ Advanced detector not available, falling back to basic detection{Colors.ENDC}")
                 print(f"    Error: {e}")
 
