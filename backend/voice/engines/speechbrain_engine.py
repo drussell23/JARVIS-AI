@@ -95,11 +95,15 @@ def safe_import_torchvision():
 
             # Create mock transforms module for transformers library compatibility
             transforms = types.ModuleType('torchvision.transforms')
-            # Add InterpolationMode enum that transformers expects
+            # Add InterpolationMode enum with ALL modes that transformers expects
             class InterpolationMode:
                 NEAREST = 0
+                NEAREST_EXACT = 0  # Same as NEAREST
                 BILINEAR = 2
                 BICUBIC = 3
+                BOX = 4
+                HAMMING = 5
+                LANCZOS = 1
             transforms.InterpolationMode = InterpolationMode
             torchvision.transforms = transforms
 
@@ -118,12 +122,16 @@ def safe_import_torchvision():
         # Create minimal mock for transformers compatibility
         torchvision = types.ModuleType('torchvision')
 
-        # Create mock transforms module
+        # Create mock transforms module with ALL modes
         transforms = types.ModuleType('torchvision.transforms')
         class InterpolationMode:
             NEAREST = 0
+            NEAREST_EXACT = 0  # Same as NEAREST
             BILINEAR = 2
             BICUBIC = 3
+            BOX = 4
+            HAMMING = 5
+            LANCZOS = 1
         transforms.InterpolationMode = InterpolationMode
         torchvision.transforms = transforms
 
