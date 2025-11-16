@@ -72,8 +72,8 @@ class AdvancedHUDLauncher:
                 env=self.prepare_environment(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                start_new_session=True,
-                preexec_fn=os.setsid  # Create new process group
+                start_new_session=True
+                # Removed preexec_fn to avoid async context issues
             )
 
             await asyncio.sleep(0.5)
@@ -279,9 +279,24 @@ print(f"HUD launched with PID: {{task.processIdentifier()}}")
         print("   🔧 Strategy 6: Ad-hoc code signing...")
 
         try:
+            # First, clean all extended attributes to avoid "resource fork" errors
+            print("   → Cleaning extended attributes...")
+            subprocess.run(
+                ["xattr", "-cr", str(self.hud_app_path)],
+                capture_output=True,
+                timeout=5
+            )
+
+            # Remove any .DS_Store files
+            subprocess.run(
+                ["find", str(self.hud_app_path), "-name", ".DS_Store", "-delete"],
+                capture_output=True,
+                timeout=5
+            )
+
             # Ad-hoc sign the app to bypass Gatekeeper
             sign_result = subprocess.run(
-                ["codesign", "--force", "--deep", "--sign", "-", str(self.hud_app_path)],
+                ["codesign", "--force", "--deep", "--sign", "-", "--preserve-metadata=entitlements", str(self.hud_app_path)],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -307,6 +322,50 @@ print(f"HUD launched with PID: {{task.processIdentifier()}}")
 
         except Exception as e:
             print(f"   ❌ Strategy 6 failed: {e}")
+
+        return False
+
+    async def launch_strategy_7_shell_wrapper(self) -> bool:
+        """Strategy 7: Shell script wrapper to bypass restrictions"""
+        print("   🔧 Strategy 7: Shell script wrapper...")
+
+        try:
+            # Create a shell script that launches the app
+            script_content = f"""#!/bin/bash
+# JARVIS HUD Launcher Script
+export JARVIS_BACKEND_WS="ws://localhost:8010/ws"
+export JARVIS_BACKEND_HTTP="http://localhost:8010"
+export JARVIS_ENV="production"
+
+# Remove quarantine
+xattr -d com.apple.quarantine "{self.executable_path}" 2>/dev/null || true
+
+# Make executable
+chmod +x "{self.executable_path}"
+
+# Launch directly
+exec "{self.executable_path}"
+"""
+            # Write script to temp file
+            script_path = Path("/tmp/launch_jarvis_hud.sh")
+            script_path.write_text(script_content)
+            script_path.chmod(0o755)
+
+            # Launch via shell script
+            process = subprocess.Popen(
+                ["/bin/bash", str(script_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+
+            await asyncio.sleep(1)
+            if process.poll() is None:
+                print(f"   ✅ Strategy 7 SUCCESS: HUD launched via shell wrapper (PID: {process.pid})")
+                return True
+
+        except Exception as e:
+            print(f"   ❌ Strategy 7 failed: {e}")
 
         return False
 
@@ -366,6 +425,7 @@ print(f"HUD launched with PID: {{task.processIdentifier()}}")
             self.launch_strategy_4_nstask_wrapper,
             self.launch_strategy_5_open_with_args,
             self.launch_strategy_6_codesign_adhoc,
+            self.launch_strategy_7_shell_wrapper,
         ]
 
         for i, strategy in enumerate(strategies, 1):

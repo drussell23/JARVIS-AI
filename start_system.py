@@ -10584,13 +10584,13 @@ async def main():
                         # Try SIGTERM first (graceful)
                         print(f"  → Terminating PID {proc['pid']}...", end="", flush=True)
                         os.kill(proc["pid"], signal.SIGTERM)
-                        time.sleep(0.5)
+                        await asyncio.sleep(0.5)
 
                         # Check if still alive, use SIGKILL if needed
                         if psutil.pid_exists(proc["pid"]):
                             print(f" forcing...", end="", flush=True)
                             os.kill(proc["pid"], signal.SIGKILL)
-                            time.sleep(0.3)
+                            await asyncio.sleep(0.3)
 
                         # Verify it's actually dead
                         if psutil.pid_exists(proc["pid"]):
