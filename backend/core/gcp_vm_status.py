@@ -112,7 +112,7 @@ async def show_vm_status(verbose: bool = False) -> dict:
         # Show memory status
         print(f"\n{Colors.BOLD}Local Memory Status:{Colors.ENDC}")
         memory_monitor = get_memory_monitor()
-        snapshot = memory_monitor.capture_snapshot()
+        snapshot = await memory_monitor.get_memory_pressure()
 
         memory_pct = (snapshot.used_gb / snapshot.total_gb * 100) if snapshot.total_gb > 0 else 0
         memory_color = (
@@ -147,7 +147,7 @@ async def create_vm_interactive():
 
     # Get memory snapshot
     memory_monitor = get_memory_monitor()
-    snapshot = memory_monitor.capture_snapshot()
+    snapshot = await memory_monitor.get_memory_pressure()
 
     # Get VM manager
     manager = await get_gcp_vm_manager()

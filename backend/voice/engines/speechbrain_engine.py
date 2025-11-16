@@ -49,12 +49,21 @@ import sys
 logger = logging.getLogger(__name__)
 
 def safe_import_torchvision():
-    """Safely import torchvision with advanced conflict resolution"""
+    """Safely import torchvision with advanced conflict resolution - MUST run before transformers"""
 
-    # Check if torchvision is already loaded
+    # CRITICAL: Remove any corrupted torchvision from sys.modules first
     if 'torchvision' in sys.modules:
-        logger.debug("✅ Torchvision already imported, reusing existing module")
-        return sys.modules['torchvision']
+        tv_module = sys.modules['torchvision']
+        # Check if it's a proper module or corrupted
+        if not hasattr(tv_module, 'transforms'):
+            logger.warning("⚠️ Found corrupted torchvision module, removing from sys.modules")
+            # Remove all torchvision submodules
+            keys_to_remove = [k for k in sys.modules.keys() if k.startswith('torchvision')] 
+            for key in keys_to_remove:
+                del sys.modules[key]
+        else:
+            logger.debug("✅ Torchvision already imported correctly, reusing existing module")
+            return sys.modules['torchvision']
 
     # Check if ops are already registered in torch
     if hasattr(torch.ops, 'torchvision') and hasattr(torch.ops.torchvision, 'roi_align'):
@@ -76,7 +85,8 @@ def safe_import_torchvision():
 
             import torchvision
             import torchvision.ops
-            logger.debug("✅ Torchvision imported successfully")
+            import torchvision.transforms  # Ensure transforms is loaded for transformers
+            logger.debug("✅ Torchvision imported successfully with transforms")
             return torchvision
 
     except RuntimeError as e:
@@ -96,10 +106,10 @@ def safe_import_torchvision():
             raise
 
     except ImportError as e:
-        logger.debug(f"Torchvision not available: {e}, continuing without it")
+        logger.warning(f"⚠️ Torchvision not available: {e}, continuing without it")
         return None
 
-# Safe import with comprehensive conflict resolution
+# Safe import with comprehensive conflict resolution - CRITICAL: This must run BEFORE any speechbrain/transformers imports
 torchvision = safe_import_torchvision()
 
 import torchaudio
