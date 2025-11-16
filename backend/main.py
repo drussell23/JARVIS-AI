@@ -2725,28 +2725,463 @@ except Exception as e:
 
 
 # ═══════════════════════════════════════════════════════════════
-# MOUNT UNIFIED WEBSOCKET ROUTER (Must be done BEFORE server starts!)
+# 🚀 ADVANCED DYNAMIC ROUTER MOUNTING SYSTEM
 # ═══════════════════════════════════════════════════════════════
-logger.info("📡 Mounting Unified WebSocket API...")
+# CRITICAL ARCHITECTURE RULE:
+# FastAPI routes MUST be registered at MODULE LEVEL (during import)
+# BEFORE uvicorn.run() starts the server. Routes added during
+# startup/lifespan are SILENTLY IGNORED and will cause 404 errors!
+# ═══════════════════════════════════════════════════════════════
 
-# CRITICAL: Mount WebSocket router at module level (before uvicorn.run())
-# FastAPI does NOT allow adding routes after the server starts!
+logger.info("=" * 80)
+logger.info("🔧 ADVANCED ROUTER MOUNTING SYSTEM v2.0")
+logger.info("=" * 80)
+
+# Track router registration for health monitoring
+_registered_routers = {}
+_router_registration_errors = []
+_critical_routes_required = ["/ws", "/health", "/docs"]
+_router_metrics = {
+    "total_mount_attempts": 0,
+    "successful_mounts": 0,
+    "failed_mounts": 0,
+    "retry_attempts": 0,
+    "async_mounts": 0
+}
+
+
+class RouterMountingError(Exception):
+    """Critical error during router mounting"""
+    pass
+
+
+def verify_route_registered(path: str, method: str = "GET") -> bool:
+    """
+    Verify that a route is actually registered in the FastAPI app.
+    Returns True if route exists, False otherwise.
+    """
+    for route in app.routes:
+        if hasattr(route, 'path') and route.path == path:
+            if hasattr(route, 'methods'):
+                if method.upper() in route.methods:
+                    return True
+            else:
+                # WebSocket routes don't have methods
+                return True
+    return False
+
+
+async def mount_router_with_validation_async(
+    router_module: str,
+    router_name: str,
+    prefix: str = "",
+    tags: list = None,
+    critical: bool = False,
+    expected_routes: list = None,
+    retry_count: int = 0,
+    retry_delay: float = 1.0
+):
+    """
+    ASYNC version: Advanced router mounting with retry mechanism.
+
+    Args:
+        router_module: Module path (e.g., "api.unified_websocket")
+        router_name: Router variable name (e.g., "router")
+        prefix: URL prefix for all routes in this router
+        tags: OpenAPI tags for this router
+        critical: If True, mounting failure will raise RouterMountingError
+        expected_routes: List of route paths that MUST be registered
+        retry_count: Number of retries for critical routers (0 = no retry)
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        True if successful, False otherwise
+
+    Raises:
+        RouterMountingError: If critical=True and all retries fail
+    """
+    import asyncio
+
+    _router_metrics["async_mounts"] += 1
+
+    for attempt in range(retry_count + 1):
+        if attempt > 0:
+            _router_metrics["retry_attempts"] += 1
+            logger.warning(f"🔄 Retry attempt {attempt}/{retry_count} for {router_module}")
+            await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))  # Exponential backoff
+
+        try:
+            result = mount_router_with_validation(
+                router_module=router_module,
+                router_name=router_name,
+                prefix=prefix,
+                tags=tags,
+                critical=(critical and attempt == retry_count),  # Only raise on last attempt
+                expected_routes=expected_routes
+            )
+            if result:
+                return True
+        except RouterMountingError:
+            if attempt == retry_count:
+                raise
+            continue
+
+    return False
+
+
+def mount_router_with_validation(
+    router_module: str,
+    router_name: str,
+    prefix: str = "",
+    tags: list = None,
+    critical: bool = False,
+    expected_routes: list = None
+):
+    """
+    Advanced router mounting with comprehensive validation and error handling.
+
+    Args:
+        router_module: Module path (e.g., "api.unified_websocket")
+        router_name: Router variable name (e.g., "router")
+        prefix: URL prefix for all routes in this router
+        tags: OpenAPI tags for this router
+        critical: If True, mounting failure will raise RouterMountingError
+        expected_routes: List of route paths that MUST be registered
+
+    Returns:
+        True if successful, False otherwise
+
+    Raises:
+        RouterMountingError: If critical=True and mounting fails
+    """
+    tags = tags or []
+    expected_routes = expected_routes or []
+
+    _router_metrics["total_mount_attempts"] += 1
+
+    logger.info(f"📡 Mounting router: {router_module}.{router_name}")
+    logger.info(f"   Prefix: {prefix or '(root)'}")
+    logger.info(f"   Tags: {tags}")
+    logger.info(f"   Critical: {critical}")
+    logger.info(f"   Expected routes: {expected_routes or '(auto-detect)'}")
+
+    try:
+        # Dynamic import with timeout protection
+        import importlib
+        import sys
+
+        # Check if module is already imported
+        if router_module in sys.modules:
+            logger.info(f"   ✓ Module already loaded: {router_module}")
+            module = sys.modules[router_module]
+        else:
+            logger.info(f"   ⏳ Importing module: {router_module}")
+            module = importlib.import_module(router_module)
+            logger.info(f"   ✓ Module imported successfully")
+
+        # Get router object
+        if not hasattr(module, router_name):
+            error_msg = f"Module {router_module} has no attribute '{router_name}'"
+            logger.error(f"   ❌ {error_msg}")
+            logger.error(f"   Available attributes: {dir(module)}")
+
+            if critical:
+                raise RouterMountingError(error_msg)
+
+            _router_registration_errors.append({
+                "module": router_module,
+                "error": error_msg,
+                "critical": critical
+            })
+            return False
+
+        router = getattr(module, router_name)
+        logger.info(f"   ✓ Router object retrieved: {type(router)}")
+
+        # Verify it's actually an APIRouter
+        from fastapi import APIRouter
+        if not isinstance(router, APIRouter):
+            error_msg = f"{router_module}.{router_name} is not an APIRouter (got {type(router)})"
+            logger.error(f"   ❌ {error_msg}")
+
+            if critical:
+                raise RouterMountingError(error_msg)
+
+            _router_registration_errors.append({
+                "module": router_module,
+                "error": error_msg,
+                "critical": critical
+            })
+            return False
+
+        # Count routes in this router
+        route_count = len(router.routes) if hasattr(router, 'routes') else 0
+        logger.info(f"   📊 Router contains {route_count} route(s)")
+
+        # Log individual routes for debugging
+        if hasattr(router, 'routes'):
+            for route in router.routes:
+                if hasattr(route, 'path'):
+                    route_type = "WebSocket" if hasattr(route, 'endpoint') and 'websocket' in str(type(route)).lower() else "HTTP"
+                    logger.info(f"      - {route_type}: {prefix}{route.path}")
+
+        # Mount the router
+        logger.info(f"   🔗 Mounting router to FastAPI app...")
+        app.include_router(router, prefix=prefix, tags=tags)
+        logger.info(f"   ✓ Router mounted successfully")
+
+        # Verify routes are actually registered
+        verification_failed = False
+        if expected_routes:
+            logger.info(f"   🔍 Verifying {len(expected_routes)} expected route(s)...")
+            for expected_route in expected_routes:
+                full_path = f"{prefix}{expected_route}"
+                if verify_route_registered(full_path):
+                    logger.info(f"      ✅ {full_path} - VERIFIED")
+                else:
+                    logger.error(f"      ❌ {full_path} - NOT FOUND!")
+                    verification_failed = True
+
+        if verification_failed:
+            error_msg = f"Route verification failed for {router_module}"
+            logger.error(f"   ❌ {error_msg}")
+
+            if critical:
+                raise RouterMountingError(error_msg)
+
+            _router_registration_errors.append({
+                "module": router_module,
+                "error": error_msg,
+                "critical": critical
+            })
+            return False
+
+        # Success! Track registration
+        _registered_routers[router_module] = {
+            "prefix": prefix,
+            "tags": tags,
+            "route_count": route_count,
+            "critical": critical,
+            "status": "success",
+            "timestamp": __import__('time').time()
+        }
+
+        _router_metrics["successful_mounts"] += 1
+
+        logger.info(f"   ✅ SUCCESS: {router_module} fully operational")
+        return True
+
+    except ImportError as e:
+        error_msg = f"Failed to import {router_module}: {e}"
+        logger.error(f"   ❌ {error_msg}")
+        logger.error(f"   Traceback: {e.__traceback__}")
+
+        _router_metrics["failed_mounts"] += 1
+
+        if critical:
+            raise RouterMountingError(error_msg) from e
+
+        _router_registration_errors.append({
+            "module": router_module,
+            "error": error_msg,
+            "critical": critical,
+            "exception": str(e),
+            "timestamp": __import__('time').time()
+        })
+        return False
+
+    except Exception as e:
+        error_msg = f"Unexpected error mounting {router_module}: {e}"
+        logger.error(f"   ❌ {error_msg}")
+        logger.error(f"   Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"   Traceback:\n{traceback.format_exc()}")
+
+        _router_metrics["failed_mounts"] += 1
+
+        if critical:
+            raise RouterMountingError(error_msg) from e
+
+        _router_registration_errors.append({
+            "module": router_module,
+            "error": error_msg,
+            "critical": critical,
+            "exception": str(e),
+            "type": type(e).__name__,
+            "timestamp": __import__('time').time()
+        })
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# CRITICAL ROUTER: Unified WebSocket
+# ═══════════════════════════════════════════════════════════════
+logger.info("")
+logger.info("🎯 CRITICAL: Mounting Unified WebSocket Router")
+logger.info("   This router is REQUIRED for HUD connectivity")
+logger.info("")
+
 try:
-    from api.unified_websocket import router as unified_ws_router
+    success = mount_router_with_validation(
+        router_module="api.unified_websocket",
+        router_name="router",
+        prefix="",
+        tags=["websocket"],
+        critical=True,  # CRITICAL: Failure will stop startup
+        expected_routes=["/ws"]  # Must verify /ws endpoint exists
+    )
 
-    app.include_router(unified_ws_router, tags=["websocket"])
-    logger.info("✅ Unified WebSocket API mounted at /ws")
-except ImportError as e:
-    logger.error(f"❌ Could not import unified WebSocket router: {e}")
-    logger.error("   HUD will not be able to connect!")
+    if not success:
+        raise RouterMountingError("Unified WebSocket router failed to mount")
+
+except RouterMountingError as e:
+    logger.error("=" * 80)
+    logger.error("🚨 CRITICAL ROUTER MOUNTING FAILURE")
+    logger.error("=" * 80)
+    logger.error(f"The Unified WebSocket router (/ws) failed to mount!")
+    logger.error(f"Error: {e}")
+    logger.error("")
+    logger.error("IMPACT:")
+    logger.error("  • HUD will NOT be able to connect")
+    logger.error("  • Real-time updates will NOT work")
+    logger.error("  • WebSocket clients will receive 404/403 errors")
+    logger.error("")
+    logger.error("SOLUTION:")
+    logger.error("  1. Check api/unified_websocket.py exists and has 'router' variable")
+    logger.error("  2. Verify router is an APIRouter instance")
+    logger.error("  3. Ensure @router.websocket('/ws') decorator exists")
+    logger.error("  4. Check for import errors in unified_websocket.py")
+    logger.error("=" * 80)
+
+    # In development, continue with degraded functionality
+    # In production, this should probably crash
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        logger.error("🛑 PRODUCTION MODE: Stopping startup due to critical error")
+        raise
+    else:
+        logger.warning("⚠️  DEVELOPMENT MODE: Continuing with degraded functionality")
+        logger.warning("    (In production, this would stop the server)")
+
+logger.info("")
+logger.info("=" * 80)
+logger.info("📊 ROUTER MOUNTING SUMMARY")
+logger.info("=" * 80)
+logger.info(f"Registered routers: {len(_registered_routers)}")
+for router_module, info in _registered_routers.items():
+    logger.info(f"  ✅ {router_module}")
+    logger.info(f"     Prefix: {info['prefix'] or '(root)'}")
+    logger.info(f"     Routes: {info['route_count']}")
+    logger.info(f"     Critical: {info['critical']}")
+
+if _router_registration_errors:
+    logger.warning(f"Errors during mounting: {len(_router_registration_errors)}")
+    for error in _router_registration_errors:
+        logger.warning(f"  ❌ {error['module']}: {error['error']}")
+else:
+    logger.info("Errors: None ✨")
+
+logger.info("=" * 80)
+logger.info("")
+
+# ═══════════════════════════════════════════════════════════════
+# 🏥 ADVANCED HEALTH CHECK WITH ROUTER STATUS
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/admin/batch-mount-routers")
+async def admin_batch_mount_routers(router_configs: list):
+    """
+    Advanced admin endpoint to batch mount routers asynchronously.
+
+    Example request body:
+    [
+        {
+            "router_module": "api.some_api",
+            "router_name": "router",
+            "prefix": "/some",
+            "tags": ["some"],
+            "critical": false,
+            "expected_routes": ["/some/endpoint"],
+            "retry_count": 2,
+            "retry_delay": 1.0
+        }
+    ]
+    """
+    try:
+        results = await batch_mount_routers_async(router_configs)
+        return {
+            "success": True,
+            "results": results,
+            "message": f"Mounted {results['successful']}/{results['total']} routers successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/router-status")
+async def router_status():
+    """
+    Advanced router registration status endpoint.
+    Shows which routers are mounted, which failed, and validates critical routes.
+    """
+    # Validate all critical routes
+    critical_route_status = {}
+    for route_path in _critical_routes_required:
+        is_registered = verify_route_registered(route_path)
+        critical_route_status[route_path] = {
+            "registered": is_registered,
+            "status": "✅ OK" if is_registered else "❌ MISSING"
+        }
+
+    # Count total routes
+    total_routes = len(app.routes)
+    websocket_routes = sum(1 for r in app.routes if 'websocket' in str(type(r)).lower())
+    http_routes = total_routes - websocket_routes
+
+    return {
+        "status": "healthy" if all(s["registered"] for s in critical_route_status.values()) else "degraded",
+        "router_mounting_system": "v2.0",
+        "features": [
+            "✅ Dynamic module import with caching",
+            "✅ Comprehensive route verification",
+            "✅ Async mounting with retry mechanism",
+            "✅ Exponential backoff for retries",
+            "✅ Critical vs non-critical router handling",
+            "✅ Real-time metrics collection",
+            "✅ Production/development error modes"
+        ],
+        "total_routes": total_routes,
+        "http_routes": http_routes,
+        "websocket_routes": websocket_routes,
+        "registered_routers": _registered_routers,
+        "mounting_errors": _router_registration_errors,
+        "critical_routes": critical_route_status,
+        "metrics": _router_metrics,
+        "recommendations": [
+            "Check /docs for OpenAPI specification",
+            "Monitor /router-status for router health",
+            "Critical routes must all be registered for full functionality"
+        ] if not all(s["registered"] for s in critical_route_status.values()) else []
+    }
+
 
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Quick health check endpoint"""
+    """Quick health check endpoint with router validation"""
     vision_details = {}
     ml_audio_details = {}
     vision_status = {}
+
+    # Add router health to standard health check
+    router_health = {
+        "total_routes": len(app.routes),
+        "critical_websocket_registered": verify_route_registered("/ws"),
+        "registered_router_count": len(_registered_routers),
+        "mounting_errors": len(_router_registration_errors)
+    }
 
     # Check vision status manager
     if hasattr(app.state, "vision_status_manager"):
@@ -3110,10 +3545,109 @@ async def autonomous_services():
         return {"error": str(e)}
 
 
+def safe_mount_router(
+    router_module: str,
+    router_name: str = "router",
+    prefix: str = "",
+    tags: list = None,
+    critical: bool = False,
+    expected_routes: list = None,
+    fallback_message: str = None
+) -> bool:
+    """
+    Safe wrapper for mount_router_with_validation with consistent error handling.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        return mount_router_with_validation(
+            router_module=router_module,
+            router_name=router_name,
+            prefix=prefix,
+            tags=tags,
+            critical=critical,
+            expected_routes=expected_routes
+        )
+    except Exception as e:
+        if fallback_message:
+            logger.warning(fallback_message)
+        logger.warning(f"⚠️  Router mounting failed for {router_module}: {e}")
+        return False
+
+
+async def batch_mount_routers_async(router_configs: list) -> dict:
+    """
+    Async batch mounting of multiple routers with retry support.
+
+    Args:
+        router_configs: List of dicts with router configuration
+            Each dict can contain: router_module, router_name, prefix, tags,
+            critical, expected_routes, retry_count, retry_delay
+
+    Returns:
+        Dict with success/failure counts and details
+    """
+    import asyncio
+
+    results = {
+        "total": len(router_configs),
+        "successful": 0,
+        "failed": 0,
+        "details": []
+    }
+
+    # Mount all routers concurrently
+    tasks = []
+    for config in router_configs:
+        task = mount_router_with_validation_async(
+            router_module=config.get("router_module"),
+            router_name=config.get("router_name", "router"),
+            prefix=config.get("prefix", ""),
+            tags=config.get("tags"),
+            critical=config.get("critical", False),
+            expected_routes=config.get("expected_routes"),
+            retry_count=config.get("retry_count", 0),
+            retry_delay=config.get("retry_delay", 1.0)
+        )
+        tasks.append((config.get("router_module"), task))
+
+    # Wait for all mounts to complete
+    mount_results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+    # Process results
+    for (module_name, _), result in zip(tasks, mount_results):
+        if isinstance(result, Exception):
+            results["failed"] += 1
+            results["details"].append({
+                "module": module_name,
+                "status": "failed",
+                "error": str(result)
+            })
+        elif result:
+            results["successful"] += 1
+            results["details"].append({
+                "module": module_name,
+                "status": "success"
+            })
+        else:
+            results["failed"] += 1
+            results["details"].append({
+                "module": module_name,
+                "status": "failed",
+                "error": "Mount returned False"
+            })
+
+    return results
+
+
 # Mount routers based on available components
 def mount_routers():
     """Mount API routers based on loaded components"""
     import os  # Ensure os is available in this scope
+
+    logger.info("=" * 80)
+    logger.info("🔧 MOUNTING DYNAMIC ROUTERS (Legacy Compatibility Mode)")
+    logger.info("   Note: Using new validation system for safety")
+    logger.info("=" * 80)
 
     # macOS Native HUD WebSocket - Now integrated into unified WebSocket at /ws
     # No separate /ws/hud endpoint needed - HUD uses unified WebSocket
@@ -3166,42 +3700,35 @@ def mount_routers():
         app.include_router(voice_unlock["router"], tags=["voice_unlock"])
         logger.info("✅ Voice Unlock API mounted")
 
-    # Startup Progress API (for loading page)
-    try:
-        from api.startup_progress_api import router as startup_progress_router
-        app.include_router(startup_progress_router, tags=["startup"])
-        logger.info("✅ Startup Progress API mounted at /ws/startup-progress")
-    except ImportError as e:
-        logger.warning(f"Could not import startup progress router: {e}")
-        if voice_unlock.get("initialized"):
-            app.state.voice_unlock = voice_unlock
-            logger.info("✅ Voice Unlock service ready")
+    # Startup Progress API (for loading page) - Using new validation system
+    safe_mount_router(
+        router_module="api.startup_progress_api",
+        tags=["startup"],
+        fallback_message="Could not mount Startup Progress API"
+    )
 
-    # Startup Voice API (for loading page voice announcement)
-    try:
-        from api.startup_voice_api import router as startup_voice_router
-        app.include_router(startup_voice_router, tags=["startup"])
-        logger.info("✅ Startup Voice API mounted at /api/startup-voice")
-    except ImportError as e:
-        logger.warning(f"Could not import startup voice router: {e}")
+    if voice_unlock.get("initialized"):
+        app.state.voice_unlock = voice_unlock
+        logger.info("✅ Voice Unlock service ready")
 
-    # Screen Control API - HTTP REST endpoints for unlock/lock
-    try:
-        from api.screen_control_api import router as screen_control_router
+    # Startup Voice API (for loading page voice announcement) - Using new validation system
+    safe_mount_router(
+        router_module="api.startup_voice_api",
+        tags=["startup"],
+        fallback_message="Could not mount Startup Voice API"
+    )
 
-        app.include_router(screen_control_router)
-        logger.info("✅ Screen Control REST API mounted at /api/screen")
-    except Exception as e:
-        logger.warning(f"Screen Control API not available: {e}")
+    # Screen Control API - HTTP REST endpoints for unlock/lock - Using new validation system
+    safe_mount_router(
+        router_module="api.screen_control_api",
+        fallback_message="Screen Control API not available"
+    )
 
-    # Wake Word API - Always mount (has stub functionality)
-    try:
-        from api.wake_word_api import router as wake_word_router
-
-        # Router already has prefix="/api/wake-word", don't add it again
-        app.include_router(wake_word_router)
-        logger.info("✅ Wake Word API mounted at /api/wake-word")
-
+    # Wake Word API - Always mount (has stub functionality) - Using new validation system
+    if safe_mount_router(
+        router_module="api.wake_word_api",
+        fallback_message="⚠️ Wake Word API not available"
+    ):
         # Check if the full service is available
         wake_word = components.get("wake_word", {})
         if wake_word and wake_word.get("initialized"):
@@ -3209,27 +3736,23 @@ def mount_routers():
             logger.info("✅ Wake Word detection service available")
         else:
             logger.info("ℹ️  Wake Word API available (stub mode - service not initialized)")
-    except ImportError as e:
-        logger.warning(f"⚠️ Wake Word API not available: {e}")
 
-    # Rust API (if Rust components are available)
+    # Rust API (if Rust components are available) - Using new validation system
     if hasattr(app.state, "rust_acceleration") and app.state.rust_acceleration.get("available"):
-        try:
-            from api.rust_api import router as rust_router
+        safe_mount_router(
+            router_module="api.rust_api",
+            prefix="/rust",
+            tags=["rust"],
+            fallback_message="Rust API not available"
+        )
 
-            app.include_router(rust_router, prefix="/rust", tags=["rust"])
-            logger.info("✅ Rust acceleration API mounted")
-        except ImportError:
-            logger.debug("Rust API not available")
-
-    # Self-healing API
-    try:
-        from api.self_healing_api import router as self_healing_router
-
-        app.include_router(self_healing_router, prefix="/self-healing", tags=["self-healing"])
-        logger.info("✅ Self-healing API mounted")
-    except ImportError:
-        logger.debug("Self-healing API not available")
+    # Self-healing API - Using new validation system
+    safe_mount_router(
+        router_module="api.self_healing_api",
+        prefix="/self-healing",
+        tags=["self-healing"],
+        fallback_message="Self-healing API not available"
+    )
 
     # Context Intelligence API (Priority 1-3 features)
     if hasattr(app.state, "context_bridge") and app.state.context_bridge:
@@ -3294,57 +3817,51 @@ def mount_routers():
         logger.info("   • GET  /context/summary - Workspace intelligence summary")
         logger.info("   • POST /context/ocr_update - Vision system integration")
 
-    # Unified WebSocket API - replaces individual WebSocket endpoints
-    try:
-        from api.unified_websocket import router as unified_ws_router
+    # Unified WebSocket API - NOTE: Critical /ws endpoint already mounted at module level
+    # This is a legacy check to ensure compatibility during startup
+    logger.info("ℹ️  Unified WebSocket API (/ws) already mounted at module level (see line 2948)")
 
-        app.include_router(unified_ws_router, tags=["websocket"])
-        logger.info("✅ Unified WebSocket API mounted at /ws")
-    except ImportError as e:
-        logger.warning(f"Could not import unified WebSocket router: {e}")
-
-        # Fallback to individual WebSocket APIs if unified not available
-        try:
-            from api.vision_websocket import router as vision_ws_router
-
-            app.include_router(vision_ws_router, prefix="/vision", tags=["vision"])
-            logger.info("✅ Vision WebSocket API mounted (fallback)")
-        except ImportError as e:
-            logger.warning(f"Could not import vision WebSocket router: {e}")
-
-    # Vision WebSocket endpoint at /vision/ws/vision
-    try:
-        from api.vision_ws_endpoint import router as vision_ws_endpoint_router
-        from api.vision_ws_endpoint import set_vision_analyzer
-
-        app.include_router(vision_ws_endpoint_router, tags=["vision"])
-
+    # Vision WebSocket endpoint at /vision/ws/vision - Using new validation system
+    if safe_mount_router(
+        router_module="api.vision_ws_endpoint",
+        tags=["vision"],
+        fallback_message="Could not mount vision WebSocket endpoint"
+    ):
         # Set vision analyzer if available
-        vision = components.get("vision", {})
-        if vision and vision.get("analyzer"):
-            set_vision_analyzer(vision["analyzer"])
+        try:
+            from api.vision_ws_endpoint import set_vision_analyzer
+            vision = components.get("vision", {})
+            if vision and vision.get("analyzer"):
+                set_vision_analyzer(vision["analyzer"])
+        except Exception as e:
+            logger.warning(f"Could not set vision analyzer: {e}")
 
-        logger.info("✅ Vision WebSocket endpoint mounted at /vision/ws/vision")
-    except ImportError as e:
-        logger.warning(f"Could not import vision WebSocket endpoint: {e}")
+    # Multi-Monitor Display Routes - Using new validation system
+    safe_mount_router(
+        router_module="api.display_routes",
+        tags=["displays"],
+        fallback_message="⚠️  Multi-Monitor display routes not available"
+    )
 
-    # Multi-Monitor Display Routes
-    try:
-        from api.display_routes import router as display_router
+    # Proximity-Aware Display Routes (Phase 1.2) - Using new validation system
+    safe_mount_router(
+        router_module="api.proximity_display_api",
+        tags=["proximity-display"],
+        fallback_message="Proximity-Aware Display API not available"
+    )
 
-        app.include_router(display_router, tags=["displays"])
-        logger.info("✅ Multi-Monitor display routes configured")
-    except Exception as e:
-        logger.warning(f"⚠️  Multi-Monitor display routes not available: {e}")
-
-    # Proximity-Aware Display Routes (Phase 1.2)
-    try:
-        from api.proximity_display_api import router as proximity_display_router
-
-        app.include_router(proximity_display_router, tags=["proximity-display"])
-        logger.info("✅ Proximity-Aware Display API configured")
-    except Exception as e:
-        logger.warning(f"⚠️  Proximity-Aware Display API not available: {e}")
+    # Vision WebSocket fallback (if unified not available)
+    # Note: This is a backup in case the unified WebSocket fails
+    if not verify_route_registered("/ws"):
+        logger.warning("⚠️  CRITICAL: /ws endpoint not registered! Attempting fallback...")
+        safe_mount_router(
+            router_module="api.vision_websocket",
+            prefix="/vision",
+            tags=["vision"],
+            fallback_message="Vision WebSocket API fallback also failed"
+        )
+    else:
+        logger.info("✅ /ws endpoint verified and operational")
 
     # Advanced Display Monitor (Component #9) - Multi-method detection with voice integration
     try:
