@@ -50,15 +50,24 @@ class AppState: ObservableObject {
     @Published var pythonBridge: PythonBridge
 
     init() {
+        print(String(repeating: "=", count: 80))
+        print("🔗 AppState.init() STARTED")
+        print("   Creating shared PythonBridge instance...")
+
         // Initialize PythonBridge once at app launch
         self.pythonBridge = PythonBridge()
 
-        print("🔗 AppState initialized with shared PythonBridge")
+        print("   ✓ PythonBridge created")
         print("   Backend WS: \(pythonBridge.websocketURL)")
         print("   Backend HTTP: \(pythonBridge.apiBaseURL)")
 
         // Connect to backend immediately when app launches
+        print("   🔌 Calling pythonBridge.connect() to initiate WebSocket connection...")
         pythonBridge.connect()
+        print("   ✓ connect() call completed (connection may still be establishing)")
+
+        print("🔗 AppState.init() COMPLETED")
+        print(String(repeating: "=", count: 80))
     }
 }
 

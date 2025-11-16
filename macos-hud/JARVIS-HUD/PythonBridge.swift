@@ -9,6 +9,49 @@
 import Foundation
 import Combine
 
+// MARK: - File Logger for Debugging
+
+/// File-based logger since GUI apps don't show console output in terminal
+class FileLogger {
+    static let shared = FileLogger()
+    private let logFileURL: URL
+    private let fileHandle: FileHandle?
+
+    init() {
+        // Log to /tmp/jarvis_hud.log for easy inspection
+        logFileURL = URL(fileURLWithPath: "/tmp/jarvis_hud.log")
+
+        // Create or truncate log file
+        if !FileManager.default.fileExists(atPath: logFileURL.path) {
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+        }
+
+        fileHandle = try? FileHandle(forWritingTo: logFileURL)
+        fileHandle?.truncateFile(atOffset: 0)  // Clear previous logs
+
+        log("🚀 JARVIS HUD Logger initialized at \(logFileURL.path)")
+        log("📅 Session start: \(Date())")
+        log(String(repeating: "=", count: 80))
+    }
+
+    func log(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let logLine = "[\(timestamp)] \(message)\n"
+
+        // Write to console
+        print(message)
+
+        // Write to file
+        if let data = logLine.data(using: .utf8) {
+            fileHandle?.write(data)
+        }
+    }
+
+    deinit {
+        try? fileHandle?.close()
+    }
+}
+
 /// WebSocket connection to Python backend
 class PythonBridge: ObservableObject {
 
@@ -36,66 +79,113 @@ class PythonBridge: ObservableObject {
     private var connectionHealthTimer: Timer?
     private var lastMessageTime: Date?
 
+    // File logger for debugging (GUI apps don't show console in terminal)
+    private let logger = FileLogger.shared
+
     // Voice output (TODO: Add VoiceManager.swift to Xcode project)
     // private var voiceManager: VoiceManager?
 
     // MARK: - Initialization
 
     init() {
+        logger.log("🔧 PythonBridge.init() STARTED")
+        logger.log("   Initializing WebSocket bridge to Python backend...")
+
         // Dynamic backend configuration from environment (set by Python launcher)
         // UNIFIED WEBSOCKET: Use /ws endpoint (same as web-app) instead of /ws/hud
         let wsURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "ws://localhost:8010/ws"
         let httpURL = ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "http://localhost:8010"
 
-        self.websocketURL = URL(string: wsURL)!
-        self.apiBaseURL = URL(string: httpURL)!
+        logger.log("📍 Environment Variables Check:")
+        logger.log("   JARVIS_BACKEND_WS: \(ProcessInfo.processInfo.environment["JARVIS_BACKEND_WS"] ?? "NOT SET (using default)")")
+        logger.log("   JARVIS_BACKEND_HTTP: \(ProcessInfo.processInfo.environment["JARVIS_BACKEND_HTTP"] ?? "NOT SET (using default)")")
+
+        guard let wsURLParsed = URL(string: wsURL) else {
+            logger.log("❌ CRITICAL: Failed to parse WebSocket URL: \(wsURL)")
+            fatalError("Invalid WebSocket URL")
+        }
+        guard let httpURLParsed = URL(string: httpURL) else {
+            logger.log("❌ CRITICAL: Failed to parse HTTP URL: \(httpURL)")
+            fatalError("Invalid HTTP URL")
+        }
+
+        self.websocketURL = wsURLParsed
+        self.apiBaseURL = httpURLParsed
+
+        logger.log("✅ URLs parsed successfully:")
+        logger.log("   WebSocket: \(wsURL) [UNIFIED ENDPOINT]")
+        logger.log("   HTTP API:  \(httpURL)")
+        logger.log("   Max reconnect attempts: \(maxReconnectAttempts)")
 
         // Initialize voice manager (TODO: Add VoiceManager.swift to Xcode project)
         // self.voiceManager = VoiceManager(apiBaseURL: self.apiBaseURL)
 
-        print("🔧 Backend Configuration:")
-        print("   WebSocket: \(wsURL) [UNIFIED ENDPOINT]")
-        print("   HTTP API:  \(httpURL)")
-        print("   Max reconnect attempts: \(maxReconnectAttempts)")
-        // print("   Voice TTS: Enabled")
+        logger.log("🔧 PythonBridge.init() COMPLETED")
     }
 
     // MARK: - Connection Management
 
     /// Connect to Python backend via WebSocket with robust retry logic
     func connect() {
+        logger.log(String(repeating: "=", count: 80))
+        logger.log("🔌 WEBSOCKET CONNECTION ATTEMPT STARTED")
+        logger.log("   Function: PythonBridge.connect()")
+        logger.log("   Thread: \(Thread.current)")
+
         isManuallyDisconnected = false
         connectionStatus = .connecting
+        logger.log("   Status set to: .connecting")
 
-        print(String(repeating: "=", count: 80))
-        print("🔌 HUD WEBSOCKET CONNECTION ATTEMPT")
-        print("   Attempt: \(reconnectAttempts + 1)/\(maxReconnectAttempts)")
-        print("   Target URL: \(websocketURL)")
-        print("   Endpoint: /ws (unified WebSocket)")
-        print("   Expected Backend: FastAPI server on port 8010")
-        print(String(repeating: "=", count: 80))
+        logger.log("📊 Connection Details:")
+        logger.log("   Attempt: \(reconnectAttempts + 1)/\(maxReconnectAttempts)")
+        logger.log("   Target URL: \(websocketURL)")
+        logger.log("   URL Scheme: \(websocketURL.scheme ?? "nil")")
+        logger.log("   URL Host: \(websocketURL.host ?? "nil")")
+        logger.log("   URL Port: \(websocketURL.port ?? -1)")
+        logger.log("   URL Path: \(websocketURL.path)")
+        logger.log("   Endpoint: /ws (unified WebSocket)")
+        logger.log("   Expected Backend: FastAPI server on port 8010")
 
+        logger.log("🔧 Creating URLSession and WebSocket task...")
         let session = URLSession(configuration: .default)
-        webSocketTask = session.webSocketTask(with: websocketURL)
+        logger.log("   ✓ URLSession created with default config")
 
-        // Add connection error handler
+        webSocketTask = session.webSocketTask(with: websocketURL)
+        logger.log("   ✓ WebSocket task created")
+
+        // Check task state before resume
+        if let task = webSocketTask {
+            logger.log("   Task state before resume: \(task.state.rawValue)")
+            logger.log("   Task description: \(task.taskDescription ?? "nil")")
+        } else {
+            logger.log("   ❌ ERROR: webSocketTask is nil after creation!")
+        }
+
+        // Resume the task
+        logger.log("🚀 Resuming WebSocket task...")
         webSocketTask?.resume()
 
-        print("✓ WebSocket task created and resumed")
-        print("📞 Starting message receiver...")
+        if let task = webSocketTask {
+            logger.log("   Task state after resume: \(task.state.rawValue)")
+            logger.log("   ✓ WebSocket task resumed successfully")
+        }
+
+        logger.log("📞 Starting message receiver...")
         receiveMessage()
 
         // Send initial connection message with delay
+        logger.log("⏲️ Scheduling handshake message (0.5s delay)...")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("📤 Sending HUD handshake message...")
+            self.logger.log("📤 Sending HUD handshake message NOW...")
             self.sendConnectionMessage()
         }
 
         // Start connection health monitoring
-        print("💓 Starting connection health monitor...")
+        logger.log("💓 Starting connection health monitor...")
         startConnectionHealthCheck()
 
-        print("⏳ Waiting for WebSocket connection to establish...")
+        logger.log("⏳ Waiting for WebSocket connection to establish...")
+        logger.log(String(repeating: "=", count: 80))
     }
 
     /// Disconnect from Python backend
@@ -154,69 +244,129 @@ class PythonBridge: ObservableObject {
     /// Send initial connection message to backend
     /// Uses unified WebSocket protocol with HUD-specific handshake
     private func sendConnectionMessage() {
+        logger.log("📤 sendConnectionMessage() called")
+
+        let clientID = "macos-hud-\(UUID().uuidString)"
         let message = [
             "type": "hud_connect",  // HUD-specific handler in unified WebSocket
-            "client_id": "macos-hud-\(UUID().uuidString)",
+            "client_id": clientID,
             "version": "2.0.0"
         ]
 
-        print("📤 Sending HUD connection handshake to unified WebSocket endpoint...")
+        logger.log("   Handshake payload:")
+        logger.log("     type: hud_connect")
+        logger.log("     client_id: \(clientID)")
+        logger.log("     version: 2.0.0")
+
+        logger.log("   Sending to unified WebSocket endpoint /ws...")
         sendMessage(message)
     }
 
     /// Send message to backend
     private func sendMessage(_ dict: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let string = String(data: data, encoding: .utf8) else {
+        logger.log("📨 sendMessage() called")
+
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            logger.log("   ❌ ERROR: Failed to serialize JSON")
             return
         }
 
-        webSocketTask?.send(.string(string)) { error in
+        guard let string = String(data: data, encoding: .utf8) else {
+            logger.log("   ❌ ERROR: Failed to convert JSON data to UTF-8 string")
+            return
+        }
+
+        logger.log("   ✓ Message serialized: \(string.prefix(100))...")
+
+        guard let task = webSocketTask else {
+            logger.log("   ❌ ERROR: webSocketTask is nil! Cannot send message.")
+            return
+        }
+
+        logger.log("   ✓ WebSocket task exists (state: \(task.state.rawValue))")
+        logger.log("   📤 Sending message via WebSocket.send()...")
+
+        task.send(.string(string)) { [weak self] error in
             if let error = error {
-                print("❌ Send error: \(error)")
+                self?.logger.log("   ❌ SEND ERROR: \(error)")
+                self?.logger.log("      Error description: \(error.localizedDescription)")
+                let nsError = error as NSError
+                self?.logger.log("      Domain: \(nsError.domain)")
+                self?.logger.log("      Code: \(nsError.code)")
+                self?.logger.log("      UserInfo: \(nsError.userInfo)")
+            } else {
+                self?.logger.log("   ✅ Message sent successfully!")
             }
         }
     }
 
     /// Receive messages from WebSocket
     private func receiveMessage() {
-        print("📥 [WebSocket] Waiting for message...")
+        logger.log("📥 receiveMessage() called - Setting up WebSocket message listener")
 
-        webSocketTask?.receive { [weak self] result in
+        guard let task = webSocketTask else {
+            logger.log("   ❌ ERROR: webSocketTask is nil in receiveMessage()!")
+            return
+        }
+
+        logger.log("   ✓ WebSocket task exists (state: \(task.state.rawValue))")
+        logger.log("   🎧 Calling task.receive() to listen for messages...")
+
+        task.receive { [weak self] result in
+            guard let self = self else { return }
+
             switch result {
             case .success(let message):
-                print("✅ [WebSocket] Message received successfully!")
+                self.logger.log("✅ [WebSocket] MESSAGE RECEIVED!")
+                self.logger.log("   Receive timestamp: \(Date())")
 
                 DispatchQueue.main.async {
-                    self?.connectionStatus = .connected
-                    self?.lastMessageTime = Date()
+                    self.connectionStatus = .connected
+                    self.lastMessageTime = Date()
                     // Reset reconnect attempts on successful message
-                    self?.reconnectAttempts = 0
+                    self.reconnectAttempts = 0
+                    self.logger.log("   ✓ Connection status set to: .connected")
+                    self.logger.log("   ✓ Reconnect attempts reset to 0")
                 }
 
-                print("🔄 [WebSocket] Processing message...")
-                self?.handleMessage(message)
+                self.logger.log("🔄 Processing received message...")
+                self.handleMessage(message)
 
-                print("📥 [WebSocket] Setting up next message receiver...")
-                self?.receiveMessage() // Continue receiving
+                self.logger.log("📥 Setting up NEXT message receiver (continuous listening)...")
+                self.receiveMessage() // Continue receiving
 
             case .failure(let error):
-                print("❌ [WebSocket] RECEIVE ERROR")
-                print("   Error: \(error)")
-                print("   Localized: \(error.localizedDescription)")
+                self.logger.log("❌ [WebSocket] RECEIVE ERROR!")
+                self.logger.log("   Error: \(error)")
+                self.logger.log("   Localized: \(error.localizedDescription)")
 
                 // Check for specific error types
                 let nsError = error as NSError
-                print("   Domain: \(nsError.domain)")
-                print("   Code: \(nsError.code)")
-                print("   UserInfo: \(nsError.userInfo)")
+                self.logger.log("   Domain: \(nsError.domain)")
+                self.logger.log("   Code: \(nsError.code)")
+                self.logger.log("   UserInfo: \(nsError.userInfo)")
+
+                // Log common WebSocket error codes
+                if nsError.domain == "NSPOSIXErrorDomain" {
+                    self.logger.log("   → POSIX error (likely connection refused or timeout)")
+                } else if nsError.domain == "NSURLErrorDomain" {
+                    self.logger.log("   → URL error (likely network/DNS issue)")
+                    if nsError.code == -1004 {
+                        self.logger.log("   → Error -1004: Could not connect to server")
+                    }
+                }
 
                 DispatchQueue.main.async {
-                    self?.connectionStatus = .error
+                    self.connectionStatus = .error
+                    self.logger.log("   ✓ Connection status set to: .error")
                 }
-                self?.scheduleReconnect()
+
+                self.logger.log("🔄 Scheduling reconnection attempt...")
+                self.scheduleReconnect()
             }
         }
+
+        logger.log("   ✓ Message listener setup complete (waiting for data...)")
     }
 
     /// Handle incoming WebSocket message

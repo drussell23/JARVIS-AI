@@ -31,8 +31,9 @@ try:
     from voice.streaming_safeguard import (
         StreamingSafeguard,
         CommandDetectionConfig,
-        get_streaming_safeguard
+        get_streaming_safeguard,
     )
+
     STREAMING_SAFEGUARD_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Streaming safeguard not available: {e}")
@@ -122,7 +123,8 @@ class UnifiedWebSocketManager:
             "max_recovery_attempts": int(os.getenv("WS_MAX_RECOVERY_ATTEMPTS", "5")),
             "circuit_breaker_threshold": int(os.getenv("WS_CIRCUIT_BREAKER_THRESHOLD", "3")),
             "circuit_breaker_timeout": float(os.getenv("WS_CIRCUIT_BREAKER_TIMEOUT", "60.0")),
-            "predictive_healing_enabled": os.getenv("WS_PREDICTIVE_HEALING", "true").lower() == "true",
+            "predictive_healing_enabled": os.getenv("WS_PREDICTIVE_HEALING", "true").lower()
+            == "true",
             "auto_learning_enabled": os.getenv("WS_AUTO_LEARNING", "true").lower() == "true",
             "max_pattern_history": int(os.getenv("WS_MAX_PATTERN_HISTORY", "1000")),
         }
@@ -139,8 +141,8 @@ class UnifiedWebSocketManager:
 
         # Streaming safeguard (command detection for stream closure)
         self.safeguard_enabled = (
-            STREAMING_SAFEGUARD_AVAILABLE and
-            os.getenv('ENABLE_STREAMING_SAFEGUARD', 'true').lower() == 'true'
+            STREAMING_SAFEGUARD_AVAILABLE
+            and os.getenv("ENABLE_STREAMING_SAFEGUARD", "true").lower() == "true"
         )
 
         # Learning & patterns (using deque for bounded memory)
@@ -200,7 +202,7 @@ class UnifiedWebSocketManager:
             "reactor_state": "idle",
             "last_update": None,
             "loading_progress": 0,
-            "loading_message": "Starting JARVIS..."
+            "loading_message": "Starting JARVIS...",
         }
 
         # Progress message buffer for late-connecting HUD clients
@@ -271,7 +273,9 @@ class UnifiedWebSocketManager:
             # Log any unexpected exceptions (CancelledError is expected)
             for i, result in enumerate(results):
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
-                    logger.warning(f"[UNIFIED-WS] Recovery task {i} raised unexpected exception: {result}")
+                    logger.warning(
+                        f"[UNIFIED-WS] Recovery task {i} raised unexpected exception: {result}"
+                    )
 
             self.recovery_tasks.clear()
 
@@ -280,7 +284,8 @@ class UnifiedWebSocketManager:
         total_messages_received = sum(h.messages_received for h in self.connection_health.values())
         total_errors = sum(h.errors for h in self.connection_health.values())
         avg_health_score = (
-            sum(h.health_score for h in self.connection_health.values()) / len(self.connection_health)
+            sum(h.health_score for h in self.connection_health.values())
+            / len(self.connection_health)
             if self.connection_health
             else 0
         )
@@ -310,7 +315,9 @@ class UnifiedWebSocketManager:
                     websocket = self.connections[client_id]
                     await websocket.send_json(shutdown_message)
                 except Exception as e:
-                    logger.debug(f"[UNIFIED-WS] Could not send shutdown message to {client_id}: {e}")
+                    logger.debug(
+                        f"[UNIFIED-WS] Could not send shutdown message to {client_id}: {e}"
+                    )
 
                 # Disconnect
                 await self.disconnect(client_id)
@@ -645,7 +652,9 @@ class UnifiedWebSocketManager:
             ),
         }
 
-    async def _handle_health_check(self, client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_health_check(
+        self, client_id: str, _message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle explicit health check requests"""
         if client_id in self.connection_health:
             health = self.connection_health[client_id]
@@ -664,10 +673,16 @@ class UnifiedWebSocketManager:
 
         return {"type": "health_status", "error": "Client health data not found"}
 
-    async def _handle_system_metrics(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_system_metrics(
+        self, _client_id: str, _message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle system metrics requests"""
         metrics = self.get_system_metrics()
-        return {"type": "system_metrics", "metrics": metrics, "timestamp": datetime.now().isoformat()}
+        return {
+            "type": "system_metrics",
+            "metrics": metrics,
+            "timestamp": datetime.now().isoformat(),
+        }
 
     async def _ask_uae_prediction(self, metrics: Dict) -> Optional[Dict]:
         """Ask UAE to predict disconnection risk"""
@@ -894,7 +909,9 @@ class UnifiedWebSocketManager:
         """Accept new WebSocket connection with health monitoring and rate limiting"""
         # Check if shutting down
         if self._shutdown_event.is_set():
-            logger.warning(f"[UNIFIED-WS] Rejecting connection from {client_id} - system is shutting down")
+            logger.warning(
+                f"[UNIFIED-WS] Rejecting connection from {client_id} - system is shutting down"
+            )
             await websocket.close(code=1001, reason="Server shutting down")
             return
 
@@ -1111,7 +1128,7 @@ class UnifiedWebSocketManager:
                         detection_event = await safeguard.check_transcription(
                             transcription=transcription_text,
                             confidence=result.get("confidence"),
-                            metadata={"client_id": client_id, "msg_type": msg_type}
+                            metadata={"client_id": client_id, "msg_type": msg_type},
                         )
 
                         if detection_event:
@@ -1124,12 +1141,14 @@ class UnifiedWebSocketManager:
                             # Signal client to stop streaming
                             if websocket:
                                 try:
-                                    await websocket.send_json({
-                                        "type": "stream_stop",
-                                        "reason": "command_detected",
-                                        "command": detection_event.command,
-                                        "message": "Command detected, stopping audio stream"
-                                    })
+                                    await websocket.send_json(
+                                        {
+                                            "type": "stream_stop",
+                                            "reason": "command_detected",
+                                            "command": detection_event.command,
+                                            "message": "Command detected, stopping audio stream",
+                                        }
+                                    )
                                 except Exception as e:
                                     logger.error(f"Failed to send stream_stop message: {e}")
 
@@ -1203,7 +1222,8 @@ class UnifiedWebSocketManager:
 
         # Calculate average health score
         avg_health_score = (
-            sum(h.health_score for h in self.connection_health.values()) / len(self.connection_health)
+            sum(h.health_score for h in self.connection_health.values())
+            / len(self.connection_health)
             if self.connection_health
             else 0
         )
@@ -1230,7 +1250,8 @@ class UnifiedWebSocketManager:
                 "total_sent": self.metrics["total_messages_sent"],
                 "total_received": self.metrics["total_messages_received"],
                 "throughput_per_second": (
-                    (self.metrics["total_messages_sent"] + self.metrics["total_messages_received"]) / uptime
+                    (self.metrics["total_messages_sent"] + self.metrics["total_messages_received"])
+                    / uptime
                     if uptime > 0
                     else 0
                 ),
@@ -1320,7 +1341,9 @@ class UnifiedWebSocketManager:
         # Replay buffered progress messages for smooth loading experience
         # This ensures HUD sees all progress updates even if it connected late
         if self.progress_buffer:
-            logger.info(f"📼 Replaying {len(self.progress_buffer)} buffered progress messages to HUD")
+            logger.info(
+                f"📼 Replaying {len(self.progress_buffer)} buffered progress messages to HUD"
+            )
 
             # Get the WebSocket connection for this client
             if client_id in self.connections:
@@ -1330,7 +1353,9 @@ class UnifiedWebSocketManager:
                 for buffered_msg in self.progress_buffer:
                     try:
                         await ws.send_json(buffered_msg)
-                        logger.debug(f"   ✓ Replayed: {buffered_msg['progress']}% - {buffered_msg['message']}")
+                        logger.debug(
+                            f"   ✓ Replayed: {buffered_msg['progress']}% - {buffered_msg['message']}"
+                        )
                     except Exception as e:
                         logger.warning(f"   ⚠️  Failed to replay message: {e}")
                         break
@@ -1343,21 +1368,19 @@ class UnifiedWebSocketManager:
             "message": "Connected to JARVIS unified WebSocket",
             "server_version": "2.0.0",
             "current_state": self.hud_state,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_hud_request_state(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_hud_request_state(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Handle HUD state requests
         Sends current HUD state including loading progress
         """
         logger.debug(f"[UNIFIED-WS] HUD client {client_id} requested current state")
 
-        return {
-            "type": "state",
-            "data": self.hud_state,
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"type": "state", "data": self.hud_state, "timestamp": datetime.now().isoformat()}
 
     async def send_hud_loading_progress(self, progress: int, message: str):
         """
@@ -1376,13 +1399,15 @@ class UnifiedWebSocketManager:
             "type": "loading_progress",
             "progress": progress,
             "message": message,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Buffer the message for late-connecting HUD clients
         # This ensures smooth loading experience even if HUD connects after startup begins
         self.progress_buffer.append(progress_msg)
-        logger.debug(f"   📝 Buffered progress message ({len(self.progress_buffer)} total in buffer)")
+        logger.debug(
+            f"   📝 Buffered progress message ({len(self.progress_buffer)} total in buffer)"
+        )
 
         # Update HUD state
         self.hud_state["loading_progress"] = progress
@@ -1390,10 +1415,7 @@ class UnifiedWebSocketManager:
         self.hud_state["last_update"] = datetime.now().isoformat()
 
         # Count HUD clients
-        hud_clients = [
-            cid for cid, caps in connection_capabilities.items()
-            if "hud_client" in caps
-        ]
+        hud_clients = [cid for cid, caps in connection_capabilities.items() if "hud_client" in caps]
 
         logger.info(f"   Active HUD clients: {len(hud_clients)}")
 
@@ -1408,6 +1430,7 @@ class UnifiedWebSocketManager:
             except Exception as e:
                 logger.error(f"   ❌ Failed to broadcast progress update: {e}")
                 import traceback
+
                 logger.debug(traceback.format_exc())
 
     async def send_hud_loading_complete(self, success: bool = True):
@@ -1424,10 +1447,7 @@ class UnifiedWebSocketManager:
         logger.info(f"   Success: {success}")
 
         # Count HUD clients
-        hud_clients = [
-            cid for cid, caps in connection_capabilities.items()
-            if "hud_client" in caps
-        ]
+        hud_clients = [cid for cid, caps in connection_capabilities.items() if "hud_client" in caps]
         logger.info(f"   Active HUD clients: {len(hud_clients)}")
         logger.info("=" * 80)
 
@@ -1438,7 +1458,9 @@ class UnifiedWebSocketManager:
         self.hud_state["last_update"] = datetime.now().isoformat()
 
         if not hud_clients:
-            logger.warning("   ⚠️  No HUD clients connected - completion signal will not be delivered!")
+            logger.warning(
+                "   ⚠️  No HUD clients connected - completion signal will not be delivered!"
+            )
 
         try:
             await self.broadcast(
@@ -1447,14 +1469,15 @@ class UnifiedWebSocketManager:
                     "success": success,
                     "progress": 100,
                     "message": status_msg,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 },
-                capability="hud_client"
+                capability="hud_client",
             )
             logger.info(f"   ✓ Completion signal broadcast to {len(hud_clients)} HUD client(s)")
         except Exception as e:
             logger.error(f"   ❌ Failed to broadcast completion signal: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
 
     async def send_hud_transcript(self, speaker: str, text: str):
@@ -1468,7 +1491,7 @@ class UnifiedWebSocketManager:
         transcript_entry = {
             "speaker": speaker,
             "text": text,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Add to state (keep last 10)
@@ -1478,11 +1501,7 @@ class UnifiedWebSocketManager:
 
         # Broadcast to HUD clients
         await self.broadcast(
-            {
-                "type": "transcript",
-                "data": transcript_entry
-            },
-            capability="hud_client"
+            {"type": "transcript", "data": transcript_entry}, capability="hud_client"
         )
 
     async def set_hud_reactor_state(self, state: str):
@@ -1495,12 +1514,8 @@ class UnifiedWebSocketManager:
         self.hud_state["reactor_state"] = state
 
         await self.broadcast(
-            {
-                "type": "reactor_state",
-                "state": state,
-                "timestamp": datetime.now().isoformat()
-            },
-            capability="hud_client"
+            {"type": "reactor_state", "state": state, "timestamp": datetime.now().isoformat()},
+            capability="hud_client",
         )
 
     # ============================================================================
@@ -1740,7 +1755,9 @@ class UnifiedWebSocketManager:
             "delay_ms": 1000,
         }
 
-    async def _handle_model_status(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_model_status(
+        self, _client_id: str, _message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle ML model status requests"""
         # This would integrate with ML model loader
         return {
@@ -1761,7 +1778,9 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _handle_notification(self, _client_id: str, _message: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_notification(
+        self, _client_id: str, _message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle notification detection"""
         # This would integrate with notification detection
         return {
@@ -1816,6 +1835,7 @@ def set_jarvis_instance(jarvis_api):
 # HUD HELPER FUNCTIONS - For easy access from anywhere in backend
 # ============================================================================
 
+
 async def send_loading_progress(progress: int, message: str):
     """
     Send loading progress update to HUD during system startup
@@ -1848,13 +1868,10 @@ async def update_hud_status(status: str, message: str = ""):
     await ws_manager.broadcast(
         {
             "type": "state_update",
-            "updates": {
-                "status": status,
-                "message": message
-            },
-            "timestamp": datetime.now().isoformat()
+            "updates": {"status": status, "message": message},
+            "timestamp": datetime.now().isoformat(),
         },
-        capability="hud_client"
+        capability="hud_client",
     )
 
 
