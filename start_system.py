@@ -9980,7 +9980,7 @@ async def main():
                 )
                 try:
                     os.kill(proc["pid"], signal.SIGTERM)
-                    time.sleep(1)
+                    await asyncio.sleep(1)
                     if psutil.pid_exists(proc["pid"]):
                         os.kill(proc["pid"], signal.SIGKILL)
                     print(f" {Colors.GREEN}✓{Colors.ENDC}")
@@ -9988,7 +9988,7 @@ async def main():
                     print(f" {Colors.FAIL}✗{Colors.ENDC} ({e})")
 
             print(f"\n{Colors.CYAN}Waiting for processes to terminate...{Colors.ENDC}")
-            time.sleep(2)
+            await asyncio.sleep(2)
             print(f"{Colors.GREEN}✓ Ready to start fresh instance{Colors.ENDC}\n")
 
     # Loading server process (module scope for cleanup)
@@ -10245,8 +10245,7 @@ async def main():
                     )
                     if kill_result.returncode == 0:
                         print(f"{Colors.GREEN}   ✓ Killed existing HUD instance{Colors.ENDC}")
-                        import time
-                        time.sleep(0.5)  # Give it time to close
+                        await asyncio.sleep(0.5)  # Give it time to close
 
                     # Store HUD path for later launch AFTER backend is ready
                     print(f"{Colors.GREEN}   ✓ HUD built successfully - will launch after backend is ready{Colors.ENDC}")
@@ -10724,7 +10723,7 @@ async def main():
                         try:
                             print(f"  → Terminating cloud-sql-proxy PID {pid}...", end="", flush=True)
                             os.kill(pid, signal.SIGTERM)
-                            time.sleep(0.5)
+                            await asyncio.sleep(0.5)
                             if psutil.pid_exists(pid):
                                 os.kill(pid, signal.SIGKILL)
                             print(f" {Colors.GREEN}✓{Colors.ENDC}")
