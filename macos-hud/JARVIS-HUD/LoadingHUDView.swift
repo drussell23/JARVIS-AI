@@ -23,9 +23,17 @@ struct LoadingHUDView: View {
     @State private var progress: CGFloat = 0
     @State private var logoScale: CGFloat = 1.0
     @State private var showMatrixTransition: Bool = false
-    @StateObject private var pythonBridge = PythonBridge()
+
+    // Use shared PythonBridge from AppState instead of creating our own
+    // This ensures WebSocket connection persists when transitioning to HUDView
+    @EnvironmentObject var appState: AppState
 
     var onComplete: () -> Void
+
+    // Convenience accessor for cleaner code
+    private var pythonBridge: PythonBridge {
+        appState.pythonBridge
+    }
 
     var body: some View {
         ZStack {
@@ -115,8 +123,8 @@ struct LoadingHUDView: View {
         }
         .onAppear {
             startLoadingAnimation()
-            // Connect to backend for real-time progress
-            pythonBridge.connect()
+            // PythonBridge already connected in AppState.init()
+            print("ℹ️ LoadingHUDView using shared PythonBridge (already connected)")
         }
         .onChange(of: pythonBridge.loadingProgress) { newProgress in
             // Update progress from backend in real-time

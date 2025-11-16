@@ -101,6 +101,10 @@ DerivedData/
 !default.perspectivev3
 xcuserdata/
 
+# Apple Developer certificates (install manually from Apple)
+*.cer
+DeveloperIDG2CA.cer
+
 # Native extensions build artifacts
 backend/native_extensions/build/
 backend/native_extensions/*.so

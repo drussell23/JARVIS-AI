@@ -21,11 +21,13 @@ struct JARVISApp: App {
                     if appState.isLoadingComplete {
                         HUDView(onQuit: appDelegate.quitHUD)
                             .background(WindowAccessor())
+                            .environmentObject(appState)  // Inject AppState for PythonBridge access
                     } else {
                         LoadingHUDView {
                             appState.isLoadingComplete = true
                         }
                         .background(WindowAccessor())
+                        .environmentObject(appState)  // Inject AppState for PythonBridge access
                     }
                 }
             }
@@ -41,6 +43,23 @@ struct JARVISApp: App {
 /// App state manager
 class AppState: ObservableObject {
     @Published var isLoadingComplete: Bool = false
+
+    // CRITICAL: PythonBridge MUST persist across LoadingHUDView → HUDView transition
+    // If each view creates its own @StateObject PythonBridge, the WebSocket connection
+    // is destroyed when transitioning from Loading to HUD view!
+    @Published var pythonBridge: PythonBridge
+
+    init() {
+        // Initialize PythonBridge once at app launch
+        self.pythonBridge = PythonBridge()
+
+        print("🔗 AppState initialized with shared PythonBridge")
+        print("   Backend WS: \(pythonBridge.websocketURL)")
+        print("   Backend HTTP: \(pythonBridge.apiBaseURL)")
+
+        // Connect to backend immediately when app launches
+        pythonBridge.connect()
+    }
 }
 
 /// App delegate for macOS-specific configuration

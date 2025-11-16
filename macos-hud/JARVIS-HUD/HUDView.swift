@@ -18,11 +18,16 @@ enum HUDState {
 }
 
 /// Transcript message
-struct TranscriptMessage: Identifiable {
+struct TranscriptMessage: Identifiable, Equatable {
     let id = UUID()
     let speaker: String // "YOU" or "JARVIS"
     let text: String
     let timestamp: Date
+
+    // Equatable conformance (required for onChange)
+    static func == (lhs: TranscriptMessage, rhs: TranscriptMessage) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 /// Main JARVIS HUD View - Matches web app exactly
@@ -33,6 +38,14 @@ struct HUDView: View {
     @State private var statusText: String = "SYSTEM OFFLINE - START BACKEND"
     @State private var commandText: String = ""
     var onQuit: (() -> Void)? = nil  // Callback to quit HUD
+
+    // Use shared PythonBridge from AppState (persisted from LoadingHUDView)
+    @EnvironmentObject var appState: AppState
+
+    // Convenience accessor for cleaner code
+    private var pythonBridge: PythonBridge {
+        appState.pythonBridge
+    }
 
     var body: some View {
         ZStack {
@@ -118,26 +131,54 @@ struct HUDView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            addDemoMessages()
+            print("✅ HUDView appeared - using shared PythonBridge")
+            print("   Connection status: \(pythonBridge.connectionStatus)")
+            updateStatusFromConnection()
+        }
+        .onChange(of: pythonBridge.connectionStatus) { newStatus in
+            updateStatusFromConnection()
+        }
+        .onChange(of: pythonBridge.hudState) { newState in
+            hudState = newState
+        }
+        .onChange(of: pythonBridge.transcriptMessages) { newMessages in
+            transcriptMessages = newMessages
+        }
+    }
+
+    private func updateStatusFromConnection() {
+        switch pythonBridge.connectionStatus {
+        case .connected:
+            statusText = "SYSTEM ONLINE - CONNECTED TO BACKEND"
+        case .connecting:
+            statusText = "CONNECTING TO BACKEND..."
+        case .disconnected:
+            statusText = "SYSTEM OFFLINE - BACKEND DISCONNECTED"
+        case .error:
+            statusText = "CONNECTION ERROR - RETRYING..."
         }
     }
 
     private func sendCommand() {
-        // Handle command sending
+        // Handle command sending via PythonBridge
         if !commandText.isEmpty {
-            transcriptMessages.append(
-                TranscriptMessage(speaker: "YOU", text: commandText, timestamp: Date())
-            )
+            // Add to local transcript immediately for responsive UI
+            let message = TranscriptMessage(speaker: "YOU", text: commandText, timestamp: Date())
+            transcriptMessages.append(message)
+
+            // Send to backend via HTTP API
+            Task {
+                do {
+                    try await pythonBridge.sendCommand(commandText)
+                    print("✅ Command sent to backend: \(commandText)")
+                } catch {
+                    print("❌ Failed to send command: \(error)")
+                    statusText = "ERROR: Failed to send command"
+                }
+            }
+
             commandText = ""
         }
-    }
-
-    /// Add demo messages
-    private func addDemoMessages() {
-        transcriptMessages = [
-            TranscriptMessage(speaker: "YOU", text: "unlock my screen", timestamp: Date()),
-            TranscriptMessage(speaker: "JARVIS", text: "Screen unlocked by Derek J. Russell", timestamp: Date())
-        ]
     }
 }
 

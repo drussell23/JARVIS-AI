@@ -23,8 +23,8 @@ class PythonBridge: ObservableObject {
 
     // MARK: - Configuration
 
-    private let websocketURL: URL
-    private let apiBaseURL: URL
+    let websocketURL: URL  // Made public for AppState logging
+    let apiBaseURL: URL    // Made public for AppState logging
     private var webSocketTask: URLSessionWebSocketTask?
     private var cancellables = Set<AnyCancellable>()
     private var reconnectTimer: Timer?
