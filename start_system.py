@@ -10208,13 +10208,50 @@ async def main():
 
                     # Launch HUD app with explicit activation
                     print(f"{Colors.CYAN}   🚀 Launching HUD window...{Colors.ENDC}")
-                    launch_result = subprocess.run(
-                        ["open", "-a", str(hud_app_path), "--new"],
-                        capture_output=True,
-                        text=True
-                    )
 
-                    if launch_result.returncode == 0:
+                    # Try multiple launch methods for robustness
+                    launch_success = False
+
+                    # Method 1: Direct executable launch (most reliable)
+                    executable_path = hud_app_path / "Contents/MacOS/JARVIS-HUD"
+                    if executable_path.exists():
+                        print(f"{Colors.CYAN}   → Trying direct executable launch...{Colors.ENDC}")
+                        try:
+                            # Set JARVIS backend environment variables for HUD
+                            hud_env = os.environ.copy()
+                            hud_env["JARVIS_BACKEND_WS"] = "ws://localhost:8010/ws"
+                            hud_env["JARVIS_BACKEND_HTTP"] = "http://localhost:8010"
+
+                            # Launch directly without going through LaunchServices
+                            hud_process = subprocess.Popen(
+                                [str(executable_path)],
+                                env=hud_env,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True
+                            )
+
+                            # Check if it started
+                            import time
+                            time.sleep(0.5)
+                            if hud_process.poll() is None:
+                                launch_success = True
+                                print(f"{Colors.GREEN}   ✓ HUD launched directly (PID: {hud_process.pid}){Colors.ENDC}")
+                        except Exception as e:
+                            print(f"{Colors.YELLOW}   → Direct launch failed: {e}{Colors.ENDC}")
+
+                    # Method 2: Fallback to open command
+                    if not launch_success:
+                        print(f"{Colors.CYAN}   → Trying open command...{Colors.ENDC}")
+                        launch_result = subprocess.run(
+                            ["open", "-a", str(hud_app_path), "--new"],
+                            capture_output=True,
+                            text=True
+                        )
+                        if launch_result.returncode == 0:
+                            launch_success = True
+
+                    if launch_success:
                         print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
 
                         # Wait a moment and verify it's running
