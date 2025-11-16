@@ -266,10 +266,10 @@ class PythonBridge: ObservableObject {
                 case "status":
                     print("📊 [WebSocket] Handling status update")
                     self.handleStatusUpdate(json)
-                case "loading_progress":
+                case "loading_progress", "hud_progress":
                     print("⏳ [WebSocket] Handling loading progress")
                     self.handleLoadingProgress(json)
-                case "loading_complete":
+                case "loading_complete", "hud_loading_complete":
                     print("✅ [WebSocket] Handling loading complete")
                     self.handleLoadingComplete(json)
                 case "command_response", "response":
