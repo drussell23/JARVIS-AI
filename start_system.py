@@ -10206,54 +10206,49 @@ async def main():
                         import time
                         time.sleep(0.5)  # Give it time to close
 
-                    # Launch HUD app with explicit activation
-                    print(f"{Colors.CYAN}   🚀 Launching HUD window...{Colors.ENDC}")
+                    # Launch HUD app with advanced launcher
+                    print(f"{Colors.CYAN}   🚀 Launching HUD window with advanced launcher...{Colors.ENDC}")
 
-                    # Try multiple launch methods for robustness
                     launch_success = False
 
-                    # Method 1: Direct executable launch (most reliable)
-                    executable_path = hud_app_path / "Contents/MacOS/JARVIS-HUD"
-                    if executable_path.exists():
-                        print(f"{Colors.CYAN}   → Trying direct executable launch...{Colors.ENDC}")
-                        try:
-                            # Set JARVIS backend environment variables for HUD
-                            hud_env = os.environ.copy()
-                            hud_env["JARVIS_BACKEND_WS"] = "ws://localhost:8010/ws"
-                            hud_env["JARVIS_BACKEND_HTTP"] = "http://localhost:8010"
+                    # Try the advanced launcher first
+                    try:
+                        # Import our advanced launcher
+                        from macos_hud_launcher import launch_hud_async_safe
 
-                            # Launch directly without going through LaunchServices
-                            hud_process = subprocess.Popen(
-                                [str(executable_path)],
-                                env=hud_env,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                start_new_session=True
-                            )
+                        # Launch HUD with all available strategies (async-aware)
+                        launch_success = await launch_hud_async_safe(hud_app_path)
 
-                            # Check if it started
-                            import time
-                            time.sleep(0.5)
-                            if hud_process.poll() is None:
-                                launch_success = True
-                                print(f"{Colors.GREEN}   ✓ HUD launched directly (PID: {hud_process.pid}){Colors.ENDC}")
-                        except Exception as e:
-                            print(f"{Colors.YELLOW}   → Direct launch failed: {e}{Colors.ENDC}")
+                        if launch_success:
+                            print(f"{Colors.GREEN}   ✅ macOS HUD launched successfully!{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → HUD will connect to backend WebSocket at ws://localhost:8010/ws{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Progress updates will stream in real-time{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Use Cmd+\\ to toggle HUD visibility{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Click Arc Reactor center to quit HUD{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}   ⚠️ Advanced launcher couldn't start HUD automatically{Colors.ENDC}")
 
-                    # Method 2: Fallback to open command
+                    except ImportError:
+                        print(f"{Colors.YELLOW}   ⚠️ Advanced launcher not available, using fallback method{Colors.ENDC}")
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️ Advanced launcher error: {e}{Colors.ENDC}")
+
+                    # Fallback to simple open if advanced launcher failed
                     if not launch_success:
-                        print(f"{Colors.CYAN}   → Trying open command...{Colors.ENDC}")
-                        launch_result = subprocess.run(
-                            ["open", "-a", str(hud_app_path), "--new"],
+                        print(f"{Colors.CYAN}   → Attempting simple open command fallback...{Colors.ENDC}")
+                        fallback_result = subprocess.run(
+                            ["open", str(hud_app_path)],
                             capture_output=True,
                             text=True
                         )
-                        if launch_result.returncode == 0:
+
+                        if fallback_result.returncode == 0:
                             launch_success = True
+                            print(f"{Colors.GREEN}   ✓ HUD launched with fallback method{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}   → Fallback failed: {fallback_result.stderr[:200]}{Colors.ENDC}")
 
                     if launch_success:
-                        print(f"{Colors.GREEN}   ✓ macOS HUD launched{Colors.ENDC}")
-
                         # Wait a moment and verify it's running
                         import time
                         time.sleep(1)
@@ -10268,7 +10263,8 @@ async def main():
                         else:
                             print(f"{Colors.YELLOW}   ⚠️  HUD may not have started (no process found){Colors.ENDC}")
                     else:
-                        print(f"{Colors.YELLOW}   ⚠️  Failed to launch HUD: {launch_result.stderr}{Colors.ENDC}")
+                        print(f"{Colors.YELLOW}   ⚠️  Could not launch HUD automatically{Colors.ENDC}")
+                        print(f"{Colors.YELLOW}   → You may need to manually open: {hud_app_path}{Colors.ENDC}")
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
                     print(f"{Colors.YELLOW}   Searched: {search_paths}{Colors.ENDC}")
@@ -10616,7 +10612,7 @@ async def main():
                         failed_count += 1
 
                 print(f"\n{Colors.YELLOW}⏳ Waiting for processes to terminate...{Colors.ENDC}")
-                time.sleep(2)
+                await asyncio.sleep(2)
 
                 # Final verification
                 still_alive = []

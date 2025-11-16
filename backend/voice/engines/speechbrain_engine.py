@@ -42,19 +42,65 @@ from typing import AsyncIterator, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-# Pre-import torchvision to prevent kernel registration conflicts
-# This ensures torchvision is fully initialized before SpeechBrain imports it via transformers
-try:
-    import torchvision
-    import torchvision.ops
-    # Force initialization of torchvision ops to register kernels early
-    if hasattr(torchvision.ops, 'roi_align'):
-        _ = torchvision.ops.roi_align
-    logger = logging.getLogger(__name__)
-    logger.debug("✅ Pre-initialized torchvision to prevent kernel conflicts")
-except ImportError:
-    logger = logging.getLogger(__name__)
-    logger.debug("Torchvision not available, continuing without it")
+# Advanced torchvision conflict resolution with dynamic handling
+import sys
+
+# Create logger before torchvision import
+logger = logging.getLogger(__name__)
+
+def safe_import_torchvision():
+    """Safely import torchvision with advanced conflict resolution"""
+
+    # Check if torchvision is already loaded
+    if 'torchvision' in sys.modules:
+        logger.debug("✅ Torchvision already imported, reusing existing module")
+        return sys.modules['torchvision']
+
+    # Check if ops are already registered in torch
+    if hasattr(torch.ops, 'torchvision') and hasattr(torch.ops.torchvision, 'roi_align'):
+        logger.warning("⚠️ Torchvision ops already registered, creating compatibility wrapper")
+        # Create a mock module to prevent re-import conflicts
+        import types
+        torchvision = types.ModuleType('torchvision')
+        torchvision.ops = torch.ops.torchvision
+        # Register in sys.modules to prevent future imports
+        sys.modules['torchvision'] = torchvision
+        sys.modules['torchvision.ops'] = torchvision.ops
+        return torchvision
+
+    try:
+        # Try fresh import with warning suppression
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", message=".*already a kernel registered.*")
+
+            import torchvision
+            import torchvision.ops
+            logger.debug("✅ Torchvision imported successfully")
+            return torchvision
+
+    except RuntimeError as e:
+        if "already a kernel registered" in str(e):
+            logger.warning(f"⚠️ Handling torchvision kernel conflict: {str(e)[:100]}...")
+            # Create compatibility wrapper
+            import types
+            torchvision = types.ModuleType('torchvision')
+            if hasattr(torch.ops, 'torchvision'):
+                torchvision.ops = torch.ops.torchvision
+            sys.modules['torchvision'] = torchvision
+            if hasattr(torchvision, 'ops'):
+                sys.modules['torchvision.ops'] = torchvision.ops
+            return torchvision
+        else:
+            # Re-raise other runtime errors
+            raise
+
+    except ImportError as e:
+        logger.debug(f"Torchvision not available: {e}, continuing without it")
+        return None
+
+# Safe import with comprehensive conflict resolution
+torchvision = safe_import_torchvision()
 
 import torchaudio
 from scipy import signal
