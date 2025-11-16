@@ -41,6 +41,21 @@ from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
+
+# Pre-import torchvision to prevent kernel registration conflicts
+# This ensures torchvision is fully initialized before SpeechBrain imports it via transformers
+try:
+    import torchvision
+    import torchvision.ops
+    # Force initialization of torchvision ops to register kernels early
+    if hasattr(torchvision.ops, 'roi_align'):
+        _ = torchvision.ops.roi_align
+    logger = logging.getLogger(__name__)
+    logger.debug("✅ Pre-initialized torchvision to prevent kernel conflicts")
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.debug("Torchvision not available, continuing without it")
+
 import torchaudio
 from scipy import signal
 from scipy.signal import butter, filtfilt, medfilt

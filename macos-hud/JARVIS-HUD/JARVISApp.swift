@@ -133,7 +133,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Setup keyboard shortcuts for HUD control
     private func setupKeyboardShortcuts() {
-        // Local event monitor for keyboard shortcuts
+        // Use GLOBAL event monitor since HUD is a floating overlay without focus
+        // This ensures shortcuts work even when HUD doesn't have keyboard focus
+        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags
+
+            // Cmd+\ (backslash key code is 42) - Toggle HUD visibility
+            if modifiers.contains(.command) && event.keyCode == 42 {
+                self.toggleHUDVisibility()
+                return // Global monitors can't consume events
+            }
+
+            // Cmd+Q+O - Quit HUD application (both keys must be held with Cmd)
+            // This is a three-key combination: Cmd + Q + O
+            if modifiers.contains(.command) {
+                // Check if Q (12) and O (31) are both pressed simultaneously
+                let qPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
+                let oPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
+
+                if qPressed && oPressed {
+                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
+                    self.quitHUD()
+                    return
+                }
+            }
+        }
+
+        // Also add local monitor for when app has focus (better responsiveness)
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags
 
@@ -143,23 +169,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return nil // Consume the event
             }
 
-            // Cmd+Q+O (Q=12, O=31) - Quit HUD application
-            // Check if both Cmd and Q are pressed
-            if modifiers.contains(.command) && event.keyCode == 12 {
-                // Check if O key is also being held (key code 31)
-                let oKeyPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
-                if oKeyPressed {
-                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
-                    self.quitHUD()
-                    return nil
-                }
-            }
+            // Cmd+Q+O - Quit HUD application
+            if modifiers.contains(.command) {
+                let qPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
+                let oPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
 
-            // Cmd+O+Q (O=31, Q=12) - Alternative order
-            if modifiers.contains(.command) && event.keyCode == 31 {
-                let qKeyPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
-                if qKeyPressed {
-                    print("🛑 Cmd+O+Q detected - Quitting JARVIS HUD")
+                if qPressed && oPressed {
+                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
                     self.quitHUD()
                     return nil
                 }
