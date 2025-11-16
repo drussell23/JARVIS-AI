@@ -32,6 +32,7 @@ struct HUDView: View {
     @State private var transcriptMessages: [TranscriptMessage] = []
     @State private var statusText: String = "SYSTEM OFFLINE - START BACKEND"
     @State private var commandText: String = ""
+    var onQuit: (() -> Void)? = nil  // Callback to quit HUD
 
     var body: some View {
         ZStack {
@@ -62,7 +63,7 @@ struct HUDView: View {
                 Spacer()
 
                 // Center: Arc Reactor (matches web app 420px container)
-                ArcReactorView(state: hudState)
+                ArcReactorView(state: hudState, onQuit: onQuit)
                     .frame(width: 440, height: 440)
 
                 Spacer()

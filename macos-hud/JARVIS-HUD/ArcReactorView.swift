@@ -17,12 +17,15 @@ import SwiftUI
 struct ArcReactorView: View {
 
     let state: HUDState
+    var onQuit: (() -> Void)? = nil  // Callback when reactor is clicked
+
     @State private var coreScale: CGFloat = 1.0
     @State private var innerCoreScale: CGFloat = 1.0
     @State private var ring1Rotation: Double = 0
     @State private var ring2Rotation: Double = 0
     @State private var ring3Rotation: Double = 0
     @State private var ringOpacity: Double = 0.4
+    @State private var isHovering: Bool = false
 
     var body: some View {
         ZStack {
@@ -105,6 +108,16 @@ struct ArcReactorView: View {
         .onChange(of: state) { newState in
             updateReactorForState(newState)
         }
+        .onTapGesture {
+            // Make reactor clickable to quit HUD
+            handleReactorClick()
+        }
+        .scaleEffect(isHovering ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isHovering)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .help("Click to quit JARVIS HUD")  // Tooltip on hover
     }
 
     private func startAnimations() {
@@ -167,6 +180,12 @@ struct ArcReactorView: View {
             // Keep cyan gradient
             break
         }
+    }
+
+    /// Handle reactor click to quit HUD
+    private func handleReactorClick() {
+        print("🎯 Arc Reactor clicked - triggering quit callback")
+        onQuit?()
     }
 }
 

@@ -19,7 +19,7 @@ struct JARVISApp: App {
             ClickThroughContainer {
                 Group {
                     if appState.isLoadingComplete {
-                        HUDView()
+                        HUDView(onQuit: appDelegate.quitHUD)
                             .background(WindowAccessor())
                     } else {
                         LoadingHUDView {
@@ -231,7 +231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Quit HUD with graceful fade-out animation
-    private func quitHUD() {
+    func quitHUD() {
         print("👋 Shutting down JARVIS HUD gracefully...")
 
         // Fade out all windows with animation
