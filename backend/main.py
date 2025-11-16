@@ -2724,6 +2724,22 @@ except Exception as e:
     logger.warning("⚠️  Using minimal fallback CORS configuration")
 
 
+# ═══════════════════════════════════════════════════════════════
+# MOUNT UNIFIED WEBSOCKET ROUTER (Must be done BEFORE server starts!)
+# ═══════════════════════════════════════════════════════════════
+logger.info("📡 Mounting Unified WebSocket API...")
+
+# CRITICAL: Mount WebSocket router at module level (before uvicorn.run())
+# FastAPI does NOT allow adding routes after the server starts!
+try:
+    from api.unified_websocket import router as unified_ws_router
+
+    app.include_router(unified_ws_router, tags=["websocket"])
+    logger.info("✅ Unified WebSocket API mounted at /ws")
+except ImportError as e:
+    logger.error(f"❌ Could not import unified WebSocket router: {e}")
+    logger.error("   HUD will not be able to connect!")
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
