@@ -44,9 +44,17 @@ import torch
 
 # Advanced torchvision conflict resolution with dynamic handling
 import sys
+import types
 
 # Create logger before torchvision import
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# CRITICAL: TORCHVISION IMPORT FIX - MUST RUN BEFORE ANY OTHER IMPORTS
+# ============================================================================
+# This MUST run before torchaudio, transformers, or any speechbrain imports
+# because transformers tries to import torchvision.transforms
 
 def safe_import_torchvision():
     """Safely import torchvision with advanced conflict resolution - MUST run before transformers"""
@@ -58,24 +66,12 @@ def safe_import_torchvision():
         if not hasattr(tv_module, 'transforms'):
             logger.warning("⚠️ Found corrupted torchvision module, removing from sys.modules")
             # Remove all torchvision submodules
-            keys_to_remove = [k for k in sys.modules.keys() if k.startswith('torchvision')] 
+            keys_to_remove = [k for k in sys.modules.keys() if k.startswith('torchvision')]
             for key in keys_to_remove:
                 del sys.modules[key]
         else:
             logger.debug("✅ Torchvision already imported correctly, reusing existing module")
             return sys.modules['torchvision']
-
-    # Check if ops are already registered in torch
-    if hasattr(torch.ops, 'torchvision') and hasattr(torch.ops.torchvision, 'roi_align'):
-        logger.warning("⚠️ Torchvision ops already registered, creating compatibility wrapper")
-        # Create a mock module to prevent re-import conflicts
-        import types
-        torchvision = types.ModuleType('torchvision')
-        torchvision.ops = torch.ops.torchvision
-        # Register in sys.modules to prevent future imports
-        sys.modules['torchvision'] = torchvision
-        sys.modules['torchvision.ops'] = torchvision.ops
-        return torchvision
 
     try:
         # Try fresh import with warning suppression
@@ -92,24 +88,52 @@ def safe_import_torchvision():
     except RuntimeError as e:
         if "already a kernel registered" in str(e):
             logger.warning(f"⚠️ Handling torchvision kernel conflict: {str(e)[:100]}...")
-            # Create compatibility wrapper
-            import types
+            # Create compatibility wrapper with transforms
             torchvision = types.ModuleType('torchvision')
             if hasattr(torch.ops, 'torchvision'):
                 torchvision.ops = torch.ops.torchvision
+
+            # Create mock transforms module for transformers library compatibility
+            transforms = types.ModuleType('torchvision.transforms')
+            # Add InterpolationMode enum that transformers expects
+            class InterpolationMode:
+                NEAREST = 0
+                BILINEAR = 2
+                BICUBIC = 3
+            transforms.InterpolationMode = InterpolationMode
+            torchvision.transforms = transforms
+
+            # Register in sys.modules to prevent future imports
             sys.modules['torchvision'] = torchvision
-            if hasattr(torchvision, 'ops'):
-                sys.modules['torchvision.ops'] = torchvision.ops
+            sys.modules['torchvision.ops'] = torchvision.ops
+            sys.modules['torchvision.transforms'] = transforms
+            logger.debug("✅ Created compatibility wrapper with transforms mock")
             return torchvision
         else:
             # Re-raise other runtime errors
             raise
 
     except ImportError as e:
-        logger.warning(f"⚠️ Torchvision not available: {e}, continuing without it")
-        return None
+        logger.warning(f"⚠️ Torchvision not available: {e}, creating minimal mock for transformers")
+        # Create minimal mock for transformers compatibility
+        torchvision = types.ModuleType('torchvision')
 
-# Safe import with comprehensive conflict resolution - CRITICAL: This must run BEFORE any speechbrain/transformers imports
+        # Create mock transforms module
+        transforms = types.ModuleType('torchvision.transforms')
+        class InterpolationMode:
+            NEAREST = 0
+            BILINEAR = 2
+            BICUBIC = 3
+        transforms.InterpolationMode = InterpolationMode
+        torchvision.transforms = transforms
+
+        # Register in sys.modules
+        sys.modules['torchvision'] = torchvision
+        sys.modules['torchvision.transforms'] = transforms
+        logger.debug("✅ Created minimal mock with transforms for transformers")
+        return torchvision
+
+# CRITICAL: Execute torchvision fix IMMEDIATELY, before any other imports
 torchvision = safe_import_torchvision()
 
 import torchaudio
@@ -117,8 +141,6 @@ from scipy import signal
 from scipy.signal import butter, filtfilt, medfilt
 
 from .base_engine import BaseSTTEngine, STTResult
-
-logger = logging.getLogger(__name__)
 
 # Suppress MPS FFT fallback warnings (expected behavior for unsupported ops)
 warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarning)
