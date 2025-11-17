@@ -17,6 +17,25 @@ enum HUDState {
     case idle
 }
 
+/// Voice interaction state
+enum VoiceState {
+    case inactive
+    case waitingForWakeWord
+    case listeningForCommand
+    case processing
+}
+
+/// Voice status message
+struct VoiceStatus {
+    let state: VoiceState
+    let message: String
+
+    static let inactive = VoiceStatus(state: .inactive, message: "Voice detection inactive")
+    static let waitingForWakeWord = VoiceStatus(state: .waitingForWakeWord, message: "Say \"Hey JARVIS\"")
+    static let listeningForCommand = VoiceStatus(state: .listeningForCommand, message: "Listening...")
+    static let processing = VoiceStatus(state: .processing, message: "Processing...")
+}
+
 /// Transcript message
 struct TranscriptMessage: Identifiable, Equatable {
     let id = UUID()
@@ -37,6 +56,9 @@ struct HUDView: View {
     @State private var transcriptMessages: [TranscriptMessage] = []
     @State private var statusText: String = "SYSTEM OFFLINE - START BACKEND"
     @State private var commandText: String = ""
+    @State private var voiceStatus: VoiceStatus = .inactive
+    @State private var isWakeWordActive: Bool = false
+    @State private var currentTranscript: String = ""  // Real-time voice transcript
     var onQuit: (() -> Void)? = nil  // Callback to quit HUD
 
     // Use shared PythonBridge from AppState (persisted from LoadingHUDView)
@@ -111,6 +133,14 @@ struct HUDView: View {
                 }
                 .padding(.bottom, 30)
 
+                // Voice Status Indicator (matching web app "Say 'Hey JARVIS'" banner)
+                VoiceStatusBanner(
+                    voiceStatus: voiceStatus,
+                    currentTranscript: currentTranscript
+                )
+                .padding(.horizontal, 60)
+                .padding(.bottom, 10)
+
                 // Transcript section
                 TranscriptView(messages: transcriptMessages)
                     .frame(height: 180)
@@ -165,6 +195,29 @@ struct HUDView: View {
         }
         .onChange(of: pythonBridge.transcriptMessages) { newMessages in
             transcriptMessages = newMessages
+        }
+        .onChange(of: pythonBridge.voiceState) { newState in
+            updateVoiceStatus(from: newState)
+        }
+        .onChange(of: pythonBridge.voiceTranscript) { newTranscript in
+            currentTranscript = newTranscript
+        }
+    }
+
+    private func updateVoiceStatus(from state: String) {
+        switch state {
+        case "wake_word_listening":
+            voiceStatus = .waitingForWakeWord
+            isWakeWordActive = true
+        case "listening":
+            voiceStatus = .listeningForCommand
+        case "processing":
+            voiceStatus = .processing
+        case "inactive":
+            voiceStatus = .inactive
+            isWakeWordActive = false
+        default:
+            break
         }
     }
 
@@ -256,6 +309,64 @@ struct ConnectionStateIndicator: View {
             return .red.opacity(0.6)
         case .error:
             return .red
+        }
+    }
+}
+
+/// Voice Status Banner - Shows wake word detection and listening status
+struct VoiceStatusBanner: View {
+    let voiceStatus: VoiceStatus
+    let currentTranscript: String
+
+    var body: some View {
+        if voiceStatus.state != .inactive {
+            HStack(spacing: 8) {
+                // Status indicator dot
+                Circle()
+                    .fill(indicatorColor)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: indicatorColor.opacity(0.8), radius: 4)
+                    .scaleEffect(voiceStatus.state == .listeningForCommand ? 1.2 : 1.0)
+                    .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: voiceStatus.state)
+
+                // Status text
+                Text(displayMessage)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.jarvisGreen)
+                    .tracking(1)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.jarvisGreen.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.jarvisGreen.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            .transition(.opacity.combined(with: .scale))
+        }
+    }
+
+    private var displayMessage: String {
+        // If actively listening and we have a transcript, show it
+        if voiceStatus.state == .listeningForCommand && !currentTranscript.isEmpty {
+            return currentTranscript
+        }
+        return voiceStatus.message
+    }
+
+    private var indicatorColor: Color {
+        switch voiceStatus.state {
+        case .inactive:
+            return .gray
+        case .waitingForWakeWord:
+            return .jarvisGreen.opacity(0.6)
+        case .listeningForCommand:
+            return .jarvisGreen
+        case .processing:
+            return .yellow
         }
     }
 }

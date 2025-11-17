@@ -70,6 +70,10 @@ class PythonBridge: ObservableObject {
     @Published var serverCapabilities: [String] = []
     @Published var detailedConnectionState: String = "Disconnected"
 
+    // Voice interaction state
+    @Published var voiceState: String = "inactive"  // inactive, wake_word_listening, listening, processing
+    @Published var voiceTranscript: String = ""  // Real-time voice transcript
+
     // MARK: - Configuration
 
     let websocketURL: URL  // Made public for AppState logging (legacy)
@@ -642,6 +646,34 @@ class PythonBridge: ObservableObject {
                     self.handleCommandResponse(json)
                 case "pong":
                     print("🏓 [WebSocket] Received pong")
+
+                // 🎤 Voice interaction messages
+                case "wake_word_listening":
+                    print("👂 [WebSocket] Wake word listening active")
+                    self.voiceState = "wake_word_listening"
+                case "wake_word_detected":
+                    print("🎤 [WebSocket] Wake word detected!")
+                    self.voiceState = "listening"
+                    if let wakeWord = json["wake_word"] as? String {
+                        print("   Wake word: \(wakeWord)")
+                    }
+                case "voice_listening":
+                    print("👂 [WebSocket] Voice listening for command")
+                    self.voiceState = "listening"
+                case "voice_transcript":
+                    print("📝 [WebSocket] Voice transcript update")
+                    if let transcript = json["transcript"] as? String {
+                        self.voiceTranscript = transcript
+                        print("   Transcript: \(transcript)")
+                    }
+                case "voice_processing":
+                    print("⚙️ [WebSocket] Voice processing")
+                    self.voiceState = "processing"
+                case "voice_inactive":
+                    print("💤 [WebSocket] Voice inactive")
+                    self.voiceState = "inactive"
+                    self.voiceTranscript = ""
+
                 default:
                     print("⚠️  [WebSocket] Unknown message type: \(type)")
                     break
