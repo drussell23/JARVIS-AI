@@ -13,6 +13,7 @@ Features:
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -209,6 +210,11 @@ class UnifiedWebSocketManager:
         # Stores all progress updates so HUD gets smooth loading experience even if it connects late
         self.progress_buffer: deque = deque(maxlen=100)  # Keep last 100 progress updates
 
+        # WebSocket readiness signaling for HUD coordination
+        self.readiness_signal_file = "/tmp/jarvis/websocket_ready.json"  # nosec B108
+        self.readiness_heartbeat_task: Optional[asyncio.Task] = None
+        self._ensure_signal_directory()
+
         logger.info("[UNIFIED-WS] Advanced WebSocket Manager initialized")
         logger.info(
             "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | "
@@ -257,6 +263,177 @@ class UnifiedWebSocketManager:
             self.connections.pop(client_id, None)
 
         logger.info(f"✅ System restart notification sent to {len(self.connections)} HUD client(s)")
+
+    def _ensure_signal_directory(self):
+        """Ensure signal directory exists"""
+        import os
+        from pathlib import Path
+
+        signal_dir = Path("/tmp/jarvis")  # nosec B108
+        signal_dir.mkdir(parents=True, exist_ok=True)
+
+    def signal_websocket_ready(self, host: str = "localhost", port: int = 8010, endpoint: str = "/ws"):
+        """
+        Signal that WebSocket server is ready for connections
+        Creates a signal file that HUD launcher can monitor
+
+        Args:
+            host: WebSocket server host
+            port: WebSocket server port
+            endpoint: WebSocket endpoint path
+        """
+        import json
+        from pathlib import Path
+
+        signal_data = {
+            "ready": True,
+            "host": host,
+            "port": port,
+            "endpoint": endpoint,
+            "pid": os.getpid(),
+            "started_at": datetime.now().isoformat(),
+            "last_heartbeat": datetime.now().isoformat(),
+        }
+
+        try:
+            # Write signal file atomically
+            signal_path = Path(self.readiness_signal_file)
+            temp_path = signal_path.with_suffix(".tmp")
+
+            with open(temp_path, "w") as f:
+                json.dump(signal_data, f, indent=2)
+
+            temp_path.rename(signal_path)
+
+            logger.info("=" * 80)
+            logger.info("🟢 WebSocket Server READY Signal")
+            logger.info("=" * 80)
+            logger.info(f"   URL: ws://{host}:{port}{endpoint}")
+            logger.info(f"   PID: {os.getpid()}")
+            logger.info(f"   Signal file: {signal_path}")
+            logger.info("=" * 80)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to write readiness signal: {e}")
+
+    async def start_readiness_heartbeat(self, interval: float = 1.0):
+        """
+        Start heartbeat task to keep readiness signal fresh
+
+        Args:
+            interval: Heartbeat interval in seconds
+        """
+        if self.readiness_heartbeat_task is not None:
+            logger.warning("⚠️  Readiness heartbeat already running")
+            return
+
+        async def heartbeat_loop():
+            import json
+            from pathlib import Path
+
+            logger.info(f"💓 Starting WebSocket readiness heartbeat (interval={interval}s)")
+
+            while True:
+                try:
+                    await asyncio.sleep(interval)
+
+                    # Update heartbeat timestamp
+                    signal_path = Path(self.readiness_signal_file)
+
+                    if signal_path.exists():
+                        with open(signal_path) as f:
+                            signal_data = json.load(f)
+
+                        signal_data["last_heartbeat"] = datetime.now().isoformat()
+
+                        # Atomic write
+                        temp_path = signal_path.with_suffix(".tmp")
+                        with open(temp_path, "w") as f:
+                            json.dump(signal_data, f, indent=2)
+                        temp_path.rename(signal_path)
+
+                except asyncio.CancelledError:
+                    logger.info("💓 Readiness heartbeat stopped")
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️  Heartbeat update failed: {e}")
+
+        self.readiness_heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+    def cleanup_readiness_signal(self):
+        """Clean up readiness signal file"""
+        from pathlib import Path
+
+        try:
+            signal_path = Path(self.readiness_signal_file)
+            if signal_path.exists():
+                signal_path.unlink()
+                logger.info(f"🧹 Removed readiness signal: {signal_path}")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to cleanup readiness signal: {e}")
+
+    def is_websocket_ready(self, max_age_seconds: float = 5.0) -> bool:
+        """
+        Check if WebSocket server is ready (client-side check)
+
+        Args:
+            max_age_seconds: Maximum age of heartbeat before considering stale
+
+        Returns:
+            True if server is ready and heartbeat is recent
+        """
+        from pathlib import Path
+
+        try:
+            signal_path = Path(self.readiness_signal_file)
+            if not signal_path.exists():
+                return False
+
+            # Read signal file
+            with open(signal_path) as f:
+                info = json.load(f)
+
+            if not info.get("ready"):
+                return False
+
+            # Check heartbeat freshness
+            last_heartbeat = info.get("last_heartbeat")
+            if last_heartbeat:
+                heartbeat_time = datetime.fromisoformat(last_heartbeat)
+                age = (datetime.now() - heartbeat_time).total_seconds()
+
+                if age > max_age_seconds:
+                    logger.warning(f"⚠️  Stale heartbeat (age={age:.1f}s)")
+                    return False
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to check readiness: {e}")
+            return False
+
+    async def wait_for_websocket_ready(self, timeout: float = 30.0, check_interval: float = 0.1) -> bool:
+        """
+        Wait for WebSocket server to become ready (client-side)
+
+        Args:
+            timeout: Maximum time to wait in seconds
+            check_interval: How often to check in seconds
+
+        Returns:
+            True if server became ready, False if timeout
+        """
+        import time
+
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            if self.is_websocket_ready():
+                return True
+
+            await asyncio.sleep(check_interval)
+
+        return False
 
     def set_intelligence_engines(self, uae=None, sai=None, learning_db=None):
         """Inject intelligence engines (dependency injection - no hardcoding)"""
@@ -370,6 +547,9 @@ class UnifiedWebSocketManager:
             logger.info(
                 f"[UNIFIED-WS] 🧠 Collected {len(self.disconnection_patterns)} connection patterns during session"
             )
+
+        # Clean up readiness signal files
+        self.cleanup_readiness_signal()
 
         # Clear remaining data structures
         self.connection_health.clear()
@@ -2061,3 +2241,23 @@ async def unified_websocket_endpoint(websocket: WebSocket):
             ws_manager.circuit_failures += 1
     finally:
         await ws_manager.disconnect(client_id)
+
+
+# ============================================================================
+# Convenience Functions for External Use
+# ============================================================================
+
+
+async def wait_for_websocket_ready(timeout: float = 30.0, check_interval: float = 0.1) -> bool:
+    """
+    Wait for WebSocket server to become ready (convenience function for HUD launcher)
+
+    Args:
+        timeout: Maximum time to wait in seconds
+        check_interval: How often to check in seconds
+
+    Returns:
+        True if server became ready, False if timeout
+    """
+    manager = get_websocket_manager()
+    return await manager.wait_for_websocket_ready(timeout, check_interval)

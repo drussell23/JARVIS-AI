@@ -10589,7 +10589,7 @@ async def main():
                             import sys
                             sys.path.insert(0, str(backend_dir))
 
-                            from api.websocket_readiness import wait_for_websocket_ready
+                            from api.unified_websocket import wait_for_websocket_ready
                             from macos_hud_launcher import launch_hud_async_safe
 
                             print(f"{Colors.CYAN}   ⏳ Waiting for WebSocket endpoint to become ready...{Colors.ENDC}")

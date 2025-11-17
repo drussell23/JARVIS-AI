@@ -2062,8 +2062,7 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
     This runs AFTER uvicorn starts listening, so HUD can connect immediately
     """
     try:
-        from api.unified_websocket import send_loading_progress, send_loading_complete
-        from api.websocket_readiness import signal_websocket_ready, start_readiness_heartbeat
+        from api.unified_websocket import send_loading_progress, send_loading_complete, get_websocket_manager
 
         # Wait for server to be fully listening
         await asyncio.sleep(1.0)
@@ -2072,10 +2071,11 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
 
         # 🚀 SIGNAL WEBSOCKET READINESS
         # This tells the HUD launcher that the WebSocket endpoint is now available
-        signal_websocket_ready(host="localhost", port=8010, endpoint="/ws")
+        ws_manager = get_websocket_manager()
+        ws_manager.signal_websocket_ready(host="localhost", port=8010, endpoint="/ws")
 
         # Start heartbeat task to keep signal file fresh
-        asyncio.create_task(start_readiness_heartbeat(interval=1.0))
+        asyncio.create_task(ws_manager.start_readiness_heartbeat(interval=1.0))
         await send_loading_progress(10, "Backend server online - starting module loading...")
 
         # Initialize dynamic component manager if enabled
