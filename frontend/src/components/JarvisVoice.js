@@ -14,6 +14,7 @@ import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats dis
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
 import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
+import UniversalWebSocketClient from '../utils/UniversalWebSocketClient'; // 🚀 Universal WebSocket Client
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -634,6 +635,11 @@ const JarvisVoice = () => {
   const [detectedCommand, setDetectedCommand] = useState(null); // 🆕 Command detected by streaming safeguard
   const typingTimeoutRef = useRef(null);
 
+  // 🚀 Universal Client state tracking
+  const [serverVersion, setServerVersion] = useState('unknown');
+  const [serverCapabilities, setServerCapabilities] = useState([]);
+  const [detailedConnectionState, setDetailedConnectionState] = useState('Disconnected');
+
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -648,6 +654,10 @@ const JarvisVoice = () => {
   const wakeWordServiceRef = useRef(null);
   const continuousListeningRef = useRef(false);
   const isWaitingForCommandRef = useRef(false);
+
+  // 🚀 Universal WebSocket Client - Advanced connection management
+  const universalClientRef = useRef(null);
+  const useUniversalClient = useRef(true); // Feature flag for Universal Client
 
   // Circuit breaker for restart loop prevention
   const restartCircuitBreakerRef = useRef({
@@ -804,7 +814,14 @@ const JarvisVoice = () => {
       // Stop health monitoring
       stopHealthMonitoring();
 
-      // Clean up WebSocket
+      // Clean up Universal WebSocket Client if enabled
+      if (useUniversalClient.current && universalClientRef.current) {
+        console.log('[WS-CLEANUP] Disconnecting Universal WebSocket Client');
+        universalClientRef.current.disconnect();
+        universalClientRef.current = null;
+      }
+
+      // Clean up WebSocket (legacy or as fallback)
       if (wsRef.current) {
         console.log('[WS-CLEANUP] Closing WebSocket connection');
         try {
@@ -1041,6 +1058,127 @@ const JarvisVoice = () => {
   });
 
   const connectWebSocket = async () => {
+    // 🚀 Universal WebSocket Client Integration
+    if (useUniversalClient.current) {
+      console.log('🚀 Using UniversalWebSocketClient for connection management');
+
+      // Initialize Universal Client if not already created
+      if (!universalClientRef.current) {
+        const baseURL = API_BASE_URL || 'http://localhost:8010';
+
+        universalClientRef.current = new UniversalWebSocketClient({
+          clientId: `web-${Math.random().toString(36).substring(2, 15)}`,
+          clientType: 'web',
+          capabilities: ['voice', 'vision', 'commands', 'hybrid_stt'],
+          baseURL: baseURL
+        });
+
+        // Set up event handlers to bridge to existing state management
+        universalClientRef.current.on('stateChange', ({ state, attempt }) => {
+          console.log('🔄 Universal Client State:', state, attempt ? `(attempt ${attempt})` : '');
+
+          // Update detailed connection state
+          switch (state) {
+            case 'disconnected':
+              setDetailedConnectionState('Disconnected');
+              setJarvisStatus('offline');
+              break;
+            case 'fetchingConfig':
+              setDetailedConnectionState('Fetching Configuration...');
+              setJarvisStatus('initializing');
+              break;
+            case 'healthCheck':
+              setDetailedConnectionState('Health Check...');
+              setJarvisStatus('initializing');
+              break;
+            case 'connecting':
+              setDetailedConnectionState('Connecting...');
+              setJarvisStatus('connecting');
+              break;
+            case 'connected':
+              setDetailedConnectionState('Connected');
+              setJarvisStatus('active');
+              setError(null);
+              reconnectionStateRef.current.attempts = 0;
+              reconnectionStateRef.current.connectionHealth = 100;
+              reconnectionStateRef.current.reconnecting = false;
+              break;
+            case 'reconnecting':
+              setDetailedConnectionState(`Reconnecting (Attempt ${attempt})...`);
+              setJarvisStatus('connecting');
+              reconnectionStateRef.current.reconnecting = true;
+              break;
+            default:
+              break;
+          }
+        });
+
+        universalClientRef.current.on('connected', () => {
+          console.log('✅ Universal Client Connected');
+
+          // Initialize Hybrid STT Client with Universal Client's websocket
+          if (useHybridSTT && !hybridSTTClientRef.current && universalClientRef.current.websocket) {
+            try {
+              hybridSTTClientRef.current = new HybridSTTClient(universalClientRef.current.websocket, {
+                strategy: 'balanced',
+                speakerName: null,
+                confidenceThreshold: 0.6,
+                continuous: true,
+                interimResults: true
+              });
+              console.log('🎤 [HybridSTT] Client initialized via Universal Client');
+            } catch (error) {
+              console.error('🎤 [HybridSTT] Failed to initialize:', error);
+            }
+          }
+
+          // Start health monitoring
+          startHealthMonitoring();
+        });
+
+        universalClientRef.current.on('disconnected', () => {
+          console.log('🔌 Universal Client Disconnected');
+          stopHealthMonitoring();
+        });
+
+        universalClientRef.current.on('message', (data) => {
+          // Update connection health on message
+          reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 1);
+
+          // Detect welcome message to extract server info
+          if (data.type === 'welcome') {
+            setServerVersion(data.server_version || 'unknown');
+            setServerCapabilities(data.capabilities || []);
+            console.log('📨 Welcome from server:', {
+              version: data.server_version,
+              capabilities: data.capabilities
+            });
+          }
+
+          // Forward to existing message handler
+          handleWebSocketMessage(data);
+        });
+
+        universalClientRef.current.on('error', (errorMessage) => {
+          console.error('❌ Universal Client Error:', errorMessage);
+          setError(`Connection error: ${errorMessage}`);
+          reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 20);
+        });
+      }
+
+      // Connect using Universal Client
+      await universalClientRef.current.connect();
+
+      // Store reference to Universal Client's websocket for compatibility
+      wsRef.current = universalClientRef.current.websocket;
+
+      return; // Exit early - Universal Client handles everything
+    }
+
+    // ==========================================
+    // 🔄 Legacy WebSocket Connection (Fallback)
+    // ==========================================
+
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       console.log('[WS-ADVANCED] WebSocket already connected or connecting');
@@ -1074,7 +1212,7 @@ const JarvisVoice = () => {
     try {
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
       const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
-      console.log(`[WS-ADVANCED] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
+      console.log(`[WS-LEGACY] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
 
       wsRef.current = new WebSocket(wsUrl);
 
@@ -1307,7 +1445,9 @@ const JarvisVoice = () => {
         setError('JARVIS backend is shutting down. System will reconnect automatically if backend restarts.');
         setResponse('Backend shutting down...');
         // Close current connection gracefully
-        if (wsRef.current) {
+        if (useUniversalClient.current && universalClientRef.current) {
+          universalClientRef.current.disconnect();
+        } else if (wsRef.current) {
           wsRef.current.close();
         }
         break;
@@ -3207,23 +3347,40 @@ const JarvisVoice = () => {
 
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus || 'offline'}`}></div>
-        <span className="status-text">
-          {jarvisStatus === 'online' || jarvisStatus === 'active' ? (
-            <>
-              SYSTEM READY
-              {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}
-              {proactiveIntelligenceActive && <span className="mode-badge phase4">[PHASE 4: PROACTIVE]</span>}
-            </>
-          ) : jarvisStatus === 'activating' || jarvisStatus === 'initializing' ? (
-            <>INITIALIZING...</>
-          ) : jarvisStatus === 'connecting' ? (
-            <>CONNECTING TO BACKEND...</>
-          ) : jarvisStatus === 'offline' ? (
-            <>SYSTEM OFFLINE - START BACKEND</>
-          ) : (
-            <>SYSTEM {(jarvisStatus || 'offline').toUpperCase()}</>
+        <div className="status-text-container">
+          <span className="status-text">
+            {jarvisStatus === 'online' || jarvisStatus === 'active' ? (
+              <>
+                SYSTEM READY
+                {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}
+                {proactiveIntelligenceActive && <span className="mode-badge phase4">[PHASE 4: PROACTIVE]</span>}
+              </>
+            ) : jarvisStatus === 'activating' || jarvisStatus === 'initializing' ? (
+              <>INITIALIZING...</>
+            ) : jarvisStatus === 'connecting' ? (
+              <>CONNECTING TO BACKEND...</>
+            ) : jarvisStatus === 'offline' ? (
+              <>SYSTEM OFFLINE - START BACKEND</>
+            ) : (
+              <>SYSTEM {(jarvisStatus || 'offline').toUpperCase()}</>
+            )}
+          </span>
+
+          {/* 🚀 Detailed connection state from Universal Client */}
+          {useUniversalClient.current && detailedConnectionState && detailedConnectionState !== 'Disconnected' && (
+            <span className="detailed-connection-state">
+              {detailedConnectionState}
+            </span>
           )}
-        </span>
+
+          {/* Server version and capabilities (when connected) */}
+          {useUniversalClient.current && jarvisStatus === 'active' && serverVersion !== 'unknown' && serverCapabilities.length > 0 && (
+            <span className="server-info">
+              v{serverVersion} • {serverCapabilities.join(', ')}
+            </span>
+          )}
+        </div>
+
         {micStatus === 'error' && (
           <span className="mic-status error">
             <span className="error-dot"></span> MIC ERROR

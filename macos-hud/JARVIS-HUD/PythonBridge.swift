@@ -53,6 +53,7 @@ class FileLogger {
 }
 
 /// WebSocket connection to Python backend
+/// Enhanced with UniversalWebSocketClient for robust connection management
 class PythonBridge: ObservableObject {
 
     // MARK: - Published State
@@ -64,16 +65,21 @@ class PythonBridge: ObservableObject {
     @Published var loadingMessage: String = "Initializing..."
     @Published var loadingComplete: Bool = false  // Signals backend is ready
 
+    // Enhanced connection state from Universal Client
+    @Published var serverVersion: String = "unknown"
+    @Published var serverCapabilities: [String] = []
+    @Published var detailedConnectionState: String = "Disconnected"
+
     // MARK: - Configuration
 
-    let websocketURL: URL  // Made public for AppState logging
+    let websocketURL: URL  // Made public for AppState logging (legacy)
     let apiBaseURL: URL    // Made public for AppState logging
-    private var webSocketTask: URLSessionWebSocketTask?
+    private var webSocketTask: URLSessionWebSocketTask?  // Legacy - kept for compatibility
     private var cancellables = Set<AnyCancellable>()
     private var reconnectTimer: Timer?
     private var isManuallyDisconnected = false
 
-    // Robust connection management
+    // Robust connection management (legacy)
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 999  // Try indefinitely - HUD launches before backend is ready (startup loading screen)
     private var connectionHealthTimer: Timer?
@@ -81,6 +87,10 @@ class PythonBridge: ObservableObject {
 
     // File logger for debugging (GUI apps don't show console in terminal)
     private let logger = FileLogger.shared
+
+    // 🚀 UNIVERSAL CLIENT - Advanced connection management
+    private var universalClient: UniversalWebSocketClient?
+    private var useUniversalClient = true  // Feature flag - can toggle to legacy
 
     // Voice output (TODO: Add VoiceManager.swift to Xcode project)
     // private var voiceManager: VoiceManager?
@@ -120,12 +130,102 @@ class PythonBridge: ObservableObject {
         // Initialize voice manager (TODO: Add VoiceManager.swift to Xcode project)
         // self.voiceManager = VoiceManager(apiBaseURL: self.apiBaseURL)
 
+        // 🚀 Initialize Universal WebSocket Client
+        if useUniversalClient {
+            logger.log("🚀 Initializing UniversalWebSocketClient...")
+            initializeUniversalClient()
+        }
+
         logger.log("🔧 PythonBridge.init() COMPLETED")
+    }
+
+    // MARK: - Universal Client Integration
+
+    private func initializeUniversalClient() {
+        universalClient = UniversalWebSocketClient(
+            clientId: "macos-hud-\(UUID().uuidString)",
+            clientType: "hud",
+            capabilities: ["hud_client", "voice", "vision", "commands"],
+            baseURL: apiBaseURL.absoluteString
+        )
+
+        logger.log("✅ UniversalWebSocketClient created")
+        logger.log("   Client Type: hud")
+        logger.log("   Capabilities: hud_client, voice, vision, commands")
+        logger.log("   Base URL: \(apiBaseURL.absoluteString)")
+
+        // Set up state change observer
+        universalClient?.$connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handleUniversalClientStateChange(state)
+            }
+            .store(in: &cancellables)
+
+        // Set up server version observer
+        universalClient?.$serverVersion
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] version in
+                self?.serverVersion = version
+                self?.logger.log("📊 Server version updated: \(version)")
+            }
+            .store(in: &cancellables)
+
+        // Set up server capabilities observer
+        universalClient?.$serverCapabilities
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] capabilities in
+                self?.serverCapabilities = capabilities
+                self?.logger.log("📊 Server capabilities updated: \(capabilities.joined(separator: ", "))")
+            }
+            .store(in: &cancellables)
+
+        logger.log("✅ UniversalWebSocketClient state observers configured")
+    }
+
+    private func handleUniversalClientStateChange(_ state: UniversalWebSocketClient.ConnectionState) {
+        logger.log("🔄 Universal Client State Change: \(state)")
+
+        switch state {
+        case .disconnected:
+            connectionStatus = .disconnected
+            detailedConnectionState = "Disconnected"
+
+        case .fetchingConfig:
+            connectionStatus = .connecting
+            detailedConnectionState = "Fetching Configuration..."
+
+        case .healthCheck:
+            connectionStatus = .connecting
+            detailedConnectionState = "Health Check..."
+
+        case .connecting:
+            connectionStatus = .connecting
+            detailedConnectionState = "Connecting to WebSocket..."
+
+        case .connected:
+            connectionStatus = .connected
+            detailedConnectionState = "Connected"
+            logger.log("✅ Universal Client CONNECTED!")
+            // Reset reconnect attempts on successful connection
+            reconnectAttempts = 0
+
+        case .reconnecting(let attempt):
+            connectionStatus = .connecting
+            detailedConnectionState = "Reconnecting (Attempt \(attempt))..."
+            logger.log("🔄 Reconnecting: attempt \(attempt)")
+
+        case .error(let message):
+            connectionStatus = .error
+            detailedConnectionState = "Error: \(message)"
+            logger.log("❌ Connection Error: \(message)")
+        }
     }
 
     // MARK: - Connection Management
 
     /// Connect to Python backend via WebSocket with robust retry logic
+    /// Enhanced with Universal Client for advanced connection management
     func connect() {
         logger.log(String(repeating: "=", count: 80))
         logger.log("🔌 WEBSOCKET CONNECTION ATTEMPT STARTED")
@@ -133,6 +233,22 @@ class PythonBridge: ObservableObject {
         logger.log("   Thread: \(Thread.current)")
 
         isManuallyDisconnected = false
+
+        // 🚀 Use Universal Client if enabled
+        if useUniversalClient, let client = universalClient {
+            logger.log("🚀 Using UniversalWebSocketClient for connection")
+            logger.log("   Advanced features: Health Check, Config Discovery, Auto-Reconnect")
+
+            // Set up message handler
+            client.connect { [weak self] message in
+                self?.handleUniversalClientMessage(message)
+            }
+
+            return
+        }
+
+        // Legacy connection method (fallback)
+        logger.log("⚠️  Using legacy connection method")
         connectionStatus = .connecting
         logger.log("   Status set to: .connecting")
 
@@ -194,9 +310,43 @@ class PythonBridge: ObservableObject {
         reconnectTimer?.invalidate()
         reconnectTimer = nil
 
+        // Disconnect Universal Client if enabled
+        if useUniversalClient {
+            universalClient?.disconnect()
+            logger.log("🔌 Universal Client disconnected")
+        }
+
+        // Legacy disconnection
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         connectionStatus = .disconnected
-        print("🔌 Disconnected from backend")
+        logger.log("🔌 Disconnected from backend")
+    }
+
+    // MARK: - Universal Client Message Handling
+
+    private func handleUniversalClientMessage(_ message: String) {
+        logger.log("📨 Received message from Universal Client")
+
+        // Parse JSON message
+        guard let data = message.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            logger.log("⚠️  Failed to parse message as JSON")
+            return
+        }
+
+        // Delegate to existing message handler
+        handleMessage(json)
+    }
+
+    // Send message via Universal Client or legacy WebSocket
+    private func sendViaUniversalClient(_ message: [String: Any]) {
+        if useUniversalClient, let client = universalClient {
+            client.send(message)
+            logger.log("📤 Sent message via Universal Client")
+        } else {
+            // Legacy send method would go here
+            logger.log("⚠️  Universal Client not available for sending")
+        }
     }
 
     /// Automatically reconnect with exponential backoff

@@ -2578,7 +2578,7 @@ except Exception as e:
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
     title="JARVIS Backend (Optimized)",
-    version="13.4.0-browser-automation",
+    version="14.0.0-universal-websocket",
     lifespan=lifespan,
 )
 
@@ -3311,7 +3311,7 @@ async def health_check():
     return {
         "status": overall_status,
         "websocket_ready": websocket_ready,
-        "version": "2.0.0",
+        "version": "14.0.0-universal-websocket",
         "uptime": time.time() - app.state.startup_time if hasattr(app.state, "startup_time") else 0,
         "capabilities": [
             "voice",
@@ -3319,7 +3319,10 @@ async def health_check():
             "commands",
             "browser_control",
             "screen_monitoring",
-            "voice_unlock"
+            "voice_unlock",
+            "universal_websocket",
+            "capability_negotiation",
+            "state_synchronization"
         ],
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
         "parallel_imports": PARALLEL_IMPORTS,
@@ -3363,7 +3366,7 @@ async def get_client_config(request: Request):
     websocket_ready = verify_route_registered("/ws")
 
     return {
-        "version": "2.0.0",
+        "version": "14.0.0-universal-websocket",
         "websocket": {
             "url": ws_url,
             "ready": websocket_ready,
@@ -3388,6 +3391,8 @@ async def get_client_config(request: Request):
             "browser_control",
             "screen_monitoring",
             "voice_unlock",
+            "universal_websocket",
+            "capability_negotiation",
             "state_synchronization",
             "buffered_replay"
         ],

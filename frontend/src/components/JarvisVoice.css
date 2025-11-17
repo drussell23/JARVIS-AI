@@ -424,6 +424,13 @@
   }
 }
 
+.status-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
 .status-text {
   font-size: 1rem;
   font-weight: 600;
@@ -432,6 +439,37 @@
   text-transform: uppercase;
   font-family: 'SF Mono', monospace;
   text-shadow: 0 0 8px rgba(0, 255, 65, 0.6);
+}
+
+/* 🚀 Universal WebSocket Client - Detailed Connection State */
+.detailed-connection-state {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'SF Mono', monospace;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.server-info {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.08em;
+  font-family: 'SF Mono', monospace;
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ==================== TRANSCRIPT DISPLAY ==================== */

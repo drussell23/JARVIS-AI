@@ -5098,6 +5098,12 @@ class AsyncSystemManager:
         print(
             f"  • Backend API: {Colors.GREEN}http://localhost:{self.ports['main_api']}/docs{Colors.ENDC}"
         )
+        print(
+            f"  • 🚀 Universal WebSocket Config: {Colors.GREEN}http://localhost:{self.ports['main_api']}/api/config{Colors.ENDC}"
+        )
+        print(
+            f"    {Colors.CYAN}Dynamic client configuration - zero hardcoded URLs{Colors.ENDC}"
+        )
 
         if self.use_optimized:
             print(
@@ -5137,6 +5143,14 @@ class AsyncSystemManager:
             print("  • Memory target: 4GB max")  # noqa: F541
             print("  • Swift monitoring: 0.41ms overhead")  # noqa: F541
             print("  • Emergency cleanup: Automatic")  # noqa: F541
+
+        print(f"\n{Colors.CYAN}🚀 Universal WebSocket Features:{Colors.ENDC}")
+        print("  • Zero hardcoded URLs - dynamic configuration")  # noqa: F541
+        print("  • Health checks before connection")  # noqa: F541
+        print("  • Capability negotiation (voice, vision, commands)")  # noqa: F541
+        print("  • Exponential backoff with jitter")  # noqa: F541
+        print("  • Connection state UI (HUD + web-app)")  # noqa: F541
+        print("  • Server version and capabilities display")  # noqa: F541
 
         print(f"\n{Colors.YELLOW}Press Ctrl+C to stop{Colors.ENDC}")
 

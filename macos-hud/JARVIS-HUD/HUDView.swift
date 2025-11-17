@@ -82,12 +82,34 @@ struct HUDView: View {
                 Spacer()
 
                 // Status message below reactor
-                Text(statusText)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .tracking(3)
-                    .foregroundColor(.jarvisGreen)
-                    .shadow(color: Color.jarvisGreenGlow(opacity: 0.6), radius: 10)
-                    .padding(.bottom, 30)
+                VStack(spacing: 8) {
+                    Text(statusText)
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .tracking(3)
+                        .foregroundColor(.jarvisGreen)
+                        .shadow(color: Color.jarvisGreenGlow(opacity: 0.6), radius: 10)
+
+                    // 🚀 Detailed connection state from Universal Client
+                    if !pythonBridge.detailedConnectionState.isEmpty && pythonBridge.detailedConnectionState != statusText {
+                        HStack(spacing: 6) {
+                            ConnectionStateIndicator(state: pythonBridge.connectionStatus)
+
+                            Text(pythonBridge.detailedConnectionState)
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                                .tracking(1)
+                        }
+                    }
+
+                    // Server version and capabilities (when connected)
+                    if pythonBridge.connectionStatus == .connected, !pythonBridge.serverVersion.isEmpty, pythonBridge.serverVersion != "unknown" {
+                        Text("v\(pythonBridge.serverVersion) • \(pythonBridge.serverCapabilities.joined(separator: ", "))")
+                            .font(.system(size: 9, weight: .regular, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.3))
+                            .tracking(1)
+                    }
+                }
+                .padding(.bottom, 30)
 
                 // Transcript section
                 TranscriptView(messages: transcriptMessages)
@@ -202,6 +224,38 @@ struct TranscriptView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+}
+
+/// 🚀 Connection State Indicator - Visual status indicator
+struct ConnectionStateIndicator: View {
+    let state: PythonBridge.ConnectionStatus
+
+    var body: some View {
+        Circle()
+            .fill(indicatorColor)
+            .frame(width: 8, height: 8)
+            .shadow(color: indicatorColor.opacity(0.8), radius: 4)
+            .overlay(
+                Circle()
+                    .stroke(indicatorColor.opacity(0.3), lineWidth: 1)
+                    .scaleEffect(state == .connecting ? 1.5 : 1.0)
+                    .opacity(state == .connecting ? 0 : 0.6)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false), value: state)
+            )
+    }
+
+    private var indicatorColor: Color {
+        switch state {
+        case .connected:
+            return .jarvisGreen
+        case .connecting:
+            return .yellow
+        case .disconnected:
+            return .red.opacity(0.6)
+        case .error:
+            return .red
         }
     }
 }
