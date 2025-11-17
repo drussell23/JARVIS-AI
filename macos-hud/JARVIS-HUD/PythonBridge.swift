@@ -579,11 +579,16 @@ class PythonBridge: ObservableObject {
                     print("📊 [WebSocket] Handling progress update")
                     if let progress = json["progress"] as? Int,
                        let message = json["message"] as? String {
+                        // Update loading progress properties for LoadingHUDView
+                        self.loadingProgress = progress
+                        self.loadingMessage = message
+
                         // Update HUD state based on progress
                         if progress < 100 {
                             self.hudState = .processing
                         } else {
                             self.hudState = .idle
+                            self.loadingComplete = true
                         }
                         // Update detailed connection state for UI
                         self.detailedConnectionState = "\(progress)% - \(message)"
