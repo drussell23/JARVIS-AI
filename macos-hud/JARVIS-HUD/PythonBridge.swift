@@ -203,8 +203,10 @@ class PythonBridge: ObservableObject {
     private func scheduleReconnect() {
         guard !isManuallyDisconnected else { return }
         guard reconnectAttempts < maxReconnectAttempts else {
-            print("❌ Max reconnection attempts reached (\(maxReconnectAttempts)). Backend may not be ready yet.")
-            connectionStatus = .error
+            logger.log("❌ Max reconnection attempts reached (\(maxReconnectAttempts)). Backend may not be ready yet.")
+            DispatchQueue.main.async {
+                self.connectionStatus = .error
+            }
             return
         }
 
@@ -214,11 +216,21 @@ class PythonBridge: ObservableObject {
         let baseDelay: Double = 0.5
         let delay = min(baseDelay * pow(2.0, Double(reconnectAttempts - 1)), 10.0)
 
-        print("🔄 Reconnect attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(String(format: "%.1f", delay))s...")
-        reconnectTimer?.invalidate()
+        logger.log("🔄 Reconnect attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(String(format: "%.1f", delay))s...")
 
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            self?.connect()
+        // CRITICAL FIX: Schedule timer on main thread's RunLoop
+        // Timers created on background threads won't fire unless their RunLoop is running
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            self.reconnectTimer?.invalidate()
+
+            self.reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+                self?.logger.log("⏰ Reconnect timer fired - attempting connection...")
+                self?.connect()
+            }
+
+            self.logger.log("   ✓ Reconnect timer scheduled on main RunLoop (will fire in \(String(format: "%.1f", delay))s)")
         }
     }
 
@@ -422,6 +434,9 @@ class PythonBridge: ObservableObject {
                 case "loading_complete", "hud_loading_complete":
                     print("✅ [WebSocket] Handling loading complete")
                     self.handleLoadingComplete(json)
+                case "system_restart":
+                    print("🔄 [WebSocket] Backend restarting - resetting HUD to loading screen")
+                    self.handleSystemRestart(json)
                 case "command_response", "response":
                     print("💬 [WebSocket] Handling command response")
                     self.handleCommandResponse(json)
@@ -497,6 +512,23 @@ class PythonBridge: ObservableObject {
         loadingProgress = 100
 
         print("✅ Backend Loading Complete! Success: \(success)")
+    }
+
+    private func handleSystemRestart(_ json: [String: Any]) {
+        print("🔄 System restart detected - resetting HUD to loading state")
+
+        // Reset to loading screen state
+        loadingComplete = false
+        loadingProgress = 0
+        loadingMessage = "Restarting JARVIS..."
+
+        // Clear transcript for fresh start
+        transcriptMessages.removeAll()
+
+        // Set HUD state to offline/loading
+        hudState = .offline
+
+        print("   ✓ HUD reset complete - ready for fresh progress updates")
     }
 
     private func handleCommandResponse(_ json: [String: Any]) {

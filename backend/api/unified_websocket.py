@@ -196,7 +196,7 @@ class UnifiedWebSocketManager:
 
         # HUD state tracking (shared with all HUD clients)
         self.hud_state = {
-            "status": "offline",
+            "status": "initializing",  # Changed from "offline" to indicate backend is starting
             "message": "System initializing...",
             "transcript": [],
             "reactor_state": "idle",
@@ -214,6 +214,49 @@ class UnifiedWebSocketManager:
             "[UNIFIED-WS] Self-healing: ✅ | Circuit breaker: ✅ | Predictive healing: ✅ | "
             f"Streaming safeguard: {'✅' if self.safeguard_enabled else '❌'}"
         )
+
+    async def notify_system_restart(self):
+        """
+        Notify all connected HUD clients that the system is restarting
+        This tells the HUD to reset to loading screen and prepare for new progress updates
+        """
+        logger.info("🔄 Notifying connected HUDs of system restart...")
+
+        # Reset HUD state to initializing
+        self.hud_state = {
+            "status": "initializing",
+            "message": "System restarting...",
+            "transcript": [],
+            "reactor_state": "idle",
+            "last_update": datetime.now().isoformat(),
+            "loading_progress": 0,
+            "loading_message": "Restarting JARVIS...",
+        }
+
+        # Clear progress buffer for fresh start
+        self.progress_buffer.clear()
+
+        # Send restart notification to all connected HUD clients
+        restart_message = {
+            "type": "system_restart",
+            "message": "Backend restarting - resetting to loading screen",
+            "timestamp": datetime.now().isoformat()
+        }
+
+        disconnected_clients = []
+        for client_id, ws in list(self.connections.items()):
+            try:
+                await ws.send_json(restart_message)
+                logger.info(f"   ✓ Sent restart notification to {client_id}")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Failed to notify {client_id}: {e}")
+                disconnected_clients.append(client_id)
+
+        # Clean up disconnected clients
+        for client_id in disconnected_clients:
+            self.connections.pop(client_id, None)
+
+        logger.info(f"✅ System restart notification sent to {len(self.connections)} HUD client(s)")
 
     def set_intelligence_engines(self, uae=None, sai=None, learning_db=None):
         """Inject intelligence engines (dependency injection - no hardcoding)"""
@@ -1362,6 +1405,21 @@ class UnifiedWebSocketManager:
 
                 logger.info(f"✅ Replay complete - HUD caught up on all progress")
 
+        # If loading is already complete, send completion message immediately
+        if self.hud_state.get("status") == "ready" and client_id in self.connections:
+            logger.info(f"⚡ Backend already loaded - sending completion message to HUD")
+            try:
+                ws = self.connections[client_id]
+                await ws.send_json({
+                    "type": "loading_complete",
+                    "success": True,
+                    "message": self.hud_state.get("loading_message", "System ready"),
+                    "timestamp": datetime.now().isoformat()
+                })
+                logger.info(f"✅ Sent loading_complete message to HUD")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to send loading_complete: {e}")
+
         # Send welcome with current state
         return {
             "type": "welcome",
@@ -1857,6 +1915,15 @@ async def send_loading_complete(success: bool = True):
         success: Whether startup completed successfully
     """
     await ws_manager.send_hud_loading_complete(success)
+
+
+async def notify_system_restart():
+    """
+    Notify connected HUDs that backend is restarting
+    Called by start_system.py BEFORE killing old backend
+    This tells HUD to reset to loading screen for fresh progress updates
+    """
+    await ws_manager.notify_system_restart()
 
 
 async def update_hud_status(status: str, message: str = ""):
