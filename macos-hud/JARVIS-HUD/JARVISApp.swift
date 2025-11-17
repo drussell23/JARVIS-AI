@@ -40,7 +40,7 @@ struct JARVISApp: App {
     }
 }
 
-/// App state manager
+/// App state manager - Central coordination of all HUD systems
 class AppState: ObservableObject {
     @Published var isLoadingComplete: Bool = false
 
@@ -49,25 +49,59 @@ class AppState: ObservableObject {
     // is destroyed when transitioning from Loading to HUD view!
     @Published var pythonBridge: PythonBridge
 
+    // 🎤 JARVIS Voice System - Text-to-Speech output
+    @Published var voiceManager: VoiceManager
+
+    // 👁️ Vision System - Screen analysis and AI vision
+    @Published var visionManager: VisionManager
+
+    @MainActor
     init() {
         print(String(repeating: "=", count: 80))
         print("🔗 AppState.init() STARTED")
-        print("   Creating shared PythonBridge instance...")
+        print("   Initializing integrated HUD systems...")
 
         // Initialize PythonBridge once at app launch
-        self.pythonBridge = PythonBridge()
+        print("   1️⃣ Creating PythonBridge...")
+        let bridge = PythonBridge()
+        self.pythonBridge = bridge
+        print("      ✓ PythonBridge created")
 
-        print("   ✓ PythonBridge created")
-        print("   Backend WS: \(pythonBridge.websocketURL)")
-        print("   Backend HTTP: \(pythonBridge.apiBaseURL)")
+        // Initialize VoiceManager with backend URL
+        print("   2️⃣ Creating VoiceManager...")
+        self.voiceManager = VoiceManager(apiBaseURL: bridge.apiBaseURL)
+        print("      ✓ VoiceManager created")
+
+        // Initialize VisionManager with backend URL
+        print("   3️⃣ Creating VisionManager...")
+        self.visionManager = VisionManager(apiBaseURL: bridge.apiBaseURL)
+        print("      ✓ VisionManager created")
+
+        // Now print backend URLs
+        print("      Backend WS: \(bridge.websocketURL)")
+        print("      Backend HTTP: \(bridge.apiBaseURL)")
 
         // Connect to backend immediately when app launches
         print("   🔌 Calling pythonBridge.connect() to initiate WebSocket connection...")
         pythonBridge.connect()
-        print("   ✓ connect() call completed (connection may still be establishing)")
+        print("      ✓ connect() call completed (connection may still be establishing)")
 
-        print("🔗 AppState.init() COMPLETED")
+        // Link VoiceManager and VisionManager to PythonBridge for WebSocket events
+        setupBridgeIntegration()
+
+        print("🔗 AppState.init() COMPLETED - All systems initialized")
         print(String(repeating: "=", count: 80))
+    }
+
+    /// Setup bidirectional integration between PythonBridge and managers
+    private func setupBridgeIntegration() {
+        print("🔗 Setting up PythonBridge ↔ Manager integration...")
+
+        // Inject managers into PythonBridge for WebSocket event handling
+        pythonBridge.voiceManager = voiceManager
+        pythonBridge.visionManager = visionManager
+
+        print("   ✓ Integration complete")
     }
 }
 

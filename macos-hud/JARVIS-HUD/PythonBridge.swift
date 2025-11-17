@@ -99,8 +99,9 @@ class PythonBridge: ObservableObject {
     private var universalClient: UniversalWebSocketClient?
     private var useUniversalClient = true  // Feature flag - can toggle to legacy
 
-    // Voice output (TODO: Add VoiceManager.swift to Xcode project)
-    // private var voiceManager: VoiceManager?
+    // 🎤 Voice and Vision Managers (injected by AppState)
+    var voiceManager: VoiceManager?
+    var visionManager: VisionManager?
 
     // MARK: - Initialization
 
@@ -680,6 +681,10 @@ class PythonBridge: ObservableObject {
                 // 🔒 Screen lock events
                 case "screen_lock_initiated", "screen_locking":
                     print("🔒 [WebSocket] Screen lock initiated")
+                    // Speak voice feedback if available
+                    if let voiceMgr = self.voiceManager {
+                        voiceMgr.speak("Locking screen now, sir.", priority: .high)
+                    }
                     // Toggle the trigger to fire animation
                     self.screenLockTriggered = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -687,10 +692,94 @@ class PythonBridge: ObservableObject {
                     }
                 case "screen_locked":
                     print("🔐 [WebSocket] Screen locked successfully")
+                    if let voiceMgr = self.voiceManager {
+                        voiceMgr.speak("Screen secured.", priority: .normal)
+                    }
                 case "screen_lock_failed":
                     print("❌ [WebSocket] Screen lock failed")
                     if let error = json["error"] as? String {
                         print("   Error: \(error)")
+                        if let voiceMgr = self.voiceManager {
+                            voiceMgr.speak("Screen lock failed, sir.", priority: .high)
+                        }
+                    }
+
+                // 🎤 TTS (Text-to-Speech) events from backend
+                case "tts_speak", "speak", "voice_output":
+                    print("🎤 [WebSocket] TTS speak request")
+                    if let text = json["text"] as? String {
+                        let priorityValue = json["priority"] as? Int ?? 1
+                        let priority: VoicePriority = {
+                            switch priorityValue {
+                            case 3: return .critical
+                            case 2: return .high
+                            case 0: return .low
+                            default: return .normal
+                            }
+                        }()
+
+                        let engine = (json["engine"] as? String).flatMap { VoiceEngine(rawValue: $0) } ?? .hybrid
+
+                        print("   Text: \(text.prefix(50))...")
+                        print("   Priority: \(priority)")
+                        print("   Engine: \(engine)")
+
+                        if let voiceMgr = self.voiceManager {
+                            voiceMgr.speak(text, priority: priority, engine: engine)
+                        } else {
+                            print("   ⚠️  VoiceManager not available")
+                        }
+                    }
+
+                case "tts_stop":
+                    print("🛑 [WebSocket] TTS stop request")
+                    self.voiceManager?.stopSpeaking()
+
+                case "tts_pause":
+                    print("⏸️ [WebSocket] TTS pause request")
+                    self.voiceManager?.pauseSpeaking()
+
+                case "tts_resume":
+                    print("▶️ [WebSocket] TTS resume request")
+                    self.voiceManager?.resumeSpeaking()
+
+                // 👁️ Vision-related events
+                case "vision_request":
+                    print("👁️ [WebSocket] Vision analysis request")
+                    if let command = json["command"] as? String {
+                        print("   Command: \(command)")
+                        // Trigger vision analysis asynchronously
+                        Task {
+                            do {
+                                let commandType = (json["type"] as? String).flatMap { VisionCommandType(rawValue: $0) } ?? .custom
+                                let result = try await self.visionManager?.executeVisionCommand(command, type: commandType)
+                                print("   ✓ Vision analysis complete")
+
+                                // Send result back to backend via HTTP
+                                if let result = result {
+                                    try? await self.sendVisionResult(result, requestId: json["request_id"] as? String)
+                                }
+                            } catch {
+                                print("   ❌ Vision analysis failed: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+
+                case "vision_screenshot_request":
+                    print("📸 [WebSocket] Screenshot capture request")
+                    Task {
+                        do {
+                            let screenshot = try await self.visionManager?.captureScreenshot()
+                            print("   ✓ Screenshot captured")
+
+                            // Send screenshot to backend if requested
+                            if let requestId = json["request_id"] as? String,
+                               let screenshot = screenshot {
+                                try? await self.sendScreenshot(screenshot, requestId: requestId)
+                            }
+                        } catch {
+                            print("   ❌ Screenshot capture failed: \(error.localizedDescription)")
+                        }
                     }
 
                 default:
@@ -836,6 +925,73 @@ class PythonBridge: ObservableObject {
             throw NetworkError.invalidResponse
         }
         return json
+    }
+
+    // MARK: - Vision Integration
+
+    /// Send vision analysis result back to backend
+    private func sendVisionResult(_ result: VisionAnalysisResult, requestId: String?) async throws {
+        print("📤 Sending vision result to backend (request_id: \(requestId ?? "none"))")
+
+        var request = URLRequest(url: apiBaseURL.appendingPathComponent("/vision/result"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "request_id": requestId ?? UUID().uuidString,
+            "success": result.success,
+            "analysis": result.analysis ?? "",
+            "elements": result.elements?.map { element in
+                [
+                    "type": element.type,
+                    "text": element.text ?? "",
+                    "confidence": element.confidence ?? 0.0
+                ]
+            } ?? [],
+            "error": result.error ?? ""
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NetworkError.requestFailed
+        }
+
+        print("   ✓ Vision result sent successfully")
+    }
+
+    /// Send screenshot to backend
+    private func sendScreenshot(_ screenshot: ScreenshotCapture, requestId: String) async throws {
+        print("📤 Sending screenshot to backend (request_id: \(requestId))")
+
+        var request = URLRequest(url: apiBaseURL.appendingPathComponent("/vision/screenshot"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "request_id": requestId,
+            "image_data": screenshot.data.base64EncodedString(),
+            "display_id": screenshot.displayID,
+            "bounds": [
+                "x": screenshot.bounds.origin.x,
+                "y": screenshot.bounds.origin.y,
+                "width": screenshot.bounds.size.width,
+                "height": screenshot.bounds.size.height
+            ],
+            "timestamp": ISO8601DateFormatter().string(from: screenshot.timestamp)
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NetworkError.requestFailed
+        }
+
+        print("   ✓ Screenshot sent successfully")
     }
 }
 

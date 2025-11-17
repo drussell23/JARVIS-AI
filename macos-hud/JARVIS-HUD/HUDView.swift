@@ -61,6 +61,10 @@ struct HUDView: View {
     @State private var currentTranscript: String = ""  // Real-time voice transcript
     @State private var showScreenLockAnimation: Bool = false  // Screen lock animation overlay
     @State private var screenLockCountdown: Int = 3  // Countdown timer for screen lock
+    @State private var showVisionPrompt: Bool = false  // Vision command prompt
+    @State private var visionCommandText: String = ""  // Vision command input
+    @State private var visionAnalyzing: Bool = false  // Vision analysis in progress
+    @State private var visionResult: String? = nil  // Last vision result
     var onQuit: (() -> Void)? = nil  // Callback to quit HUD
 
     // Use shared PythonBridge from AppState (persisted from LoadingHUDView)
@@ -83,6 +87,19 @@ struct HUDView: View {
                 ScreenLockAnimationView(countdown: $screenLockCountdown)
                     .transition(.opacity)
                     .zIndex(1000)  // Above everything
+            }
+
+            // 👁️ Vision Command Prompt Overlay
+            if showVisionPrompt {
+                VisionCommandPrompt(
+                    commandText: $visionCommandText,
+                    isAnalyzing: $visionAnalyzing,
+                    result: $visionResult,
+                    onSubmit: { executeVisionCommand() },
+                    onClose: { withAnimation { showVisionPrompt = false } }
+                )
+                .transition(.opacity.combined(with: .scale))
+                .zIndex(999)  // Below screen lock, above everything else
             }
 
             VStack(spacing: 0) {
@@ -189,6 +206,42 @@ struct HUDView: View {
                 .padding(.horizontal, 60)
                 .padding(.bottom, 40)
             }
+
+            // 👁️ Floating Vision Button - Bottom Right Corner
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showVisionPrompt.toggle()
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.jarvisGreen.opacity(0.8), .jarvisGreenDark],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 60, height: 60)
+                                .shadow(color: Color.jarvisGreenGlow(), radius: 15)
+
+                            Image(systemName: "eye.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Open Vision Analysis")
+                    .padding(.trailing, 40)
+                    .padding(.bottom, 40)
+                }
+            }
+            .zIndex(500)  // Above main content, below overlays
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
@@ -289,6 +342,47 @@ struct HUDView: View {
             }
 
             commandText = ""
+        }
+    }
+
+    // MARK: - Vision Command Execution
+
+    private func executeVisionCommand() {
+        guard !visionCommandText.isEmpty else { return }
+
+        print("👁️ Executing vision command: \(visionCommandText)")
+        visionAnalyzing = true
+        visionResult = nil
+
+        Task {
+            do {
+                let result = try await appState.visionManager.executeVisionCommand(visionCommandText)
+
+                await MainActor.run {
+                    visionAnalyzing = false
+
+                    if result.success, let analysis = result.analysis {
+                        visionResult = analysis
+                        print("   ✓ Vision analysis: \(analysis.prefix(100))...")
+
+                        // Speak result if voice is available
+                        appState.voiceManager.speak(analysis, priority: .normal)
+                    } else {
+                        visionResult = result.error ?? "Vision analysis failed"
+                        print("   ❌ Vision error: \(visionResult!)")
+
+                        appState.voiceManager.speak("Vision analysis failed, sir.", priority: .high)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    visionAnalyzing = false
+                    visionResult = "Error: \(error.localizedDescription)"
+                    print("   ❌ Vision exception: \(error.localizedDescription)")
+
+                    appState.voiceManager.speak("Vision system error, sir.", priority: .high)
+                }
+            }
         }
     }
 }
@@ -501,6 +595,150 @@ struct VoiceStatusBanner: View {
             return .jarvisGreen
         case .processing:
             return .yellow
+        }
+    }
+}
+
+/// 👁️ Vision Command Prompt - Floating overlay for vision analysis
+struct VisionCommandPrompt: View {
+    @Binding var commandText: String
+    @Binding var isAnalyzing: Bool
+    @Binding var result: String?
+    let onSubmit: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onClose()
+                }
+
+            // Vision prompt card
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.jarvisGreen)
+
+                    Text("JARVIS VISION ANALYSIS")
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .foregroundColor(.jarvisGreen)
+                        .tracking(3)
+
+                    Spacer()
+
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                Divider()
+                    .background(Color.jarvisGreen.opacity(0.3))
+
+                // Command input
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What do you want me to analyze?")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.7))
+
+                    TextField("e.g., \"What's on my screen?\" or \"Find the Chrome icon\"", text: $commandText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.jarvisGreen.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                        .disabled(isAnalyzing)
+                }
+
+                // Analyze button
+                Button(action: onSubmit) {
+                    HStack {
+                        if isAnalyzing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "eye.trianglebadge.exclamationmark")
+                                .font(.system(size: 16))
+                        }
+
+                        Text(isAnalyzing ? "ANALYZING..." : "ANALYZE SCREEN")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 30)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(isAnalyzing ? Color.jarvisGreen.opacity(0.6) : Color.jarvisGreen)
+                            .shadow(color: Color.jarvisGreenGlow(), radius: isAnalyzing ? 0 : 15)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isAnalyzing || commandText.isEmpty)
+
+                // Result display
+                if let result = result {
+                    Divider()
+                        .background(Color.jarvisGreen.opacity(0.3))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ANALYSIS RESULT:")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.jarvisGreen)
+                            .tracking(2)
+
+                        ScrollView {
+                            Text(result)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.9))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 150)
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.03))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.jarvisGreen.opacity(0.2), lineWidth: 1)
+                                )
+                        )
+                    }
+                }
+            }
+            .padding(30)
+            .frame(width: 500)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.black.opacity(0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.jarvisGreen.opacity(0.5), .jarvisGreenDark.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .shadow(color: Color.jarvisGreenGlow(opacity: 0.3), radius: 30)
+            )
         }
     }
 }
