@@ -38,6 +38,10 @@ from enum import Enum, auto
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, Future
 import atexit
+import psutil
+from pathlib import Path
+import aiohttp
+import websockets
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,16 @@ class ThreadState(Enum):
     STOPPED = auto()
     FAILED = auto()
     LEAKED = auto()
+
+
+class HUDThreadState(Enum):
+    """HUD-specific thread states"""
+    HEALTHY = auto()
+    DEGRADED = auto()
+    UNHEALTHY = auto()
+    FROZEN = auto()
+    DISCONNECTED = auto()
+    RECOVERING = auto()
 
 
 class ShutdownPhase(Enum):
@@ -162,6 +176,542 @@ class ThreadInfo:
     child_thread_ids: Set[int] = field(default_factory=set)
 
 
+class HUDThreadManager:
+    """
+    🚀 Enhanced JARVIS HUD Thread Manager v2.0
+    ==========================================
+
+    Manages HUD-specific threads with advanced health monitoring,
+    auto-recovery, and graceful shutdown capabilities.
+
+    Features:
+    - Real-time HUD thread health monitoring
+    - WebSocket connection tracking
+    - Automatic recovery from frozen/disconnected states
+    - Graceful shutdown with WebSocket notification
+    - Detailed metrics and diagnostics
+    - Thread leak detection
+    - Performance tracking
+
+    Usage:
+        hud_manager = HUDThreadManager()
+
+        # Monitor health
+        health = await hud_manager.check_hud_threads_health()
+
+        # Auto-recovery
+        await hud_manager.monitor_hud_threads_loop()
+
+        # Graceful shutdown
+        await hud_manager.graceful_shutdown_hud_threads()
+    """
+
+    def __init__(self, thread_manager: Optional['AdvancedThreadManager'] = None):
+        """
+        Initialize HUD Thread Manager
+
+        Args:
+            thread_manager: Parent thread manager instance
+        """
+        self.thread_manager = thread_manager
+        self.hud_process_name = "JARVIS-HUD"
+        self.hud_log_path = "/tmp/jarvis_hud.log"
+        self.backend_ws_url = "ws://localhost:8010/ws"
+        self.backend_http_url = "http://localhost:8010"
+
+        # HUD thread categories
+        self.hud_categories = {
+            "hud_main",
+            "hud_websocket",
+            "hud_ui",
+            "hud_animation",
+            "hud_audio"
+        }
+
+        # Health thresholds
+        self.max_connection_failures = 3
+        self.health_check_interval = 30  # seconds
+        self.ws_timeout = 10  # seconds
+        self.frozen_detection_threshold = 120  # 2 minutes without heartbeat
+
+        # Tracking
+        self.consecutive_failures = 0
+        self.last_health_check = None
+        self.hud_threads: Dict[int, Dict[str, Any]] = {}
+
+        logger.info("🎯 HUD Thread Manager v2.0 initialized")
+        logger.info(f"   Categories: {', '.join(self.hud_categories)}")
+        logger.info(f"   Health check interval: {self.health_check_interval}s")
+
+    def find_hud_threads(self) -> List[ThreadInfo]:
+        """
+        Find all HUD-related threads
+
+        Returns:
+            List of HUD thread information
+        """
+        if not self.thread_manager:
+            return []
+
+        hud_threads = []
+
+        # Get all active threads from parent manager
+        all_threads = self.thread_manager.get_active_threads()
+
+        for thread_info in all_threads:
+            # Check if thread belongs to HUD categories
+            if thread_info.category in self.hud_categories:
+                hud_threads.append(thread_info)
+
+            # Also check thread name for HUD-related patterns
+            elif any(pattern in thread_info.name.lower() for pattern in ['hud', 'jarvis-hud']):
+                hud_threads.append(thread_info)
+
+        return hud_threads
+
+    async def check_hud_threads_health(self) -> Dict[str, Any]:
+        """
+        Comprehensive HUD threads health check
+
+        Returns:
+            Health status dictionary with detailed metrics
+        """
+        health = {
+            'timestamp': time.time(),
+            'hud_threads_count': 0,
+            'healthy_threads': 0,
+            'degraded_threads': 0,
+            'unhealthy_threads': 0,
+            'frozen_threads': [],
+            'websocket_connected': False,
+            'backend_reachable': False,
+            'status': HUDThreadState.UNHEALTHY.name,
+            'issues': [],
+            'thread_details': []
+        }
+
+        try:
+            # Find all HUD threads
+            hud_threads = self.find_hud_threads()
+            health['hud_threads_count'] = len(hud_threads)
+
+            if not hud_threads:
+                health['issues'].append("No HUD threads found")
+                return health
+
+            # Check each thread's health
+            now = datetime.now()
+            for thread_info in hud_threads:
+                thread_health = {
+                    'name': thread_info.name,
+                    'category': thread_info.category,
+                    'state': thread_info.state.name,
+                    'age_seconds': (now - thread_info.created_at).total_seconds(),
+                    'is_alive': self._is_thread_alive(thread_info),
+                    'status': 'unknown'
+                }
+
+                # Check if thread is frozen (no heartbeat)
+                if thread_info.last_heartbeat:
+                    time_since_heartbeat = (now - thread_info.last_heartbeat).total_seconds()
+                    thread_health['seconds_since_heartbeat'] = time_since_heartbeat
+
+                    if time_since_heartbeat > self.frozen_detection_threshold:
+                        thread_health['status'] = 'frozen'
+                        health['frozen_threads'].append(thread_info.name)
+                        health['unhealthy_threads'] += 1
+                        health['issues'].append(f"{thread_info.name}: Frozen (no heartbeat for {time_since_heartbeat:.1f}s)")
+                    elif time_since_heartbeat > self.frozen_detection_threshold / 2:
+                        thread_health['status'] = 'degraded'
+                        health['degraded_threads'] += 1
+                        health['issues'].append(f"{thread_info.name}: Degraded (slow heartbeat)")
+                    else:
+                        thread_health['status'] = 'healthy'
+                        health['healthy_threads'] += 1
+                else:
+                    # No heartbeat recorded at all
+                    thread_health['status'] = 'degraded'
+                    health['degraded_threads'] += 1
+                    health['issues'].append(f"{thread_info.name}: No heartbeat recorded")
+
+                # Check if thread failed
+                if thread_info.state == ThreadState.FAILED:
+                    thread_health['status'] = 'unhealthy'
+                    health['unhealthy_threads'] += 1
+                    if thread_info.exception:
+                        health['issues'].append(f"{thread_info.name}: Failed - {thread_info.exception}")
+
+                # Check if thread is not alive
+                if not thread_health['is_alive']:
+                    thread_health['status'] = 'unhealthy'
+                    health['unhealthy_threads'] += 1
+                    health['issues'].append(f"{thread_info.name}: Thread not alive")
+
+                health['thread_details'].append(thread_health)
+
+            # Check WebSocket connection
+            try:
+                async with websockets.connect(self.backend_ws_url, timeout=self.ws_timeout) as ws:
+                    await ws.send('{"type": "hud_health_check"}')
+                    response = await asyncio.wait_for(ws.recv(), timeout=3)
+                    health['websocket_connected'] = True
+            except Exception as e:
+                health['issues'].append(f"WebSocket connection failed: {e}")
+
+            # Check backend reachability
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{self.backend_http_url}/health", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            health['backend_reachable'] = True
+            except Exception as e:
+                health['issues'].append(f"Backend unreachable: {e}")
+
+            # Determine overall status
+            if health['unhealthy_threads'] == 0 and health['websocket_connected'] and health['backend_reachable']:
+                if health['degraded_threads'] == 0:
+                    health['status'] = HUDThreadState.HEALTHY.name
+                else:
+                    health['status'] = HUDThreadState.DEGRADED.name
+            elif health['frozen_threads']:
+                health['status'] = HUDThreadState.FROZEN.name
+            elif not health['websocket_connected']:
+                health['status'] = HUDThreadState.DISCONNECTED.name
+            else:
+                health['status'] = HUDThreadState.UNHEALTHY.name
+
+            self.last_health_check = time.time()
+
+            # Log health status
+            if health['issues']:
+                logger.warning(f"🔍 HUD Thread Health Check - {health['status']}")
+                logger.warning(f"   Threads: {health['hud_threads_count']} total, "
+                             f"{health['healthy_threads']} healthy, "
+                             f"{health['degraded_threads']} degraded, "
+                             f"{health['unhealthy_threads']} unhealthy")
+                for issue in health['issues'][:5]:  # Limit to first 5 issues
+                    logger.warning(f"   ⚠️  {issue}")
+            else:
+                logger.info(f"✅ HUD Thread Health Check - {health['status']}")
+                logger.info(f"   All {health['hud_threads_count']} HUD threads healthy")
+
+            return health
+
+        except Exception as e:
+            health['issues'].append(f"Health check failed: {e}")
+            logger.error(f"❌ HUD thread health check error: {e}")
+            return health
+
+    async def graceful_shutdown_hud_threads(self, timeout: int = 10) -> bool:
+        """
+        Gracefully shutdown all HUD threads with WebSocket notification
+
+        Args:
+            timeout: Shutdown timeout in seconds
+
+        Returns:
+            True if all threads shutdown successfully
+        """
+        logger.info("🛑 Initiating graceful HUD thread shutdown...")
+
+        try:
+            # Step 1: Send disconnect signal via WebSocket
+            try:
+                async with websockets.connect(self.backend_ws_url, timeout=5) as ws:
+                    await ws.send('{"type": "hud_shutdown", "reason": "graceful_thread_shutdown"}')
+                    logger.info("   ✅ Shutdown notification sent to backend")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not send shutdown notification: {e}")
+
+            # Step 2: Get all HUD threads
+            hud_threads = self.find_hud_threads()
+
+            if not hud_threads:
+                logger.info("   No HUD threads to shutdown")
+                return True
+
+            logger.info(f"   Found {len(hud_threads)} HUD threads to shutdown")
+
+            # Step 3: Signal threads to stop gracefully
+            for thread_info in hud_threads:
+                try:
+                    # Set shutdown event if available
+                    if thread_info.shutdown_event:
+                        if isinstance(thread_info.shutdown_event, asyncio.Event):
+                            thread_info.shutdown_event.set()
+                        else:
+                            thread_info.shutdown_event.set()
+                        logger.debug(f"   Signaled {thread_info.name} to stop")
+
+                    # Call shutdown callback if available
+                    if thread_info.shutdown_callback:
+                        if asyncio.iscoroutinefunction(thread_info.shutdown_callback):
+                            await thread_info.shutdown_callback()
+                        else:
+                            thread_info.shutdown_callback()
+                        logger.debug(f"   Called shutdown callback for {thread_info.name}")
+
+                    thread_info.state = ThreadState.STOPPING
+
+                except Exception as e:
+                    logger.error(f"   ❌ Error signaling {thread_info.name}: {e}")
+
+            # Step 4: Wait for threads to complete
+            deadline = time.time() + timeout
+            remaining_threads = hud_threads.copy()
+
+            while remaining_threads and time.time() < deadline:
+                # Check which threads are still alive
+                still_alive = []
+                for thread_info in remaining_threads:
+                    if self._is_thread_alive(thread_info):
+                        still_alive.append(thread_info)
+                    else:
+                        logger.info(f"   ✅ {thread_info.name} stopped")
+
+                remaining_threads = still_alive
+
+                if remaining_threads:
+                    await asyncio.sleep(0.5)
+
+            # Step 5: Report results
+            if not remaining_threads:
+                logger.info("✅ All HUD threads shutdown gracefully")
+                return True
+            else:
+                logger.warning(f"⚠️  {len(remaining_threads)} HUD threads did not stop within timeout:")
+                for thread_info in remaining_threads:
+                    logger.warning(f"   - {thread_info.name} ({thread_info.category})")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ HUD thread shutdown error: {e}")
+            return False
+
+    async def auto_recovery(self, issue: str, health_data: Dict[str, Any]) -> bool:
+        """
+        Automatic recovery for HUD thread issues
+
+        Args:
+            issue: Description of the issue
+            health_data: Health check data
+
+        Returns:
+            True if recovery was successful
+        """
+        logger.info(f"🔧 Attempting HUD thread auto-recovery for: {issue}")
+
+        try:
+            # Recovery strategy 1: Frozen threads
+            if health_data.get('frozen_threads'):
+                logger.info("   Strategy: Restart frozen HUD threads")
+
+                # Try graceful shutdown first
+                shutdown_success = await self.graceful_shutdown_hud_threads(timeout=5)
+
+                if not shutdown_success:
+                    logger.warning("   Graceful shutdown failed, attempting forceful shutdown")
+                    # Let parent thread manager handle forceful shutdown
+                    if self.thread_manager:
+                        await self.thread_manager.shutdown_async(
+                            categories=list(self.hud_categories),
+                            timeout=3
+                        )
+
+                # Wait a moment
+                await asyncio.sleep(2)
+
+                # HUD should auto-restart via process manager
+                logger.info("   ✅ Frozen threads cleared, waiting for HUD restart")
+                self.consecutive_failures = 0
+                return True
+
+            # Recovery strategy 2: WebSocket disconnected
+            if health_data.get('status') == HUDThreadState.DISCONNECTED.name:
+                logger.info("   Strategy: Check backend and attempt reconnection")
+
+                # Check if backend is running
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"{self.backend_http_url}/health") as resp:
+                            if resp.status == 200:
+                                logger.info("   Backend is running, HUD should reconnect")
+                                # Wait for automatic reconnection
+                                await asyncio.sleep(5)
+
+                                # Check if reconnected
+                                recheck = await self.check_hud_threads_health()
+                                if recheck['websocket_connected']:
+                                    logger.info("   ✅ WebSocket reconnected successfully")
+                                    self.consecutive_failures = 0
+                                    return True
+                                else:
+                                    logger.warning("   HUD did not reconnect, may need restart")
+                                    return False
+                except Exception as e:
+                    logger.error(f"   Backend check failed: {e}")
+                    return False
+
+            # Recovery strategy 3: Unhealthy threads
+            if health_data.get('unhealthy_threads', 0) > 0:
+                logger.info("   Strategy: Identify and restart unhealthy threads")
+
+                # Get detailed thread information
+                for thread_detail in health_data.get('thread_details', []):
+                    if thread_detail['status'] == 'unhealthy':
+                        logger.info(f"   Unhealthy thread: {thread_detail['name']}")
+
+                # Attempt graceful shutdown and restart
+                await self.graceful_shutdown_hud_threads(timeout=5)
+                await asyncio.sleep(2)
+
+                logger.info("   ✅ Unhealthy threads cleared")
+                self.consecutive_failures = 0
+                return True
+
+            # Recovery strategy 4: No HUD threads found
+            if health_data.get('hud_threads_count', 0) == 0:
+                logger.warning("   Strategy: No HUD threads - HUD process may need restart")
+                # This should be handled by process manager
+                return False
+
+            logger.warning("   No recovery strategy matched")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Auto-recovery failed: {e}")
+            return False
+
+    async def monitor_hud_threads_loop(self):
+        """
+        Continuous HUD thread health monitoring loop with auto-recovery
+
+        Runs indefinitely until shutdown, checking health at regular intervals
+        and triggering recovery when issues are detected.
+        """
+        logger.info("🔄 Starting HUD thread health monitoring loop...")
+        logger.info(f"   Interval: {self.health_check_interval}s")
+        logger.info(f"   Max consecutive failures before recovery: {self.max_connection_failures}")
+
+        while True:
+            try:
+                await asyncio.sleep(self.health_check_interval)
+
+                # Perform health check
+                health = await self.check_hud_threads_health()
+
+                # Check if intervention needed
+                if health['status'] in [HUDThreadState.UNHEALTHY.name,
+                                       HUDThreadState.FROZEN.name,
+                                       HUDThreadState.DISCONNECTED.name]:
+                    self.consecutive_failures += 1
+                    logger.warning(f"⚠️  HUD threads {health['status']} "
+                                 f"({self.consecutive_failures}/{self.max_connection_failures})")
+
+                    # Trigger recovery after threshold
+                    if self.consecutive_failures >= self.max_connection_failures:
+                        logger.warning("🚨 Consecutive failure threshold reached - triggering auto-recovery")
+
+                        recovery_issue = f"Status: {health['status']}, Issues: {len(health['issues'])}"
+                        recovery_success = await self.auto_recovery(recovery_issue, health)
+
+                        if recovery_success:
+                            logger.info("✅ Auto-recovery successful")
+                            self.consecutive_failures = 0
+                        else:
+                            logger.error("❌ Auto-recovery failed")
+                            # Reset counter to avoid continuous recovery attempts
+                            self.consecutive_failures = 0
+                            # Wait longer before next attempt
+                            await asyncio.sleep(self.health_check_interval * 2)
+
+                else:
+                    # Healthy or degraded - reset counter
+                    if self.consecutive_failures > 0:
+                        logger.info(f"✅ HUD threads recovered (was {self.consecutive_failures} failures)")
+                    self.consecutive_failures = 0
+
+            except asyncio.CancelledError:
+                logger.info("🛑 HUD thread monitoring loop cancelled")
+                break
+            except Exception as e:
+                logger.error(f"❌ HUD thread monitoring error: {e}")
+                await asyncio.sleep(self.health_check_interval)
+
+    def get_hud_metrics(self) -> Dict[str, Any]:
+        """
+        Get HUD thread metrics
+
+        Returns:
+            Dictionary of metrics
+        """
+        hud_threads = self.find_hud_threads()
+
+        metrics = {
+            'timestamp': time.time(),
+            'total_hud_threads': len(hud_threads),
+            'by_category': defaultdict(int),
+            'by_state': defaultdict(int),
+            'consecutive_failures': self.consecutive_failures,
+            'last_health_check': self.last_health_check,
+            'threads': []
+        }
+
+        for thread_info in hud_threads:
+            metrics['by_category'][thread_info.category] += 1
+            metrics['by_state'][thread_info.state.name] += 1
+
+            thread_data = {
+                'name': thread_info.name,
+                'category': thread_info.category,
+                'state': thread_info.state.name,
+                'daemon': thread_info.daemon,
+                'age_seconds': (datetime.now() - thread_info.created_at).total_seconds(),
+                'is_alive': self._is_thread_alive(thread_info)
+            }
+
+            if thread_info.last_heartbeat:
+                thread_data['last_heartbeat'] = (datetime.now() - thread_info.last_heartbeat).total_seconds()
+
+            metrics['threads'].append(thread_data)
+
+        return metrics
+
+    def _is_thread_alive(self, info: ThreadInfo) -> bool:
+        """Check if thread is alive"""
+        thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
+        return thread and thread.is_alive()
+
+    def print_hud_report(self):
+        """Print detailed HUD thread report"""
+        metrics = self.get_hud_metrics()
+
+        print("\n" + "=" * 80)
+        print("🎯 JARVIS HUD THREAD MANAGER REPORT")
+        print("=" * 80)
+        print(f"Total HUD Threads: {metrics['total_hud_threads']}")
+        print(f"Consecutive Failures: {metrics['consecutive_failures']}")
+        print(f"Last Health Check: {metrics['last_health_check']}")
+
+        print(f"\nBy Category:")
+        for category, count in metrics['by_category'].items():
+            print(f"  {category}: {count}")
+
+        print(f"\nBy State:")
+        for state, count in metrics['by_state'].items():
+            print(f"  {state}: {count}")
+
+        print(f"\nThread Details:")
+        for thread in metrics['threads']:
+            alive_status = "✅" if thread['is_alive'] else "❌"
+            print(f"  {alive_status} {thread['name']} ({thread['category']}) - {thread['state']}")
+            print(f"     Age: {thread['age_seconds']:.1f}s, Daemon: {thread['daemon']}")
+            if 'last_heartbeat' in thread:
+                print(f"     Last heartbeat: {thread['last_heartbeat']:.1f}s ago")
+
+        print("=" * 80 + "\n")
+
+
 class AdvancedThreadManager:
     """
     Enterprise-grade thread manager with async support
@@ -199,7 +749,7 @@ class AdvancedThreadManager:
         await manager.shutdown_async()  # or manager.shutdown_sync()
     """
 
-    def __init__(self, policy: Optional[ThreadPolicy] = None):
+    def __init__(self, policy: Optional[ThreadPolicy] = None, enable_hud_manager: bool = True):
         self.policy = policy or ThreadPolicy()
         self.threads: Dict[int, ThreadInfo] = {}
         self.lock = threading.RLock()  # Reentrant lock for nested calls
@@ -226,6 +776,12 @@ class AdvancedThreadManager:
 
         # Category tracking
         self.categories: Dict[str, Set[int]] = defaultdict(set)
+
+        # HUD Thread Manager
+        self.hud_manager: Optional[HUDThreadManager] = None
+        if enable_hud_manager:
+            self.hud_manager = HUDThreadManager(thread_manager=self)
+            logger.info("   ✅ HUD Thread Manager enabled")
 
         # Start monitoring
         self._start_monitoring()
@@ -1044,6 +1600,65 @@ class AdvancedThreadManager:
             print(f"  {cat}: {count}")
         print(f"Leaked: {report['leaked']}")
         print("=" * 80 + "\n")
+
+    # HUD-specific convenience methods
+
+    async def check_hud_health(self) -> Optional[Dict[str, Any]]:
+        """
+        Check HUD thread health (convenience method)
+
+        Returns:
+            Health status dict or None if HUD manager not enabled
+        """
+        if self.hud_manager:
+            return await self.hud_manager.check_hud_threads_health()
+        return None
+
+    async def shutdown_hud_threads(self, timeout: int = 10) -> bool:
+        """
+        Shutdown HUD threads gracefully (convenience method)
+
+        Args:
+            timeout: Shutdown timeout
+
+        Returns:
+            True if successful
+        """
+        if self.hud_manager:
+            return await self.hud_manager.graceful_shutdown_hud_threads(timeout)
+        return True
+
+    def get_hud_metrics(self) -> Optional[Dict[str, Any]]:
+        """
+        Get HUD metrics (convenience method)
+
+        Returns:
+            Metrics dict or None if HUD manager not enabled
+        """
+        if self.hud_manager:
+            return self.hud_manager.get_hud_metrics()
+        return None
+
+    def print_hud_report(self):
+        """Print HUD thread report (convenience method)"""
+        if self.hud_manager:
+            self.hud_manager.print_hud_report()
+        else:
+            print("HUD Thread Manager not enabled")
+
+    async def start_hud_monitoring(self):
+        """
+        Start HUD thread monitoring loop (convenience method)
+
+        This starts a background monitoring task that checks HUD health
+        and performs auto-recovery when needed.
+        """
+        if self.hud_manager:
+            logger.info("🔄 Starting HUD thread monitoring...")
+            # Create background task for monitoring
+            asyncio.create_task(self.hud_manager.monitor_hud_threads_loop())
+        else:
+            logger.warning("Cannot start HUD monitoring - HUD manager not enabled")
 
 
 # Global instance

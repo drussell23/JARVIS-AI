@@ -365,6 +365,292 @@ class GCPVMSessionManager:
         return len(self.get_active_sessions())
 
 
+class HUDProcessManager:
+    """
+    🚀 Enhanced JARVIS HUD Process Manager v2.0
+    Manages HUD lifecycle, health monitoring, graceful shutdown, and auto-recovery
+    """
+
+    def __init__(self):
+        """Initialize HUD process manager"""
+        self.hud_process_name = "JARVIS-HUD"
+        self.hud_log_path = "/tmp/jarvis_hud.log"
+        self.backend_ws_url = "ws://localhost:8010/ws"
+        self.backend_http_url = "http://localhost:8010"
+
+        # HUD health thresholds
+        self.max_connection_failures = 3
+        self.health_check_interval = 30  # seconds
+        self.ws_timeout = 10  # seconds
+
+        logger.info("🎯 HUD Process Manager v2.0 initialized")
+
+    def find_hud_processes(self) -> List[Dict[str, Any]]:
+        """Find all running HUD processes with detailed info"""
+        hud_processes = []
+
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time', 'memory_info', 'status']):
+            try:
+                proc_name = proc.info['name']
+
+                # Match JARVIS-HUD process
+                if proc_name == self.hud_process_name or 'JARVIS-HUD' in str(proc.info.get('cmdline', [])):
+                    hud_processes.append({
+                        'pid': proc.info['pid'],
+                        'name': proc_name,
+                        'cmdline': proc.info.get('cmdline', []),
+                        'create_time': proc.info.get('create_time', 0),
+                        'age_seconds': time.time() - proc.info.get('create_time', 0),
+                        'memory_mb': proc.info.get('memory_info', psutil._psplatform.pmem(0, 0)).rss / (1024 * 1024),
+                        'status': proc.info.get('status', 'unknown'),
+                        'process_obj': proc
+                    })
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                continue
+
+        logger.info(f"Found {len(hud_processes)} HUD process(es)")
+        return hud_processes
+
+    async def check_hud_health(self) -> Dict[str, Any]:
+        """
+        Comprehensive HUD health check
+        Returns health status with detailed metrics
+        """
+        health = {
+            'timestamp': time.time(),
+            'process_running': False,
+            'websocket_connected': False,
+            'log_file_exists': False,
+            'recent_activity': False,
+            'memory_usage_mb': 0,
+            'process_age_seconds': 0,
+            'status': 'unhealthy',
+            'issues': []
+        }
+
+        # Check 1: Process running
+        hud_procs = self.find_hud_processes()
+        if hud_procs:
+            health['process_running'] = True
+            proc_info = hud_procs[0]  # Get first HUD process
+            health['memory_usage_mb'] = proc_info['memory_mb']
+            health['process_age_seconds'] = proc_info['age_seconds']
+        else:
+            health['issues'].append('HUD process not running')
+
+        # Check 2: Log file exists and has recent activity
+        try:
+            hud_log = Path(self.hud_log_path)
+            if hud_log.exists():
+                health['log_file_exists'] = True
+
+                # Check for recent log activity (within last 60 seconds)
+                mod_time = hud_log.stat().st_mtime
+                if time.time() - mod_time < 60:
+                    health['recent_activity'] = True
+                else:
+                    health['issues'].append('No recent log activity')
+            else:
+                health['issues'].append('HUD log file not found')
+        except Exception as e:
+            health['issues'].append(f'Log check failed: {e}')
+
+        # Check 3: WebSocket connection (test with Python client)
+        try:
+            import websockets
+
+            try:
+                async with websockets.connect(self.backend_ws_url, timeout=self.ws_timeout) as ws:
+                    # Send ping
+                    await ws.send('{"type": "ping"}')
+                    # Wait for response
+                    response = await asyncio.wait_for(ws.recv(), timeout=3)
+                    health['websocket_connected'] = True
+            except Exception as e:
+                health['issues'].append(f'WebSocket connection failed: {e}')
+
+        except ImportError:
+            health['issues'].append('websockets library not available for health check')
+
+        # Determine overall status
+        if health['process_running'] and health['websocket_connected']:
+            health['status'] = 'healthy'
+        elif health['process_running']:
+            health['status'] = 'degraded'
+        else:
+            health['status'] = 'unhealthy'
+
+        return health
+
+    async def graceful_shutdown_hud(self, timeout: int = 10) -> bool:
+        """
+        Gracefully shutdown HUD with WebSocket disconnect notification
+        Returns True if successful
+        """
+        logger.info("🛑 Initiating graceful HUD shutdown...")
+
+        hud_procs = self.find_hud_processes()
+        if not hud_procs:
+            logger.info("No HUD processes to shutdown")
+            return True
+
+        # Step 1: Send disconnect signal via WebSocket (if possible)
+        try:
+            import websockets
+
+            logger.info("📤 Sending disconnect notification to backend...")
+            async with websockets.connect(self.backend_ws_url, timeout=5) as ws:
+                await ws.send('{"type": "hud_disconnect", "reason": "graceful_shutdown"}')
+                logger.info("✅ Disconnect notification sent")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not send disconnect notification: {e}")
+
+        # Step 2: Send SIGTERM to HUD process
+        for proc_info in hud_procs:
+            proc = proc_info['process_obj']
+            pid = proc_info['pid']
+
+            try:
+                logger.info(f"📤 Sending SIGTERM to HUD process (PID: {pid})...")
+                proc.terminate()
+
+                # Wait for graceful shutdown
+                try:
+                    proc.wait(timeout=timeout)
+                    logger.info(f"✅ HUD process {pid} terminated gracefully")
+                    return True
+                except psutil.TimeoutExpired:
+                    logger.warning(f"⚠️  HUD process {pid} did not respond to SIGTERM, forcing...")
+                    proc.kill()
+                    proc.wait(timeout=3)
+                    logger.info(f"✅ HUD process {pid} force killed")
+                    return True
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.error(f"❌ Failed to shutdown HUD process {pid}: {e}")
+                return False
+
+        return True
+
+    async def auto_recovery(self, issue: str) -> bool:
+        """
+        Automatic HUD recovery based on detected issue
+        Returns True if recovery successful
+        """
+        logger.warning(f"🔧 HUD Auto-Recovery initiated for issue: {issue}")
+
+        if "process not running" in issue.lower():
+            logger.info("→ Attempting to relaunch HUD...")
+            # Try to relaunch using stored HUD path
+            import globals
+            hud_app_path = globals().get('_hud_app_path_to_launch')
+
+            if hud_app_path:
+                try:
+                    from macos_hud_launcher import launch_hud_async_safe
+                    success = await launch_hud_async_safe(hud_app_path)
+                    if success:
+                        logger.info("✅ HUD relaunched successfully")
+                        return True
+                    else:
+                        logger.error("❌ HUD relaunch failed")
+                        return False
+                except Exception as e:
+                    logger.error(f"❌ HUD relaunch error: {e}")
+                    return False
+            else:
+                logger.warning("⚠️  HUD app path not available for relaunch")
+                return False
+
+        elif "websocket" in issue.lower():
+            logger.info("→ Attempting WebSocket reconnection...")
+            # Check if backend is running
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{self.backend_http_url}/health", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            logger.info("✅ Backend is healthy")
+                            # Backend is fine, HUD may need restart
+                            await self.graceful_shutdown_hud(timeout=5)
+                            await asyncio.sleep(2)
+                            return await self.auto_recovery("process not running")
+                        else:
+                            logger.warning("⚠️  Backend returned non-200 status")
+                            return False
+            except Exception as e:
+                logger.error(f"❌ Backend health check failed: {e}")
+                return False
+
+        elif "no recent log activity" in issue.lower():
+            logger.info("→ HUD may be frozen, attempting restart...")
+            await self.graceful_shutdown_hud(timeout=5)
+            await asyncio.sleep(2)
+            return await self.auto_recovery("process not running")
+
+        logger.warning(f"⚠️  No recovery strategy for issue: {issue}")
+        return False
+
+    def get_hud_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive HUD metrics for monitoring"""
+        hud_procs = self.find_hud_processes()
+
+        metrics = {
+            'process_count': len(hud_procs),
+            'total_memory_mb': sum(p['memory_mb'] for p in hud_procs),
+            'oldest_process_age_seconds': max([p['age_seconds'] for p in hud_procs], default=0),
+            'processes': hud_procs
+        }
+
+        return metrics
+
+    async def monitor_hud_health_loop(self, check_interval: int = 30, auto_recover: bool = True):
+        """
+        Continuous HUD health monitoring loop
+        Runs periodic health checks and auto-recovery
+        """
+        logger.info(f"🔍 Starting HUD health monitoring (interval: {check_interval}s, auto-recover: {auto_recover})")
+
+        consecutive_failures = 0
+
+        while True:
+            try:
+                health = await self.check_hud_health()
+
+                if health['status'] == 'healthy':
+                    consecutive_failures = 0
+                    logger.debug(f"✅ HUD health check passed (memory: {health['memory_usage_mb']:.1f}MB)")
+
+                elif health['status'] == 'degraded':
+                    consecutive_failures += 1
+                    logger.warning(f"⚠️  HUD health degraded (failures: {consecutive_failures}): {health['issues']}")
+
+                    if auto_recover and consecutive_failures >= 2:
+                        for issue in health['issues']:
+                            recovered = await self.auto_recovery(issue)
+                            if recovered:
+                                consecutive_failures = 0
+                                break
+
+                else:  # unhealthy
+                    consecutive_failures += 1
+                    logger.error(f"❌ HUD unhealthy (failures: {consecutive_failures}): {health['issues']}")
+
+                    if auto_recover and consecutive_failures >= self.max_connection_failures:
+                        logger.warning("🚨 Max failures reached, attempting full recovery...")
+                        for issue in health['issues']:
+                            recovered = await self.auto_recovery(issue)
+                            if recovered:
+                                consecutive_failures = 0
+                                break
+
+            except Exception as e:
+                logger.error(f"❌ HUD health monitoring error: {e}")
+
+            await asyncio.sleep(check_interval)
+
+
 class ProcessCleanupManager:
     """Manages cleanup of stuck or zombie processes with code change detection"""
 
@@ -374,6 +660,9 @@ class ProcessCleanupManager:
 
         # Initialize GCP VM session manager
         self.vm_manager = GCPVMSessionManager()
+
+        # Initialize HUD Process Manager
+        self.hud_manager = HUDProcessManager()
 
         # Default configuration - Aggressive memory target of 35%
         self.config = {
