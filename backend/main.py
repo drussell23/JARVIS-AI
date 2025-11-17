@@ -1072,8 +1072,9 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
             # Calculate progress increment per component
-            progress_per_component = 50 / max(len(core_components), 1)
-            current_progress = 30
+            # Continue from 65% to 90% (25% range for components)
+            progress_per_component = 25 / max(len(core_components), 1)
+            current_progress = 65
 
             for i, comp_name in enumerate(core_components):
                 await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
@@ -1090,7 +1091,7 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
                 f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded"
             )
             logger.info(f"   Other components will load on-demand based on user commands")
-            await send_loading_progress(80, "Core components loaded")
+            await send_loading_progress(90, "Core components loaded")
 
         except Exception as e:
             logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
@@ -1098,10 +1099,11 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
 
     if not DYNAMIC_LOADING_ENABLED:
         # Legacy mode - load all components at startup WITH PROGRESS UPDATES
+        # Continue from 65% to 90% (25% range for components)
         if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
-            await send_loading_progress(30, "Loading components in parallel...")
+            await send_loading_progress(65, "Loading components in parallel...")
             await parallel_import_components()  # This will send its own progress updates
-            await send_loading_progress(80, "Parallel component loading complete")
+            await send_loading_progress(90, "Parallel component loading complete")
         else:
             # Sequential imports (legacy mode) with progress updates
             logger.info("Running sequential imports (legacy mode)")
@@ -1118,19 +1120,20 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
                 ("goal_inference", import_goal_inference),
             ]
 
-            progress_per_component = 50 / len(component_list)
-            current_progress = 30
+            progress_per_component = 25 / len(component_list)
+            current_progress = 65
 
             for comp_name, import_func in component_list:
                 await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
                 components[comp_name] = import_func()
                 current_progress += progress_per_component
 
-            await send_loading_progress(80, "All components loaded")
+            await send_loading_progress(90, "All components loaded")
 
     # ═══════════════════════════════════════════════════════════════
     # ADVANCED COMPONENT WARMUP (Pre-initialize for instant response)
     # ═══════════════════════════════════════════════════════════════
+    await send_loading_progress(92, "Warming up components...")
     try:
         logger.info("🚀 Starting advanced component warmup...")
         from api.unified_command_processor import get_unified_processor
@@ -1151,6 +1154,7 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
         logger.error(f"❌ Component warmup error: {e}", exc_info=True)
         logger.warning("⚠️ Falling back to lazy initialization")
 
+    await send_loading_progress(95, "Initializing memory manager...")
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
     if memory_class:
@@ -1158,6 +1162,7 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
         await app.state.memory_manager.start_monitoring()
         logger.info("✅ Memory manager initialized")
 
+    await send_loading_progress(97, "Initializing goal inference system...")
     # Initialize Goal Inference and start background tasks
     goal_inference = components.get("goal_inference", {})
     if goal_inference and goal_inference.get("integration"):
@@ -2071,13 +2076,13 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
 
         # Note: WebSocket readiness is already signaled in lifespan() before yield
         # No need to signal again here - HUD is already connected and receiving updates
-        await send_loading_progress(10, "Backend server online - starting module loading...")
+        await send_loading_progress(55, "Backend server online - starting module loading...")
 
         # Initialize dynamic component manager if enabled
         global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
         if DYNAMIC_LOADING_ENABLED and get_component_manager:
             logger.info("🧩 Initializing Dynamic Component Management System...")
-            await send_loading_progress(15, "Initializing component manager...")
+            await send_loading_progress(60, "Initializing component manager...")
             dynamic_component_manager = get_component_manager()
             app.state.component_manager = dynamic_component_manager
 
@@ -2092,7 +2097,7 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
             logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
             logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
             logger.info("✅ Dynamic component loading enabled")
-            await send_loading_progress(20, "Component manager initialized")
+            await send_loading_progress(65, "Component manager initialized")
 
         # 🚀 LOAD ALL COMPONENTS using the helper function
         async def progress_wrapper(progress: int, message: str):
@@ -2103,6 +2108,7 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
         await _perform_all_component_loading(app, start_time, send_progress_func=progress_wrapper)
 
         # 🎯 FINAL STEP: Send completion signal to HUD!
+        await send_loading_progress(100, "JARVIS systems online - all components ready!")
         elapsed_time = time.time() - start_time
         logger.info(f"✅ JARVIS Backend fully initialized in {elapsed_time:.1f}s")
         logger.info("🚀 All systems online - ready for voice commands!")
@@ -2624,9 +2630,10 @@ try:
     logger.info("")
 
     # Send initial progress to any connected clients
+    # Continue from where start_system.py left off (45%)
     try:
         from api.unified_websocket import send_loading_progress_sync
-        send_loading_progress_sync(5, "WebSocket ready, initializing backend...")
+        send_loading_progress_sync(50, "Backend WebSocket ready - starting server initialization...")
         logger.info("   📊 Initial progress sent/buffered")
     except Exception as e:
         logger.debug(f"   Could not send initial progress: {e}")
