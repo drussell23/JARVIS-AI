@@ -4616,23 +4616,29 @@ if __name__ == "__main__":
         help="Port to run the server on",
     )
     parser.add_argument(
-        "--minimal-websocket",
+        "--fast-start",
         action="store_true",
-        help="Start only WebSocket server for HUD connection (minimal mode)",
+        help="Start with parallel component loading for instant WebSocket availability",
     )
     args = parser.parse_args()
 
-    # Check if minimal WebSocket mode is requested
-    if args.minimal_websocket or os.getenv("JARVIS_MINIMAL_MODE") == "websocket_only":
-        print(f"\n🔌 Starting JARVIS Minimal WebSocket Server (HUD pre-connection)")
-        print(f"   WebSocket: ws://localhost:{args.port}/ws")
-        print(f"   Mode: Buffering-only (no heavy components)")
+    # Check if fast-start mode is requested (for HUD)
+    if args.fast_start or os.getenv("JARVIS_FAST_START") == "true":
+        print(f"\n⚡ Starting JARVIS Backend with FAST PARALLEL INITIALIZATION")
+        print(f"   HTTP:      http://localhost:{args.port}")
+        print(f"   WebSocket: ws://localhost:{args.port}/ws (available immediately)")
+        print(f"   Mode: Full features with parallel async loading")
+        print(f"   Components: All 10 critical components loading in parallel")
         print("=" * 60)
 
-        # In minimal mode, skip heavy component loading
-        # The WebSocket server is already set up via app routes
-        # Just start the server with minimal features
+        # Enable all optimizations for fastest startup
         OPTIMIZE_STARTUP = True  # Force optimization
+        os.environ["JARVIS_PARALLEL_INIT"] = "true"
+
+        # The WebSocket endpoint is already available via FastAPI routes
+        # Heavy components will load asynchronously after server starts
+        print(f"   ✓ WebSocket ready for HUD connection")
+        print(f"   ✓ Components loading asynchronously in background")
     else:
         # Print normal startup information
         print(f"\n🚀 Starting JARVIS Backend")

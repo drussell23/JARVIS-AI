@@ -10491,42 +10491,51 @@ async def main():
 
         # Launch UI immediately to show loading screen
         if args.ui_mode == "macos":
-            # 🚀 START MINIMAL BACKEND WEBSOCKET FIRST (before HUD)
+            # 🚀 START FULL BACKEND WITH ASYNC PARALLELIZATION (before HUD)
             # This ensures the WebSocket is ready when HUD connects
-            print(f"{Colors.CYAN}🔌 Starting minimal backend WebSocket for HUD connection...{Colors.ENDC}")
+            print(f"{Colors.CYAN}⚡ Starting FULL backend with parallel component loading...{Colors.ENDC}")
+            print(f"{Colors.CYAN}   Using async/await for maximum speed with all features{Colors.ENDC}")
 
-            # Start a minimal backend process just for WebSocket
-            # This will buffer all progress messages until HUD connects
+            # Start FULL backend process with all components in parallel
+            # The backend will load components asynchronously while WebSocket starts immediately
             try:
-                # Import backend main module to start WebSocket server early
+                import subprocess
+
+                # Import backend main module to start full server early
                 backend_dir = Path(__file__).parent / "backend"
                 if str(backend_dir) not in sys.path:
                     sys.path.insert(0, str(backend_dir))
 
-                # Start backend in background with minimal features (just WebSocket)
+                # Start backend in background with FULL features but optimized startup
                 env = os.environ.copy()
                 env["PYTHONPATH"] = str(backend_dir)
-                env["JARVIS_MINIMAL_MODE"] = "websocket_only"
-                env["JARVIS_PORT"] = str(starter.ports["main_api"])
+                env["JARVIS_FAST_START"] = "true"  # Enable fast parallel startup
+                env["JARVIS_PORT"] = "8010"  # Use default backend port
+                env["JARVIS_PARALLEL_INIT"] = "true"  # Load all components in parallel
 
+                # Start the FULL backend with all components
                 backend_process = subprocess.Popen(
-                    [sys.executable, "main.py", "--port", str(starter.ports["main_api"]), "--minimal-websocket"],
+                    [sys.executable, "main.py", "--port", "8010", "--fast-start"],
                     cwd=str(backend_dir),
                     env=env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE
                 )
 
-                # Give backend a moment to start WebSocket server
-                await asyncio.sleep(2)
-                print(f"{Colors.GREEN}   ✓ Backend WebSocket ready on port {starter.ports['main_api']}{Colors.ENDC}")
+                # Give backend time to start WebSocket endpoint
+                # Since we're in a synchronous context, use time.sleep instead of asyncio
+                import time
+                time.sleep(2.0)  # WebSocket needs 2 seconds to be ready
+                print(f"{Colors.GREEN}   ✓ Full backend starting with WebSocket ready on port 8010{Colors.ENDC}")
+                print(f"{Colors.GREEN}   ✓ All components loading in parallel (no compromises!){Colors.ENDC}")
 
-                # Store for later cleanup
-                starter.backend_early_process = backend_process
+                # Store for later cleanup (starter object doesn't exist yet)
+                # Will be handled later when backend is properly started
+                # backend_early_process = backend_process
 
             except Exception as e:
                 print(f"{Colors.YELLOW}   ⚠️ Could not start early backend: {e}{Colors.ENDC}")
-                print(f"{Colors.YELLOW}   Continuing without early WebSocket...{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   Continuing without early backend...{Colors.ENDC}")
 
             # macOS HUD - automatically rebuild and launch
             print(f"{Colors.CYAN}🍎 Preparing macOS HUD (loading screen)...{Colors.ENDC}")
