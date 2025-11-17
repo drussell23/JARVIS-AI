@@ -1392,18 +1392,41 @@ class UnifiedWebSocketManager:
             if client_id in self.connections:
                 ws = self.connections[client_id]
 
-                # Send all buffered progress messages in order
-                for buffered_msg in self.progress_buffer:
+                # Send all buffered progress messages with intelligent throttling
+                # for smooth animation (prevents overwhelming the HUD)
+                total_messages = len(self.progress_buffer)
+                for i, buffered_msg in enumerate(self.progress_buffer):
                     try:
                         await ws.send_json(buffered_msg)
                         logger.debug(
                             f"   ✓ Replayed: {buffered_msg['progress']}% - {buffered_msg['message']}"
                         )
+
+                        # Smart delay calculation for smooth progress bar animation
+                        # Early messages (0-20%): Very fast (20ms) - instant startup feel
+                        # Mid messages (20-80%): Medium (80ms) - smooth progression
+                        # Late messages (80-100%): Fast (40ms) - quick completion
+                        progress = buffered_msg.get("progress", 0)
+                        if progress < 20:
+                            delay = 0.02  # 20ms - rapid initial updates
+                        elif progress < 80:
+                            delay = 0.08  # 80ms - smooth mid-range
+                        else:
+                            delay = 0.04  # 40ms - quick finale
+
+                        # Add slight variation to feel more natural
+                        import random
+                        delay += random.uniform(-0.01, 0.01)
+
+                        # Don't delay after last message
+                        if i < total_messages - 1:
+                            await asyncio.sleep(delay)
+
                     except Exception as e:
                         logger.warning(f"   ⚠️  Failed to replay message: {e}")
                         break
 
-                logger.info(f"✅ Replay complete - HUD caught up on all progress")
+                logger.info(f"✅ Replay complete - HUD caught up on all progress with smooth animation")
 
         # If loading is already complete, send completion message immediately
         if self.hud_state.get("status") == "ready" and client_id in self.connections:
