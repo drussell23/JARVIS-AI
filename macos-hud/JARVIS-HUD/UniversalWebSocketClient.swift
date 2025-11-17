@@ -387,8 +387,7 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
            type == "welcome" {
 
             // Extract server info from welcome message
-            if let decoder = try? JSONDecoder(),
-               let welcomeData = try? JSONDecoder().decode(WelcomeMessage.self, from: data) {
+            if let welcomeData = try? JSONDecoder().decode(WelcomeMessage.self, from: data) {
                 DispatchQueue.main.async {
                     self.serverVersion = welcomeData.serverVersion
                     self.serverCapabilities = welcomeData.capabilities
