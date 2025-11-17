@@ -4798,12 +4798,17 @@ class AsyncSystemManager:
                 print(f"{Colors.YELLOW}   → Attempt {attempt + 1}/{max_retries}: Testing {ws_url}{Colors.ENDC}")
 
                 try:
-                    # Note: websockets.connect() doesn't take timeout parameter directly
-                    # Use asyncio.wait_for() for timeout control
-                    async with asyncio.wait_for(
-                        websockets.connect(ws_url),
-                        timeout=5
-                    ) as websocket:
+                    # Wrap WebSocket connection with timeout
+                    # Note: Can't use async with on asyncio.wait_for directly
+                    # Must await the connection first, then use the websocket object
+                    websocket = None
+                    try:
+                        # Connect with timeout
+                        websocket = await asyncio.wait_for(
+                            websockets.connect(ws_url),
+                            timeout=5
+                        )
+
                         # Connection successful - verify we can send/receive
                         await websocket.send('{"type": "ping"}')
                         response = await asyncio.wait_for(websocket.recv(), timeout=3)
@@ -4846,6 +4851,11 @@ class AsyncSystemManager:
                             print(f"{Colors.YELLOW}   ⚠️  WebSocket OK but HUD process not detected{Colors.ENDC}")
                             print(f"{Colors.YELLOW}   → HUD may be starting or auto-launch failed{Colors.ENDC}")
                             return True  # WebSocket is working, HUD issue is separate
+
+                    finally:
+                        # Always close WebSocket connection
+                        if websocket:
+                            await websocket.close()
 
                 except websockets.exceptions.InvalidStatusCode as e:
                     print(f"{Colors.WARNING}   ⚠️  WebSocket handshake failed: {e.status_code}{Colors.ENDC}")

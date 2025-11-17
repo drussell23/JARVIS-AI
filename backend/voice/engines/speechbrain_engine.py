@@ -62,15 +62,15 @@ def safe_import_torchvision():
     # CRITICAL: Remove any corrupted torchvision from sys.modules first
     if 'torchvision' in sys.modules:
         tv_module = sys.modules['torchvision']
-        # Check if it's a proper module or corrupted
-        if not hasattr(tv_module, 'transforms'):
-            logger.warning("⚠️ Found corrupted torchvision module, removing from sys.modules")
+        # Check if it's a proper module or corrupted (needs both transforms and io for transformers)
+        if not hasattr(tv_module, 'transforms') or not hasattr(tv_module, 'io'):
+            logger.warning("⚠️ Found corrupted/incomplete torchvision module, removing from sys.modules")
             # Remove all torchvision submodules
             keys_to_remove = [k for k in sys.modules.keys() if k.startswith('torchvision')]
             for key in keys_to_remove:
                 del sys.modules[key]
         else:
-            logger.debug("✅ Torchvision already imported correctly, reusing existing module")
+            logger.debug("✅ Torchvision already imported correctly with transforms + io, reusing")
             return sys.modules['torchvision']
 
     try:
@@ -82,13 +82,14 @@ def safe_import_torchvision():
             import torchvision
             import torchvision.ops
             import torchvision.transforms  # Ensure transforms is loaded for transformers
-            logger.debug("✅ Torchvision imported successfully with transforms")
+            import torchvision.io  # Ensure io is loaded for transformers video/image processing
+            logger.debug("✅ Torchvision imported successfully with transforms + io")
             return torchvision
 
     except RuntimeError as e:
         if "already a kernel registered" in str(e):
             logger.warning(f"⚠️ Handling torchvision kernel conflict: {str(e)[:100]}...")
-            # Create compatibility wrapper with transforms
+            # Create compatibility wrapper with transforms AND io
             torchvision = types.ModuleType('torchvision')
             if hasattr(torch.ops, 'torchvision'):
                 torchvision.ops = torch.ops.torchvision
@@ -107,11 +108,22 @@ def safe_import_torchvision():
             transforms.InterpolationMode = InterpolationMode
             torchvision.transforms = transforms
 
+            # Create mock io module for transformers video/image processing
+            io_module = types.ModuleType('torchvision.io')
+            def mock_read_image(*args, **kwargs):
+                raise NotImplementedError("torchvision.io.read_image not available in mock mode")
+            def mock_read_video(*args, **kwargs):
+                raise NotImplementedError("torchvision.io.read_video not available in mock mode")
+            io_module.read_image = mock_read_image
+            io_module.read_video = mock_read_video
+            torchvision.io = io_module
+
             # Register in sys.modules to prevent future imports
             sys.modules['torchvision'] = torchvision
             sys.modules['torchvision.ops'] = torchvision.ops
             sys.modules['torchvision.transforms'] = transforms
-            logger.debug("✅ Created compatibility wrapper with transforms mock")
+            sys.modules['torchvision.io'] = io_module
+            logger.debug("✅ Created compatibility wrapper with transforms + io mocks")
             return torchvision
         else:
             # Re-raise other runtime errors
@@ -135,10 +147,21 @@ def safe_import_torchvision():
         transforms.InterpolationMode = InterpolationMode
         torchvision.transforms = transforms
 
+        # Create mock io module for transformers video/image processing
+        io_module = types.ModuleType('torchvision.io')
+        def mock_read_image(*args, **kwargs):
+            raise NotImplementedError("torchvision.io.read_image not available in mock mode")
+        def mock_read_video(*args, **kwargs):
+            raise NotImplementedError("torchvision.io.read_video not available in mock mode")
+        io_module.read_image = mock_read_image
+        io_module.read_video = mock_read_video
+        torchvision.io = io_module
+
         # Register in sys.modules
         sys.modules['torchvision'] = torchvision
         sys.modules['torchvision.transforms'] = transforms
-        logger.debug("✅ Created minimal mock with transforms for transformers")
+        sys.modules['torchvision.io'] = io_module
+        logger.debug("✅ Created minimal mock with transforms + io for transformers")
         return torchvision
 
 # CRITICAL: Execute torchvision fix IMMEDIATELY, before any other imports

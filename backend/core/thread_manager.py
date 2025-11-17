@@ -351,10 +351,18 @@ class HUDThreadManager:
 
             # Check WebSocket connection
             try:
-                async with websockets.connect(self.backend_ws_url, timeout=self.ws_timeout) as ws:
+                ws = None
+                try:
+                    ws = await asyncio.wait_for(
+                        websockets.connect(self.backend_ws_url),
+                        timeout=self.ws_timeout
+                    )
                     await ws.send('{"type": "hud_health_check"}')
                     response = await asyncio.wait_for(ws.recv(), timeout=3)
                     health['websocket_connected'] = True
+                finally:
+                    if ws:
+                        await ws.close()
             except Exception as e:
                 health['issues'].append(f"WebSocket connection failed: {e}")
 
@@ -417,9 +425,17 @@ class HUDThreadManager:
         try:
             # Step 1: Send disconnect signal via WebSocket
             try:
-                async with websockets.connect(self.backend_ws_url, timeout=5) as ws:
+                ws = None
+                try:
+                    ws = await asyncio.wait_for(
+                        websockets.connect(self.backend_ws_url),
+                        timeout=5
+                    )
                     await ws.send('{"type": "hud_shutdown", "reason": "graceful_thread_shutdown"}')
                     logger.info("   ✅ Shutdown notification sent to backend")
+                finally:
+                    if ws:
+                        await ws.close()
             except Exception as e:
                 logger.warning(f"   ⚠️  Could not send shutdown notification: {e}")
 

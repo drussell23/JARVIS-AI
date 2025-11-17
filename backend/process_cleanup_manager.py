@@ -461,12 +461,20 @@ class HUDProcessManager:
             import websockets
 
             try:
-                async with websockets.connect(self.backend_ws_url, timeout=self.ws_timeout) as ws:
+                ws = None
+                try:
+                    ws = await asyncio.wait_for(
+                        websockets.connect(self.backend_ws_url),
+                        timeout=self.ws_timeout
+                    )
                     # Send ping
                     await ws.send('{"type": "ping"}')
                     # Wait for response
                     response = await asyncio.wait_for(ws.recv(), timeout=3)
                     health['websocket_connected'] = True
+                finally:
+                    if ws:
+                        await ws.close()
             except Exception as e:
                 health['issues'].append(f'WebSocket connection failed: {e}')
 
@@ -500,9 +508,17 @@ class HUDProcessManager:
             import websockets
 
             logger.info("📤 Sending disconnect notification to backend...")
-            async with websockets.connect(self.backend_ws_url, timeout=5) as ws:
+            ws = None
+            try:
+                ws = await asyncio.wait_for(
+                    websockets.connect(self.backend_ws_url),
+                    timeout=5
+                )
                 await ws.send('{"type": "hud_disconnect", "reason": "graceful_shutdown"}')
                 logger.info("✅ Disconnect notification sent")
+            finally:
+                if ws:
+                    await ws.close()
         except Exception as e:
             logger.warning(f"⚠️  Could not send disconnect notification: {e}")
 
