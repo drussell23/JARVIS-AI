@@ -410,7 +410,9 @@ class UnifiedWebSocketManager:
                     process = psutil.Process(pid)
                     # Verify it's actually a Python process (not some other process that reused the PID)
                     if not process.is_running() or "python" not in process.name().lower():
-                        logger.warning(f"⚠️  Stale readiness file - PID {pid} not running or not Python")
+                        logger.warning(
+                            f"⚠️  Stale readiness file - PID {pid} not running or not Python"
+                        )
                         return False
                 except psutil.NoSuchProcess:
                     logger.warning(f"⚠️  Stale readiness file - PID {pid} does not exist")
@@ -1676,7 +1678,7 @@ class UnifiedWebSocketManager:
                 "screen_monitoring",
                 "voice_unlock",
                 "state_synchronization",
-                "buffered_replay"
+                "buffered_replay",
             ],
             "buffered_messages_count": len(self.progress_buffer),
             "timestamp": datetime.now().isoformat(),
@@ -1731,8 +1733,8 @@ class UnifiedWebSocketManager:
         logger.info(f"   Active HUD clients: {len(hud_clients)}")
 
         if not hud_clients:
-            logger.warning("   ⚠️  No HUD clients connected YET - message buffered for replay")
-            logger.warning("   When HUD connects, it will receive all buffered progress updates")
+            logger.debug("   💾 No HUD clients connected yet - message buffered for replay")
+            logger.debug("   📥 HUD will receive all buffered updates when it connects")
         else:
             # Broadcast to connected HUD clients
             try:
