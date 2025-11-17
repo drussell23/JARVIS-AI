@@ -4798,7 +4798,12 @@ class AsyncSystemManager:
                 print(f"{Colors.YELLOW}   → Attempt {attempt + 1}/{max_retries}: Testing {ws_url}{Colors.ENDC}")
 
                 try:
-                    async with websockets.connect(ws_url, timeout=5) as websocket:
+                    # Note: websockets.connect() doesn't take timeout parameter directly
+                    # Use asyncio.wait_for() for timeout control
+                    async with asyncio.wait_for(
+                        websockets.connect(ws_url),
+                        timeout=5
+                    ) as websocket:
                         # Connection successful - verify we can send/receive
                         await websocket.send('{"type": "ping"}')
                         response = await asyncio.wait_for(websocket.recv(), timeout=3)
