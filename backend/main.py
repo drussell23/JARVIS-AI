@@ -256,7 +256,7 @@ os.environ["USE_TORCH"] = "1"
 os.environ["USE_TF"] = "0"
 
 # FastAPI and core imports (always needed)
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -2142,6 +2142,9 @@ async def lifespan(app: FastAPI):
     logger.info("⚡ INSTANT STARTUP MODE: Server will be ready in <1s!")
     start_time = time.time()
 
+    # Store startup time in app state for health checks
+    app.state.startup_time = start_time
+
     # ============================================================================
     # 🎯 INTELLIGENT HYBRID ORCHESTRATION - FIRST THING BEFORE ANY IMPORTS!
     # ============================================================================
@@ -3295,8 +3298,29 @@ async def health_check():
     else:
         component_manager_details = {"enabled": False}
 
+    # Check WebSocket readiness
+    websocket_ready = verify_route_registered("/ws")
+
+    # Determine overall health status
+    overall_status = "healthy"
+    if not websocket_ready:
+        overall_status = "degraded"
+    if router_health["mounting_errors"] > 0:
+        overall_status = "degraded"
+
     return {
-        "status": "healthy",
+        "status": overall_status,
+        "websocket_ready": websocket_ready,
+        "version": "2.0.0",
+        "uptime": time.time() - app.state.startup_time if hasattr(app.state, "startup_time") else 0,
+        "capabilities": [
+            "voice",
+            "vision",
+            "commands",
+            "browser_control",
+            "screen_monitoring",
+            "voice_unlock"
+        ],
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
         "parallel_imports": PARALLEL_IMPORTS,
         "lazy_models": LAZY_LOAD_MODELS,
@@ -3308,6 +3332,82 @@ async def health_check():
         "self_healing": self_healing_details,
         "voice_unlock": voice_unlock_details,
         "component_manager": component_manager_details,
+        "router_health": router_health,
+    }
+
+
+@app.get("/api/config")
+async def get_client_config(request: Request):
+    """
+    Universal client configuration endpoint
+
+    Provides dynamic configuration for WebSocket clients (macOS HUD, web-app, mobile)
+    - No hardcoded URLs
+    - Dynamic host/port detection
+    - Capability discovery
+    - Version negotiation
+    """
+    # Get host info from request
+    host = request.client.host if request.client else "localhost"
+
+    # Detect server host and port
+    server_host = request.base_url.hostname or "localhost"
+    server_port = request.base_url.port or 8010
+
+    # Build WebSocket URL
+    ws_protocol = "wss" if request.base_url.scheme == "https" else "ws"
+    ws_url = f"{ws_protocol}://{server_host}:{server_port}/ws"
+    http_url = f"{request.base_url.scheme}://{server_host}:{server_port}"
+
+    # Check WebSocket readiness
+    websocket_ready = verify_route_registered("/ws")
+
+    return {
+        "version": "2.0.0",
+        "websocket": {
+            "url": ws_url,
+            "ready": websocket_ready,
+            "health_check_required": True,
+            "reconnect": {
+                "enabled": True,
+                "max_attempts": 999,
+                "base_delay_ms": 500,
+                "max_delay_ms": 15000,
+                "jitter": True
+            }
+        },
+        "http": {
+            "base_url": http_url,
+            "health_endpoint": "/health",
+            "config_endpoint": "/api/config"
+        },
+        "capabilities": [
+            "voice",
+            "vision",
+            "commands",
+            "browser_control",
+            "screen_monitoring",
+            "voice_unlock",
+            "state_synchronization",
+            "buffered_replay"
+        ],
+        "protocol": {
+            "version": "2.0",
+            "message_format": "json",
+            "compression": False,
+            "heartbeat_interval_ms": 30000
+        },
+        "client_instructions": {
+            "connection_flow": [
+                "1. GET /health to verify backend readiness",
+                "2. Connect to WebSocket URL",
+                "3. Send client_connect message with capabilities",
+                "4. Receive welcome message with current state",
+                "5. Request buffered messages if needed"
+            ],
+            "required_capabilities": ["hud_client", "voice"],
+            "optional_capabilities": ["vision", "browser_control"]
+        }
     }
 
 

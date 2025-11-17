@@ -1543,23 +1543,34 @@ class UnifiedWebSocketManager:
 
     async def _handle_hud_connect(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Handle HUD client connection handshake
+        Handle HUD client connection handshake with capability negotiation
         Tags this client as a HUD client and sends current state
         Also replays buffered progress messages for smooth loading experience
+
+        Universal protocol for all clients (macOS HUD, web-app, mobile)
         """
         hud_client_id = message.get("client_id", client_id)
         hud_version = message.get("version", "unknown")
+        client_type = message.get("client_type", "unknown")  # hud, web, mobile
+        client_capabilities = message.get("capabilities", [])
 
         logger.info("=" * 80)
-        logger.info(f"🖥️  HUD CLIENT HANDSHAKE")
+        logger.info(f"🖥️  CLIENT HANDSHAKE")
         logger.info(f"   Client ID: {hud_client_id}")
+        logger.info(f"   Client Type: {client_type}")
         logger.info(f"   Version: {hud_version}")
+        logger.info(f"   Capabilities: {', '.join(client_capabilities)}")
         logger.info(f"   WebSocket Client ID: {client_id}")
         logger.info("=" * 80)
 
-        # Tag this connection as a HUD client
+        # Tag this connection with its capabilities
         if client_id in connection_capabilities:
-            connection_capabilities[client_id].add("hud_client")
+            # Always add the generic capabilities from message
+            for cap in client_capabilities:
+                connection_capabilities[client_id].add(cap)
+            # Add backwards compatibility tag
+            if "hud_client" in client_capabilities or client_type == "hud":
+                connection_capabilities[client_id].add("hud_client")
 
         # Update HUD state if connection successful
         self.hud_state["status"] = "connected"
@@ -1632,12 +1643,24 @@ class UnifiedWebSocketManager:
             except Exception as e:
                 logger.warning(f"⚠️  Failed to send loading_complete: {e}")
 
-        # Send welcome with current state
+        # Send welcome with current state and server capabilities
         return {
             "type": "welcome",
             "message": "Connected to JARVIS unified WebSocket",
             "server_version": "2.0.0",
+            "protocol_version": "2.0",
             "current_state": self.hud_state,
+            "capabilities": [
+                "voice",
+                "vision",
+                "commands",
+                "browser_control",
+                "screen_monitoring",
+                "voice_unlock",
+                "state_synchronization",
+                "buffered_replay"
+            ],
+            "buffered_messages_count": len(self.progress_buffer),
             "timestamp": datetime.now().isoformat(),
         }
 
