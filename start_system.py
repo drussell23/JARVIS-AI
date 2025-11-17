@@ -10587,52 +10587,33 @@ async def main():
                         print(f"{Colors.GREEN}   ✓ Killed existing HUD instance{Colors.ENDC}")
                         await asyncio.sleep(0.5)  # Give it time to close
 
-                    # 🚀 SMART HUD LAUNCH COORDINATOR
-                    # Store HUD path and launch when WebSocket is ready (not before!)
-                    # This eliminates "Connection refused" errors and ensures immediate connection
-                    print(f"{Colors.GREEN}   ✓ HUD built successfully - will launch when WebSocket is ready{Colors.ENDC}")
-                    print(f"{Colors.CYAN}   🕐 Smart coordinator: HUD launches when backend signals readiness{Colors.ENDC}")
+                    # 🚀 INSTANT HUD LAUNCH - NO WAITING!
+                    # Launch HUD immediately for instant connection with Universal Client
+                    print(f"{Colors.GREEN}   ✓ HUD built successfully - launching immediately...{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   🚀 Launching JARVIS OS shell (Arc Reactor HUD)...{Colors.ENDC}")
 
-                    # Store the HUD path for smart launch
-                    globals()['_hud_app_path_to_launch'] = hud_app_path
-
-                    # Start smart HUD launch coordinator in background
-                    async def smart_hud_launcher():
-                        """Smart HUD launcher that waits for WebSocket readiness"""
+                    # Launch HUD RIGHT NOW - Universal Client will handle connection
+                    async def instant_hud_launcher():
+                        """Launch HUD immediately - Universal Client handles connection"""
                         try:
                             import sys
                             sys.path.insert(0, str(backend_dir))
-
-                            from api.unified_websocket import wait_for_websocket_ready
                             from macos_hud_launcher import launch_hud_async_safe
 
-                            print(f"{Colors.CYAN}   ⏳ Waiting for WebSocket endpoint to become ready...{Colors.ENDC}")
+                            # Launch HUD immediately!
+                            launch_success = await launch_hud_async_safe(hud_app_path)
 
-                            # Wait up to 60 seconds for WebSocket to be ready
-                            ready = await wait_for_websocket_ready(timeout=60.0, check_interval=0.2)
-
-                            if ready:
-                                print(f"{Colors.GREEN}   ✅ WebSocket endpoint is READY!{Colors.ENDC}")
-                                print(f"{Colors.CYAN}   🚀 Launching JARVIS HUD now...{Colors.ENDC}")
-
-                                # Launch HUD NOW that backend is ready
-                                launch_success = await launch_hud_async_safe(hud_app_path)
-
-                                if launch_success:
-                                    print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
-                                    print(f"{Colors.CYAN}   → HUD connected to ws://localhost:8010/ws immediately{Colors.ENDC}")
-                                    print(f"{Colors.CYAN}   → Progress updates streaming in real-time{Colors.ENDC}")
-                                else:
-                                    print(f"{Colors.YELLOW}   ⚠️  HUD launch unsuccessful{Colors.ENDC}")
+                            if launch_success:
+                                print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
+                                print(f"{Colors.CYAN}   → App will connect to ws://localhost:8010/ws automatically{Colors.ENDC}")
                             else:
-                                print(f"{Colors.YELLOW}   ⚠️  WebSocket not ready after 60s timeout{Colors.ENDC}")
-                                print(f"{Colors.YELLOW}   → HUD launch cancelled{Colors.ENDC}")
+                                print(f"{Colors.YELLOW}   ⚠️  HUD launch unsuccessful{Colors.ENDC}")
 
                         except Exception as e:
-                            print(f"{Colors.YELLOW}   ⚠️  Smart HUD launcher error: {e}{Colors.ENDC}")
+                            print(f"{Colors.YELLOW}   ⚠️  Instant HUD launcher error: {e}{Colors.ENDC}")
 
-                    # Start coordinator in background (non-blocking)
-                    asyncio.create_task(smart_hud_launcher())
+                    # Launch instantly (non-blocking)
+                    asyncio.create_task(instant_hud_launcher())
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
                     print(f"{Colors.YELLOW}   Searched: {search_paths}{Colors.ENDC}")
