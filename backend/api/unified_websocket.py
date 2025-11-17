@@ -374,6 +374,10 @@ class UnifiedWebSocketManager:
         except Exception as e:
             logger.warning(f"⚠️  Failed to cleanup readiness signal: {e}")
 
+    def clear_websocket_readiness(self):
+        """Alias for cleanup_readiness_signal for consistency"""
+        self.cleanup_readiness_signal()
+
     def is_websocket_ready(self, max_age_seconds: float = 5.0) -> bool:
         """
         Check if WebSocket server is ready (client-side check)
@@ -385,6 +389,7 @@ class UnifiedWebSocketManager:
             True if server is ready and heartbeat is recent
         """
         from pathlib import Path
+        import psutil
 
         try:
             signal_path = Path(self.readiness_signal_file)
@@ -397,6 +402,19 @@ class UnifiedWebSocketManager:
 
             if not info.get("ready"):
                 return False
+
+            # Check if PID is still running (prevents stale file issues)
+            pid = info.get("pid")
+            if pid:
+                try:
+                    process = psutil.Process(pid)
+                    # Verify it's actually a Python process (not some other process that reused the PID)
+                    if not process.is_running() or "python" not in process.name().lower():
+                        logger.warning(f"⚠️  Stale readiness file - PID {pid} not running or not Python")
+                        return False
+                except psutil.NoSuchProcess:
+                    logger.warning(f"⚠️  Stale readiness file - PID {pid} does not exist")
+                    return False
 
             # Check heartbeat freshness
             last_heartbeat = info.get("last_heartbeat")

@@ -2252,6 +2252,16 @@ async def lifespan(app: FastAPI):
         yield
         # Cleanup on shutdown
         logger.info("🛑 Shutting down JARVIS backend...")
+
+        # Clear WebSocket readiness signal on shutdown
+        try:
+            from api.unified_websocket import get_websocket_manager
+            ws_manager = get_websocket_manager()
+            ws_manager.clear_websocket_readiness()
+            logger.info("✅ Cleared WebSocket readiness signal")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to clear WebSocket readiness: {e}")
+
         return
 
     # Otherwise, do traditional blocking startup (modules load BEFORE server starts)
