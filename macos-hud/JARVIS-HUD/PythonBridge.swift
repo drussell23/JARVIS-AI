@@ -74,6 +74,9 @@ class PythonBridge: ObservableObject {
     @Published var voiceState: String = "inactive"  // inactive, wake_word_listening, listening, processing
     @Published var voiceTranscript: String = ""  // Real-time voice transcript
 
+    // Screen lock state
+    @Published var screenLockTriggered: Bool = false  // Screen lock animation trigger
+
     // MARK: - Configuration
 
     let websocketURL: URL  // Made public for AppState logging (legacy)
@@ -673,6 +676,22 @@ class PythonBridge: ObservableObject {
                     print("💤 [WebSocket] Voice inactive")
                     self.voiceState = "inactive"
                     self.voiceTranscript = ""
+
+                // 🔒 Screen lock events
+                case "screen_lock_initiated", "screen_locking":
+                    print("🔒 [WebSocket] Screen lock initiated")
+                    // Toggle the trigger to fire animation
+                    self.screenLockTriggered = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.screenLockTriggered = true
+                    }
+                case "screen_locked":
+                    print("🔐 [WebSocket] Screen locked successfully")
+                case "screen_lock_failed":
+                    print("❌ [WebSocket] Screen lock failed")
+                    if let error = json["error"] as? String {
+                        print("   Error: \(error)")
+                    }
 
                 default:
                     print("⚠️  [WebSocket] Unknown message type: \(type)")

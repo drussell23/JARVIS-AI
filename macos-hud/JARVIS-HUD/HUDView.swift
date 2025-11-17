@@ -59,6 +59,8 @@ struct HUDView: View {
     @State private var voiceStatus: VoiceStatus = .inactive
     @State private var isWakeWordActive: Bool = false
     @State private var currentTranscript: String = ""  // Real-time voice transcript
+    @State private var showScreenLockAnimation: Bool = false  // Screen lock animation overlay
+    @State private var screenLockCountdown: Int = 3  // Countdown timer for screen lock
     var onQuit: (() -> Void)? = nil  // Callback to quit HUD
 
     // Use shared PythonBridge from AppState (persisted from LoadingHUDView)
@@ -75,6 +77,13 @@ struct HUDView: View {
             // Pure transparency so desktop shows through completely
             Color.clear
                 .ignoresSafeArea()
+
+            // 🔒 Screen Lock Animation Overlay
+            if showScreenLockAnimation {
+                ScreenLockAnimationView(countdown: $screenLockCountdown)
+                    .transition(.opacity)
+                    .zIndex(1000)  // Above everything
+            }
 
             VStack(spacing: 0) {
 
@@ -202,6 +211,33 @@ struct HUDView: View {
         .onChange(of: pythonBridge.voiceTranscript) { newTranscript in
             currentTranscript = newTranscript
         }
+        .onChange(of: pythonBridge.screenLockTriggered) { isTriggered in
+            if isTriggered {
+                triggerScreenLockAnimation()
+            }
+        }
+    }
+
+    private func triggerScreenLockAnimation() {
+        withAnimation(.easeIn(duration: 0.3)) {
+            showScreenLockAnimation = true
+        }
+
+        // Start countdown timer
+        screenLockCountdown = 3
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            if screenLockCountdown > 0 {
+                screenLockCountdown -= 1
+            } else {
+                timer.invalidate()
+                // Hide animation after countdown
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeOut(duration: 0.5)) {
+                        showScreenLockAnimation = false
+                    }
+                }
+            }
+        }
     }
 
     private func updateVoiceStatus(from state: String) {
@@ -309,6 +345,104 @@ struct ConnectionStateIndicator: View {
             return .red.opacity(0.6)
         case .error:
             return .red
+        }
+    }
+}
+
+/// 🔒 Screen Lock Animation - Epic fullscreen countdown overlay
+struct ScreenLockAnimationView: View {
+    @Binding var countdown: Int
+    @State private var pulseAnimation: Bool = false
+    @State private var lockIconScale: CGFloat = 0.5
+    @State private var backgroundOpacity: Double = 0.0
+
+    var body: some View {
+        ZStack {
+            // Full screen semi-transparent black background
+            Color.black
+                .opacity(backgroundOpacity)
+                .ignoresSafeArea()
+                .onAppear {
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        backgroundOpacity = 0.9
+                    }
+                }
+
+            VStack(spacing: 40) {
+                // Lock Icon with pulsing animation
+                ZStack {
+                    // Outer glow rings
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .stroke(Color.jarvisGreen.opacity(0.3), lineWidth: 2)
+                            .frame(width: 200 + CGFloat(index * 40), height: 200 + CGFloat(index * 40))
+                            .scaleEffect(pulseAnimation ? 1.2 : 1.0)
+                            .opacity(pulseAnimation ? 0.0 : 0.6)
+                            .animation(
+                                Animation.easeOut(duration: 1.5)
+                                    .repeatForever(autoreverses: false)
+                                    .delay(Double(index) * 0.2),
+                                value: pulseAnimation
+                            )
+                    }
+
+                    // Lock Icon
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 100))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.jarvisGreen, .jarvisGreenDark],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: Color.jarvisGreenGlow(), radius: 30)
+                        .scaleEffect(lockIconScale)
+                }
+                .onAppear {
+                    pulseAnimation = true
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.6)) {
+                        lockIconScale = 1.0
+                    }
+                }
+
+                // "LOCKING SCREEN" text
+                Text("LOCKING SCREEN")
+                    .font(.system(size: 36, weight: .black, design: .monospaced))
+                    .foregroundColor(.jarvisGreen)
+                    .tracking(8)
+                    .shadow(color: Color.jarvisGreenGlow(), radius: 20)
+
+                // Countdown number
+                if countdown > 0 {
+                    Text("\(countdown)")
+                        .font(.system(size: 120, weight: .black, design: .monospaced))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.jarvisGreen, .white],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .shadow(color: Color.jarvisGreenGlow(opacity: 0.8), radius: 40)
+                        .transition(.scale.combined(with: .opacity))
+                        .id(countdown)  // Force SwiftUI to animate each new value
+                } else {
+                    // Final confirmation
+                    VStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 80))
+                            .foregroundColor(.jarvisGreen)
+                            .shadow(color: Color.jarvisGreenGlow(), radius: 30)
+
+                        Text("SECURED")
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .foregroundColor(.jarvisGreen)
+                            .tracking(6)
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
         }
     }
 }
