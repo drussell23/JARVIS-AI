@@ -272,7 +272,9 @@ class UnifiedWebSocketManager:
         signal_dir = Path("/tmp/jarvis")  # nosec B108
         signal_dir.mkdir(parents=True, exist_ok=True)
 
-    def signal_websocket_ready(self, host: str = "localhost", port: int = 8010, endpoint: str = "/ws"):
+    def signal_websocket_ready(
+        self, host: str = "localhost", port: int = 8010, endpoint: str = "/ws"
+    ):
         """
         Signal that WebSocket server is ready for connections
         Creates a signal file that HUD launcher can monitor
@@ -412,7 +414,9 @@ class UnifiedWebSocketManager:
             logger.warning(f"⚠️  Failed to check readiness: {e}")
             return False
 
-    async def wait_for_websocket_ready(self, timeout: float = 30.0, check_interval: float = 0.1) -> bool:
+    async def wait_for_websocket_ready(
+        self, timeout: float = 30.0, check_interval: float = 0.1
+    ) -> bool:
         """
         Wait for WebSocket server to become ready (client-side)
 
@@ -1596,6 +1600,7 @@ class UnifiedWebSocketManager:
 
                         # Add slight variation to feel more natural
                         import random
+
                         delay += random.uniform(-0.01, 0.01)
 
                         # Don't delay after last message
@@ -1606,7 +1611,9 @@ class UnifiedWebSocketManager:
                         logger.warning(f"   ⚠️  Failed to replay message: {e}")
                         break
 
-                logger.info(f"✅ Replay complete - HUD caught up on all progress with smooth animation")
+                logger.info(
+                    f"✅ Replay complete - HUD caught up on all progress with smooth animation"
+                )
 
         # If loading is already complete, send completion message immediately
         if self.hud_state.get("status") == "ready" and client_id in self.connections:
