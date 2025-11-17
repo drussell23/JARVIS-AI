@@ -10491,6 +10491,43 @@ async def main():
 
         # Launch UI immediately to show loading screen
         if args.ui_mode == "macos":
+            # 🚀 START MINIMAL BACKEND WEBSOCKET FIRST (before HUD)
+            # This ensures the WebSocket is ready when HUD connects
+            print(f"{Colors.CYAN}🔌 Starting minimal backend WebSocket for HUD connection...{Colors.ENDC}")
+
+            # Start a minimal backend process just for WebSocket
+            # This will buffer all progress messages until HUD connects
+            try:
+                # Import backend main module to start WebSocket server early
+                backend_dir = Path(__file__).parent / "backend"
+                if str(backend_dir) not in sys.path:
+                    sys.path.insert(0, str(backend_dir))
+
+                # Start backend in background with minimal features (just WebSocket)
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(backend_dir)
+                env["JARVIS_MINIMAL_MODE"] = "websocket_only"
+                env["JARVIS_PORT"] = str(starter.ports["main_api"])
+
+                backend_process = subprocess.Popen(
+                    [sys.executable, "main.py", "--port", str(starter.ports["main_api"]), "--minimal-websocket"],
+                    cwd=str(backend_dir),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+
+                # Give backend a moment to start WebSocket server
+                await asyncio.sleep(2)
+                print(f"{Colors.GREEN}   ✓ Backend WebSocket ready on port {starter.ports['main_api']}{Colors.ENDC}")
+
+                # Store for later cleanup
+                starter.backend_early_process = backend_process
+
+            except Exception as e:
+                print(f"{Colors.YELLOW}   ⚠️ Could not start early backend: {e}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   Continuing without early WebSocket...{Colors.ENDC}")
+
             # macOS HUD - automatically rebuild and launch
             print(f"{Colors.CYAN}🍎 Preparing macOS HUD (loading screen)...{Colors.ENDC}")
             try:

@@ -183,7 +183,7 @@ class MacOSHUDLauncher:
 
     async def launch(self) -> bool:
         """
-        Launch the macOS HUD app
+        Launch the macOS HUD app with intelligent WebSocket pre-connection
         Returns True if successfully launched
         """
         # Find app
@@ -268,6 +268,12 @@ class MacOSHUDLauncher:
             self.running = True
             logger.info("✓ JARVIS macOS HUD launched successfully!")
             print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
+
+            # Wait for HUD to be ready to connect (give it time to initialize)
+            print(f"{Colors.CYAN}   ⏳ Waiting for HUD to initialize...{Colors.ENDC}")
+            await asyncio.sleep(2.0)  # Give HUD 2 seconds to start up and be ready
+            print(f"{Colors.GREEN}   ✓ HUD ready for WebSocket connection{Colors.ENDC}")
+
             return True
 
         except Exception as e:

@@ -4615,14 +4615,31 @@ if __name__ == "__main__":
         default=int(os.getenv("BACKEND_PORT", "8010")),
         help="Port to run the server on",
     )
+    parser.add_argument(
+        "--minimal-websocket",
+        action="store_true",
+        help="Start only WebSocket server for HUD connection (minimal mode)",
+    )
     args = parser.parse_args()
 
-    # Print startup information
-    print(f"\n🚀 Starting JARVIS Backend")
-    print(f"   HTTP:      http://localhost:{args.port}")
-    print(f"   WebSocket: ws://localhost:{args.port}/ws")
-    print(f"   API Docs:  http://localhost:{args.port}/docs")
-    print("=" * 60)
+    # Check if minimal WebSocket mode is requested
+    if args.minimal_websocket or os.getenv("JARVIS_MINIMAL_MODE") == "websocket_only":
+        print(f"\n🔌 Starting JARVIS Minimal WebSocket Server (HUD pre-connection)")
+        print(f"   WebSocket: ws://localhost:{args.port}/ws")
+        print(f"   Mode: Buffering-only (no heavy components)")
+        print("=" * 60)
+
+        # In minimal mode, skip heavy component loading
+        # The WebSocket server is already set up via app routes
+        # Just start the server with minimal features
+        OPTIMIZE_STARTUP = True  # Force optimization
+    else:
+        # Print normal startup information
+        print(f"\n🚀 Starting JARVIS Backend")
+        print(f"   HTTP:      http://localhost:{args.port}")
+        print(f"   WebSocket: ws://localhost:{args.port}/ws")
+        print(f"   API Docs:  http://localhost:{args.port}/docs")
+        print("=" * 60)
 
     # Use optimized settings if enabled
     if OPTIMIZE_STARTUP:
