@@ -183,34 +183,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-# DEBUG: Print location info
+# DEBUG: Print location info (lightweight, keep at module level)
 print(f"[STARTUP-DEBUG] Running from: {os.path.abspath(__file__)}")
 print(f"[STARTUP-DEBUG] Working directory: {os.getcwd()}")
 print(f"[STARTUP-DEBUG] Python path: {sys.path[:3]}")  # First 3 entries
 
-# DEBUG: Run coordinate diagnostic
-try:
-    print("[STARTUP-DEBUG] Running coordinate diagnostic...")
-    exec(
-        open(
-            "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py"
-        ).read()
-    )
-except Exception as e:
-    print(f"[STARTUP-DEBUG] Coordinate diagnostic failed: {e}")
-
-# DEBUG: Install PyAutoGUI intercept to track coordinate doubling
-try:
-    print("[STARTUP-DEBUG] Installing PyAutoGUI intercept...")
-    sys.path.insert(0, "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent")
-    import pyautogui_intercept
-
-    pyautogui_intercept.install_intercept()
-    print(
-        "[STARTUP-DEBUG] ✅ PyAutoGUI intercept installed - logging to /tmp/pyautogui_intercept.log"
-    )
-except Exception as e:
-    print(f"[STARTUP-DEBUG] PyAutoGUI intercept failed: {e}")
+# MOVED: Diagnostic code moved to async startup for progress reporting
+# See load_heavy_modules_in_background() for diagnostic initialization
 
 # Enable enhanced ML model logging
 try:
@@ -1040,6 +1019,9 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
 
     This function contains ALL the component loading code from the original lifespan function.
     """
+    # Declare globals used in this function
+    global DYNAMIC_LOADING_ENABLED, dynamic_component_manager, components, PARALLEL_IMPORTS
+
     # Import at function level to avoid circular imports
     from api.unified_websocket import send_loading_progress as hud_send_progress
 
@@ -1077,14 +1059,17 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
             current_progress = 65
 
             for i, comp_name in enumerate(core_components):
-                await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
-                success = await dynamic_component_manager.load_component(comp_name)
-                if success:
-                    comp = dynamic_component_manager.components[comp_name]
-                    components[comp_name] = comp.instance
-                    logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
-                else:
-                    logger.warning(f"   ⚠️ {comp_name} failed to load")
+                try:
+                    await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
+                    success = await dynamic_component_manager.load_component(comp_name)
+                    if success:
+                        comp = dynamic_component_manager.components[comp_name]
+                        components[comp_name] = comp.instance
+                        logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
+                    else:
+                        logger.warning(f"   ⚠️ {comp_name} failed to load")
+                except Exception as e:
+                    logger.error(f"   ❌ {comp_name} crashed during load: {e}")
                 current_progress += progress_per_component
 
             logger.info(
@@ -1124,8 +1109,12 @@ async def _perform_all_component_loading(app: FastAPI, start_time: float, send_p
             current_progress = 65
 
             for comp_name, import_func in component_list:
-                await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
-                components[comp_name] = import_func()
+                try:
+                    await send_loading_progress(int(current_progress), f"Loading {comp_name}...")
+                    components[comp_name] = import_func()
+                    logger.info(f"   ✅ {comp_name} loaded successfully")
+                except Exception as e:
+                    logger.error(f"   ❌ {comp_name} crashed during load: {e}")
                 current_progress += progress_per_component
 
             await send_loading_progress(90, "All components loaded")
@@ -2074,9 +2063,37 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
 
         logger.info("🔥 Background module loading started (server is listening!)")
 
-        # Note: WebSocket readiness is already signaled in lifespan() before yield
-        # No need to signal again here - HUD is already connected and receiving updates
-        await send_loading_progress(55, "Backend server online - starting module loading...")
+        # Note: WebSocket readiness already signaled in lifespan() with 50% progress
+        # HUD is already connected and receiving updates
+        # Start from 52% to continue smooth progression
+
+        # 🎯 STEP 1: Run diagnostic code with progress updates (moved from module-level)
+        await send_loading_progress(52, "Running coordinate diagnostics...")
+        try:
+            logger.info("[DIAGNOSTIC] Running coordinate diagnostic...")
+            exec(
+                open(
+                    "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py"
+                ).read()
+            )
+        except Exception as e:
+            logger.warning(f"[DIAGNOSTIC] Coordinate diagnostic failed: {e}")
+
+        # 🎯 STEP 2: Install PyAutoGUI intercept
+        await send_loading_progress(54, "Installing PyAutoGUI monitoring...")
+        try:
+            logger.info("[DIAGNOSTIC] Installing PyAutoGUI intercept...")
+            sys.path.insert(0, "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent")
+            import pyautogui_intercept
+
+            pyautogui_intercept.install_intercept()
+            logger.info(
+                "[DIAGNOSTIC] ✅ PyAutoGUI intercept installed - logging to /tmp/pyautogui_intercept.log"
+            )
+        except Exception as e:
+            logger.warning(f"[DIAGNOSTIC] PyAutoGUI intercept failed: {e}")
+
+        await send_loading_progress(56, "Diagnostics complete - loading backend modules...")
 
         # Initialize dynamic component manager if enabled
         global dynamic_component_manager, DYNAMIC_LOADING_ENABLED, gcp_vm_manager
@@ -2240,15 +2257,19 @@ async def lifespan(app: FastAPI):
     if INSTANT_STARTUP:
         logger.info("🚀 INSTANT MODE: Yielding immediately - heavy loading will happen in background")
 
-        # 🚀 SIGNAL WEBSOCKET READINESS IMMEDIATELY
+        # 🚀 SIGNAL WEBSOCKET READINESS IMMEDIATELY + Send 50% Progress
         # This allows HUD to connect without waiting for heavy module loading
         try:
-            from api.unified_websocket import get_websocket_manager
+            from api.unified_websocket import get_websocket_manager, send_loading_progress_sync
             ws_manager = get_websocket_manager()
             ws_manager.signal_websocket_ready(host="localhost", port=8010, endpoint="/ws")
             # Start heartbeat task to keep signal file fresh
             asyncio.create_task(ws_manager.start_readiness_heartbeat(interval=1.0))
             logger.info("✅ WebSocket readiness signaled - HUD can connect immediately")
+
+            # Send initial progress message - backend is ready for connections!
+            send_loading_progress_sync(50, "Backend WebSocket ready - starting server initialization...")
+            logger.info("📊 Sent 50% progress - backend WebSocket ready")
         except Exception as e:
             logger.warning(f"⚠️  Failed to signal WebSocket readiness: {e}")
 
