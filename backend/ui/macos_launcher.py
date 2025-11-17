@@ -17,6 +17,15 @@ import json
 logger = logging.getLogger(__name__)
 
 
+# Colors for terminal output
+class Colors:
+    BLUE = '\033[96m'
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    CYAN = '\033[96m'
+    ENDC = '\033[0m'
+
+
 class MacOSHUDLauncher:
     """
     Robust, async macOS HUD launcher with process management
@@ -137,6 +146,41 @@ class MacOSHUDLauncher:
             logger.error(f"❌ Build error: {e}")
             return False
 
+    def needs_rebuild(self, app_path: Path) -> bool:
+        """
+        Check if HUD needs to be rebuilt based on source file timestamps
+        Returns True if any Swift source file is newer than the built app
+        """
+        repo_root = Path(__file__).parent.parent.parent
+        swift_dir = repo_root / "macos-hud" / "JARVIS-HUD"
+
+        if not swift_dir.exists():
+            logger.warning(f"⚠️  Swift source directory not found: {swift_dir}")
+            return False
+
+        # Get all Swift source files
+        swift_files = list(swift_dir.glob("*.swift"))
+        if not swift_files:
+            logger.warning("⚠️  No Swift source files found")
+            return False
+
+        # Get app binary modification time
+        app_binary = app_path / "Contents" / "MacOS" / "JARVIS-HUD"
+        if not app_binary.exists():
+            logger.info("⚠️  App binary not found, rebuild needed")
+            return True
+
+        app_mtime = app_binary.stat().st_mtime
+
+        # Check if any source file is newer than the app
+        for swift_file in swift_files:
+            if swift_file.stat().st_mtime > app_mtime:
+                logger.info(f"🔨 Source changed: {swift_file.name} is newer than built app")
+                return True
+
+        logger.info("✓ HUD is up-to-date, no rebuild needed")
+        return False
+
     async def launch(self) -> bool:
         """
         Launch the macOS HUD app
@@ -145,45 +189,90 @@ class MacOSHUDLauncher:
         # Find app
         self.app_path = await self.find_app()
 
-        # If not found, try building
-        if not self.app_path:
-            logger.info("📦 App not found, attempting to build...")
+        # Check if rebuild is needed (source files changed)
+        should_rebuild = False
+        if self.app_path:
+            should_rebuild = self.needs_rebuild(self.app_path)
+            if should_rebuild:
+                logger.info("🔄 Source files changed, rebuilding HUD...")
+
+        # If not found OR rebuild needed, build it
+        if not self.app_path or should_rebuild:
+            if not self.app_path:
+                logger.info("📦 App not found, building HUD...")
+
+            print(f"\n{Colors.BLUE}🍎 Preparing macOS HUD (loading screen)...{Colors.ENDC}")
+            if should_rebuild:
+                print(f"{Colors.CYAN}   🔨 Building macOS HUD (source changed or not built)...{Colors.ENDC}")
+
             if await self.build_app():
                 self.app_path = await self.find_app()
+                print(f"{Colors.GREEN}   ✓ HUD built successfully{Colors.ENDC}")
+            else:
+                print(f"{Colors.RED}   ✗ HUD build failed{Colors.ENDC}")
 
         if not self.app_path:
             logger.error("❌ Cannot launch: app not found and build failed")
             return False
+
+        # Kill any existing HUD instances for clean launch
+        print(f"{Colors.CYAN}   🔄 Checking for existing HUD instances...{Colors.ENDC}")
+        try:
+            # Kill by process name
+            kill_process = await asyncio.create_subprocess_exec(
+                "pkill", "-f", "JARVIS-HUD",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await kill_process.wait()
+            # Small delay to ensure process is fully terminated
+            await asyncio.sleep(0.5)
+        except Exception:
+            pass  # No existing process to kill
 
         # Prepare environment
         env = os.environ.copy()
         env.update({
             "JARVIS_BACKEND_HOST": self.backend_host,
             "JARVIS_BACKEND_PORT": str(self.backend_port),
-            "JARVIS_BACKEND_WS": f"ws://{self.backend_host}:{self.backend_port}/ws/hud",
+            "JARVIS_BACKEND_WS": f"ws://{self.backend_host}:{self.backend_port}/ws",
             "JARVIS_BACKEND_HTTP": f"http://{self.backend_host}:{self.backend_port}",
         })
 
-        # Launch app
+        # Launch app directly (not via 'open' to have better control)
+        app_binary = self.app_path / "Contents" / "MacOS" / "JARVIS-HUD"
+
         logger.info(f"🚀 Launching {self.app_path}...")
-        logger.info(f"   Backend: ws://{self.backend_host}:{self.backend_port}/ws/hud")
+        logger.info(f"   Backend: ws://{self.backend_host}:{self.backend_port}/ws")
+
+        print(f"{Colors.GREEN}   ✓ HUD built successfully - launching immediately...{Colors.ENDC}")
+        print(f"{Colors.CYAN}   🚀 Launching JARVIS OS shell (Arc Reactor HUD)...{Colors.ENDC}")
 
         try:
-            # Use 'open' command for macOS apps
+            # Launch directly for instant startup
             self.process = await asyncio.create_subprocess_exec(
-                "open",
-                "-a", str(self.app_path),
-                "--env", json.dumps(env),  # Pass environment
+                str(app_binary),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
+
+            # Give it a moment to start
+            await asyncio.sleep(0.5)
+
+            # Check if it's still running
+            if self.process.returncode is not None:
+                logger.error(f"❌ HUD process exited immediately with code {self.process.returncode}")
+                return False
 
             self.running = True
             logger.info("✓ JARVIS macOS HUD launched successfully!")
+            print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
             return True
 
         except Exception as e:
             logger.error(f"❌ Failed to launch app: {e}")
+            print(f"{Colors.RED}   ✗ Failed to launch HUD: {e}{Colors.ENDC}")
             return False
 
     async def monitor(self):
