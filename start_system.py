@@ -10541,8 +10541,41 @@ async def main():
             print(f"{Colors.CYAN}🍎 Preparing macOS HUD (loading screen)...{Colors.ENDC}")
             try:
                 import subprocess
+                import hashlib
                 repo_root = Path(__file__).parent
                 hud_dir = repo_root / "macos-hud"
+                hud_binary_hash_file = repo_root / ".jarvis_hud_binary_hash"
+
+                def compute_binary_hash(binary_path: Path) -> str:
+                    """Compute SHA256 hash of HUD binary for freshness detection"""
+                    try:
+                        if not binary_path.exists():
+                            return ""
+                        hasher = hashlib.sha256()
+                        with open(binary_path, 'rb') as f:
+                            # Read in chunks for large binaries
+                            for chunk in iter(lambda: f.read(65536), b''):
+                                hasher.update(chunk)
+                        return hasher.hexdigest()[:16]  # First 16 chars for display
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️  Could not compute binary hash: {e}{Colors.ENDC}")
+                        return ""
+
+                def get_last_launched_hash() -> str:
+                    """Get hash of last launched HUD binary"""
+                    try:
+                        if hud_binary_hash_file.exists():
+                            return hud_binary_hash_file.read_text().strip()
+                    except:
+                        pass
+                    return ""
+
+                def save_launched_hash(binary_hash: str):
+                    """Save hash of HUD binary being launched"""
+                    try:
+                        hud_binary_hash_file.write_text(binary_hash)
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️  Could not save binary hash: {e}{Colors.ENDC}")
 
                 # Check if HUD source has changed or if app doesn't exist
                 search_paths = [
@@ -10552,17 +10585,74 @@ async def main():
 
                 hud_app_path = None
                 needs_rebuild = True
+                running_hud_outdated = False
+
+                # 🚀 ROBUST: Check if a HUD instance is CURRENTLY RUNNING
+                running_hud_pid = None
+                running_hud_binary = None
+                try:
+                    for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                        if proc.info['name'] and 'JARVIS-HUD' in proc.info['name']:
+                            running_hud_pid = proc.info['pid']
+                            running_hud_binary = proc.info.get('exe')
+                            print(f"{Colors.CYAN}   🔍 Found running HUD instance (PID: {running_hud_pid}){Colors.ENDC}")
+                            if running_hud_binary:
+                                print(f"{Colors.CYAN}      Binary: {running_hud_binary}{Colors.ENDC}")
+                            break
+                except Exception as e:
+                    print(f"{Colors.YELLOW}   ⚠️  Could not check running HUD: {e}{Colors.ENDC}")
 
                 for search_path in search_paths:
                     full_path = repo_root / search_path
                     if full_path.exists():
                         hud_app_path = full_path
+                        hud_executable = full_path / "Contents/MacOS/JARVIS-HUD"
+
+                        # 🔥 ADVANCED: Check binary hash for instant freshness detection
+                        current_binary_hash = compute_binary_hash(hud_executable) if hud_executable.exists() else ""
+                        last_launched_hash = get_last_launched_hash()
+
+                        if current_binary_hash and last_launched_hash:
+                            if current_binary_hash != last_launched_hash:
+                                print(f"{Colors.YELLOW}   🔍 Binary hash mismatch detected!{Colors.ENDC}")
+                                print(f"{Colors.YELLOW}      Current:  {current_binary_hash}{Colors.ENDC}")
+                                print(f"{Colors.YELLOW}      Last:     {last_launched_hash}{Colors.ENDC}")
+                                needs_rebuild = True  # Hash changed - force rebuild
+                                if running_hud_pid:
+                                    running_hud_outdated = True
+                            else:
+                                print(f"{Colors.GREEN}   ✓ Binary hash matches (binary unchanged: {current_binary_hash}){Colors.ENDC}")
+
                         # Check if source files are newer than app (indicates changes)
                         app_mtime = full_path.stat().st_mtime
                         swift_files = list(hud_dir.glob("JARVIS-HUD/**/*.swift"))
                         if swift_files:
                             newest_source = max(f.stat().st_mtime for f in swift_files)
-                            needs_rebuild = newest_source > app_mtime
+                            source_newer = newest_source > app_mtime
+
+                            if source_newer:
+                                needs_rebuild = True
+                                print(f"{Colors.YELLOW}   📝 Source files modified since last build{Colors.ENDC}")
+
+                            # 🔥 CRITICAL: If HUD is running, check if it's using an OUTDATED binary
+                            if running_hud_binary and hud_executable.exists():
+                                # Compare running binary path with latest built binary
+                                latest_binary_path = str(hud_executable.resolve())
+                                running_binary_path = str(Path(running_hud_binary).resolve()) if running_hud_binary else ""
+
+                                if running_binary_path != latest_binary_path:
+                                    print(f"{Colors.YELLOW}   ⚠️  Running HUD is using a DIFFERENT binary!{Colors.ENDC}")
+                                    print(f"{Colors.YELLOW}      Running: {running_binary_path}{Colors.ENDC}")
+                                    print(f"{Colors.YELLOW}      Latest:  {latest_binary_path}{Colors.ENDC}")
+                                    running_hud_outdated = True
+                                    needs_rebuild = True  # Force rebuild to ensure fresh binary
+                                elif source_newer or (current_binary_hash != last_launched_hash):
+                                    # Source is newer than binary OR hash changed - running HUD is outdated
+                                    print(f"{Colors.YELLOW}   ⚠️  Running HUD binary is OUTDATED (source changed or hash mismatch){Colors.ENDC}")
+                                    running_hud_outdated = True
+                                elif not source_newer and current_binary_hash == last_launched_hash:
+                                    print(f"{Colors.GREEN}   ✓ Running HUD is using latest binary (verified by hash){Colors.ENDC}")
+                                    needs_rebuild = False  # Everything matches - no rebuild needed
                         else:
                             needs_rebuild = False
                         break
@@ -10623,15 +10713,47 @@ async def main():
                     print(f"{Colors.GREEN}   ✓ HUD already built (up to date){Colors.ENDC}")
 
                 if hud_app_path and hud_app_path.exists():
-                    # Kill any existing HUD instances first
-                    print(f"{Colors.CYAN}   🔄 Checking for existing HUD instances...{Colors.ENDC}")
-                    kill_result = subprocess.run(
-                        ["pkill", "-f", "JARVIS-HUD"],
-                        capture_output=True
-                    )
-                    if kill_result.returncode == 0:
-                        print(f"{Colors.GREEN}   ✓ Killed existing HUD instance{Colors.ENDC}")
-                        await asyncio.sleep(0.5)  # Give it time to close
+                    # 🔥 ROBUST: Kill outdated HUD instances first (force fresh launch)
+                    if running_hud_outdated or running_hud_pid:
+                        print(f"{Colors.CYAN}   🔄 Checking for existing HUD instances...{Colors.ENDC}")
+
+                        if running_hud_outdated:
+                            print(f"{Colors.YELLOW}   🔥 FORCE KILL: Running HUD is outdated - replacing with fresh binary{Colors.ENDC}")
+
+                        # Try graceful termination first (SIGTERM)
+                        kill_result = subprocess.run(
+                            ["pkill", "-f", "JARVIS-HUD"],
+                            capture_output=True
+                        )
+                        if kill_result.returncode == 0:
+                            print(f"{Colors.GREEN}   ✓ Sent termination signal to existing HUD{Colors.ENDC}")
+                            await asyncio.sleep(0.5)  # Give it time to close gracefully
+
+                            # Verify process actually terminated
+                            check_result = subprocess.run(
+                                ["pgrep", "-f", "JARVIS-HUD"],
+                                capture_output=True
+                            )
+                            if check_result.returncode == 0:
+                                # Still running - force kill (SIGKILL)
+                                print(f"{Colors.YELLOW}   ⚠️  HUD didn't terminate gracefully - forcing kill{Colors.ENDC}")
+                                subprocess.run(
+                                    ["pkill", "-9", "-f", "JARVIS-HUD"],
+                                    capture_output=True
+                                )
+                                await asyncio.sleep(0.3)
+                                print(f"{Colors.GREEN}   ✓ Force killed existing HUD instance{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.GREEN}   ✓ HUD terminated gracefully{Colors.ENDC}")
+                    else:
+                        # No HUD running - just check to be safe
+                        kill_result = subprocess.run(
+                            ["pkill", "-f", "JARVIS-HUD"],
+                            capture_output=True
+                        )
+                        if kill_result.returncode == 0:
+                            print(f"{Colors.GREEN}   ✓ Killed stray HUD instance{Colors.ENDC}")
+                            await asyncio.sleep(0.5)
 
                     # 🚀 INSTANT HUD LAUNCH - NO WAITING!
                     # Launch HUD immediately for instant connection with Universal Client
@@ -10652,6 +10774,14 @@ async def main():
                             if launch_success:
                                 print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
                                 print(f"{Colors.CYAN}   → App will connect to ws://localhost:8010/ws automatically{Colors.ENDC}")
+
+                                # 🔥 CRITICAL: Save hash of successfully launched binary for future freshness checks
+                                hud_executable = hud_app_path / "Contents/MacOS/JARVIS-HUD"
+                                if hud_executable.exists():
+                                    binary_hash = compute_binary_hash(hud_executable)
+                                    if binary_hash:
+                                        save_launched_hash(binary_hash)
+                                        print(f"{Colors.CYAN}   📝 Saved binary hash for freshness tracking: {binary_hash}{Colors.ENDC}")
                             else:
                                 print(f"{Colors.YELLOW}   ⚠️  HUD launch unsuccessful{Colors.ENDC}")
 
