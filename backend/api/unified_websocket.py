@@ -240,7 +240,7 @@ class UnifiedWebSocketManager:
         restart_message = {
             "type": "system_restart",
             "message": "Backend restarting - resetting to loading screen",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         disconnected_clients = []
@@ -1410,12 +1410,14 @@ class UnifiedWebSocketManager:
             logger.info(f"⚡ Backend already loaded - sending completion message to HUD")
             try:
                 ws = self.connections[client_id]
-                await ws.send_json({
-                    "type": "loading_complete",
-                    "success": True,
-                    "message": self.hud_state.get("loading_message", "System ready"),
-                    "timestamp": datetime.now().isoformat()
-                })
+                await ws.send_json(
+                    {
+                        "type": "loading_complete",
+                        "success": True,
+                        "message": self.hud_state.get("loading_message", "System ready"),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
                 logger.info(f"✅ Sent loading_complete message to HUD")
             except Exception as e:
                 logger.warning(f"⚠️  Failed to send loading_complete: {e}")

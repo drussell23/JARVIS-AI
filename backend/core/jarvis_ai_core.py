@@ -13,7 +13,7 @@ import json
 import base64
 
 from chatbots.claude_chatbot import ClaudeChatbot
-from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
 from system_control.macos_controller import MacOSController
 from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 

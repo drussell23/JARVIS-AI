@@ -828,4 +828,12 @@ class AutonomousDecisionEngine:
         timing_key = f"{day}_{hour}"
         if timing_key in self.learned_patterns.get('timing_patterns', {}):
             pattern = self.learned_patterns['timing_patterns'][timing_key]
-            if pattern['confidence'] >= self.thresh
+            if pattern['confidence'] >= self.thresholds['pattern_confidence']:
+                actions.append({
+                    'type': 'timing_based',
+                    'action': pattern['action'],
+                    'confidence': pattern['confidence'],
+                    'reason': f"Learned pattern for {current_time.strftime('%A')} at {hour}:00"
+                })
+
+        return actions
