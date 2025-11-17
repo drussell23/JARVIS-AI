@@ -157,7 +157,7 @@ class PythonBridge: ObservableObject {
         // Set up state change observer
         universalClient?.$connectionState
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
+            .sink { [weak self] (state: UniversalWebSocketClient.ConnectionState) in
                 self?.handleUniversalClientStateChange(state)
             }
             .store(in: &cancellables)
@@ -165,7 +165,7 @@ class PythonBridge: ObservableObject {
         // Set up server version observer
         universalClient?.$serverVersion
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] version in
+            .sink { [weak self] (version: String) in
                 self?.serverVersion = version
                 self?.logger.log("📊 Server version updated: \(version)")
             }
@@ -174,7 +174,7 @@ class PythonBridge: ObservableObject {
         // Set up server capabilities observer
         universalClient?.$serverCapabilities
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] capabilities in
+            .sink { [weak self] (capabilities: [String]) in
                 self?.serverCapabilities = capabilities
                 self?.logger.log("📊 Server capabilities updated: \(capabilities.joined(separator: ", "))")
             }
@@ -327,15 +327,8 @@ class PythonBridge: ObservableObject {
     private func handleUniversalClientMessage(_ message: String) {
         logger.log("📨 Received message from Universal Client")
 
-        // Parse JSON message
-        guard let data = message.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            logger.log("⚠️  Failed to parse message as JSON")
-            return
-        }
-
-        // Delegate to existing message handler
-        handleMessage(json)
+        // Delegate to existing JSON message handler
+        handleJSONMessage(message)
     }
 
     // Send message via Universal Client or legacy WebSocket

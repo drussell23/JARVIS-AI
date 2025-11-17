@@ -230,7 +230,7 @@ struct TranscriptView: View {
 
 /// 🚀 Connection State Indicator - Visual status indicator
 struct ConnectionStateIndicator: View {
-    let state: PythonBridge.ConnectionStatus
+    let state: ConnectionStatus
 
     var body: some View {
         Circle()
