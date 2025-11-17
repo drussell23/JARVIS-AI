@@ -2601,6 +2601,46 @@ app = FastAPI(
 )
 
 # ═══════════════════════════════════════════════════════════════
+# 🚀 CRITICAL: Mount WebSocket IMMEDIATELY for instant HUD connectivity
+# This MUST happen before ANY heavy module loading or CORS config
+# ═══════════════════════════════════════════════════════════════
+logger.info("")
+logger.info("=" * 80)
+logger.info("🎯 IMMEDIATE WEBSOCKET MOUNTING FOR HUD")
+logger.info("=" * 80)
+logger.info("   Mounting WebSocket before any heavy operations...")
+logger.info("   This ensures HUD can connect immediately on startup")
+logger.info("")
+
+try:
+    # Import ONLY the WebSocket router - lightweight and fast
+    from api.unified_websocket import router as unified_ws_router
+
+    # Mount it immediately - no validation, no delays
+    app.include_router(unified_ws_router, tags=["websocket"])
+
+    logger.info("✅ WebSocket endpoint /ws mounted successfully!")
+    logger.info("   HUD clients can now connect immediately")
+    logger.info("")
+
+    # Send initial progress to any connected clients
+    try:
+        from api.unified_websocket import send_loading_progress_sync
+        send_loading_progress_sync(5, "WebSocket ready, initializing backend...")
+        logger.info("   📊 Initial progress sent/buffered")
+    except Exception as e:
+        logger.debug(f"   Could not send initial progress: {e}")
+        pass  # OK if this fails, WebSocket is still mounted
+
+except Exception as e:
+    logger.error(f"⚠️  WebSocket mount failed: {e}")
+    logger.error("   HUD connectivity may be delayed")
+    # Continue anyway - will retry later
+
+logger.info("=" * 80)
+logger.info("")
+
+# ═══════════════════════════════════════════════════════════════
 # ROBUST DYNAMIC CORS CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
 logger.info("🔒 Configuring CORS security...")
@@ -3043,53 +3083,47 @@ def mount_router_with_validation(
 
 
 # ═══════════════════════════════════════════════════════════════
-# CRITICAL ROUTER: Unified WebSocket
+# WEBSOCKET ROUTER VERIFICATION (Already mounted at startup)
 # ═══════════════════════════════════════════════════════════════
 logger.info("")
-logger.info("🎯 CRITICAL: Mounting Unified WebSocket Router")
-logger.info("   This router is REQUIRED for HUD connectivity")
+logger.info("🔍 Verifying WebSocket Router (already mounted)")
+logger.info("   WebSocket was mounted immediately after app creation")
 logger.info("")
 
+# Just verify it's working - don't mount again
 try:
-    success = mount_router_with_validation(
-        router_module="api.unified_websocket",
-        router_name="router",
-        prefix="",
-        tags=["websocket"],
-        critical=True,  # CRITICAL: Failure will stop startup
-        expected_routes=["/ws"]  # Must verify /ws endpoint exists
+    # Check if the /ws route exists
+    ws_route_exists = any(
+        hasattr(route, 'path') and route.path == "/ws"
+        for route in app.routes
     )
 
-    if not success:
-        raise RouterMountingError("Unified WebSocket router failed to mount")
+    if ws_route_exists:
+        logger.info("✅ WebSocket endpoint /ws verified and operational")
+        logger.info("   HUD connectivity assured")
 
-except RouterMountingError as e:
-    logger.error("=" * 80)
-    logger.error("🚨 CRITICAL ROUTER MOUNTING FAILURE")
-    logger.error("=" * 80)
-    logger.error(f"The Unified WebSocket router (/ws) failed to mount!")
-    logger.error(f"Error: {e}")
-    logger.error("")
-    logger.error("IMPACT:")
-    logger.error("  • HUD will NOT be able to connect")
-    logger.error("  • Real-time updates will NOT work")
-    logger.error("  • WebSocket clients will receive 404/403 errors")
-    logger.error("")
-    logger.error("SOLUTION:")
-    logger.error("  1. Check api/unified_websocket.py exists and has 'router' variable")
-    logger.error("  2. Verify router is an APIRouter instance")
-    logger.error("  3. Ensure @router.websocket('/ws') decorator exists")
-    logger.error("  4. Check for import errors in unified_websocket.py")
-    logger.error("=" * 80)
-
-    # In development, continue with degraded functionality
-    # In production, this should probably crash
-    if os.getenv("ENVIRONMENT", "development") == "production":
-        logger.error("🛑 PRODUCTION MODE: Stopping startup due to critical error")
-        raise
+        # Track as registered
+        _registered_routers["api.unified_websocket"] = {
+            "prefix": "",
+            "tags": ["websocket"],
+            "route_count": 1,
+            "critical": True,
+            "status": "success",
+            "timestamp": __import__('time').time()
+        }
+        _router_metrics["successful_mounts"] += 1
     else:
-        logger.warning("⚠️  DEVELOPMENT MODE: Continuing with degraded functionality")
-        logger.warning("    (In production, this would stop the server)")
+        logger.warning("⚠️  WebSocket endpoint /ws not found in routes")
+        logger.warning("   Will attempt remount...")
+
+        # Try to mount again if needed
+        from api.unified_websocket import router as unified_ws_router
+        app.include_router(unified_ws_router, tags=["websocket"])
+        logger.info("✅ WebSocket endpoint remounted")
+
+except Exception as e:
+    logger.error(f"⚠️  WebSocket verification failed: {e}")
+    logger.error("   HUD connectivity may be impacted")
 
 logger.info("")
 logger.info("=" * 80)

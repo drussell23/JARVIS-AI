@@ -2180,6 +2180,32 @@ def get_websocket_manager() -> UnifiedWebSocketManager:
 # ============================================================================
 
 
+def send_loading_progress_sync(progress: int, message: str):
+    """
+    Synchronous wrapper for sending loading progress
+    Used during early startup before async loop is available
+    """
+    logger.info(f"📊 [SYNC] Progress: {progress}% - {message}")
+
+    # Always buffer the message for late-connecting HUD clients
+    ws_manager.progress_buffer.append({
+        "type": "loading_progress",
+        "progress": progress,
+        "message": message,
+        "timestamp": datetime.now().isoformat(),
+    })
+
+    # Try to send it if async loop is available
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        # Schedule the async send
+        loop.create_task(ws_manager.send_hud_loading_progress(progress, message))
+    except RuntimeError:
+        # No async loop yet, message is buffered for later
+        logger.debug("   No async loop yet - message buffered for replay")
+
+
 async def send_loading_progress(progress: int, message: str):
     """
     Send loading progress update to HUD during system startup
@@ -2189,7 +2215,28 @@ async def send_loading_progress(progress: int, message: str):
         progress: Progress percentage (0-100)
         message: Status message describing current step
     """
-    await ws_manager.send_hud_loading_progress(progress, message)
+    try:
+        await ws_manager.send_hud_loading_progress(progress, message)
+    except RuntimeError as e:
+        # Handle early calls before async loop is ready
+        if "no running event loop" in str(e):
+            # Try to create and run in a new loop
+            import asyncio
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(ws_manager.send_hud_loading_progress(progress, message))
+            except:
+                # If all else fails, just buffer the message synchronously
+                logger.info(f"📊 [EARLY] Buffering progress: {progress}% - {message}")
+                ws_manager.progress_buffer.append({
+                    "type": "loading_progress",
+                    "progress": progress,
+                    "message": message,
+                    "timestamp": datetime.now().isoformat(),
+                })
+        else:
+            raise
 
 
 async def send_loading_complete(success: bool = True):

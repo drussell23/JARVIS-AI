@@ -23,17 +23,15 @@ struct LoadingHUDView: View {
     @State private var progress: CGFloat = 0
     @State private var logoScale: CGFloat = 1.0
     @State private var showMatrixTransition: Bool = false
+    @State private var progressMessage: String = "Initializing JARVIS..."
+    @State private var isConnected: Bool = false
+    @State private var connectionAttempts: Int = 0
 
     // Use shared PythonBridge from AppState instead of creating our own
     // This ensures WebSocket connection persists when transitioning to HUDView
     @EnvironmentObject var appState: AppState
 
     var onComplete: () -> Void
-
-    // Convenience accessor for cleaner code
-    private var pythonBridge: PythonBridge {
-        appState.pythonBridge
-    }
 
     var body: some View {
         ZStack {
@@ -123,19 +121,22 @@ struct LoadingHUDView: View {
         }
         .onAppear {
             startLoadingAnimation()
-            // PythonBridge already connected in AppState.init()
-            print("ℹ️ LoadingHUDView using shared PythonBridge (already connected)")
+            setupRealtimeObservers()
+            print("🚀 LoadingHUDView initialized with reactive progress tracking")
         }
-        .onChange(of: pythonBridge.loadingProgress) { newProgress in
-            // Update progress from backend in real-time
-            withAnimation(.easeInOut(duration: 0.3)) {
-                progress = CGFloat(newProgress)
-                loadingState = .loading(progress: newProgress, message: pythonBridge.loadingMessage)
+        .onReceive(appState.pythonBridge.$loadingProgress) { newProgress in
+            // 🚀 REAL-TIME: React immediately to any progress change
+            updateProgress(newProgress)
+        }
+        .onReceive(appState.pythonBridge.$loadingMessage) { newMessage in
+            // 🚀 REAL-TIME: Update message immediately
+            withAnimation(.easeInOut(duration: 0.2)) {
+                progressMessage = newMessage
             }
         }
-        .onChange(of: pythonBridge.loadingComplete) { isComplete in
+        .onReceive(appState.pythonBridge.$loadingComplete) { isComplete in
             // Only transition when backend explicitly signals completion
-            if isComplete {
+            if isComplete && progress >= 100 {
                 print("🎯 Backend signaled completion - starting transition animation")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     playCompletionAnimation()
@@ -160,9 +161,15 @@ struct LoadingHUDView: View {
     }
 
     private var statusMessage: String {
+        // Use real-time message from PythonBridge if available
+        if !progressMessage.isEmpty && progressMessage != "Initializing JARVIS..." {
+            return progressMessage
+        }
+
+        // Fallback to state-based messages
         switch loadingState {
         case .initializing:
-            return "Initializing JARVIS..."
+            return isConnected ? "Connected, waiting for backend..." : "Connecting to backend..."
         case .loading(_, let message):
             return message
         case .complete:
@@ -192,7 +199,7 @@ struct LoadingHUDView: View {
         progress >= 75 ? 20 : 10
     }
 
-    // MARK: - Animations
+    // MARK: - Animations & Updates
 
     private func startLoadingAnimation() {
         // Logo pulse
@@ -204,6 +211,45 @@ struct LoadingHUDView: View {
         }
 
         print("ℹ️ Waiting for backend to connect and send real progress updates...")
+    }
+
+    private func updateProgress(_ newProgress: Int) {
+        // 🚀 DYNAMIC: Smoothly animate progress changes
+        let targetProgress = CGFloat(newProgress)
+
+        // Only update if actually different
+        if abs(progress - targetProgress) > 0.1 {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                progress = targetProgress
+
+                // Update state based on progress
+                if targetProgress > 0 && targetProgress < 100 {
+                    loadingState = .loading(
+                        progress: newProgress,
+                        message: progressMessage
+                    )
+                } else if targetProgress >= 100 {
+                    loadingState = .complete
+                }
+            }
+
+            print("📊 UI Progress updated: \(Int(progress))%")
+        }
+    }
+
+    private func setupRealtimeObservers() {
+        // 🚀 ROBUST: Set up a timer to poll bridge properties if needed
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            // Force UI update if progress changed but didn't trigger
+            if CGFloat(appState.pythonBridge.loadingProgress) != progress {
+                updateProgress(appState.pythonBridge.loadingProgress)
+            }
+
+            // Stop timer when complete
+            if appState.pythonBridge.loadingComplete {
+                timer.invalidate()
+            }
+        }
     }
 
     private func playCompletionAnimation() {

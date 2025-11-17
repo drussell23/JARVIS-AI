@@ -367,8 +367,11 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
     }
 
     private func sendHandshake() async {
+        // 🚀 FIX: Use "hud_connect" for HUD clients as backend expects
+        let messageType = (clientType == "hud") ? "hud_connect" : "client_connect"
+
         let handshake: [String: Any] = [
-            "type": "client_connect",
+            "type": messageType,
             "client_id": clientId,
             "client_type": clientType,
             "version": "2.0.0",
@@ -377,7 +380,7 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
         ]
 
         send(handshake)
-        print("📤 Sent capability negotiation handshake")
+        print("📤 Sent capability negotiation handshake (type: \(messageType))")
     }
 
     private func receiveMessages() async {
