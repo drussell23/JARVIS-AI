@@ -544,14 +544,18 @@ class PythonBridge: ObservableObject {
 
     /// Parse and handle JSON message from Python
     private func handleJSONMessage(_ jsonString: String) {
+        logger.log("📨 [WebSocket] Received raw message: \(jsonString.prefix(500))...")
         print("📨 [WebSocket] Received raw message: \(jsonString.prefix(200))...")
 
         guard let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            logger.log("❌ [WebSocket] Failed to parse JSON message")
             print("❌ [WebSocket] Failed to parse JSON message")
             return
         }
 
+        logger.log("✅ [WebSocket] JSON parsed successfully")
+        logger.log("   Message type: \(json["type"] ?? "unknown")")
         print("✅ [WebSocket] JSON parsed successfully")
         print("   Message type: \(json["type"] ?? "unknown")")
 
@@ -574,14 +578,21 @@ class PythonBridge: ObservableObject {
                         self.serverCapabilities = capabilities
                     }
 
-                case "startup_progress", "progress":
+                case "startup_progress", "progress", "loading_progress", "hud_progress":
                     // 🚀 Handle immediate progress messages for instant loading display
+                    self.logger.log("📊 [WebSocket] Handling progress update")
                     print("📊 [WebSocket] Handling progress update")
                     if let progress = json["progress"] as? Int,
                        let message = json["message"] as? String {
                         // Update loading progress properties for LoadingHUDView
+                        self.logger.log("🎯 UPDATING PROGRESS: \(progress)% - \(message)")
+                        self.logger.log("   Previous progress: \(self.loadingProgress)%")
+
                         self.loadingProgress = progress
                         self.loadingMessage = message
+
+                        self.logger.log("   New progress: \(self.loadingProgress)%")
+                        self.logger.log("   LoadingHUDView should update now!")
 
                         // Update HUD state based on progress
                         if progress < 100 {
@@ -593,6 +604,9 @@ class PythonBridge: ObservableObject {
                         // Update detailed connection state for UI
                         self.detailedConnectionState = "\(progress)% - \(message)"
                         print("   Progress: \(progress)% - \(message)")
+                    } else {
+                        self.logger.log("⚠️ Progress message missing progress or message field")
+                        self.logger.log("   JSON: \(json)")
                     }
 
                 case "system_state":
@@ -616,9 +630,7 @@ class PythonBridge: ObservableObject {
                 case "status":
                     print("📊 [WebSocket] Handling status update")
                     self.handleStatusUpdate(json)
-                case "loading_progress", "hud_progress":
-                    print("⏳ [WebSocket] Handling loading progress")
-                    self.handleLoadingProgress(json)
+                // Removed - handled by unified progress handler above
                 case "loading_complete", "hud_loading_complete":
                     print("✅ [WebSocket] Handling loading complete")
                     self.handleLoadingComplete(json)
