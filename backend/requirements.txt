@@ -70,7 +70,7 @@ pympler==1.0.1
 langchain==0.0.350
 langchain-community==0.0.10
 langchain-experimental==0.0.47
-duckduckgo-search==4.1.1
+duckduckgo-search==8.1.1
 numexpr==2.8.8  # For calculator tool
 wikipedia-api==0.6.0
 python-dotenv==1.0.0
