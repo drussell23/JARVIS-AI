@@ -78,20 +78,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var localEventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Configure all windows as TRUE HOLOGRAPHIC overlays
-        // Completely invisible window frame - only JARVIS UI elements visible
+        // Configure all windows with semi-transparent black background
         for window in NSApplication.shared.windows {
-            // Make window completely transparent - NO traditional window at all
+            // Semi-transparent black background
             window.isOpaque = false
-            window.backgroundColor = .clear
-            window.hasShadow = false
+            window.backgroundColor = NSColor.black.withAlphaComponent(0.7)
+            window.hasShadow = true
 
-            // Remove ALL window chrome and borders
+            // Remove title bar but keep window frame
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.styleMask = [.borderless, .fullSizeContentView]
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
 
-            // Floating overlay - ALWAYS visible across ALL Spaces
+            // Floating window - ALWAYS visible across ALL Spaces
             window.level = .floating
             window.collectionBehavior = [
                 .canJoinAllSpaces,      // Appears in ALL Mission Control Spaces
@@ -103,9 +102,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // CRITICAL: Prevent window from being hidden when switching Spaces
             window.hidesOnDeactivate = false
 
-            // CRITICAL: Make window FULLY click-through by default
-            // This allows all clicks to pass to desktop/windows below
-            window.ignoresMouseEvents = true
+            // Window is interactive (not click-through)
+            window.ignoresMouseEvents = false
 
             // Make window non-activating (doesn't steal focus)
             if let panel = window as? NSPanel {
@@ -113,9 +111,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.becomesKeyOnlyIfNeeded = true
             }
 
-            // Cover entire screen as transparent overlay
+            // Set a reasonable window size and position
+            let windowWidth: CGFloat = 800
+            let windowHeight: CGFloat = 600
             if let screen = NSScreen.main {
-                window.setFrame(screen.frame, display: true)
+                let screenFrame = screen.frame
+                let x = (screenFrame.width - windowWidth) / 2
+                let y = (screenFrame.height - windowHeight) / 2
+                window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
             }
         }
 
@@ -124,9 +127,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Don't activate the app when launched
         NSApp.activate(ignoringOtherApps: false)
-
-        // Start mouse tracking to enable selective event capture
-        startMouseTracking()
 
         // Setup keyboard shortcut for toggling HUD visibility (Cmd+\)
         setupKeyboardShortcuts()
@@ -288,24 +288,27 @@ struct WindowAccessor: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             if let window = view.window {
-                // Make window COMPLETELY INVISIBLE - no chrome, no shadow, no borders
+                // Semi-transparent black background
                 window.isOpaque = false
-                window.backgroundColor = .clear
-                window.hasShadow = false
+                window.backgroundColor = NSColor.black.withAlphaComponent(0.7)
+                window.hasShadow = true
                 window.titlebarAppearsTransparent = true
                 window.titleVisibility = .hidden
-                window.styleMask.insert(.borderless)
-                window.styleMask.insert(.fullSizeContentView)
+                window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
                 window.level = .statusBar
                 window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-                // CRITICAL: Allow window to become key for keyboard input
-                // But still enable click-through for transparent areas
+                // Window is interactive
                 window.ignoresMouseEvents = false
 
-                // Cover entire screen
+                // Set a reasonable window size and position
+                let windowWidth: CGFloat = 800
+                let windowHeight: CGFloat = 600
                 if let screen = NSScreen.main {
-                    window.setFrame(screen.frame, display: true)
+                    let screenFrame = screen.frame
+                    let x = (screenFrame.width - windowWidth) / 2
+                    let y = (screenFrame.height - windowHeight) / 2
+                    window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
                 }
             }
         }
