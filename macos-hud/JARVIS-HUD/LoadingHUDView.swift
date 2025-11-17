@@ -274,6 +274,7 @@ struct MatrixTransitionView: View {
 
     @State private var columns: [[MatrixCharacter]] = []
     @State private var opacity: Double = 0.3
+    @State private var windowSize: CGSize = .zero
 
     var body: some View {
         GeometryReader { geometry in
@@ -294,35 +295,44 @@ struct MatrixTransitionView: View {
                 }
                 .opacity(opacity)
             }
-        }
-        .onAppear {
-            initializeMatrix()
-            startMatrixAnimation()
+            .onAppear {
+                // Capture window size for centering calculations
+                windowSize = geometry.size
+                initializeMatrix(windowSize: geometry.size)
+                startMatrixAnimation(windowSize: geometry.size)
 
-            withAnimation(.easeOut(duration: 1.0)) {
-                opacity = 1.0
-            }
+                withAnimation(.easeOut(duration: 1.0)) {
+                    opacity = 1.0
+                }
 
-            // Fade out
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                withAnimation(.easeOut(duration: 0.5)) {
-                    opacity = 0
+                // Fade out
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    withAnimation(.easeOut(duration: 0.5)) {
+                        opacity = 0
+                    }
                 }
             }
         }
     }
 
-    private func initializeMatrix() {
-        let columnCount = 40
+    private func initializeMatrix(windowSize: CGSize) {
+        let columnWidth: CGFloat = 30
+        let columnCount = Int(windowSize.width / columnWidth) + 2 // Extra columns for smooth edges
         let characters = "JARVIS01アイウエオカキクケコ"
+
+        // Calculate starting X to center the matrix
+        let totalMatrixWidth = CGFloat(columnCount) * columnWidth
+        let startX = (windowSize.width - totalMatrixWidth) / 2
 
         for i in 0..<columnCount {
             var column: [MatrixCharacter] = []
-            for j in 0..<50 {
+            let rowCount = Int(windowSize.height / 20) + 10 // Rows based on window height
+
+            for j in 0..<rowCount {
                 let char = MatrixCharacter(
                     character: String(characters.randomElement()!),
-                    x: CGFloat(i * 30),
-                    y: CGFloat(j * 20),
+                    x: startX + (CGFloat(i) * columnWidth),
+                    y: CGFloat(j * 20) - 200, // Start above visible area
                     isLead: j == 0
                 )
                 column.append(char)
@@ -331,12 +341,16 @@ struct MatrixTransitionView: View {
         }
     }
 
-    private func startMatrixAnimation() {
+    private func startMatrixAnimation(windowSize: CGSize) {
+        let maxY = windowSize.height + 100
+
         Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
             for i in 0..<columns.count {
                 for j in 0..<columns[i].count {
                     columns[i][j].y += 2
-                    if columns[i][j].y > 1000 {
+
+                    // Reset to top when off-screen
+                    if columns[i][j].y > maxY {
                         columns[i][j].y = -20
                     }
                 }
