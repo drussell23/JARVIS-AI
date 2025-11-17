@@ -145,14 +145,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.becomesKeyOnlyIfNeeded = true
             }
 
-            // Set a reasonable window size and position
-            let windowWidth: CGFloat = 800
-            let windowHeight: CGFloat = 600
+            // 🖥️ Set window to FULL-SCREEN on launch
             if let screen = NSScreen.main {
                 let screenFrame = screen.frame
-                let x = (screenFrame.width - windowWidth) / 2
-                let y = (screenFrame.height - windowHeight) / 2
-                window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+                window.setFrame(screenFrame, display: true)
+                print("   🖥️ Full-screen frame: \(screenFrame)")
             }
 
             // 🚀 CRITICAL: Make window visible IMMEDIATELY on launch
@@ -161,7 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.orderFrontRegardless()  // Bring to front regardless of other windows
             window.makeKeyAndOrderFront(nil)  // Make it the key window
 
-            print("🪟 Window configured for immediate visibility:")
+            print("🪟 Window configured for FULL-SCREEN immediate visibility:")
             print("   isVisible: \(window.isVisible)")
             print("   alphaValue: \(window.alphaValue)")
             print("   level: \(window.level.rawValue)")
@@ -349,14 +346,10 @@ struct WindowAccessor: NSViewRepresentable {
                 // Window is interactive
                 window.ignoresMouseEvents = false
 
-                // Set a reasonable window size and position
-                let windowWidth: CGFloat = 800
-                let windowHeight: CGFloat = 600
+                // Set window to FULL-SCREEN
                 if let screen = NSScreen.main {
                     let screenFrame = screen.frame
-                    let x = (screenFrame.width - windowWidth) / 2
-                    let y = (screenFrame.height - windowHeight) / 2
-                    window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+                    window.setFrame(screenFrame, display: true)
                 }
             }
         }
