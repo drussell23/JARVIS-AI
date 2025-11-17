@@ -2124,6 +2124,11 @@ def set_jarvis_instance(jarvis_api):
         logger.info("✅ JARVIS instance set in unified WebSocket pipeline")
 
 
+def get_websocket_manager() -> UnifiedWebSocketManager:
+    """Get the global WebSocket manager instance"""
+    return ws_manager
+
+
 # ============================================================================
 # HUD HELPER FUNCTIONS - For easy access from anywhere in backend
 # ============================================================================

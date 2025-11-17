@@ -2069,13 +2069,8 @@ async def load_heavy_modules_in_background(app: FastAPI, start_time: float):
 
         logger.info("🔥 Background module loading started (server is listening!)")
 
-        # 🚀 SIGNAL WEBSOCKET READINESS
-        # This tells the HUD launcher that the WebSocket endpoint is now available
-        ws_manager = get_websocket_manager()
-        ws_manager.signal_websocket_ready(host="localhost", port=8010, endpoint="/ws")
-
-        # Start heartbeat task to keep signal file fresh
-        asyncio.create_task(ws_manager.start_readiness_heartbeat(interval=1.0))
+        # Note: WebSocket readiness is already signaled in lifespan() before yield
+        # No need to signal again here - HUD is already connected and receiving updates
         await send_loading_progress(10, "Backend server online - starting module loading...")
 
         # Initialize dynamic component manager if enabled
@@ -2238,6 +2233,19 @@ async def lifespan(app: FastAPI):
 
     if INSTANT_STARTUP:
         logger.info("🚀 INSTANT MODE: Yielding immediately - heavy loading will happen in background")
+
+        # 🚀 SIGNAL WEBSOCKET READINESS IMMEDIATELY
+        # This allows HUD to connect without waiting for heavy module loading
+        try:
+            from api.unified_websocket import get_websocket_manager
+            ws_manager = get_websocket_manager()
+            ws_manager.signal_websocket_ready(host="localhost", port=8010, endpoint="/ws")
+            # Start heartbeat task to keep signal file fresh
+            asyncio.create_task(ws_manager.start_readiness_heartbeat(interval=1.0))
+            logger.info("✅ WebSocket readiness signaled - HUD can connect immediately")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to signal WebSocket readiness: {e}")
+
         # Launch background task BEFORE yield, it will start after server is listening
         asyncio.create_task(load_heavy_modules_in_background(app, start_time))
         # Yield immediately - server starts NOW
