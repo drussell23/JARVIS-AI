@@ -123,8 +123,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // 🚀 CRITICAL: Make window visible IMMEDIATELY on launch
             // This ensures user sees loading screen from 1-100%
-            window.orderFrontRegardless()
-            window.makeKeyAndOrderFront(nil)
+            window.alphaValue = 1.0  // Fully opaque
+            window.orderFrontRegardless()  // Bring to front regardless of other windows
+            window.makeKeyAndOrderFront(nil)  // Make it the key window
+
+            print("🪟 Window configured for immediate visibility:")
+            print("   isVisible: \(window.isVisible)")
+            print("   alphaValue: \(window.alphaValue)")
+            print("   level: \(window.level.rawValue)")
+            print("   frame: \(window.frame)")
         }
 
         // Hide from Dock and app switcher (pure floating overlay)
@@ -132,6 +139,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Activate the app to bring window to front
         NSApp.activate(ignoringOtherApps: true)
+
+        print("✅ App activation policy: accessory, activated: ignoringOtherApps")
 
         // Setup keyboard shortcut for toggling HUD visibility (Cmd+\)
         setupKeyboardShortcuts()
