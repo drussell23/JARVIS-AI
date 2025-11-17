@@ -75,7 +75,7 @@ class PythonBridge: ObservableObject {
 
     // Robust connection management
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 60  // Try for ~5 minutes with exponential backoff (backend can take time to start)
+    private let maxReconnectAttempts = 999  // Try indefinitely - HUD launches before backend is ready (startup loading screen)
     private var connectionHealthTimer: Timer?
     private var lastMessageTime: Date?
 
@@ -212,11 +212,15 @@ class PythonBridge: ObservableObject {
 
         reconnectAttempts += 1
 
-        // Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, max 10s
+        // Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, max 15s
+        // After many attempts, back off to 15s to avoid spamming logs
         let baseDelay: Double = 0.5
-        let delay = min(baseDelay * pow(2.0, Double(reconnectAttempts - 1)), 10.0)
+        let delay = min(baseDelay * pow(2.0, Double(reconnectAttempts - 1)), 15.0)
 
-        logger.log("🔄 Reconnect attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(String(format: "%.1f", delay))s...")
+        // Only log every 10th attempt after the first 20 to avoid log spam
+        if reconnectAttempts <= 20 || reconnectAttempts % 10 == 0 {
+            logger.log("🔄 Reconnect attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(String(format: "%.1f", delay))s...")
+        }
 
         // CRITICAL FIX: Schedule timer on main thread's RunLoop
         // Timers created on background threads won't fire unless their RunLoop is running
