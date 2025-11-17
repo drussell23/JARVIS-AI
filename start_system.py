@@ -10200,8 +10200,7 @@ async def main():
                 try:
                     print(f"{Colors.CYAN}   📡 Notifying connected HUDs of system restart...{Colors.ENDC}")
                     from api.unified_websocket import notify_system_restart
-                    import asyncio
-                    asyncio.run(notify_system_restart())
+                    await notify_system_restart()
                     print(f"{Colors.GREEN}   ✓ HUD restart notification sent{Colors.ENDC}")
                 except Exception as e:
                     print(f"{Colors.YELLOW}   ⚠️  Could not notify HUDs (backend may not be running): {e}{Colors.ENDC}")
@@ -11619,8 +11618,6 @@ if __name__ == "__main__":
         # Aggressively clean up async tasks and event loop
         print(f"\n{Colors.CYAN}🧹 Performing final async cleanup...{Colors.ENDC}")
         try:
-            import asyncio
-
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
