@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v14.2.0 - ENHANCED VERIFICATION EDITION
+Unified startup script for JARVIS AI System v14.3.0 - INSTANT HUD LAUNCH EDITION
 Advanced Browser Automation + v2.0 ML-Powered Intelligence Systems
 ⚡ ULTRA-OPTIMIZED: 30% Memory Target (4.8GB on 16GB Systems)
 🤖 AUTONOMOUS: Self-Discovering, Self-Healing, Self-Optimizing
 🧠 INTELLIGENT: 6 Upgraded v2.0 Systems with Proactive Monitoring
 🚀 ENHANCED STARTUP v2.0: WebSocket Health, Router Verification, Performance Metrics, Auto-Recovery
+🎯 INSTANT HUD: macOS Arc Reactor HUD launches immediately - true OS experience
 
 The JARVIS backend loads 9 critical components + 6 intelligent systems:
 
@@ -10583,11 +10584,30 @@ async def main():
                         print(f"{Colors.GREEN}   ✓ Killed existing HUD instance{Colors.ENDC}")
                         await asyncio.sleep(0.5)  # Give it time to close
 
-                    # Store HUD path for later launch AFTER backend is ready
-                    print(f"{Colors.GREEN}   ✓ HUD built successfully - will launch after backend is ready{Colors.ENDC}")
-                    print(f"{Colors.CYAN}   → HUD will be launched after WebSocket server starts on port 8010{Colors.ENDC}")
+                    # 🚀 LAUNCH HUD IMMEDIATELY - Don't wait for backend!
+                    # The HUD is the "JARVIS OS shell" - it should appear instantly
+                    # Backend will load in parallel and HUD will connect when ready
+                    print(f"{Colors.GREEN}   ✓ HUD built successfully - launching immediately...{Colors.ENDC}")
+                    print(f"{Colors.CYAN}   🚀 Launching JARVIS OS shell (Arc Reactor HUD)...{Colors.ENDC}")
 
-                    # Store the HUD path in a global variable for later use
+                    try:
+                        # Import our advanced launcher
+                        from macos_hud_launcher import launch_hud_async_safe
+
+                        # Launch HUD NOW - don't wait for backend
+                        launch_success = await launch_hud_async_safe(hud_app_path)
+
+                        if launch_success:
+                            print(f"{Colors.GREEN}   ✅ JARVIS HUD launched successfully!{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → HUD will connect to backend at ws://localhost:8010/ws when ready{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   → Progress updates will stream in real-time{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}   ⚠️  HUD launch unsuccessful, will retry when backend is ready{Colors.ENDC}")
+                    except Exception as e:
+                        print(f"{Colors.YELLOW}   ⚠️  HUD launch error: {e}{Colors.ENDC}")
+                        print(f"{Colors.CYAN}   → Will retry HUD launch when backend is ready{Colors.ENDC}")
+
+                    # Store the HUD path for potential relaunch if needed
                     globals()['_hud_app_path_to_launch'] = hud_app_path
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  HUD app not found after build attempt{Colors.ENDC}")
