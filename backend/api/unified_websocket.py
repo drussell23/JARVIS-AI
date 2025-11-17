@@ -1227,6 +1227,32 @@ class UnifiedWebSocketManager:
             }
         )
 
+        # 🚀 IMMEDIATE STATE SYNC: Send buffered progress messages right away for HUD clients
+        # Don't wait for hud_connect handshake - send state immediately for instant loading display
+        if self.progress_buffer:
+            logger.info(
+                f"🚀 [INSTANT-HUD] Sending {len(self.progress_buffer)} buffered progress messages immediately to {client_id}"
+            )
+            try:
+                # Send all buffered progress messages without waiting
+                for buffered_msg in self.progress_buffer:
+                    await websocket.send_json(buffered_msg)
+                    logger.debug(
+                        f"   ✓ Sent: {buffered_msg.get('progress', 0)}% - {buffered_msg.get('message', 'Loading...')}"
+                    )
+
+                # Also send current system state if available
+                if hasattr(self, 'current_system_state') and self.current_system_state:
+                    await websocket.send_json({
+                        "type": "system_state",
+                        "state": self.current_system_state,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    logger.info(f"   ✓ Sent current system state to {client_id}")
+
+            except Exception as e:
+                logger.warning(f"Failed to send immediate state to {client_id}: {e}")
+
         # Send current display status if display monitor is available
         if self.display_monitor:
             try:

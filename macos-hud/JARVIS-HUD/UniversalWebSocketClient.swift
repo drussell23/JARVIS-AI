@@ -180,26 +180,27 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
     private func performConnectionFlow() async {
         print("🚀 Starting Universal WebSocket Connection Flow...")
 
-        // Step 1: Fetch configuration
-        await fetchConfiguration()
+        // 🚀 FAST PATH: Try immediate WebSocket connection with fallback config
+        // Skip config fetch and health check for instant connection
+        let quickConnectURL = "ws://localhost:8010/ws"
+
+        // Use fallback config immediately for instant connection
+        await useFallbackConfiguration()
 
         guard let config = configuration else {
-            await setError("Failed to fetch configuration")
+            await setError("Failed to initialize configuration")
             return
         }
 
-        // Step 2: Health check (if required)
-        if config.websocket.healthCheckRequired {
-            let healthy = await performHealthCheck(baseURL: config.http.baseUrl)
-            if !healthy {
-                await setError("Health check failed - backend not ready")
-                await scheduleReconnect()
-                return
-            }
-        }
-
-        // Step 3: Connect to WebSocket
+        // Try immediate connection - this makes HUD appear instantly
+        print("⚡ FAST PATH: Attempting immediate WebSocket connection...")
         await connectToWebSocket(url: config.websocket.url)
+
+        // Optionally fetch updated config in background (non-blocking)
+        Task {
+            print("📡 Background: Fetching latest configuration...")
+            await fetchConfigurationInBackground()
+        }
     }
 
     private func fetchConfiguration() async {
@@ -244,7 +245,7 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
             websocket: Configuration.WebSocketConfig(
                 url: "ws://localhost:8010/ws",
                 ready: true,
-                healthCheckRequired: true,
+                healthCheckRequired: false,  // 🚀 Skip health check for instant connection
                 reconnect: Configuration.WebSocketConfig.ReconnectConfig(
                     enabled: true,
                     maxAttempts: 999,
@@ -262,7 +263,35 @@ class UniversalWebSocketClient: NSObject, ObservableObject {
         )
 
         self.configuration = fallbackConfig
-        print("✅ Fallback configuration loaded")
+        print("✅ Fallback configuration loaded (instant mode)")
+    }
+
+    private func fetchConfigurationInBackground() async {
+        // Non-blocking background config fetch - doesn't delay connection
+        let configURL = URL(string: "\(defaultBaseURL)/api/config")!
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: configURL)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                print("⚠️  Background config fetch: non-200 status")
+                return  // Keep using fallback config
+            }
+
+            let decoder = JSONDecoder()
+            let newConfig = try decoder.decode(Configuration.self, from: data)
+
+            // Only update if different from current config
+            if newConfig.version != configuration?.version {
+                self.configuration = newConfig
+                print("📡 Background config updated to v\(newConfig.version)")
+            }
+
+        } catch {
+            // Silent failure - we're already connected with fallback config
+            print("⚠️  Background config fetch failed (using fallback): \(error)")
+        }
     }
 
     private func performHealthCheck(baseURL: String) async -> Bool {

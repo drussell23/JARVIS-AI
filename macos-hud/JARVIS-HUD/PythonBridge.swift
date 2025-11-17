@@ -566,6 +566,42 @@ class PythonBridge: ObservableObject {
                     if let message = json["message"] as? String {
                         print("   Welcome: \(message)")
                     }
+                    // Extract server info from welcome message
+                    if let serverVersion = json["server_version"] as? String {
+                        self.serverVersion = serverVersion
+                    }
+                    if let capabilities = json["capabilities"] as? [String] {
+                        self.serverCapabilities = capabilities
+                    }
+
+                case "startup_progress", "progress":
+                    // 🚀 Handle immediate progress messages for instant loading display
+                    print("📊 [WebSocket] Handling progress update")
+                    if let progress = json["progress"] as? Int,
+                       let message = json["message"] as? String {
+                        // Update HUD state based on progress
+                        if progress < 100 {
+                            self.hudState = .processing
+                        } else {
+                            self.hudState = .idle
+                        }
+                        // Update detailed connection state for UI
+                        self.detailedConnectionState = "\(progress)% - \(message)"
+                        print("   Progress: \(progress)% - \(message)")
+                    }
+
+                case "system_state":
+                    // Handle system state updates sent immediately on connection
+                    print("🔄 [WebSocket] Handling system state")
+                    if let state = json["state"] as? [String: Any] {
+                        print("   System state: \(state)")
+                    }
+
+                case "connection_established":
+                    // Connection confirmed
+                    print("✅ [WebSocket] Connection established")
+                    self.connectionStatus = .connected
+
                 case "transcript":
                     print("📝 [WebSocket] Handling transcript")
                     self.handleTranscript(json)

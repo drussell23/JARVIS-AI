@@ -3196,6 +3196,48 @@ async def router_status():
     }
 
 
+# 🚀 Configuration endpoint for Universal WebSocket Client
+@app.get("/api/config")
+async def get_config() -> Dict[str, Any]:
+    """
+    Universal WebSocket Client Configuration Endpoint
+    Returns dynamic configuration for HUD and other clients
+    """
+    websocket_ready = verify_route_registered("/ws")
+
+    return {
+        "version": "2.0.0",
+        "websocket": {
+            "url": "ws://localhost:8010/ws",
+            "ready": websocket_ready,
+            "health_check_required": False,  # Skip health check for instant connection
+            "reconnect": {
+                "enabled": True,
+                "max_attempts": 999,
+                "base_delay_ms": 500,
+                "max_delay_ms": 15000,
+                "jitter": True
+            }
+        },
+        "http": {
+            "base_url": "http://localhost:8010",
+            "health_endpoint": "/health",
+            "config_endpoint": "/api/config"
+        },
+        "capabilities": [
+            "voice",
+            "vision",
+            "commands",
+            "browser_control",
+            "screen_monitoring",
+            "voice_unlock",
+            "universal_websocket",
+            "capability_negotiation",
+            "state_synchronization"
+        ]
+    }
+
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
