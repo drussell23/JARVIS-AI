@@ -10195,6 +10195,17 @@ async def main():
             if args.restart:
                 print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Stopping current JARVIS instance(s)...{Colors.ENDC}")
 
+                # CRITICAL: Notify connected HUDs BEFORE killing backend
+                # This tells HUD to reset to loading screen for fresh progress updates
+                try:
+                    print(f"{Colors.CYAN}   📡 Notifying connected HUDs of system restart...{Colors.ENDC}")
+                    from api.unified_websocket import notify_system_restart
+                    import asyncio
+                    asyncio.run(notify_system_restart())
+                    print(f"{Colors.GREEN}   ✓ HUD restart notification sent{Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.YELLOW}   ⚠️  Could not notify HUDs (backend may not be running): {e}{Colors.ENDC}")
+
                 # Use new robust dynamic cleanup method
                 cleanup_results = manager.stop_current_jarvis_instance(
                     graceful_timeout=10.0,

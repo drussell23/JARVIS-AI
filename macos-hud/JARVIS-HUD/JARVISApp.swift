@@ -166,24 +166,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags
 
-            // Cmd+\ (backslash key code is 42) - Toggle HUD visibility
-            if modifiers.contains(.command) && event.keyCode == 42 {
+            // Cmd+O (key code 31) - Toggle HUD visibility
+            if modifiers.contains(.command) && event.keyCode == 31 {
                 self.toggleHUDVisibility()
                 return // Global monitors can't consume events
             }
 
-            // Cmd+Q+O - Quit HUD application (both keys must be held with Cmd)
-            // This is a three-key combination: Cmd + Q + O
-            if modifiers.contains(.command) {
-                // Check if Q (12) and O (31) are both pressed simultaneously
-                let qPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
-                let oPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
-
-                if qPressed && oPressed {
-                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
-                    self.quitHUD()
-                    return
-                }
+            // Cmd+Q (key code 12) - Quit HUD application
+            if modifiers.contains(.command) && event.keyCode == 12 {
+                print("🛑 Cmd+Q detected - Quitting JARVIS HUD")
+                self.quitHUD()
+                return
             }
         }
 
@@ -191,30 +184,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags
 
-            // Cmd+\ (backslash key code is 42) - Toggle HUD visibility
-            if modifiers.contains(.command) && event.keyCode == 42 {
+            // Cmd+O (key code 31) - Toggle HUD visibility
+            if modifiers.contains(.command) && event.keyCode == 31 {
                 self.toggleHUDVisibility()
                 return nil // Consume the event
             }
 
-            // Cmd+Q+O - Quit HUD application
-            if modifiers.contains(.command) {
-                let qPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(12))
-                let oPressed = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(31))
-
-                if qPressed && oPressed {
-                    print("🛑 Cmd+Q+O detected - Quitting JARVIS HUD")
-                    self.quitHUD()
-                    return nil
-                }
+            // Cmd+Q (key code 12) - Quit HUD application
+            if modifiers.contains(.command) && event.keyCode == 12 {
+                print("🛑 Cmd+Q detected - Quitting JARVIS HUD")
+                self.quitHUD()
+                return nil
             }
 
             return event
         }
 
         print("⌨️ Keyboard shortcuts registered:")
-        print("   • Cmd+\\ → Toggle HUD visibility")
-        print("   • Cmd+Q+O → Quit JARVIS HUD")
+        print("   • Cmd+O → Toggle HUD visibility (show/hide)")
+        print("   • Cmd+Q → Quit JARVIS HUD")
     }
 
     /// Toggle HUD visibility with smooth fade animation
