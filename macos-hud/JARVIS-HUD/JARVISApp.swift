@@ -120,13 +120,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let y = (screenFrame.height - windowHeight) / 2
                 window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
             }
+
+            // 🚀 CRITICAL: Make window visible IMMEDIATELY on launch
+            // This ensures user sees loading screen from 1-100%
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
         }
 
         // Hide from Dock and app switcher (pure floating overlay)
         NSApp.setActivationPolicy(.accessory)
 
-        // Don't activate the app when launched
-        NSApp.activate(ignoringOtherApps: false)
+        // Activate the app to bring window to front
+        NSApp.activate(ignoringOtherApps: true)
 
         // Setup keyboard shortcut for toggling HUD visibility (Cmd+\)
         setupKeyboardShortcuts()
