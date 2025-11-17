@@ -167,42 +167,58 @@ struct HUDView: View {
                 .padding(.horizontal, 60)
                 .padding(.bottom, 10)
 
-                // Transcript section
-                TranscriptView(messages: transcriptMessages)
-                    .frame(height: 180)
-                    .padding(.horizontal, 60)
-                    .padding(.bottom, 20)
+                // Transcript section - Scrollable (matching web app)
+                ScrollView {
+                    TranscriptView(messages: transcriptMessages)
+                        .padding(.vertical, 20)
+                }
+                .frame(height: 250)
+                .frame(maxWidth: 1000)
+                .padding(.horizontal, 60)
+                .padding(.bottom, 20)
 
-                // Bottom: Command input (matching web app)
-                HStack(spacing: 15) {
-                    TextField("Type a command to JARVIS...", text: $commandText)
+                // Bottom: Command input (matching web app styling)
+                HStack(spacing: 12) {
+                    TextField("Type a command to JARVIS...", text: $commandText, onCommit: sendCommand)
                         .textFieldStyle(PlainTextFieldStyle())
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(0.05))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.jarvisGreen.opacity(0.3), lineWidth: 1)
-                                )
-                        )
+                        .font(.system(size: 14, design: .default))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(Color.clear)
 
                     Button(action: sendCommand) {
                         Text("SEND")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 30)
+                            .padding(.horizontal, 24)
                             .padding(.vertical, 12)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.jarvisGreen)
-                                    .shadow(color: Color.jarvisGreenGlow(), radius: 15)
+                                RoundedRectangle(cornerRadius: 25)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 0, green: 1, blue: 0.255), Color(red: 0, green: 0.667, blue: 0.180)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .shadow(color: Color.jarvisGreenGlow(opacity: 0.4), radius: 20)
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .disabled(commandText.isEmpty)
                 }
+                .frame(maxWidth: 800)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 50)
+                        .fill(Color.black.opacity(0.3))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 50)
+                                .stroke(Color.jarvisGreen.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.jarvisGreen.opacity(0.1), radius: 20)
+                )
                 .padding(.horizontal, 60)
                 .padding(.bottom, 40)
             }
@@ -393,21 +409,38 @@ struct TranscriptView: View {
     let messages: [TranscriptMessage]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(messages) { message in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(message.speaker + ":")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.5))
-                        .tracking(1)
+        VStack(alignment: .leading, spacing: 24) {
+            if messages.isEmpty {
+                // Empty state placeholder
+                Text("Transcript will appear here...")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.3))
+                    .italic()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
+            } else {
+                ForEach(messages) { message in
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Message label (YOU: or JARVIS:)
+                        Text(message.speaker + ":")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(message.speaker == "YOU" ? Color(red: 0, green: 1, blue: 1) : Color.jarvisGreen)
+                            .tracking(2)
+                            .textCase(.uppercase)
 
-                    Text(message.text)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.8))
+                        // Message text
+                        Text(message.text)
+                            .font(.system(size: 15, design: .default))
+                            .foregroundColor(.white.opacity(0.9))
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(.easeOut(duration: 0.5), value: messages.count)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
