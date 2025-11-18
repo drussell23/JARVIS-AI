@@ -178,34 +178,273 @@ All 9 components must load for full functionality.
 """
 
 # ============================================================================
-# Auto-detect and use virtual environment if not already active
+# Advanced Virtual Environment Auto-Detection & Activation System
+# Zero-hardcoding • Cross-platform • Dynamic • Robust
 # ============================================================================
 import os
 import sys
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-# Get the script's directory
-SCRIPT_DIR = Path(__file__).resolve().parent
-VENV_PYTHON = SCRIPT_DIR / "backend" / "venv" / "bin" / "python3"
 
-# Check if we need to switch to venv by trying to import a required package
-def is_venv_needed():
-    """Check if we need to activate venv by testing for required packages"""
-    try:
-        import aiohttp
-        return False  # Package exists, we're in the right environment
-    except ImportError:
-        return True  # Package missing, need to switch to venv
+class VenvAutoActivator:
+    """
+    Intelligent virtual environment auto-detection and activation.
 
-if VENV_PYTHON.exists() and is_venv_needed():
-    # Re-execute this script using the venv Python
-    import subprocess
-    print(f"\n🔄 Auto-switching to virtual environment...\n")
-    sys.stdout.flush()  # Ensure the message is printed immediately
-    result = subprocess.run([str(VENV_PYTHON)] + sys.argv, cwd=str(SCRIPT_DIR))
-    sys.exit(result.returncode)
+    Features:
+    - Auto-discovers venv in standard locations (configurable via env vars)
+    - Cross-platform (Windows/Linux/macOS)
+    - Multi-package verification for reliability
+    - Graceful error handling with actionable suggestions
+    - Prevents infinite recursion loops
+    - Zero hardcoded paths
+    """
 
-# Now we're guaranteed to be in the venv, continue with normal imports
+    # Standard venv search locations (priority order)
+    DEFAULT_VENV_SEARCH_PATHS = [
+        "backend/venv",
+        "venv",
+        ".venv",
+        "env",
+        ".env",
+        "virtualenv",
+    ]
+
+    # Core packages to verify environment integrity
+    REQUIRED_PACKAGES = [
+        "aiohttp",
+        "psutil",
+    ]
+
+    def __init__(self):
+        self.script_dir = Path(__file__).resolve().parent
+        self.platform = sys.platform
+        self._already_attempted = os.environ.get("_JARVIS_VENV_ACTIVATED") == "1"
+
+    def find_venv(self) -> Optional[Path]:
+        """
+        Intelligently locate virtual environment.
+
+        Priority:
+        1. JARVIS_VENV_PATH environment variable (explicit override)
+        2. VIRTUAL_ENV environment variable (if already in a venv)
+        3. Standard locations search
+
+        Returns:
+            Path to valid venv, or None if not found
+        """
+        # Priority 1: Explicit override via environment
+        if env_path := os.environ.get("JARVIS_VENV_PATH"):
+            venv_path = Path(env_path)
+            if self._is_valid_venv(venv_path):
+                return venv_path
+            print(f"⚠️  JARVIS_VENV_PATH invalid: {venv_path}")
+
+        # Priority 2: Check if already in activated venv
+        if virtual_env := os.environ.get("VIRTUAL_ENV"):
+            venv_path = Path(virtual_env)
+            if self._is_valid_venv(venv_path):
+                return venv_path
+
+        # Priority 3: Search standard locations
+        search_paths = os.environ.get(
+            "JARVIS_VENV_SEARCH_PATHS",
+            ":".join(self.DEFAULT_VENV_SEARCH_PATHS)
+        ).split(":")
+
+        for venv_name in search_paths:
+            venv_path = self.script_dir / venv_name.strip()
+            if self._is_valid_venv(venv_path):
+                return venv_path
+
+        return None
+
+    def _is_valid_venv(self, venv_path: Path) -> bool:
+        """Validate that path contains a functional virtual environment"""
+        if not venv_path.exists() or not venv_path.is_dir():
+            return False
+
+        python_exe = self._get_venv_python(venv_path)
+        return python_exe is not None and python_exe.exists()
+
+    def _get_venv_python(self, venv_path: Path) -> Optional[Path]:
+        """Get Python executable path (cross-platform)"""
+        if self.platform == "win32":
+            candidates = [
+                venv_path / "Scripts" / "python.exe",
+                venv_path / "Scripts" / "python3.exe",
+            ]
+        else:
+            candidates = [
+                venv_path / "bin" / "python3",
+                venv_path / "bin" / "python",
+            ]
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        return None
+
+    def needs_activation(self) -> Tuple[bool, List[str]]:
+        """
+        Determine if venv activation is required.
+
+        Returns:
+            (needs_activation, missing_packages)
+        """
+        if self._already_attempted:
+            return False, []
+
+        missing = []
+        for package in self.REQUIRED_PACKAGES:
+            try:
+                __import__(package)
+            except ImportError:
+                missing.append(package)
+
+        return bool(missing), missing
+
+    def is_already_in_venv(self, venv_path: Path) -> bool:
+        """
+        Check if currently running in the target venv (prevents recursion).
+
+        Uses sys.prefix comparison as the most reliable method, avoiding
+        symlink resolution issues that can cause false positives.
+        """
+        # Primary method: Check if sys.prefix points to the venv
+        # This is reliable even when python executables are symlinked
+        if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
+            # We're in SOME venv, check if it's the target one
+            current_venv = Path(sys.prefix).resolve()
+            target_venv = venv_path.resolve()
+
+            if current_venv == target_venv:
+                return True
+
+        # Secondary check: Verify venv site-packages is in sys.path
+        # If we're truly in the venv, its site-packages should be in sys.path
+        venv_site_packages = None
+        if self.platform == "win32":
+            venv_site_packages = venv_path / "Lib" / "site-packages"
+        else:
+            # Find the actual site-packages (version may vary)
+            lib_path = venv_path / "lib"
+            if lib_path.exists():
+                for item in lib_path.iterdir():
+                    if item.name.startswith("python"):
+                        candidate = item / "site-packages"
+                        if candidate.exists():
+                            venv_site_packages = candidate
+                            break
+
+        if venv_site_packages and venv_site_packages.exists():
+            venv_site_str = str(venv_site_packages.resolve())
+            if any(venv_site_str in path for path in sys.path):
+                return True
+
+        return False
+
+    def activate(self) -> None:
+        """
+        Activate virtual environment if needed.
+
+        Will re-execute script with venv Python if necessary.
+        Includes safety checks to prevent infinite loops.
+        """
+        needs_switch, missing = self.needs_activation()
+
+        if not needs_switch:
+            return  # Already in correct environment
+
+        if self._already_attempted:
+            self._print_error(missing, "Activation loop detected")
+            sys.exit(1)
+
+        venv_path = self.find_venv()
+
+        if not venv_path:
+            self._print_error(missing, "No virtual environment found")
+            sys.exit(1)
+
+        if self.is_already_in_venv(venv_path):
+            self._print_error(missing, "Already in venv but packages missing")
+            sys.exit(1)
+
+        self._reexecute_with_venv(venv_path)
+
+    def _reexecute_with_venv(self, venv_path: Path) -> None:
+        """Re-execute script using venv Python"""
+        import subprocess
+
+        venv_python = self._get_venv_python(venv_path)
+
+        print(f"\n{'='*70}")
+        print(f"🔄 Auto-activating Virtual Environment")
+        print(f"{'='*70}")
+        print(f"📍 Location: {venv_path.relative_to(self.script_dir)}")
+        print(f"🐍 Python: {venv_python.name}")
+        print(f"{'='*70}\n")
+        sys.stdout.flush()
+
+        # Set marker to prevent infinite loops
+        env = os.environ.copy()
+        env["_JARVIS_VENV_ACTIVATED"] = "1"
+
+        result = subprocess.run(
+            [str(venv_python)] + sys.argv,
+            cwd=str(self.script_dir),
+            env=env
+        )
+        sys.exit(result.returncode)
+
+    def _print_error(self, missing: List[str], reason: str) -> None:
+        """Display detailed error with actionable solutions"""
+        print(f"\n{'='*70}")
+        print(f"❌ Virtual Environment Activation Failed")
+        print(f"{'='*70}")
+        print(f"Reason: {reason}")
+
+        if missing:
+            print(f"\nMissing packages: {', '.join(missing)}")
+
+        print(f"\nSearched locations:")
+        search_paths = os.environ.get(
+            "JARVIS_VENV_SEARCH_PATHS",
+            ":".join(self.DEFAULT_VENV_SEARCH_PATHS)
+        ).split(":")
+
+        for venv_name in search_paths:
+            venv_path = self.script_dir / venv_name.strip()
+            status = "✓" if venv_path.exists() else "✗"
+            print(f"  {status} {venv_path}")
+
+        print(f"\n💡 Solutions:")
+        print(f"  1. Create virtual environment:")
+        print(f"     python3 -m venv backend/venv")
+        print(f"     source backend/venv/bin/activate  # macOS/Linux")
+        print(f"     pip install -r requirements.txt")
+
+        print(f"\n  2. Specify custom venv location:")
+        print(f"     export JARVIS_VENV_PATH=/path/to/venv")
+
+        print(f"\n  3. Add search paths:")
+        print(f"     export JARVIS_VENV_SEARCH_PATHS=path1:path2:path3")
+
+        if missing:
+            print(f"\n  4. Install in current environment:")
+            print(f"     pip install {' '.join(missing)}")
+
+        print(f"{'='*70}\n")
+
+
+# Execute auto-activation when module is loaded
+_venv_activator = VenvAutoActivator()
+_venv_activator.activate()
+del _venv_activator  # Clean up namespace
+
+# ============================================================================
+# Environment is now verified and ready
 # ============================================================================
 
 import argparse
