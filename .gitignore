@@ -272,6 +272,13 @@ backend/.jarvis_cache/
 backend/backend/.env.gcp
 cloud_sql_proxy
 
+# Certificates and keys - NEVER commit
+*.cer
+*.p12
+*.pfx
+*.key
+*.pem
+
 # Cloud SQL and GCP secrets
 **/gcp_config.json
 **/database_config.json
