@@ -177,6 +177,37 @@ Browser Automation Features (v13.4.0):
 All 9 components must load for full functionality.
 """
 
+# ============================================================================
+# Auto-detect and use virtual environment if not already active
+# ============================================================================
+import os
+import sys
+from pathlib import Path
+
+# Get the script's directory
+SCRIPT_DIR = Path(__file__).resolve().parent
+VENV_PYTHON = SCRIPT_DIR / "backend" / "venv" / "bin" / "python3"
+
+# Check if we need to switch to venv by trying to import a required package
+def is_venv_needed():
+    """Check if we need to activate venv by testing for required packages"""
+    try:
+        import aiohttp
+        return False  # Package exists, we're in the right environment
+    except ImportError:
+        return True  # Package missing, need to switch to venv
+
+if VENV_PYTHON.exists() and is_venv_needed():
+    # Re-execute this script using the venv Python
+    import subprocess
+    print(f"\n🔄 Auto-switching to virtual environment...\n")
+    sys.stdout.flush()  # Ensure the message is printed immediately
+    result = subprocess.run([str(VENV_PYTHON)] + sys.argv, cwd=str(SCRIPT_DIR))
+    sys.exit(result.returncode)
+
+# Now we're guaranteed to be in the venv, continue with normal imports
+# ============================================================================
+
 import argparse
 import asyncio
 import json
