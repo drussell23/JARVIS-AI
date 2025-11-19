@@ -1,0 +1,95 @@
+{
+  "workflow_name": "docker in /. - Update #1158590701",
+  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19495791144",
+  "branch": "main",
+  "commit_sha": "fee6490",
+  "run_number": 48,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/docker-in-update-1158590701-run48-20251119-090826",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: docker in /. - Update #1158590701 (Run #48)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 69,
+              "content": "2025-11-19T09:07:09.0848139Z updater | 2025/11/19 09:07:09 ERROR <job_1158590701> Error during file fetching; aborting: No Dockerfiles nor Kubernetes YAML found in /",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 70,
+              "content": "2025-11-19T09:07:09.1709933Z   proxy | 2025/11/19 09:07:09 [008] POST /update_jobs/1158590701/record_update_job_error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 71,
+              "content": "2025-11-19T09:07:09.3157596Z   proxy | 2025/11/19 09:07:09 [008] 204 /update_jobs/1158590701/record_update_job_error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 76,
+              "content": "2025-11-19T09:07:09.4909140Z Dependabot encountered '1' error(s) during execution, please check the logs for more details.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 78,
+              "content": "2025-11-19T09:07:09.4910737Z |                                          Errors                                           |",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 87,
+              "content": "2025-11-19T09:07:09.6159375Z Failure running container c98ccf3e720202e77452027f20ac3f67549121451c64ddfd2f95441f2e28f3a4: Error: Command failed with exit code 1: /bin/sh -c $DEPENDABOT_HOME/dependabot-updater/bin/run update_files",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 91,
+              "content": "2025-11-19T09:07:10.3352974Z ##[error]Dependabot encountered an error performing the update",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 93,
+              "content": "Error: The updater encountered one or more errors.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 96,
+              "content": "2025-11-19T09:07:10.3365319Z \ud83e\udd16 ~ finished: error reported to Dependabot ~",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 9
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 87,
+              "content": "2025-11-19T09:07:09.6159375Z Failure running container c98ccf3e720202e77452027f20ac3f67549121451c64ddfd2f95441f2e28f3a4: Error: Command failed with exit code 1: /bin/sh -c $DEPENDABOT_HOME/dependabot-updater/bin/run update_files",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-11-19T09:08:26.747759"
+}
