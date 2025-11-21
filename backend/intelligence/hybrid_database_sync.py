@@ -45,6 +45,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Callable, Deque
 import aiosqlite
 import numpy as np
 
+# Initialize logger early so it's available for import warnings
+logger = logging.getLogger(__name__)
+
 try:
     import asyncpg
     ASYNCPG_AVAILABLE = True
@@ -86,8 +89,6 @@ try:
 except ImportError:
     GRPC_AVAILABLE = False
     logger.warning("gRPC not available - install with: pip install grpcio grpcio-tools")
-
-logger = logging.getLogger(__name__)
 
 
 class SyncStatus(Enum):
