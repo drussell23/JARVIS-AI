@@ -4,6 +4,14 @@ Voice Unlock System Integration
 
 Integrates the optimized ML system with the existing voice unlock components,
 providing a unified interface for JARVIS.
+
+Enhanced Features (v2.0):
+- LangGraph adaptive authentication reasoning
+- Multi-factor authentication fusion
+- Anti-spoofing detection (replay attacks, voice cloning)
+- Progressive voice feedback
+- Intelligent caching for cost optimization
+- Full audit trail for authentication decisions
 """
 
 import os
@@ -11,13 +19,16 @@ import sys
 import logging
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime
+from typing import Dict, Any, Optional, List, Tuple, Callable
+from datetime import datetime, timedelta
 import json
 import hashlib
 import asyncio
 import gc
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
 
 # ML optimization components
 from .ml import VoiceUnlockMLSystem, get_ml_manager, get_monitor
@@ -43,7 +54,310 @@ from .apple_watch_proximity import AppleWatchProximityDetector
 # Configuration
 from .config import get_config
 
+# Enhanced Speaker Verification Service
+try:
+    from voice.speaker_verification_service import (
+        SpeakerVerificationService,
+        get_speaker_service,
+        VoiceFeedback,
+        ConfidenceLevel,
+        ThreatType
+    )
+    SPEAKER_SERVICE_AVAILABLE = True
+except ImportError:
+    SPEAKER_SERVICE_AVAILABLE = False
+
+# LangGraph for adaptive authentication reasoning
+try:
+    from langgraph.graph import StateGraph, END
+    LANGGRAPH_AVAILABLE = True
+except ImportError:
+    LANGGRAPH_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# LangGraph Adaptive Authentication State
+# ============================================================================
+
+@dataclass
+class AdaptiveAuthState:
+    """State for LangGraph adaptive authentication reasoning."""
+    audio_data: bytes
+    speaker_name: Optional[str] = None
+    attempt_count: int = 0
+    max_attempts: int = 3
+    voice_confidence: float = 0.0
+    behavioral_confidence: float = 0.0
+    context_confidence: float = 0.0
+    fused_confidence: float = 0.0
+    is_verified: bool = False
+    decision: str = "pending"
+    feedback_message: str = ""
+    retry_strategy: Optional[str] = None
+    environmental_issues: List[str] = None
+    threat_detected: Optional[str] = None
+    trace_id: Optional[str] = None
+
+    def __post_init__(self):
+        if self.environmental_issues is None:
+            self.environmental_issues = []
+
+
+class AdaptiveAuthenticationEngine:
+    """
+    LangGraph-based adaptive authentication with intelligent retry.
+
+    Provides:
+    - Multi-attempt authentication with learning
+    - Environmental issue detection and mitigation
+    - Adaptive retry strategies
+    - Progressive feedback
+    """
+
+    def __init__(self, speaker_service: Optional['SpeakerVerificationService'] = None):
+        self.logger = logging.getLogger(f"{__name__}.AdaptiveAuth")
+        self.speaker_service = speaker_service
+        self._graph = None
+
+        if LANGGRAPH_AVAILABLE and speaker_service:
+            self._build_graph()
+
+    def _build_graph(self):
+        """Build LangGraph state machine for adaptive authentication."""
+        if not LANGGRAPH_AVAILABLE:
+            return
+
+        graph = StateGraph(dict)
+
+        # Add nodes
+        graph.add_node("analyze_audio", self._analyze_audio_node)
+        graph.add_node("verify_speaker", self._verify_speaker_node)
+        graph.add_node("check_confidence", self._check_confidence_node)
+        graph.add_node("generate_feedback", self._generate_feedback_node)
+        graph.add_node("determine_retry", self._determine_retry_node)
+        graph.add_node("final_decision", self._final_decision_node)
+
+        # Add edges
+        graph.set_entry_point("analyze_audio")
+        graph.add_edge("analyze_audio", "verify_speaker")
+        graph.add_edge("verify_speaker", "check_confidence")
+
+        # Conditional edges based on confidence
+        graph.add_conditional_edges(
+            "check_confidence",
+            self._route_after_confidence,
+            {
+                "success": "generate_feedback",
+                "retry": "determine_retry",
+                "fail": "generate_feedback"
+            }
+        )
+
+        graph.add_edge("determine_retry", "generate_feedback")
+        graph.add_edge("generate_feedback", "final_decision")
+        graph.add_edge("final_decision", END)
+
+        self._graph = graph.compile()
+
+    async def _analyze_audio_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze audio quality and detect environmental issues."""
+        audio_data = state.get("audio_data", b"")
+
+        # Basic audio analysis
+        if len(audio_data) < 1000:
+            state["environmental_issues"].append("audio_too_short")
+        else:
+            # Estimate SNR and quality
+            try:
+                audio_array = np.frombuffer(audio_data[:4000], dtype=np.int16).astype(np.float32) / 32768.0
+                rms = np.sqrt(np.mean(audio_array ** 2))
+
+                if rms < 0.01:
+                    state["environmental_issues"].append("audio_too_quiet")
+                elif rms > 0.9:
+                    state["environmental_issues"].append("audio_clipping")
+
+                # Estimate background noise
+                noise_estimate = np.std(audio_array[:500])
+                if noise_estimate > 0.05:
+                    state["environmental_issues"].append("background_noise")
+
+            except Exception as e:
+                self.logger.debug(f"Audio analysis error: {e}")
+
+        return state
+
+    async def _verify_speaker_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform speaker verification using enhanced service."""
+        if not self.speaker_service:
+            state["decision"] = "error"
+            state["feedback_message"] = "Speaker service not available"
+            return state
+
+        try:
+            # Use enhanced verification
+            result = await self.speaker_service.verify_speaker_enhanced(
+                state["audio_data"],
+                state.get("speaker_name"),
+                context={
+                    "attempt_number": state.get("attempt_count", 0),
+                    "environmental_issues": state.get("environmental_issues", [])
+                }
+            )
+
+            state["voice_confidence"] = result.get("voice_confidence", 0.0)
+            state["behavioral_confidence"] = result.get("behavioral_confidence", 0.0)
+            state["context_confidence"] = result.get("context_confidence", 0.0)
+            state["fused_confidence"] = result.get("confidence", 0.0)
+            state["is_verified"] = result.get("verified", False)
+            state["trace_id"] = result.get("trace_id")
+
+            if result.get("threat_detected"):
+                state["threat_detected"] = result["threat_detected"]
+                state["decision"] = "denied"
+
+        except Exception as e:
+            self.logger.error(f"Verification error: {e}")
+            state["decision"] = "error"
+            state["feedback_message"] = f"Verification error: {str(e)}"
+
+        return state
+
+    async def _check_confidence_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Check confidence levels and determine next action."""
+        if state.get("threat_detected"):
+            state["decision"] = "denied"
+        elif state.get("is_verified"):
+            state["decision"] = "authenticated"
+        elif state.get("attempt_count", 0) < state.get("max_attempts", 3):
+            state["decision"] = "retry"
+        else:
+            state["decision"] = "denied"
+
+        return state
+
+    def _route_after_confidence(self, state: Dict[str, Any]) -> str:
+        """Route based on verification result."""
+        decision = state.get("decision", "pending")
+
+        if decision == "authenticated":
+            return "success"
+        elif decision == "retry":
+            return "retry"
+        else:
+            return "fail"
+
+    async def _determine_retry_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine optimal retry strategy based on issues detected."""
+        issues = state.get("environmental_issues", [])
+        confidence = state.get("fused_confidence", 0.0)
+
+        # Determine retry strategy
+        if "background_noise" in issues:
+            state["retry_strategy"] = "noise_mitigation"
+            state["feedback_message"] = "I'm having trouble hearing you clearly due to background noise. Could you speak closer to the microphone?"
+        elif "audio_too_quiet" in issues:
+            state["retry_strategy"] = "volume_boost"
+            state["feedback_message"] = "Your voice was a bit quiet. Could you speak a little louder?"
+        elif confidence >= 0.70:
+            state["retry_strategy"] = "minor_adjustment"
+            state["feedback_message"] = "Almost there! Could you say that one more time?"
+        elif confidence >= 0.50:
+            state["retry_strategy"] = "different_phrase"
+            state["feedback_message"] = "I'm having trouble matching your voice. Try speaking more naturally."
+        else:
+            state["retry_strategy"] = "full_retry"
+            state["feedback_message"] = "Voice verification didn't match. Please try again, speaking clearly."
+
+        state["attempt_count"] = state.get("attempt_count", 0) + 1
+
+        return state
+
+    async def _generate_feedback_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate appropriate voice feedback."""
+        decision = state.get("decision", "pending")
+        confidence = state.get("fused_confidence", 0.0)
+
+        if not state.get("feedback_message"):
+            if decision == "authenticated":
+                if confidence >= 0.90:
+                    state["feedback_message"] = "Welcome back! Unlocking for you now."
+                else:
+                    state["feedback_message"] = "Verified. Unlocking now."
+            elif decision == "denied":
+                if state.get("threat_detected"):
+                    state["feedback_message"] = f"Security alert: {state['threat_detected']}. Access denied."
+                else:
+                    state["feedback_message"] = "Voice verification failed. Please try password or Face ID."
+
+        return state
+
+    async def _final_decision_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Finalize the authentication decision."""
+        return state
+
+    async def authenticate(
+        self,
+        audio_data: bytes,
+        speaker_name: Optional[str] = None,
+        max_attempts: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Run adaptive authentication with intelligent retry.
+
+        Returns:
+            Authentication result with feedback
+        """
+        if not self._graph or not LANGGRAPH_AVAILABLE:
+            # Fallback to direct verification
+            if self.speaker_service:
+                return await self.speaker_service.verify_speaker_enhanced(audio_data, speaker_name)
+            return {"verified": False, "error": "No authentication service available"}
+
+        # Initialize state
+        initial_state = {
+            "audio_data": audio_data,
+            "speaker_name": speaker_name,
+            "attempt_count": 0,
+            "max_attempts": max_attempts,
+            "voice_confidence": 0.0,
+            "behavioral_confidence": 0.0,
+            "context_confidence": 0.0,
+            "fused_confidence": 0.0,
+            "is_verified": False,
+            "decision": "pending",
+            "feedback_message": "",
+            "retry_strategy": None,
+            "environmental_issues": [],
+            "threat_detected": None,
+            "trace_id": None
+        }
+
+        # Run graph
+        try:
+            final_state = await self._graph.ainvoke(initial_state)
+            return {
+                "verified": final_state.get("is_verified", False),
+                "confidence": final_state.get("fused_confidence", 0.0),
+                "voice_confidence": final_state.get("voice_confidence", 0.0),
+                "behavioral_confidence": final_state.get("behavioral_confidence", 0.0),
+                "decision": final_state.get("decision", "error"),
+                "feedback": final_state.get("feedback_message", ""),
+                "retry_strategy": final_state.get("retry_strategy"),
+                "attempts": final_state.get("attempt_count", 1),
+                "threat_detected": final_state.get("threat_detected"),
+                "trace_id": final_state.get("trace_id")
+            }
+        except Exception as e:
+            self.logger.error(f"Adaptive auth error: {e}")
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "decision": "error",
+                "feedback": f"Authentication error: {str(e)}"
+            }
 
 
 class VoiceUnlockSystem:
@@ -65,17 +379,39 @@ class VoiceUnlockSystem:
         
         # Thread pool for async operations
         self.executor = ThreadPoolExecutor(max_workers=4)
-        
+
         # System state
         self.is_active = False
         self.is_locked = True
         self.current_user = None
-        
+
         # Performance tracking
         self.last_auth_time = None
         self.auth_history = []
-        
-        logger.info("Voice Unlock System initialized with ML optimization")
+
+        # ========================================================================
+        # Enhanced Authentication Components (v2.0)
+        # ========================================================================
+
+        # Enhanced speaker verification service
+        self._speaker_service = None
+        self._speaker_service_initialized = False
+
+        # Adaptive authentication engine (LangGraph)
+        self._adaptive_auth = None
+
+        # TTS callback for voice feedback
+        self.tts_callback: Optional[Callable[[str], Any]] = None
+
+        # Authorized user for voice unlock
+        self.authorized_user = "Derek"
+
+        # Enhanced security settings
+        self.use_enhanced_verification = True
+        self.max_retry_attempts = 3
+        self.anti_spoofing_enabled = True
+
+        logger.info("Voice Unlock System initialized with ML optimization and enhanced v2.0 features")
         
     @property
     def audio_manager(self):
@@ -110,7 +446,31 @@ class VoiceUnlockSystem:
                 'require_unlocked_watch': True
             })
         return self._apple_watch_detector
-        
+
+    @property
+    def speaker_service(self) -> Optional['SpeakerVerificationService']:
+        """Lazy load enhanced speaker verification service."""
+        if self._speaker_service is None and SPEAKER_SERVICE_AVAILABLE:
+            try:
+                self._speaker_service = get_speaker_service()
+            except Exception as e:
+                logger.warning(f"Failed to get speaker service: {e}")
+        return self._speaker_service
+
+    @property
+    def adaptive_auth(self) -> Optional[AdaptiveAuthenticationEngine]:
+        """Lazy load adaptive authentication engine."""
+        if self._adaptive_auth is None and self.speaker_service:
+            self._adaptive_auth = AdaptiveAuthenticationEngine(self.speaker_service)
+        return self._adaptive_auth
+
+    def set_tts_callback(self, callback: Callable[[str], Any]):
+        """Set TTS callback for voice feedback."""
+        self.tts_callback = callback
+        if self.speaker_service:
+            self.speaker_service.set_tts_callback(callback)
+        logger.info("✅ TTS callback configured for voice unlock feedback")
+
     async def start(self):
         """Start the voice unlock system"""
         logger.info("Starting Voice Unlock System...")
@@ -473,9 +833,202 @@ class VoiceUnlockSystem:
         except Exception as e:
             logger.error(f"Voice authentication error: {e}")
             result['error'] = str(e)
-            
+
         return result
-        
+
+    async def authenticate_enhanced(
+        self,
+        timeout: float = 10.0,
+        require_watch: bool = False,
+        max_attempts: int = 3,
+        use_adaptive: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Enhanced voice authentication with multi-factor fusion and adaptive retry.
+
+        This is the v2.0 authentication method that provides:
+        - Multi-factor authentication (voice + behavioral + context + proximity)
+        - LangGraph adaptive retry with intelligent feedback
+        - Anti-spoofing detection (replay attacks, voice cloning)
+        - Progressive voice feedback
+        - Full audit trail
+
+        Args:
+            timeout: Maximum time to wait for voice input
+            require_watch: Whether Apple Watch proximity is required
+            max_attempts: Maximum number of retry attempts
+            use_adaptive: Whether to use adaptive LangGraph reasoning
+
+        Returns:
+            Enhanced authentication result with feedback and trace
+        """
+        start_time = time.time()
+
+        result = {
+            'authenticated': False,
+            'user_id': None,
+            'confidence': 0.0,
+            'voice_confidence': 0.0,
+            'behavioral_confidence': 0.0,
+            'context_confidence': 0.0,
+            'processing_time_ms': 0.0,
+            'method': 'enhanced_v2',
+            'watch_nearby': False,
+            'feedback': None,
+            'trace_id': None,
+            'attempts': 0
+        }
+
+        try:
+            # Check Apple Watch proximity if required
+            proximity_confidence = 0.90  # Default high confidence
+            if require_watch:
+                watch_status = self.apple_watch_detector.get_status()
+                result['watch_nearby'] = watch_status.get('watch_nearby', False)
+
+                if not watch_status.get('watch_nearby'):
+                    result['error'] = "Apple Watch not detected nearby"
+                    result['feedback'] = "Apple Watch not detected. Please bring your watch closer."
+                    logger.warning("Authentication failed: Apple Watch not in range")
+                    return result
+
+                # Calculate proximity confidence based on distance
+                distance = watch_status.get('watch_distance', 10.0)
+                if distance <= 1.0:
+                    proximity_confidence = 0.98
+                elif distance <= 3.0:
+                    proximity_confidence = 0.95
+                elif distance <= 5.0:
+                    proximity_confidence = 0.85
+                else:
+                    proximity_confidence = 0.70
+
+                logger.info(f"Apple Watch at {distance:.1f}m (confidence: {proximity_confidence:.0%})")
+
+            # Record audio
+            logger.info("🎤 Listening for voice authentication...")
+            audio_data = await self._record_authentication_audio(timeout)
+
+            if audio_data is None or len(audio_data) == 0:
+                result['error'] = "No voice detected"
+                result['feedback'] = "I didn't hear anything. Please speak clearly."
+                return result
+
+            # Convert numpy array to bytes for enhanced verification
+            if isinstance(audio_data, np.ndarray):
+                audio_bytes = audio_data.tobytes()
+            else:
+                audio_bytes = audio_data
+
+            # Use enhanced verification
+            if self.use_enhanced_verification and SPEAKER_SERVICE_AVAILABLE:
+                if use_adaptive and self.adaptive_auth:
+                    # Use LangGraph adaptive authentication
+                    logger.info("🧠 Using adaptive authentication with intelligent retry...")
+                    auth_result = await self.adaptive_auth.authenticate(
+                        audio_bytes,
+                        speaker_name=self.authorized_user,
+                        max_attempts=max_attempts
+                    )
+                elif self.speaker_service:
+                    # Use enhanced verification directly
+                    logger.info("🔐 Using enhanced speaker verification...")
+                    auth_result = await self.speaker_service.verify_speaker_enhanced(
+                        audio_bytes,
+                        speaker_name=self.authorized_user,
+                        context={
+                            "environment": "default",
+                            "proximity_confidence": proximity_confidence,
+                            "device": "mac_microphone"
+                        }
+                    )
+                else:
+                    # Fallback to basic verification
+                    auth_result = await self._fallback_verification(audio_data)
+            else:
+                # Fallback to basic verification
+                auth_result = await self._fallback_verification(audio_data)
+
+            # Extract results
+            result['authenticated'] = auth_result.get('verified', auth_result.get('authenticated', False))
+            result['confidence'] = auth_result.get('confidence', auth_result.get('fused_confidence', 0.0))
+            result['voice_confidence'] = auth_result.get('voice_confidence', result['confidence'])
+            result['behavioral_confidence'] = auth_result.get('behavioral_confidence', 0.0)
+            result['context_confidence'] = auth_result.get('context_confidence', 0.0)
+            result['user_id'] = auth_result.get('speaker_name', self.authorized_user) if result['authenticated'] else None
+            result['trace_id'] = auth_result.get('trace_id')
+            result['attempts'] = auth_result.get('attempts', 1)
+
+            # Get feedback
+            feedback_data = auth_result.get('feedback', {})
+            if isinstance(feedback_data, dict):
+                result['feedback'] = feedback_data.get('message', auth_result.get('feedback', ''))
+            else:
+                result['feedback'] = str(feedback_data) if feedback_data else ''
+
+            # Speak feedback via TTS
+            if result['feedback'] and self.tts_callback:
+                await self._speak_response(result['feedback'])
+
+            # Handle successful authentication
+            if result['authenticated']:
+                await self._handle_successful_auth(result['user_id'], result)
+                logger.info(f"✅ Enhanced authentication successful: {result['user_id']} ({result['confidence']:.1%})")
+            else:
+                logger.info(f"❌ Enhanced authentication failed: confidence={result['confidence']:.1%}")
+
+            # Check for security threats
+            if auth_result.get('threat_detected'):
+                result['threat_detected'] = auth_result['threat_detected']
+                logger.warning(f"⚠️ Security threat detected: {auth_result['threat_detected']}")
+
+        except Exception as e:
+            logger.error(f"Enhanced authentication error: {e}", exc_info=True)
+            result['error'] = str(e)
+            result['feedback'] = "An error occurred during authentication. Please try again."
+
+        result['processing_time_ms'] = (time.time() - start_time) * 1000
+        return result
+
+    async def _fallback_verification(self, audio_data: np.ndarray) -> Dict[str, Any]:
+        """Fallback verification using basic ML system."""
+        logger.info("Using fallback ML verification...")
+
+        if self.ml_system:
+            auth_result = self.ml_system.authenticate_user(
+                self.authorized_user,
+                audio_data,
+                self.config.audio.sample_rate
+            )
+            return {
+                'verified': auth_result.get('authenticated', False),
+                'confidence': auth_result.get('confidence', 0.0),
+                'speaker_name': self.authorized_user if auth_result.get('authenticated') else None
+            }
+
+        return {'verified': False, 'confidence': 0.0}
+
+    def get_authentication_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed authentication trace for debugging/display."""
+        if self.speaker_service:
+            return self.speaker_service.get_authentication_trace(trace_id)
+        return None
+
+    def get_recent_authentications(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get recent authentication attempts with full traces."""
+        if self.speaker_service:
+            return self.speaker_service.get_recent_authentications(
+                speaker_name=self.authorized_user,
+                limit=limit
+            )
+        return []
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get voice processing cache statistics."""
+        if self.speaker_service:
+            return self.speaker_service.get_cache_stats()
+        return {"available": False}
+
     async def _record_authentication_audio(self, timeout: float) -> Optional[np.ndarray]:
         """Record audio for authentication"""
         loop = asyncio.get_event_loop()

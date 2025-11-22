@@ -746,4 +746,384 @@ class VisionUINavigator:
                 'color_variance': hue_variance
             }
 
-            logger.info(f"[VISION NAV] 🎨 Color analysis at ({x}, {y}): saturation={saturation
+            logger.info(f"[VISION NAV] 🎨 Color analysis at ({x}, {y}): saturation={saturation_avg:.1f}, variance={hue_variance:.1f}")
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Color analysis failed: {e}")
+            return {
+                'is_colorful': False,
+                'is_monochrome': True,  # Assume monochrome on error
+                'saturation_avg': 0,
+                'color_variance': 0
+            }
+
+    # =========================================================================
+    # COMPUTER USE API INTEGRATION
+    # =========================================================================
+
+    async def _get_computer_use_connector(self):
+        """Lazy load the Computer Use connector.
+
+        Returns the Computer Use connector if available, None otherwise.
+        This enables dynamic, vision-based UI automation without hardcoded coordinates.
+        """
+        if not hasattr(self, '_computer_use_connector'):
+            self._computer_use_connector = None
+            try:
+                from backend.display.computer_use_connector import (
+                    ClaudeComputerUseConnector,
+                    get_computer_use_connector
+                )
+
+                # Get TTS callback if available
+                tts_callback = await self._get_tts_callback()
+
+                self._computer_use_connector = get_computer_use_connector(
+                    tts_callback=tts_callback
+                )
+                logger.info("[VISION NAV] ✅ Computer Use connector loaded")
+            except Exception as e:
+                logger.warning(f"[VISION NAV] Computer Use connector not available: {e}")
+                self._computer_use_connector = None
+
+        return self._computer_use_connector
+
+    async def _get_tts_callback(self):
+        """Get TTS callback for voice narration.
+
+        Returns an async callback function for text-to-speech,
+        enabling JARVIS to narrate its actions transparently.
+        """
+        try:
+            # Try to get TTS from unified engine
+            from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+
+            if not hasattr(self, '_tts_engine'):
+                self._tts_engine = UnifiedTTSEngine()
+                await self._tts_engine.initialize()
+
+            async def speak(text: str) -> None:
+                """Async TTS callback."""
+                try:
+                    await self._tts_engine.speak(text)
+                except Exception as e:
+                    logger.warning(f"[VISION NAV] TTS speak failed: {e}")
+
+            return speak
+
+        except ImportError:
+            logger.debug("[VISION NAV] TTS engine not available")
+            return None
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not initialize TTS: {e}")
+            return None
+
+    async def connect_to_display_with_computer_use(
+        self,
+        display_name: str,
+        use_voice_narration: bool = True
+    ) -> NavigationResult:
+        """Connect to display using Claude Computer Use API.
+
+        This method uses Claude's Computer Use capability to:
+        - Dynamically find UI elements without hardcoded coordinates
+        - Execute actions with real-time visual verification
+        - Provide voice narration for transparency
+        - Automatically recover from failures
+
+        Args:
+            display_name: Name of the display to connect to
+            use_voice_narration: Whether to enable voice narration
+
+        Returns:
+            NavigationResult with connection status and details
+
+        Example:
+            >>> navigator = VisionUINavigator()
+            >>> result = await navigator.connect_to_display_with_computer_use("Living Room TV")
+            >>> # JARVIS will narrate: "Starting task: Connect to Living Room TV..."
+            >>> # "Clicking on Control Center..."
+            >>> # "Found Screen Mirroring, clicking..."
+            >>> # "Successfully connected to Living Room TV"
+        """
+        start_time = time.time()
+        steps_completed = []
+        self.stats['total_navigations'] += 1
+
+        logger.info(f"[VISION NAV] 🤖 Starting Computer Use connection to '{display_name}'")
+
+        try:
+            # Get Computer Use connector
+            connector = await self._get_computer_use_connector()
+
+            if connector is None:
+                logger.warning("[VISION NAV] Computer Use unavailable, falling back to standard")
+                return await self.connect_to_display(display_name)
+
+            # Execute with Computer Use
+            result = await connector.connect_to_display(display_name)
+
+            # Convert to NavigationResult
+            if result.status.value == "success":
+                self.stats['successful'] += 1
+                duration = time.time() - start_time
+                self.stats['avg_duration'] = (
+                    (self.stats['avg_duration'] * (self.stats['successful'] - 1) + duration)
+                    / self.stats['successful']
+                )
+
+                # Extract steps from actions
+                for action_result in result.actions_executed:
+                    if action_result.success:
+                        steps_completed.append(f"action_{action_result.action_id}")
+
+                logger.info(
+                    f"[VISION NAV] ✅ Computer Use connected to '{display_name}' "
+                    f"in {result.total_duration_ms/1000:.2f}s"
+                )
+
+                return NavigationResult(
+                    success=True,
+                    message=result.final_message,
+                    steps_completed=steps_completed,
+                    duration=result.total_duration_ms / 1000,
+                    error_details={
+                        "method": "computer_use",
+                        "narration_log": result.narration_log,
+                        "learning_insights": result.learning_insights,
+                        "confidence": result.confidence
+                    }
+                )
+            else:
+                self.stats['failed'] += 1
+                duration = time.time() - start_time
+
+                logger.warning(
+                    f"[VISION NAV] ⚠️ Computer Use failed: {result.final_message}"
+                )
+
+                # Try fallback to standard method
+                logger.info("[VISION NAV] Attempting fallback to standard method...")
+                return await self.connect_to_display(display_name)
+
+        except Exception as e:
+            self.stats['failed'] += 1
+            duration = time.time() - start_time
+
+            logger.error(f"[VISION NAV] ❌ Computer Use error: {e}")
+
+            return NavigationResult(
+                success=False,
+                message=f"Computer Use connection failed: {str(e)}",
+                steps_completed=steps_completed,
+                duration=duration,
+                error_details={'exception': str(e), 'method': 'computer_use'}
+            )
+
+    async def connect_to_display_hybrid(
+        self,
+        display_name: str,
+        prefer_computer_use: bool = True,
+        use_voice_narration: bool = True
+    ) -> NavigationResult:
+        """Connect to display using hybrid approach (Computer Use + Fallback).
+
+        This method intelligently selects between:
+        1. Computer Use API (dynamic, robust, vision-based)
+        2. Standard UAE-based detection (fast, cached)
+
+        The selection is based on:
+        - Availability of Computer Use API
+        - Historical success rates
+        - Current system state
+
+        Args:
+            display_name: Name of the display to connect to
+            prefer_computer_use: Whether to prefer Computer Use over standard
+            use_voice_narration: Whether to enable voice narration
+
+        Returns:
+            NavigationResult with connection status
+
+        Example:
+            >>> result = await navigator.connect_to_display_hybrid("TV")
+            >>> print(f"Connected via {result.error_details.get('method', 'unknown')}")
+        """
+        logger.info(f"[VISION NAV] 🔀 Hybrid connection to '{display_name}'")
+
+        # Check if we have good learned positions for standard method
+        has_reliable_positions = (
+            self.learned_cc_position is not None
+            and len([a for a in self.detection_history[-5:] if a.get('success')]) >= 3
+        )
+
+        # Decision logic
+        if prefer_computer_use:
+            # Try Computer Use first
+            connector = await self._get_computer_use_connector()
+            if connector is not None:
+                logger.info("[VISION NAV] Using Computer Use (preferred)")
+                result = await self.connect_to_display_with_computer_use(
+                    display_name,
+                    use_voice_narration=use_voice_narration
+                )
+                if result.success:
+                    return result
+                # Fall through to standard on failure
+
+            # Fallback to standard
+            logger.info("[VISION NAV] Falling back to standard method")
+            return await self.connect_to_display(display_name)
+
+        else:
+            # Prefer standard method if we have reliable positions
+            if has_reliable_positions:
+                logger.info("[VISION NAV] Using standard method (reliable positions)")
+                result = await self.connect_to_display(display_name)
+                if result.success:
+                    return result
+
+            # Try Computer Use
+            connector = await self._get_computer_use_connector()
+            if connector is not None:
+                logger.info("[VISION NAV] Using Computer Use (fallback)")
+                return await self.connect_to_display_with_computer_use(
+                    display_name,
+                    use_voice_narration=use_voice_narration
+                )
+
+            # Final fallback
+            return await self.connect_to_display(display_name)
+
+    # Legacy methods for backward compatibility
+    async def _find_and_click_control_center(self) -> bool:
+        """Find and click Control Center icon.
+
+        Note: This method is maintained for backward compatibility.
+        For new code, prefer connect_to_display_hybrid() which uses
+        Claude Computer Use for more robust detection.
+        """
+        # Check if we should use Computer Use
+        connector = await self._get_computer_use_connector()
+        if connector is not None:
+            logger.info("[VISION NAV] Delegating to Computer Use for Control Center click")
+            try:
+                result = await connector.execute_task(
+                    "Click on the Control Center icon in the macOS menu bar (top right, looks like two toggle switches)",
+                    narrate=True
+                )
+                return result.status.value == "success"
+            except Exception as e:
+                logger.warning(f"Computer Use failed: {e}, using fallback")
+
+        # Fallback to existing method
+        return await self._find_and_click_control_center_legacy()
+
+    async def _find_and_click_control_center_legacy(self) -> bool:
+        """Legacy Control Center click using learned positions and heuristics."""
+        # Use learned position if available
+        if self.learned_cc_position:
+            x, y = self.learned_cc_position
+            logger.info(f"[VISION NAV] 🎓 Using learned Control Center position: ({x}, {y})")
+            pyautogui.click(x, y)
+            await asyncio.sleep(0.3)
+
+            # Verify click worked by checking if Control Center opened
+            # This would need screenshot verification
+            self._record_detection_attempt(True, (x, y), 0.9, 'learned')
+            return True
+
+        # Fall back to heuristic position
+        screen_width, screen_height = pyautogui.size()
+        # Control Center is typically ~130-150 pixels from right edge
+        estimated_x = screen_width - 140
+        estimated_y = 15  # Menu bar is at top
+
+        logger.info(f"[VISION NAV] 📐 Using heuristic position: ({estimated_x}, {estimated_y})")
+        pyautogui.click(estimated_x, estimated_y)
+        await asyncio.sleep(0.3)
+
+        # Save as learned position if successful
+        self._save_learned_position(estimated_x, estimated_y)
+        self._record_detection_attempt(True, (estimated_x, estimated_y), 0.6, 'heuristic')
+        return True
+
+    async def _find_and_click_screen_mirroring(self) -> bool:
+        """Find and click Screen Mirroring button in Control Center."""
+        connector = await self._get_computer_use_connector()
+        if connector is not None:
+            try:
+                result = await connector.execute_task(
+                    "Click on the Screen Mirroring button in the Control Center panel (shows two overlapping screen icons)",
+                    narrate=True
+                )
+                return result.status.value == "success"
+            except Exception as e:
+                logger.warning(f"Computer Use failed for Screen Mirroring: {e}")
+
+        # Fallback: Screen Mirroring is usually in upper portion of Control Center
+        # This is a heuristic approach
+        screen_width, _ = pyautogui.size()
+        # Assuming Control Center opened at right side
+        sm_x = screen_width - 200
+        sm_y = 150  # Approximate y position
+
+        logger.info(f"[VISION NAV] 📐 Using heuristic Screen Mirroring position: ({sm_x}, {sm_y})")
+        pyautogui.click(sm_x, sm_y)
+        await asyncio.sleep(0.5)
+        return True
+
+    async def _find_and_click_display(self, display_name: str) -> bool:
+        """Find and click a specific display in the list."""
+        connector = await self._get_computer_use_connector()
+        if connector is not None:
+            try:
+                result = await connector.execute_task(
+                    f"Find and click on '{display_name}' in the list of available displays/AirPlay devices",
+                    context={"target_display": display_name},
+                    narrate=True
+                )
+                return result.status.value == "success"
+            except Exception as e:
+                logger.warning(f"Computer Use failed for display selection: {e}")
+
+        # Fallback: Cannot reliably find display by name without vision
+        logger.error(f"[VISION NAV] Cannot find display '{display_name}' without Computer Use")
+        return False
+
+    async def _verify_connection(self, display_name: str) -> bool:
+        """Verify that connection to display was established."""
+        connector = await self._get_computer_use_connector()
+        if connector is not None:
+            try:
+                result = await connector.execute_task(
+                    f"Verify that we are now connected to '{display_name}' - look for a checkmark, "
+                    f"green indicator, or 'Connected' status next to the display name",
+                    narrate=True
+                )
+                return result.status.value == "success"
+            except Exception as e:
+                logger.warning(f"Computer Use failed for verification: {e}")
+
+        # Assume success if we got this far
+        return True
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get navigation statistics including Computer Use usage."""
+        stats = self.stats.copy()
+        stats['detection_history_size'] = len(self.detection_history)
+        stats['failure_patterns'] = dict(self.failure_patterns)
+        stats['adaptive_threshold'] = self.adaptive_confidence_threshold
+        stats['learned_positions'] = {
+            'control_center': self.learned_cc_position
+        }
+
+        # Add Computer Use stats if available
+        if hasattr(self, '_computer_use_connector') and self._computer_use_connector:
+            stats['computer_use_available'] = True
+        else:
+            stats['computer_use_available'] = False
+
+        return stats

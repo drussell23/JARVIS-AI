@@ -916,3 +916,54 @@ class AdvancedDisplayMonitor:
 
         except Exception as e:
             logger.error(f"[DISPLAY MONITOR] Error during check_displays: {e}", exc_info=True)
+
+# ============================================================================
+# Singleton Pattern and Factory Functions
+# ============================================================================
+
+_display_monitor_instance: Optional[AdvancedDisplayMonitor] = None
+
+
+def get_display_monitor() -> Optional[AdvancedDisplayMonitor]:
+    """Get the singleton AdvancedDisplayMonitor instance.
+    
+    Returns:
+        AdvancedDisplayMonitor instance if initialized, None otherwise
+    """
+    global _display_monitor_instance
+    return _display_monitor_instance
+
+
+def set_app_display_monitor(monitor: AdvancedDisplayMonitor) -> None:
+    """Set the application-wide display monitor instance.
+    
+    Args:
+        monitor: AdvancedDisplayMonitor instance to use as singleton
+    """
+    global _display_monitor_instance
+    _display_monitor_instance = monitor
+    logger.info("[DISPLAY MONITOR] Global display monitor instance set")
+
+
+async def create_display_monitor(
+    config_path: Optional[str] = None,
+    voice_engine: Optional[Any] = None
+) -> AdvancedDisplayMonitor:
+    """Create and initialize a new AdvancedDisplayMonitor.
+    
+    Args:
+        config_path: Optional path to configuration file
+        voice_engine: Optional voice engine for announcements
+        
+    Returns:
+        Initialized AdvancedDisplayMonitor instance
+    """
+    monitor = AdvancedDisplayMonitor(config_path=config_path)
+    
+    if voice_engine:
+        monitor.set_voice_engine(voice_engine)
+    
+    # Set as global instance
+    set_app_display_monitor(monitor)
+    
+    return monitor

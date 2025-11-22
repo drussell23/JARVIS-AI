@@ -1255,10 +1255,10 @@ class ReasoningGraphEngine:
         self._init_nodes()
 
         # Build graph
+        self.logger = logging.getLogger(__name__)
+
         self.graph = self._build_graph()
         self.compiled_graph = self._compile_graph()
-
-        self.logger = logging.getLogger(__name__)
 
     def _init_nodes(self) -> None:
         """Initialize graph nodes."""

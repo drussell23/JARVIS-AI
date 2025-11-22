@@ -4,6 +4,13 @@ JARVIS Voice Unlock Integration
 ==============================
 
 Main entry point for JARVIS voice unlock system with ML optimization.
+
+Enhanced Features (v2.0):
+- Multi-factor authentication fusion
+- LangGraph adaptive retry reasoning
+- Anti-spoofing detection
+- Progressive voice feedback
+- Full authentication audit trail
 """
 
 import os
@@ -13,7 +20,7 @@ import logging
 import signal
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 import click
 
 # Add parent directory to path
@@ -169,30 +176,30 @@ class JARVISVoiceUnlock:
         """Test voice authentication"""
         if not self.system:
             self.system = await create_voice_unlock_system()
-            
+
         print("\n🔐 Voice Authentication Test")
         print("=" * 50)
-        
+
         if user_id:
             print(f"Testing authentication for user: {user_id}")
         else:
             print("Testing authentication (user will be identified from voice)")
-            
+
         print("\nSpeak your authentication phrase when ready...")
         print("(10 second timeout)")
-        
+
         # Test authentication
         result = await self.system.authenticate_with_voice(timeout=10.0)
-        
+
         print(f"\n{'✅' if result['authenticated'] else '❌'} Authentication Result:")
         print(f"   Authenticated: {result['authenticated']}")
         print(f"   User: {result.get('user_id', 'Unknown')}")
         print(f"   Confidence: {result['confidence']:.1f}%")
         print(f"   Processing time: {result.get('processing_time', 0):.3f}s")
-        
+
         if 'error' in result:
             print(f"   Error: {result['error']}")
-            
+
         # Show system health
         if hasattr(self.system, 'ml_system'):
             health = self.system.ml_system._get_system_health_status()
@@ -200,6 +207,126 @@ class JARVISVoiceUnlock:
             print(f"   Memory: {health['memory_percent']:.1f}%")
             print(f"   ML Memory: {health['ml_memory_mb']:.1f}MB")
             print(f"   Cache Size: {health['cache_size_mb']:.1f}MB")
+
+    async def test_enhanced_authentication(
+        self,
+        user_id: Optional[str] = None,
+        require_watch: bool = False,
+        max_attempts: int = 3,
+        use_adaptive: bool = True
+    ):
+        """Test enhanced voice authentication with multi-factor fusion."""
+        if not self.system:
+            self.system = await create_voice_unlock_system()
+
+        print("\n🔐 Enhanced Voice Authentication Test (v2.0)")
+        print("=" * 60)
+
+        if user_id:
+            self.system.authorized_user = user_id
+            print(f"Testing authentication for user: {user_id}")
+        else:
+            print(f"Testing authentication for: {self.system.authorized_user}")
+
+        print(f"\nEnhanced Features:")
+        print(f"   • Multi-factor fusion: ✅")
+        print(f"   • Adaptive retry: {'✅' if use_adaptive else '❌'}")
+        print(f"   • Anti-spoofing: ✅")
+        print(f"   • Apple Watch required: {'✅' if require_watch else '❌'}")
+        print(f"   • Max attempts: {max_attempts}")
+
+        print("\n🎤 Speak your authentication phrase when ready...")
+        print("(10 second timeout)")
+
+        # Test enhanced authentication
+        result = await self.system.authenticate_enhanced(
+            timeout=10.0,
+            require_watch=require_watch,
+            max_attempts=max_attempts,
+            use_adaptive=use_adaptive
+        )
+
+        print(f"\n{'✅' if result['authenticated'] else '❌'} Enhanced Authentication Result:")
+        print(f"   Authenticated: {result['authenticated']}")
+        print(f"   User: {result.get('user_id', 'Unknown')}")
+        print(f"   Overall Confidence: {result['confidence']:.1%}")
+        print(f"   Voice Confidence: {result.get('voice_confidence', 0):.1%}")
+        print(f"   Behavioral Confidence: {result.get('behavioral_confidence', 0):.1%}")
+        print(f"   Context Confidence: {result.get('context_confidence', 0):.1%}")
+        print(f"   Processing time: {result.get('processing_time_ms', 0):.1f}ms")
+        print(f"   Attempts used: {result.get('attempts', 1)}")
+
+        if result.get('feedback'):
+            print(f"\n💬 Voice Feedback: {result['feedback']}")
+
+        if result.get('trace_id'):
+            print(f"\n🔍 Trace ID: {result['trace_id']}")
+
+        if result.get('threat_detected'):
+            print(f"\n⚠️ Security Alert: {result['threat_detected']}")
+
+        if 'error' in result:
+            print(f"\n❌ Error: {result['error']}")
+
+        # Show detailed trace if available
+        if result.get('trace_id') and hasattr(self.system, 'get_authentication_trace'):
+            trace = self.system.get_authentication_trace(result['trace_id'])
+            if trace:
+                print(f"\n📋 Authentication Trace:")
+                print(f"   Phases completed: {len(trace.get('phases', []))}")
+                for phase in trace.get('phases', []):
+                    status = '✅' if phase.get('success', False) else '❌'
+                    print(f"      {status} {phase.get('phase')}: {phase.get('duration_ms', 0):.1f}ms")
+
+        # Show cache statistics
+        if hasattr(self.system, 'get_cache_stats'):
+            cache_stats = self.system.get_cache_stats()
+            if cache_stats.get('available', True):
+                print(f"\n💾 Cache Statistics:")
+                print(f"   Hit Rate: {cache_stats.get('hit_rate_percent', 0):.1f}%")
+                print(f"   Cost Saved: ${cache_stats.get('cost_saved_usd', 0):.4f}")
+
+        # Show system health
+        if hasattr(self.system, 'ml_system') and self.system.ml_system:
+            try:
+                health = self.system.ml_system._get_system_health_status()
+                print(f"\n📊 System Health:")
+                print(f"   Memory: {health['memory_percent']:.1f}%")
+                print(f"   ML Memory: {health['ml_memory_mb']:.1f}MB")
+                print(f"   Cache Size: {health['cache_size_mb']:.1f}MB")
+            except Exception:
+                pass
+
+    async def show_recent_authentications(self, limit: int = 10):
+        """Show recent authentication attempts."""
+        if not self.system:
+            self.system = await create_voice_unlock_system()
+
+        print(f"\n📜 Recent Authentication Attempts (last {limit})")
+        print("=" * 60)
+
+        if hasattr(self.system, 'get_recent_authentications'):
+            auths = self.system.get_recent_authentications(limit=limit)
+
+            if not auths:
+                print("No recent authentication attempts found.")
+                return
+
+            for i, auth in enumerate(auths, 1):
+                decision = auth.get('decision', 'unknown')
+                emoji = '✅' if decision == 'authenticated' else '❌'
+                timestamp = auth.get('timestamp', 'unknown')
+                confidence = auth.get('verification', {}).get('fused_confidence', 0)
+                trace_id = auth.get('trace_id', 'N/A')
+
+                print(f"\n{i}. {emoji} {decision.upper()}")
+                print(f"   Time: {timestamp}")
+                print(f"   Confidence: {confidence:.1%}")
+                print(f"   Trace: {trace_id[:16]}...")
+                if auth.get('security', {}).get('threat_detected') != 'none':
+                    print(f"   ⚠️ Threat: {auth['security']['threat_detected']}")
+        else:
+            print("Authentication history not available.")
             
     async def show_status(self):
         """Show system status and statistics"""
@@ -278,16 +405,56 @@ def enroll(user_id: str):
 @cli.command()
 @click.option('--user', '-u', help='User ID to test (optional)')
 def test(user: Optional[str]):
-    """Test voice authentication"""
+    """Test voice authentication (basic)"""
     service = JARVISVoiceUnlock()
-    
+
     async def run():
         try:
             await service.test_authentication(user)
         finally:
             if service.system:
                 await service.system.stop()
-                
+
+    asyncio.run(run())
+
+
+@cli.command()
+@click.option('--user', '-u', help='User ID to test (optional)')
+@click.option('--watch', '-w', is_flag=True, help='Require Apple Watch proximity')
+@click.option('--attempts', '-a', default=3, help='Max retry attempts')
+@click.option('--no-adaptive', is_flag=True, help='Disable adaptive retry reasoning')
+def test_enhanced(user: Optional[str], watch: bool, attempts: int, no_adaptive: bool):
+    """Test enhanced voice authentication (v2.0 with multi-factor fusion)"""
+    service = JARVISVoiceUnlock()
+
+    async def run():
+        try:
+            await service.test_enhanced_authentication(
+                user_id=user,
+                require_watch=watch,
+                max_attempts=attempts,
+                use_adaptive=not no_adaptive
+            )
+        finally:
+            if service.system:
+                await service.system.stop()
+
+    asyncio.run(run())
+
+
+@cli.command()
+@click.option('--limit', '-l', default=10, help='Number of recent attempts to show')
+def history(limit: int):
+    """Show recent authentication attempts"""
+    service = JARVISVoiceUnlock()
+
+    async def run():
+        try:
+            await service.show_recent_authentications(limit=limit)
+        finally:
+            if service.system:
+                await service.system.stop()
+
     asyncio.run(run())
 
 
