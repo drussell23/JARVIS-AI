@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: 🎨 Advanced Auto-Diagram Generator
-- **Run Number**: #53
-- **Branch**: `cursor/enhance-tv-connection-with-claude-api-claude-4.5-sonnet-thinking-1ec4`
-- **Commit**: `2e88d0794f0aa8c3983893a4260ad83aac9d7d8d`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #562
+- **Branch**: `fix/ci/advanced-auto-diagram-generator-run53-20251122-081835`
+- **Commit**: `9489c32f834e8f623431462d959fd329e2569509`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-22T08:16:50Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19592788218)
+- **Timestamp**: 2025-11-22T08:19:12Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19592813083)
 
 ## Failure Overview
 
@@ -17,23 +17,23 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | 🔍 Discover & Analyze Diagrams | permission_error | high | 7s |
+| 1 | Validate PR Title | timeout | high | 4s |
 
 ## Detailed Analysis
 
-### 1. 🔍 Discover & Analyze Diagrams
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Permission Error
+**Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-22T08:16:55Z
-**Completed**: 2025-11-22T08:17:02Z
-**Duration**: 7 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19592788218/job/56113349210)
+**Started**: 2025-11-22T08:19:14Z
+**Completed**: 2025-11-22T08:19:18Z
+**Duration**: 4 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19592813083/job/56113408914)
 
 #### Failed Steps
 
-- **Step 3**: 🔍 Discover diagram files
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
@@ -42,23 +42,18 @@ Total Failed Jobs: **1**
 - Pattern: `ERROR|Error|error`
   - Occurrences: 2
   - Sample matches:
-    - Line 82: `2025-11-22T08:17:00.4594737Z ##[error]Unable to process file command 'output' successfully.`
-    - Line 83: `2025-11-22T08:17:00.4601734Z ##[error]Invalid format '  "COMPUTER_USE_IMPLEMENTATION_SUMMARY.md",'`
+    - Line 25: `2025-11-22T08:19:16.2175352Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-22T08:19:16.5957030Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: 🎨 Ad`
 
-- Pattern: `FAIL|Failed|failed`
-  - Occurrences: 2
-  - Sample matches:
-    - Line 65: `2025-11-22T08:16:59.7095948Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}`
-    - Line 93: `2025-11-22T08:17:00.6102545Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
-
-- Pattern: `WARN|Warning|warning`
+- Pattern: `timeout|timed out`
   - Occurrences: 1
   - Sample matches:
-    - Line 93: `2025-11-22T08:17:00.6102545Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
-1. Review the logs above for specific error messages
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -78,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-22T08:18:35.612175*
+📊 *Report generated on 2025-11-22T08:20:24.044845*
 🤖 *JARVIS CI/CD Auto-PR Manager*
