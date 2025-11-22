@@ -3881,7 +3881,51 @@ class UnifiedCommandProcessor:
         )  # Default
 
         try:
-            # Connect using display monitor
+            # NEW: Try Claude Computer Use integration first (vision-based, dynamic)
+            try:
+                from display.jarvis_computer_use_integration import (
+                    JARVISComputerUse,
+                    ExecutionMode
+                )
+                import os
+
+                # Check if API key is available
+                if os.environ.get("ANTHROPIC_API_KEY"):
+                    logger.info(f"[DISPLAY-ACTION] Trying Computer Use for '{display_name}'")
+                    jarvis_cu = JARVISComputerUse(execution_mode=ExecutionMode.FULL_VOICE)
+                    await jarvis_cu.initialize()
+
+                    cu_result = await jarvis_cu.connect_to_display(display_name, narrate=True)
+
+                    if cu_result.success:
+                        logger.info(f"[DISPLAY-ACTION] Computer Use succeeded for '{display_name}'")
+                        from datetime import datetime
+                        hour = datetime.now().hour
+                        greeting = (
+                            "Good morning" if 5 <= hour < 12
+                            else "Good afternoon" if 12 <= hour < 17
+                            else "Good evening" if 17 <= hour < 21
+                            else "Good night"
+                        )
+                        return {
+                            "success": True,
+                            "response": f"{greeting}! Connected to {display_name}, sir.",
+                            "display_name": display_name,
+                            "display_id": display_id,
+                            "mode": mode_str,
+                            "action": "connect",
+                            "method": "computer_use",
+                            "resolution_strategy": display_ref.resolution_strategy.value,
+                            "confidence": cu_result.confidence,
+                        }
+                    else:
+                        logger.warning(f"[DISPLAY-ACTION] Computer Use failed, trying fallback: {cu_result.message}")
+                else:
+                    logger.info("[DISPLAY-ACTION] No ANTHROPIC_API_KEY, skipping Computer Use")
+            except Exception as cu_error:
+                logger.warning(f"[DISPLAY-ACTION] Computer Use error, falling back: {cu_error}")
+
+            # FALLBACK: Connect using display monitor (original method)
             result = await monitor.connect_display(display_id)
 
             if result.get("success"):
