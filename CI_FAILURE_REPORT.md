@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: 🎨 Advanced Auto-Diagram Generator
-- **Run Number**: #52
-- **Branch**: `cursor/investigate-n8n-integration-for-jarvis-and-mas-claude-4.5-sonnet-thinking-c21a`
-- **Commit**: `5b93f343985eee86e7f90012e2759737b0e56bee`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #548
+- **Branch**: `fix/ci/advanced-auto-diagram-generator-run52-20251122-043355`
+- **Commit**: `8ab7a20bbc890b4f120b26929d3198053d8f2ade`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-22T04:30:36Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19590328445)
+- **Timestamp**: 2025-11-22T04:34:23Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19590369525)
 
 ## Failure Overview
 
@@ -17,23 +17,23 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | 🔍 Discover & Analyze Diagrams | permission_error | high | 10s |
+| 1 | Validate PR Title | timeout | high | 3s |
 
 ## Detailed Analysis
 
-### 1. 🔍 Discover & Analyze Diagrams
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Permission Error
+**Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-22T04:30:58Z
-**Completed**: 2025-11-22T04:31:08Z
-**Duration**: 10 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19590328445/job/56107353275)
+**Started**: 2025-11-22T04:34:26Z
+**Completed**: 2025-11-22T04:34:29Z
+**Duration**: 3 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19590369525/job/56107453429)
 
 #### Failed Steps
 
-- **Step 3**: 🔍 Discover diagram files
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
@@ -42,23 +42,18 @@ Total Failed Jobs: **1**
 - Pattern: `ERROR|Error|error`
   - Occurrences: 2
   - Sample matches:
-    - Line 82: `2025-11-22T04:31:06.1632740Z ##[error]Unable to process file command 'output' successfully.`
-    - Line 83: `2025-11-22T04:31:06.1641382Z ##[error]Invalid format '  "LANGGRAPH_LANGCHAIN_INTEGRATION_ARCHITECTUR`
+    - Line 25: `2025-11-22T04:34:27.9560084Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-22T04:34:28.4125826Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: 🎨 Ad`
 
-- Pattern: `FAIL|Failed|failed`
-  - Occurrences: 2
-  - Sample matches:
-    - Line 68: `2025-11-22T04:31:05.4194528Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}`
-    - Line 93: `2025-11-22T04:31:06.3163460Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
-
-- Pattern: `WARN|Warning|warning`
+- Pattern: `timeout|timed out`
   - Occurrences: 1
   - Sample matches:
-    - Line 93: `2025-11-22T04:31:06.3163460Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
-1. Review the logs above for specific error messages
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -78,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-22T04:33:55.148233*
+📊 *Report generated on 2025-11-22T04:35:43.802083*
 🤖 *JARVIS CI/CD Auto-PR Manager*
