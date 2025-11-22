@@ -36,6 +36,7 @@ class IntelligenceMode(Enum):
     STANDARD = "standard"  # Original UAE/SAI/CAI without chain-of-thought
     ENHANCED = "enhanced"  # Enhanced with LangGraph chain-of-thought reasoning
     UNIFIED = "unified"    # Full UnifiedIntelligenceOrchestrator coordination
+    REASONING_GRAPH = "reasoning_graph"  # Multi-branch reasoning with failure recovery
 
 
 # UAE/SAI/CAI Integration (lazy loaded)
@@ -49,7 +50,9 @@ _enhanced_uae = None
 _enhanced_sai = None
 _enhanced_cai = None
 _unified_orchestrator = None
-_intelligence_mode = IntelligenceMode.UNIFIED  # Chain-of-thought reasoning AUTO by default
+_reasoning_graph_engine = None
+_tts_handler = None
+_intelligence_mode = IntelligenceMode.REASONING_GRAPH  # Multi-branch reasoning by default
 
 # Phase 3.1: Local LLM Integration (lazy loaded)
 _llm_inference = None
@@ -281,6 +284,61 @@ async def _get_unified_orchestrator():
         except Exception as e:
             logger.warning(f"UnifiedIntelligenceOrchestrator not available: {e}")
     return _unified_orchestrator
+
+
+async def _get_reasoning_graph_engine():
+    """Lazy load ReasoningGraphEngine for multi-branch reasoning.
+
+    The ReasoningGraphEngine provides advanced multi-branch reasoning with:
+    - Multiple solution branches explored in parallel
+    - Automatic failure recovery and alternative generation
+    - Real-time voice narration of reasoning process
+    - Learning from outcomes for continuous improvement
+
+    Returns:
+        ReasoningGraphEngine or None: Engine if available
+    """
+    global _reasoning_graph_engine
+    if _reasoning_graph_engine is None:
+        try:
+            from backend.intelligence.reasoning_graph_engine import create_reasoning_graph_engine
+            from backend.autonomy.tool_orchestrator import get_orchestrator as get_tool_orchestrator
+
+            # Get TTS callback for narration
+            tts_callback = await _get_tts_callback()
+
+            # Get tool orchestrator for execution
+            tool_orchestrator = get_tool_orchestrator()
+
+            _reasoning_graph_engine = create_reasoning_graph_engine(
+                tool_orchestrator=tool_orchestrator,
+                tts_callback=tts_callback,
+                max_parallel_branches=3,
+                max_total_branches=10
+            )
+            logger.info("✅ ReasoningGraphEngine with multi-branch reasoning loaded")
+        except Exception as e:
+            logger.warning(f"ReasoningGraphEngine not available: {e}")
+    return _reasoning_graph_engine
+
+
+async def _get_tts_callback():
+    """Get TTS callback for voice narration.
+
+    Returns:
+        Async callback function for TTS or None
+    """
+    global _tts_handler
+    if _tts_handler is None:
+        try:
+            from backend.api.async_tts_handler import get_tts_handler, speak_async
+
+            _tts_handler = speak_async
+            logger.info("✅ TTS handler loaded for voice narration")
+        except Exception as e:
+            logger.debug(f"TTS handler not available (optional): {e}")
+            _tts_handler = None
+    return _tts_handler
 
 
 def set_intelligence_mode(mode: IntelligenceMode) -> None:
@@ -533,6 +591,40 @@ class HybridOrchestrator:
         # Check intelligence mode for chain-of-thought reasoning
         mode = get_intelligence_mode()
 
+        # ============== REASONING_GRAPH MODE: Multi-Branch with Failure Recovery ==============
+        if mode == IntelligenceMode.REASONING_GRAPH:
+            reasoning_engine = await _get_reasoning_graph_engine()
+            if reasoning_engine:
+                try:
+                    # Use reasoning graph engine for multi-branch decision making
+                    reasoning_result = await reasoning_engine.reason(
+                        query=command,
+                        context={"rule": rule, "command": command, "metadata": context},
+                        narrate=True  # Enable voice narration
+                    )
+                    context["reasoning_graph"] = {
+                        "session_id": reasoning_result.get("session_id"),
+                        "result": reasoning_result.get("result"),
+                        "confidence": reasoning_result.get("confidence", 0.0),
+                        "total_attempts": reasoning_result.get("total_attempts", 0),
+                        "successful_branches": reasoning_result.get("successful_branches", 0),
+                        "failed_branches": reasoning_result.get("failed_branches", 0),
+                        "learning_insights": reasoning_result.get("learning_insights", []),
+                        "narration_log": reasoning_result.get("narration_log", []),
+                        "branch_stats": reasoning_result.get("branch_stats", {}),
+                        "needs_intervention": reasoning_result.get("needs_intervention", False),
+                        "intervention_reason": reasoning_result.get("intervention_reason"),
+                    }
+                    logger.debug(
+                        f"🧠 ReasoningGraph: {reasoning_result.get('successful_branches', 0)} successful, "
+                        f"{reasoning_result.get('failed_branches', 0)} failed branches, "
+                        f"confidence={reasoning_result.get('confidence', 0):.2f}"
+                    )
+                    return context  # Reasoning graph mode handles everything
+                except Exception as e:
+                    logger.warning(f"ReasoningGraphEngine failed, falling back to unified: {e}")
+                    mode = IntelligenceMode.UNIFIED  # Fallback
+
         # ============== UNIFIED MODE: Full Orchestrated Intelligence ==============
         if mode == IntelligenceMode.UNIFIED and rule.get("use_uae"):
             orchestrator = await _get_unified_orchestrator()
@@ -777,6 +869,152 @@ class HybridOrchestrator:
                 logger.error(f"SAI self-heal failed: {e}")
 
         return {"success": False, "error": str(error)}
+
+    # ============== REASONING GRAPH: Multi-Branch Reasoning ==============
+
+    async def execute_with_multi_branch_reasoning(
+        self,
+        command: str,
+        context: Optional[Dict[str, Any]] = None,
+        narrate: bool = True,
+        max_attempts: int = 20
+    ) -> Dict[str, Any]:
+        """Execute command using multi-branch reasoning with failure recovery.
+
+        This method provides JARVIS's most advanced reasoning capability:
+        - Generates multiple solution branches simultaneously
+        - Automatically tries alternatives when approaches fail
+        - Learns from failures to generate better solutions
+        - Narrates the thinking process in real-time
+
+        Example flow:
+            User: "JARVIS, the build is failing"
+
+            JARVIS: "I'm analyzing three potential causes:
+                     1. Type mismatch on line 47
+                     2. Missing dependency import
+                     3. Environment variable not set
+
+                     Let me work through these systematically...
+
+                     [2 seconds later]
+                     Testing solution 1... that didn't fully resolve it.
+
+                     [3 seconds later]
+                     Solution 2 revealed the root cause - combining approaches...
+
+                     [4 seconds later]
+                     Build is now passing! The issue was a combination of the type error
+                     AND a missing import. I've fixed both."
+
+        Args:
+            command: Command/problem to solve
+            context: Additional context information
+            narrate: Whether to enable voice narration
+            max_attempts: Maximum number of solution attempts
+
+        Returns:
+            Dict containing:
+                - success: Whether a solution was found
+                - result: The solution result
+                - confidence: Confidence in the solution
+                - reasoning_trace: Log of all reasoning steps
+                - learning_insights: What was learned from this process
+                - branches_tried: Number of approaches attempted
+                - narration_log: Voice narration history
+        """
+        reasoning_engine = await _get_reasoning_graph_engine()
+
+        if not reasoning_engine:
+            # Fallback to standard execution
+            logger.warning("ReasoningGraphEngine not available, using standard execution")
+            return await self.execute_command(command, metadata=context)
+
+        try:
+            # Execute with multi-branch reasoning
+            result = await reasoning_engine.reason(
+                query=command,
+                context=context or {},
+                constraints={"max_attempts": max_attempts},
+                narrate=narrate
+            )
+
+            # Format response
+            return {
+                "success": result.get("result", {}).get("success", False),
+                "result": result.get("result"),
+                "confidence": result.get("confidence", 0.0),
+                "reasoning_trace": {
+                    "total_attempts": result.get("total_attempts", 0),
+                    "successful_branches": result.get("successful_branches", 0),
+                    "failed_branches": result.get("failed_branches", 0),
+                    "branch_stats": result.get("branch_stats", {}),
+                },
+                "learning_insights": result.get("learning_insights", []),
+                "branches_tried": result.get("total_attempts", 0),
+                "narration_log": result.get("narration_log", []),
+                "needs_intervention": result.get("needs_intervention", False),
+                "intervention_reason": result.get("intervention_reason"),
+            }
+
+        except Exception as e:
+            logger.error(f"Multi-branch reasoning failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "result": None,
+                "confidence": 0.0,
+            }
+
+    async def get_reasoning_narration_history(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get the history of voice narrations from reasoning.
+
+        Args:
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of narration entries with timestamps and events
+        """
+        reasoning_engine = await _get_reasoning_graph_engine()
+        if reasoning_engine:
+            return reasoning_engine.get_narration_history(limit)
+        return []
+
+    def set_narration_style(self, style: str) -> None:
+        """Set the voice narration style.
+
+        Args:
+            style: One of "concise", "detailed", "technical", "casual"
+        """
+        import asyncio
+        from backend.intelligence.reasoning_graph_engine import NarrationStyle
+
+        style_map = {
+            "concise": NarrationStyle.CONCISE,
+            "detailed": NarrationStyle.DETAILED,
+            "technical": NarrationStyle.TECHNICAL,
+            "casual": NarrationStyle.CASUAL,
+        }
+
+        if style not in style_map:
+            logger.warning(f"Unknown narration style: {style}")
+            return
+
+        async def _set_style():
+            engine = await _get_reasoning_graph_engine()
+            if engine:
+                engine.set_narration_style(style_map[style])
+                logger.info(f"🎤 Narration style set to: {style}")
+
+        # Run async function
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(_set_style())
+            else:
+                loop.run_until_complete(_set_style())
+        except RuntimeError:
+            asyncio.run(_set_style())
 
     # ============== PHASE 3.1: LLM Helper Methods ==============
 
