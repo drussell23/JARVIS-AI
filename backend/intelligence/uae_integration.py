@@ -12,26 +12,39 @@ This module provides:
 - Context Intelligence bootstrapping
 - Metrics and monitoring
 - Global UAE instance management
+- LangGraph Chain-of-Thought reasoning integration
+- EnhancedUAE with multi-step reasoning capabilities
 
 Usage in main.py:
     from intelligence.uae_integration import initialize_uae, get_uae
 
-    # During startup
+    # During startup (standard mode)
     uae = await initialize_uae(vision_analyzer=vision_analyzer)
+
+    # During startup (enhanced mode with chain-of-thought)
+    uae = await initialize_uae(
+        vision_analyzer=vision_analyzer,
+        enable_chain_of_thought=True
+    )
 
     # In command handlers
     uae = get_uae()
     decision = await uae.get_element_position("control_center")
 
+    # With chain-of-thought reasoning
+    enhanced_uae = get_enhanced_uae()
+    reasoned_decision = await enhanced_uae.make_reasoned_decision("control_center")
+
 Author: Derek J. Russell
 Date: October 2025
-Version: 1.0.0
+Version: 2.0.0  # Updated for LangGraph chain-of-thought
 """
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from pathlib import Path
+from enum import Enum
 
 from intelligence.unified_awareness_engine import (
     UnifiedAwarenessEngine,
@@ -68,6 +81,13 @@ from intelligence.proactive_intelligence_engine import (
 
 logger = logging.getLogger(__name__)
 
+
+class UAEMode(Enum):
+    """UAE operation modes."""
+    STANDARD = "standard"  # Original UAE without chain-of-thought
+    ENHANCED = "enhanced"  # EnhancedUAE with LangGraph chain-of-thought
+
+
 # Global UAE instance
 _uae_instance: Optional[UnifiedAwarenessEngine] = None
 _uae_initialized = False
@@ -76,6 +96,13 @@ _yabai_instance: Optional[YabaiSpatialIntelligence] = None
 _pattern_learner_instance: Optional[WorkspacePatternLearner] = None
 _bridge_instance: Optional[YabaiSAIBridge] = None
 _proactive_intelligence_instance: Optional[ProactiveIntelligenceEngine] = None
+
+# Enhanced UAE with LangGraph (lazy loaded)
+_enhanced_uae_instance = None
+_enhanced_sai_instance = None
+_enhanced_cai_instance = None
+_unified_orchestrator_instance = None
+_uae_mode = UAEMode.ENHANCED  # Chain-of-thought reasoning AUTO by default
 
 
 async def initialize_uae(
@@ -87,15 +114,19 @@ async def initialize_uae(
     enable_yabai: bool = True,  # Enable Yabai spatial intelligence
     enable_proactive_intelligence: bool = True,  # Enable Phase 4 proactive communication
     voice_callback: Optional[Any] = None,  # Voice output callback
-    notification_callback: Optional[Any] = None  # Notification callback
-) -> UnifiedAwarenessEngine:
+    notification_callback: Optional[Any] = None,  # Notification callback
+    enable_chain_of_thought: bool = True,  # LangGraph chain-of-thought reasoning (AUTO by default)
+    enable_unified_orchestrator: bool = True  # Full UnifiedIntelligenceOrchestrator (AUTO by default)
+) -> Union[UnifiedAwarenessEngine, Any]:
     """
-    Initialize UAE system with full Phase 4 intelligence stack:
+    Initialize UAE system with full Phase 4+ intelligence stack:
     - Learning Database
     - Yabai Spatial Intelligence (event-driven)
     - Workspace Pattern Learner (ML-powered)
     - Yabai ↔ SAI Integration Bridge
     - Proactive Intelligence Engine (Natural Communication)
+    - LangGraph Chain-of-Thought Reasoning (Phase 5)
+    - Unified Intelligence Orchestrator (Phase 5)
 
     Args:
         vision_analyzer: Claude Vision analyzer instance
@@ -104,12 +135,19 @@ async def initialize_uae(
         knowledge_base_path: Path to knowledge base file
         enable_learning_db: Enable Learning Database integration
         enable_yabai: Enable Yabai spatial intelligence (24/7 workspace monitoring)
+        enable_proactive_intelligence: Enable Phase 4 proactive communication
+        voice_callback: Voice output callback
+        notification_callback: Notification callback
+        enable_chain_of_thought: Enable LangGraph chain-of-thought reasoning
+        enable_unified_orchestrator: Enable full UnifiedIntelligenceOrchestrator
 
     Returns:
-        Initialized UAE engine with persistent memory + spatial intelligence
+        Initialized UAE engine (standard or enhanced) with persistent memory + spatial intelligence
     """
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
     global _pattern_learner_instance, _bridge_instance, _proactive_intelligence_instance
+    global _enhanced_uae_instance, _enhanced_sai_instance, _enhanced_cai_instance
+    global _unified_orchestrator_instance, _uae_mode
 
     if _uae_initialized and _uae_instance is not None:
         logger.info("[UAE-INIT] UAE already initialized")
@@ -277,8 +315,71 @@ async def initialize_uae(
         _uae_instance = uae
         _uae_initialized = True
 
+        # ============== PHASE 5: LangGraph Chain-of-Thought Integration ==============
+        enhanced_uae = None
+        enhanced_sai = None
+        enhanced_cai = None
+        unified_orchestrator = None
+
+        if enable_chain_of_thought:
+            logger.info("[UAE-INIT] Step 9/10: Initializing LangGraph Chain-of-Thought...")
+            try:
+                from intelligence.uae_langgraph import create_enhanced_uae
+                from intelligence.intelligence_langgraph import (
+                    create_enhanced_sai,
+                    create_enhanced_cai
+                )
+
+                # Initialize EnhancedUAE with chain-of-thought
+                enhanced_uae = create_enhanced_uae(base_uae=uae)
+                _enhanced_uae_instance = enhanced_uae
+                logger.info("[UAE-INIT] ✅ EnhancedUAE with chain-of-thought initialized")
+
+                # Initialize EnhancedSAI with chain-of-thought
+                enhanced_sai = create_enhanced_sai()
+                _enhanced_sai_instance = enhanced_sai
+                logger.info("[UAE-INIT] ✅ EnhancedSAI with chain-of-thought initialized")
+
+                # Initialize EnhancedCAI with chain-of-thought
+                enhanced_cai = create_enhanced_cai()
+                _enhanced_cai_instance = enhanced_cai
+                logger.info("[UAE-INIT] ✅ EnhancedCAI with chain-of-thought initialized")
+
+                _uae_mode = UAEMode.ENHANCED
+                logger.info("[UAE-INIT]    • Multi-step reasoning: ✅ Active")
+                logger.info("[UAE-INIT]    • Self-reflection: ✅ Active")
+                logger.info("[UAE-INIT]    • Confidence calibration: ✅ Active")
+                logger.info("[UAE-INIT]    • Reasoning audit trails: ✅ Active")
+
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Chain-of-thought initialization failed: {e}")
+                logger.info("[UAE-INIT]    • Continuing with standard UAE")
+
+        # Initialize UnifiedIntelligenceOrchestrator if requested
+        if enable_unified_orchestrator and enable_chain_of_thought:
+            logger.info("[UAE-INIT] Step 10/10: Initializing UnifiedIntelligenceOrchestrator...")
+            try:
+                from intelligence.intelligence_langgraph import create_unified_orchestrator
+
+                unified_orchestrator = await create_unified_orchestrator(
+                    enhanced_uae=enhanced_uae,
+                    enhanced_sai=enhanced_sai,
+                    enhanced_cai=enhanced_cai
+                )
+                _unified_orchestrator_instance = unified_orchestrator
+                logger.info("[UAE-INIT] ✅ UnifiedIntelligenceOrchestrator initialized")
+                logger.info("[UAE-INIT]    • Cross-system coordination: ✅ Active")
+                logger.info("[UAE-INIT]    • Consensus reasoning: ✅ Active")
+                logger.info("[UAE-INIT]    • Unified decision fusion: ✅ Active")
+
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  UnifiedIntelligenceOrchestrator failed: {e}")
+                logger.info("[UAE-INIT]    • Continuing with individual enhanced systems")
+
+        # ============================================================================
+
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        logger.info("[UAE-INIT] ✅ Phase 4 Intelligence Stack: FULLY OPERATIONAL")
+        logger.info("[UAE-INIT] ✅ Phase 5 Intelligence Stack: FULLY OPERATIONAL")
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         logger.info("[UAE-INIT] Core Systems:")
         logger.info("[UAE-INIT]    • Context Intelligence: ✅ Active (with Learning DB)")
@@ -291,9 +392,15 @@ async def initialize_uae(
         logger.info("[UAE-INIT]    • Integration Bridge (Yabai↔SAI): " + ("✅ Active" if bridge else "⚠️  Disabled"))
         logger.info("[UAE-INIT] Phase 4 Systems:")
         logger.info("[UAE-INIT]    • Proactive Intelligence: " + ("✅ Active (Natural Communication)" if proactive_intelligence else "⚠️  Disabled"))
+        logger.info("[UAE-INIT] Phase 5 Systems (LangGraph Chain-of-Thought):")
+        logger.info("[UAE-INIT]    • EnhancedUAE (CoT): " + ("✅ Active" if enhanced_uae else "⚠️  Disabled"))
+        logger.info("[UAE-INIT]    • EnhancedSAI (CoT): " + ("✅ Active" if enhanced_sai else "⚠️  Disabled"))
+        logger.info("[UAE-INIT]    • EnhancedCAI (CoT): " + ("✅ Active" if enhanced_cai else "⚠️  Disabled"))
+        logger.info("[UAE-INIT]    • UnifiedOrchestrator: " + ("✅ Active" if unified_orchestrator else "⚠️  Disabled"))
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-        return uae
+        # Return enhanced UAE if chain-of-thought is enabled, otherwise standard
+        return enhanced_uae if enhanced_uae else uae
 
     except Exception as e:
         logger.error(f"[UAE-INIT] Failed to initialize UAE: {e}", exc_info=True)
@@ -314,15 +421,95 @@ def get_uae() -> Optional[UnifiedAwarenessEngine]:
     return _uae_instance
 
 
+def get_enhanced_uae():
+    """
+    Get global EnhancedUAE instance with chain-of-thought reasoning.
+
+    Returns:
+        EnhancedUAE instance or None if not initialized
+    """
+    global _enhanced_uae_instance
+    if _enhanced_uae_instance is None:
+        logger.warning("[UAE] EnhancedUAE not initialized - call initialize_uae(enable_chain_of_thought=True)")
+        return None
+    return _enhanced_uae_instance
+
+
+def get_enhanced_sai():
+    """
+    Get global EnhancedSAI instance with chain-of-thought reasoning.
+
+    Returns:
+        EnhancedSAI instance or None if not initialized
+    """
+    global _enhanced_sai_instance
+    if _enhanced_sai_instance is None:
+        logger.warning("[UAE] EnhancedSAI not initialized - call initialize_uae(enable_chain_of_thought=True)")
+        return None
+    return _enhanced_sai_instance
+
+
+def get_enhanced_cai():
+    """
+    Get global EnhancedCAI instance with chain-of-thought reasoning.
+
+    Returns:
+        EnhancedCAI instance or None if not initialized
+    """
+    global _enhanced_cai_instance
+    if _enhanced_cai_instance is None:
+        logger.warning("[UAE] EnhancedCAI not initialized - call initialize_uae(enable_chain_of_thought=True)")
+        return None
+    return _enhanced_cai_instance
+
+
+def get_unified_intelligence_orchestrator():
+    """
+    Get global UnifiedIntelligenceOrchestrator instance.
+
+    Returns:
+        UnifiedIntelligenceOrchestrator instance or None if not initialized
+    """
+    global _unified_orchestrator_instance
+    if _unified_orchestrator_instance is None:
+        logger.warning("[UAE] UnifiedIntelligenceOrchestrator not initialized - call initialize_uae(enable_unified_orchestrator=True)")
+        return None
+    return _unified_orchestrator_instance
+
+
+def get_uae_mode() -> UAEMode:
+    """
+    Get current UAE operation mode.
+
+    Returns:
+        Current UAEMode (STANDARD or ENHANCED)
+    """
+    return _uae_mode
+
+
+def set_uae_mode(mode: UAEMode) -> None:
+    """
+    Set UAE operation mode.
+
+    Args:
+        mode: UAEMode to set
+    """
+    global _uae_mode
+    _uae_mode = mode
+    logger.info(f"[UAE] Mode set to: {mode.value}")
+
+
 async def shutdown_uae():
-    """Shutdown UAE system with full Phase 4 intelligence stack"""
+    """Shutdown UAE system with full Phase 5 intelligence stack"""
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
     global _pattern_learner_instance, _bridge_instance, _proactive_intelligence_instance
+    global _enhanced_uae_instance, _enhanced_sai_instance, _enhanced_cai_instance
+    global _unified_orchestrator_instance, _uae_mode
 
     if not _uae_initialized or _uae_instance is None:
         return
 
-    logger.info("[UAE-SHUTDOWN] Shutting down Phase 4 intelligence stack...")
+    logger.info("[UAE-SHUTDOWN] Shutting down Phase 5 intelligence stack...")
 
     try:
         # Stop Proactive Intelligence first
@@ -362,8 +549,30 @@ async def shutdown_uae():
             logger.info("[UAE-SHUTDOWN] ✅ Learning Database closed")
             _learning_db_instance = None
 
+        # Cleanup enhanced instances (Phase 5)
+        if _unified_orchestrator_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping UnifiedIntelligenceOrchestrator...")
+            _unified_orchestrator_instance = None
+            logger.info("[UAE-SHUTDOWN] ✅ UnifiedIntelligenceOrchestrator stopped")
+
+        if _enhanced_uae_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping EnhancedUAE...")
+            _enhanced_uae_instance = None
+            logger.info("[UAE-SHUTDOWN] ✅ EnhancedUAE stopped")
+
+        if _enhanced_sai_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping EnhancedSAI...")
+            _enhanced_sai_instance = None
+            logger.info("[UAE-SHUTDOWN] ✅ EnhancedSAI stopped")
+
+        if _enhanced_cai_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping EnhancedCAI...")
+            _enhanced_cai_instance = None
+            logger.info("[UAE-SHUTDOWN] ✅ EnhancedCAI stopped")
+
+        _uae_mode = UAEMode.STANDARD
         _uae_initialized = False
-        logger.info("[UAE-SHUTDOWN] ✅ Phase 2 intelligence stack shutdown complete")
+        logger.info("[UAE-SHUTDOWN] ✅ Phase 5 intelligence stack shutdown complete")
         # Keep instance for potential restart
 
     except Exception as e:

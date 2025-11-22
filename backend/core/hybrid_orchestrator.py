@@ -1,5 +1,5 @@
 """
-JARVIS Hybrid Orchestrator - UAE/SAI/CAI Integrated
+JARVIS Hybrid Orchestrator - UAE/SAI/CAI Integrated with LangGraph Chain-of-Thought
 Main entry point for hybrid local/cloud architecture
 Coordinates between local Mac and GCP backends with intelligent routing
 
@@ -8,10 +8,13 @@ Integrated Intelligence Systems:
 - SAI (Self-Aware Intelligence): Self-healing and optimization
 - CAI (Context Awareness Intelligence): Intent prediction
 - learning_database: Persistent memory and pattern learning
+- LangGraph Chain-of-Thought: Multi-step reasoning with explicit thought chains
+- UnifiedIntelligenceOrchestrator: Coordinated intelligence fusion
 
 This module provides the main orchestration layer for JARVIS, handling:
 - Intelligent request routing between local and cloud backends
 - Integration with multiple AI systems (UAE, SAI, CAI)
+- Chain-of-thought reasoning for transparent decision-making
 - Model lifecycle management and selection
 - Cost optimization and resource management
 - Health monitoring and automatic failover
@@ -20,17 +23,33 @@ This module provides the main orchestration layer for JARVIS, handling:
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
+from enum import Enum
 
 from backend.core.hybrid_backend_client import HybridBackendClient
 from backend.core.hybrid_router import HybridRouter, RouteDecision, RoutingContext
 
 logger = logging.getLogger(__name__)
 
+
+class IntelligenceMode(Enum):
+    """Intelligence system operation modes."""
+    STANDARD = "standard"  # Original UAE/SAI/CAI without chain-of-thought
+    ENHANCED = "enhanced"  # Enhanced with LangGraph chain-of-thought reasoning
+    UNIFIED = "unified"    # Full UnifiedIntelligenceOrchestrator coordination
+
+
 # UAE/SAI/CAI Integration (lazy loaded)
 _uae_engine = None
 _sai_system = None
 _cai_system = None
 _learning_db = None
+
+# Enhanced Intelligence with LangGraph (lazy loaded)
+_enhanced_uae = None
+_enhanced_sai = None
+_enhanced_cai = None
+_unified_orchestrator = None
+_intelligence_mode = IntelligenceMode.UNIFIED  # Chain-of-thought reasoning AUTO by default
 
 # Phase 3.1: Local LLM Integration (lazy loaded)
 _llm_inference = None
@@ -170,7 +189,7 @@ def _get_lifecycle_manager():
 
 def _get_model_selector():
     """Lazy load Intelligent Model Selector (Phase 3.1+).
-    
+
     Returns:
         IntelligentModelSelector or None: Model selector instance if available, None otherwise
     """
@@ -184,6 +203,109 @@ def _get_model_selector():
         except Exception as e:
             logger.warning(f"Model Selector not available: {e}")
     return _model_selector
+
+
+# ============== LANGGRAPH CHAIN-OF-THOUGHT INTELLIGENCE ==============
+
+def _get_enhanced_uae():
+    """Lazy load Enhanced UAE with LangGraph chain-of-thought reasoning.
+
+    Returns:
+        EnhancedUAE or None: Enhanced UAE instance if available, None otherwise
+    """
+    global _enhanced_uae
+    if _enhanced_uae is None:
+        try:
+            from backend.intelligence.uae_langgraph import create_enhanced_uae
+
+            _enhanced_uae = create_enhanced_uae()
+            logger.info("✅ EnhancedUAE with chain-of-thought loaded")
+        except Exception as e:
+            logger.warning(f"EnhancedUAE not available: {e}")
+    return _enhanced_uae
+
+
+def _get_enhanced_sai():
+    """Lazy load Enhanced SAI with LangGraph chain-of-thought reasoning.
+
+    Returns:
+        EnhancedSAI or None: Enhanced SAI instance if available, None otherwise
+    """
+    global _enhanced_sai
+    if _enhanced_sai is None:
+        try:
+            from backend.intelligence.intelligence_langgraph import create_enhanced_sai
+
+            _enhanced_sai = create_enhanced_sai()
+            logger.info("✅ EnhancedSAI with chain-of-thought loaded")
+        except Exception as e:
+            logger.warning(f"EnhancedSAI not available: {e}")
+    return _enhanced_sai
+
+
+def _get_enhanced_cai():
+    """Lazy load Enhanced CAI with LangGraph chain-of-thought reasoning.
+
+    Returns:
+        EnhancedCAI or None: Enhanced CAI instance if available, None otherwise
+    """
+    global _enhanced_cai
+    if _enhanced_cai is None:
+        try:
+            from backend.intelligence.intelligence_langgraph import create_enhanced_cai
+
+            _enhanced_cai = create_enhanced_cai()
+            logger.info("✅ EnhancedCAI with chain-of-thought loaded")
+        except Exception as e:
+            logger.warning(f"EnhancedCAI not available: {e}")
+    return _enhanced_cai
+
+
+async def _get_unified_orchestrator():
+    """Lazy load UnifiedIntelligenceOrchestrator for coordinated intelligence.
+
+    The UnifiedIntelligenceOrchestrator coordinates all enhanced intelligence
+    systems (UAE, SAI, CAI) with chain-of-thought reasoning for sophisticated
+    multi-system decision making.
+
+    Returns:
+        UnifiedIntelligenceOrchestrator or None: Orchestrator if available
+    """
+    global _unified_orchestrator
+    if _unified_orchestrator is None:
+        try:
+            from backend.intelligence.intelligence_langgraph import create_unified_orchestrator
+
+            _unified_orchestrator = await create_unified_orchestrator()
+            logger.info("✅ UnifiedIntelligenceOrchestrator loaded")
+        except Exception as e:
+            logger.warning(f"UnifiedIntelligenceOrchestrator not available: {e}")
+    return _unified_orchestrator
+
+
+def set_intelligence_mode(mode: IntelligenceMode) -> None:
+    """Set the intelligence system operation mode.
+
+    Args:
+        mode: Intelligence mode to use
+            - STANDARD: Original UAE/SAI/CAI without chain-of-thought
+            - ENHANCED: Enhanced systems with LangGraph chain-of-thought
+            - UNIFIED: Full UnifiedIntelligenceOrchestrator coordination
+    """
+    global _intelligence_mode
+    _intelligence_mode = mode
+    logger.info(f"🧠 Intelligence mode set to: {mode.value}")
+
+
+def get_intelligence_mode() -> IntelligenceMode:
+    """Get the current intelligence system operation mode.
+
+    Returns:
+        Current IntelligenceMode
+    """
+    return _intelligence_mode
+
+# =====================================================================
 
 
 class HybridOrchestrator:
@@ -385,6 +507,11 @@ class HybridOrchestrator:
     ) -> Dict[str, Any]:
         """Gather context from UAE/SAI/CAI/learning_database systems.
 
+        Supports three modes:
+        - STANDARD: Original UAE/SAI/CAI without chain-of-thought
+        - ENHANCED: Enhanced systems with LangGraph chain-of-thought reasoning
+        - UNIFIED: Full UnifiedIntelligenceOrchestrator coordination
+
         Args:
             command: The command being executed
             rule: Routing rule configuration
@@ -395,42 +522,137 @@ class HybridOrchestrator:
                 - cai: Context Awareness Intelligence predictions
                 - learning_db: Historical patterns and preferences
                 - llm: Local LLM availability status
+                - reasoning_chain: (ENHANCED/UNIFIED) Chain-of-thought trace
+                - confidence_calibration: (ENHANCED/UNIFIED) Self-assessed confidence
         """
         context = {}
 
         if not rule:
             return context
 
-        # UAE: Unified Awareness Engine
-        if rule.get("use_uae"):
-            uae = _get_uae()
-            if uae:
-                try:
-                    uae_context = await asyncio.to_thread(uae.get_current_context)
-                    context["uae"] = {
-                        "screen_state": uae_context.get("screen_locked", False),
-                        "active_apps": uae_context.get("active_apps", []),
-                        "current_space": uae_context.get("current_space"),
-                        "network_status": uae_context.get("network_connected", True),
-                    }
-                    logger.debug(f"🧠 UAE context gathered")
-                except Exception as e:
-                    logger.warning(f"UAE context failed: {e}")
+        # Check intelligence mode for chain-of-thought reasoning
+        mode = get_intelligence_mode()
 
-        # CAI: Context Awareness Intelligence
-        if rule.get("use_cai"):
-            cai = _get_cai()
-            if cai:
+        # ============== UNIFIED MODE: Full Orchestrated Intelligence ==============
+        if mode == IntelligenceMode.UNIFIED and rule.get("use_uae"):
+            orchestrator = await _get_unified_orchestrator()
+            if orchestrator:
                 try:
-                    intent = await asyncio.to_thread(cai.predict_intent, command)
-                    context["cai"] = {
-                        "predicted_intent": intent.get("intent"),
-                        "confidence": intent.get("confidence", 0.0),
-                        "suggested_action": intent.get("suggestion"),
+                    # Use unified orchestrator for coordinated intelligence
+                    unified_result = await orchestrator.process_with_reasoning(
+                        query=command,
+                        context={"rule": rule, "command": command}
+                    )
+                    context["unified_intelligence"] = {
+                        "decision": unified_result.get("decision"),
+                        "confidence": unified_result.get("confidence", 0.0),
+                        "reasoning_chain": unified_result.get("reasoning_chain", []),
+                        "uae_contribution": unified_result.get("uae_analysis"),
+                        "sai_contribution": unified_result.get("sai_analysis"),
+                        "cai_contribution": unified_result.get("cai_analysis"),
+                        "fusion_reasoning": unified_result.get("fusion_reasoning"),
+                        "self_reflection": unified_result.get("reflection"),
                     }
-                    logger.debug(f"🎯 CAI intent: {intent.get('intent')}")
+                    logger.debug(f"🧠 Unified Intelligence gathered with {len(unified_result.get('reasoning_chain', []))} reasoning steps")
+                    return context  # Unified mode handles everything
                 except Exception as e:
-                    logger.warning(f"CAI prediction failed: {e}")
+                    logger.warning(f"Unified Intelligence failed, falling back to enhanced: {e}")
+                    mode = IntelligenceMode.ENHANCED  # Fallback
+
+        # ============== ENHANCED MODE: Chain-of-Thought Reasoning ==============
+        if mode == IntelligenceMode.ENHANCED:
+            # Enhanced UAE with chain-of-thought
+            if rule.get("use_uae"):
+                enhanced_uae = _get_enhanced_uae()
+                if enhanced_uae:
+                    try:
+                        uae_result = await enhanced_uae.make_reasoned_decision(
+                            element_id=command,
+                            context={"command": command}
+                        )
+                        context["uae"] = {
+                            "decision": uae_result.chosen_position if hasattr(uae_result, 'chosen_position') else None,
+                            "confidence": uae_result.confidence if hasattr(uae_result, 'confidence') else 0.0,
+                            "reasoning_chain": uae_result.reasoning_chain if hasattr(uae_result, 'reasoning_chain') else [],
+                            "thought_process": uae_result.thought_process if hasattr(uae_result, 'thought_process') else [],
+                            "self_reflection": uae_result.self_reflection if hasattr(uae_result, 'self_reflection') else None,
+                        }
+                        logger.debug(f"🧠 Enhanced UAE context with chain-of-thought gathered")
+                    except Exception as e:
+                        logger.warning(f"Enhanced UAE failed: {e}")
+
+            # Enhanced CAI with chain-of-thought
+            if rule.get("use_cai"):
+                enhanced_cai = _get_enhanced_cai()
+                if enhanced_cai:
+                    try:
+                        cai_result = await enhanced_cai.understand_with_reasoning(
+                            signals={"text": command, "command": command}
+                        )
+                        context["cai"] = {
+                            "emotional_state": cai_result.get("emotional_state"),
+                            "cognitive_state": cai_result.get("cognitive_state"),
+                            "confidence": cai_result.get("confidence", 0.0),
+                            "reasoning_chain": cai_result.get("reasoning_chain", []),
+                            "personality_adaptation": cai_result.get("personality_adaptation"),
+                            "predicted_intent": cai_result.get("intent_prediction"),
+                        }
+                        logger.debug(f"🎯 Enhanced CAI with chain-of-thought gathered")
+                    except Exception as e:
+                        logger.warning(f"Enhanced CAI failed: {e}")
+
+            # Enhanced SAI with chain-of-thought
+            if rule.get("use_sai"):
+                enhanced_sai = _get_enhanced_sai()
+                if enhanced_sai:
+                    try:
+                        sai_result = await enhanced_sai.analyze_with_reasoning(
+                            environment_data={"command": command}
+                        )
+                        context["sai"] = {
+                            "environment_state": sai_result.get("environment_state"),
+                            "detected_changes": sai_result.get("changes", []),
+                            "impact_assessment": sai_result.get("impact_assessment"),
+                            "confidence": sai_result.get("confidence", 0.0),
+                            "reasoning_chain": sai_result.get("reasoning_chain", []),
+                            "predictions": sai_result.get("predictions", []),
+                        }
+                        logger.debug(f"🔍 Enhanced SAI with chain-of-thought gathered")
+                    except Exception as e:
+                        logger.warning(f"Enhanced SAI failed: {e}")
+
+        # ============== STANDARD MODE: Original Systems ==============
+        else:
+            # UAE: Unified Awareness Engine
+            if rule.get("use_uae"):
+                uae = _get_uae()
+                if uae:
+                    try:
+                        uae_context = await asyncio.to_thread(uae.get_current_context)
+                        context["uae"] = {
+                            "screen_state": uae_context.get("screen_locked", False),
+                            "active_apps": uae_context.get("active_apps", []),
+                            "current_space": uae_context.get("current_space"),
+                            "network_status": uae_context.get("network_connected", True),
+                        }
+                        logger.debug(f"🧠 UAE context gathered")
+                    except Exception as e:
+                        logger.warning(f"UAE context failed: {e}")
+
+            # CAI: Context Awareness Intelligence
+            if rule.get("use_cai"):
+                cai = _get_cai()
+                if cai:
+                    try:
+                        intent = await asyncio.to_thread(cai.predict_intent, command)
+                        context["cai"] = {
+                            "predicted_intent": intent.get("intent"),
+                            "confidence": intent.get("confidence", 0.0),
+                            "suggested_action": intent.get("suggestion"),
+                        }
+                        logger.debug(f"🎯 CAI intent: {intent.get('intent')}")
+                    except Exception as e:
+                        logger.warning(f"CAI prediction failed: {e}")
 
         # learning_database: Historical patterns
         if rule.get("use_learning_db"):
