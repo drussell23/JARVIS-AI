@@ -66,10 +66,13 @@ psutil==5.9.8
 objgraph==3.6.1
 pympler==1.0.1
 
-# LangChain and Tools
-langchain==0.0.350
-langchain-community==0.0.10
-langchain-experimental==0.0.47
+# LangChain, LangGraph and Tools
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-experimental>=0.0.60
+langgraph>=0.2.0  # State machine for autonomous reasoning
+langgraph-checkpoint>=1.0.0  # Checkpointing for LangGraph
 duckduckgo-search==4.1.1
 numexpr==2.8.8  # For calculator tool
 wikipedia-api==0.6.0
