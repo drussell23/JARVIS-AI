@@ -22,9 +22,10 @@ class MacOSKeychainUnlock:
 
     def __init__(self):
         # Use the actual keychain service that has the password stored
-        self.service_name = "JARVIS_Screen_Unlock"
-        self.account_name = "jarvis_user"
-        self.keychain_item_name = "JARVIS Screen Unlock"
+        # MUST match what's stored by enable_screen_unlock.sh
+        self.service_name = "com.jarvis.voiceunlock"
+        self.account_name = "unlock_token"
+        self.keychain_item_name = "JARVIS Voice Unlock"
 
     async def store_password_in_keychain(self, password: str) -> bool:
         """Store password securely in macOS Keychain (one-time setup)"""
