@@ -470,8 +470,13 @@ import psutil
 
 # Cost tracking for hybrid cloud monitoring
 try:
-    # Add backend directory to path for cost tracker import
-    backend_dir = Path(__file__).parent / "backend"
+    # Add project root to path first (for 'from backend.X' imports)
+    project_root = Path(__file__).parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    # Add backend directory to path (for 'from core.X' imports)
+    backend_dir = project_root / "backend"
     if backend_dir.exists() and str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))
 
