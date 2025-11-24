@@ -108,9 +108,9 @@ except ImportError:
     CHROMADB_AVAILABLE = False
     logger.info("ChromaDB not available - voice pattern store disabled")
 
-# Langfuse for observability
+# Langfuse for observability (v3.x SDK)
 try:
-    from langfuse import Langfuse, observe
+    from langfuse import Langfuse, observe, get_client
     # langfuse_context moved in newer versions
     try:
         from langfuse.decorators import langfuse_context
@@ -121,6 +121,7 @@ except ImportError:
     LANGFUSE_AVAILABLE = False
     observe = None
     langfuse_context = None
+    get_client = None
     logger.info("Langfuse not available - audit trails disabled")
 
 # LangGraph for reasoning
@@ -455,16 +456,20 @@ class AuthenticationAuditTrail:
         self._current_session_id: Optional[str] = None
 
     async def initialize(self):
-        """Initialize Langfuse client."""
+        """Initialize Langfuse client (v3.x SDK)."""
         if not LANGFUSE_AVAILABLE:
             self.logger.info("Langfuse not available - using local audit trail")
             self._initialized = True  # Use local storage fallback
             return
 
         try:
-            self._langfuse = Langfuse()
+            # Use get_client() for v3.x SDK
+            self._langfuse = get_client() if get_client else Langfuse()
+            # Verify connection
+            if hasattr(self._langfuse, 'auth_check'):
+                self._langfuse.auth_check()
             self._initialized = True
-            self.logger.info("✅ Langfuse audit trail initialized")
+            self.logger.info("✅ Langfuse audit trail initialized (v3.x SDK)")
         except Exception as e:
             self.logger.warning(f"Langfuse initialization failed, using local: {e}")
             self._initialized = True  # Fallback to local
@@ -525,19 +530,21 @@ class AuthenticationAuditTrail:
         # Log session summary to Langfuse
         if self._langfuse:
             try:
-                self._langfuse.trace(
-                    id=f"{session_id}_summary",
-                    name="authentication_session",
-                    user_id=session["user_id"],
-                    session_id=session_id,
+                # v3.x SDK: Create a session summary span
+                session_span = self._langfuse.start_span(name="authentication_session")
+                session_span.update(
                     metadata={
+                        "session_id": session_id,
+                        "user_id": session["user_id"],
                         "device": session["device"],
                         "total_attempts": session["total_attempts"],
                         "final_outcome": outcome,
                         "duration_ms": session["duration_ms"]
                     },
-                    tags=["voice_auth", "session", outcome]
+                    output={"outcome": outcome, "attempts": session["total_attempts"]}
                 )
+                session_span.end()
+                self._langfuse.flush()
             except Exception as e:
                 self.logger.debug(f"Langfuse session log failed: {e}")
 
@@ -571,21 +578,19 @@ class AuthenticationAuditTrail:
 
         if self._langfuse:
             try:
-                trace_tags = ["voice_auth", environment]
-                if session_id:
-                    trace_tags.append(f"session:{session_id}")
-
-                self._langfuse.trace(
-                    id=trace_id,
-                    name="voice_authentication",
-                    user_id=speaker_name,
-                    session_id=session_id,  # Link to Langfuse session
+                # v3.x SDK: Use start_span to create a trace-level span
+                trace_span = self._langfuse.start_span(name="voice_authentication")
+                trace_span.update(
                     metadata={
+                        "trace_id": trace_id,
                         "environment": environment,
+                        "speaker_name": speaker_name,
+                        "session_id": session_id,
                         "attempt_number": self._session_cache.get(session_id, {}).get("total_attempts", 1)
-                    },
-                    tags=trace_tags
+                    }
                 )
+                # Store the span for later updates
+                trace._langfuse_span = trace_span
             except Exception as e:
                 self.logger.debug(f"Langfuse trace failed: {e}")
 
@@ -613,18 +618,18 @@ class AuthenticationAuditTrail:
         }
         trace.phases.append(phase_data)
 
-        if self._langfuse:
+        if self._langfuse and hasattr(trace, '_langfuse_span'):
             try:
-                # Use span with proper timing and status
-                self._langfuse.span(
-                    trace_id=trace_id,
-                    name=phase.value,
+                # v3.x SDK: Create nested span under the trace span
+                parent_span = trace._langfuse_span
+                phase_span = parent_span.start_span(name=phase.value)
+                phase_span.update(
                     metadata=metrics,
-                    level="DEFAULT" if success else "WARNING",
-                    status_message="completed" if success else "failed"
+                    output={"success": success, "duration_ms": duration_ms}
                 )
-            except Exception:
-                pass
+                phase_span.end()
+            except Exception as e:
+                self.logger.debug(f"Langfuse phase log failed: {e}")
 
     def log_reasoning_step(
         self,
@@ -648,21 +653,23 @@ class AuthenticationAuditTrail:
             reasoning: Human-readable explanation of the reasoning
             duration_ms: Time taken for this step
         """
-        if self._langfuse:
+        trace = self._trace_cache.get(trace_id)
+        if self._langfuse and trace and hasattr(trace, '_langfuse_span'):
             try:
-                # Log as a generation for LLM-style reasoning tracking
-                self._langfuse.generation(
-                    trace_id=trace_id,
-                    name=f"reasoning_{step_name}",
+                # v3.x SDK: Create a generation span for reasoning tracking
+                parent_span = trace._langfuse_span
+                reasoning_span = parent_span.start_span(name=f"reasoning_{step_name}")
+                reasoning_span.update(
                     input=json.dumps(input_data, default=str),
                     output=json.dumps(output_data, default=str),
                     metadata={
                         "reasoning": reasoning,
                         "duration_ms": duration_ms,
-                        "step_type": "langgraph_node"
-                    },
-                    model="langgraph_adaptive_auth"
+                        "step_type": "langgraph_node",
+                        "model": "langgraph_adaptive_auth"
+                    }
                 )
+                reasoning_span.end()
             except Exception as e:
                 self.logger.debug(f"Langfuse reasoning log failed: {e}")
 
@@ -687,44 +694,30 @@ class AuthenticationAuditTrail:
         # Estimate API cost
         trace.api_cost_usd = self._estimate_cost(trace)
 
-        if self._langfuse:
+        if self._langfuse and hasattr(trace, '_langfuse_span'):
             try:
-                # Score confidence
-                self._langfuse.score(
-                    trace_id=trace_id,
-                    name="confidence",
-                    value=confidence,
-                    comment=f"Fused confidence from multi-factor auth"
+                # v3.x SDK: Update the trace span with final results and end it
+                trace_span = trace._langfuse_span
+                trace_span.update(
+                    output={
+                        "decision": decision,
+                        "confidence": confidence,
+                        "threat_detected": threat.value,
+                        "total_duration_ms": trace.total_duration_ms,
+                        "api_cost_usd": trace.api_cost_usd
+                    },
+                    metadata={
+                        "authenticated": decision == "authenticated",
+                        **(additional_metrics or {})
+                    }
                 )
+                trace_span.end()
 
-                # Score decision (binary)
-                self._langfuse.score(
-                    trace_id=trace_id,
-                    name="authenticated",
-                    value=1.0 if decision == "authenticated" else 0.0,
-                    comment=f"Final decision: {decision}"
-                )
+                # Flush to ensure trace data is sent
+                self._langfuse.flush()
 
-                # Score threat level
-                threat_score = 0.0 if threat == ThreatType.NONE else 1.0
-                self._langfuse.score(
-                    trace_id=trace_id,
-                    name="threat_detected",
-                    value=threat_score,
-                    comment=f"Threat type: {threat.value}"
-                )
-
-                # Log additional metrics if provided
-                if additional_metrics:
-                    for metric_name, metric_value in additional_metrics.items():
-                        if isinstance(metric_value, (int, float)):
-                            self._langfuse.score(
-                                trace_id=trace_id,
-                                name=metric_name,
-                                value=float(metric_value)
-                            )
             except Exception as e:
-                self.logger.debug(f"Langfuse scoring failed: {e}")
+                self.logger.debug(f"Langfuse completion failed: {e}")
 
         # Log to local file as backup
         self._log_to_file(trace)
