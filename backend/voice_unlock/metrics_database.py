@@ -334,6 +334,150 @@ class MetricsDatabase:
             )
         """)
 
+        # 🖥️ DISPLAY-AWARE SAI: Track display context during unlock attempts
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS display_context (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER,
+                timestamp TEXT NOT NULL,
+
+                -- Display Configuration
+                total_displays INTEGER DEFAULT 1,
+                display_mode TEXT,  -- 'SINGLE', 'EXTENDED', 'MIRRORED', 'CLAMSHELL'
+                is_mirrored INTEGER DEFAULT 0,
+                has_external INTEGER DEFAULT 0,
+
+                -- TV Detection
+                is_tv_connected INTEGER DEFAULT 0,
+                tv_name TEXT,
+                tv_brand TEXT,
+                tv_detection_confidence REAL,
+                tv_detection_reasons TEXT,  -- JSON array of reasons
+
+                -- Primary Display Info
+                primary_display_name TEXT,
+                primary_display_type TEXT,
+                primary_width INTEGER,
+                primary_height INTEGER,
+                primary_is_builtin INTEGER,
+
+                -- External Display Info (if any)
+                external_display_name TEXT,
+                external_display_type TEXT,
+                external_width INTEGER,
+                external_height INTEGER,
+
+                -- Typing Strategy Used
+                typing_strategy TEXT,  -- 'CORE_GRAPHICS_FAST', 'APPLESCRIPT_DIRECT', etc.
+                keystroke_delay_ms REAL,
+                wake_delay_ms REAL,
+                strategy_reasoning TEXT,
+
+                -- Detection Performance
+                detection_time_ms REAL,
+                detection_method TEXT,  -- 'core_graphics', 'system_profiler', 'fallback'
+
+                FOREIGN KEY (attempt_id) REFERENCES unlock_attempts(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 📊 TV UNLOCK ANALYTICS: Aggregate stats for TV vs non-TV unlocks
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tv_unlock_analytics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                date TEXT NOT NULL,
+
+                -- Period (for time-series analysis)
+                period_type TEXT,  -- 'hourly', 'daily', 'weekly'
+                period_start TEXT,
+                period_end TEXT,
+
+                -- TV Unlock Stats
+                tv_unlock_attempts INTEGER DEFAULT 0,
+                tv_unlock_successes INTEGER DEFAULT 0,
+                tv_unlock_failures INTEGER DEFAULT 0,
+                tv_success_rate REAL,
+
+                -- Non-TV Unlock Stats
+                non_tv_unlock_attempts INTEGER DEFAULT 0,
+                non_tv_unlock_successes INTEGER DEFAULT 0,
+                non_tv_unlock_failures INTEGER DEFAULT 0,
+                non_tv_success_rate REAL,
+
+                -- Strategy Effectiveness
+                applescript_attempts INTEGER DEFAULT 0,
+                applescript_successes INTEGER DEFAULT 0,
+                applescript_success_rate REAL,
+                core_graphics_attempts INTEGER DEFAULT 0,
+                core_graphics_successes INTEGER DEFAULT 0,
+                core_graphics_success_rate REAL,
+                hybrid_attempts INTEGER DEFAULT 0,
+                hybrid_successes INTEGER DEFAULT 0,
+                hybrid_success_rate REAL,
+
+                -- Performance Comparison
+                avg_tv_unlock_duration_ms REAL,
+                avg_non_tv_unlock_duration_ms REAL,
+                tv_performance_overhead_ms REAL,  -- How much slower TV unlocks are
+
+                -- TV Types Seen
+                unique_tv_brands TEXT,  -- JSON array of unique TV brands
+                most_common_tv TEXT,
+                tv_brand_success_rates TEXT,  -- JSON object {brand: success_rate}
+
+                -- Mirroring Stats
+                mirrored_attempts INTEGER DEFAULT 0,
+                mirrored_successes INTEGER DEFAULT 0,
+                mirrored_success_rate REAL,
+                extended_attempts INTEGER DEFAULT 0,
+                extended_successes INTEGER DEFAULT 0,
+                extended_success_rate REAL
+            )
+        """)
+
+        # 🎯 DISPLAY-SPECIFIC SUCCESS RATES: Per-display learning
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS display_success_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                display_identifier TEXT NOT NULL,  -- Unique display name/ID
+                display_type TEXT,  -- 'TV', 'MONITOR', 'BUILTIN'
+                first_seen TEXT,
+                last_seen TEXT,
+
+                -- Success Tracking
+                total_attempts INTEGER DEFAULT 0,
+                successful_attempts INTEGER DEFAULT 0,
+                failed_attempts INTEGER DEFAULT 0,
+                success_rate REAL,
+                current_streak INTEGER DEFAULT 0,  -- Positive = successes, negative = failures
+                best_streak INTEGER DEFAULT 0,
+                worst_streak INTEGER DEFAULT 0,
+
+                -- Strategy History
+                applescript_attempts INTEGER DEFAULT 0,
+                applescript_successes INTEGER DEFAULT 0,
+                core_graphics_attempts INTEGER DEFAULT 0,
+                core_graphics_successes INTEGER DEFAULT 0,
+                preferred_strategy TEXT,  -- Learned best strategy for this display
+
+                -- Timing Optimization
+                optimal_keystroke_delay_ms REAL,
+                optimal_wake_delay_ms REAL,
+                avg_unlock_duration_ms REAL,
+                fastest_unlock_ms REAL,
+                slowest_unlock_ms REAL,
+
+                -- Display Characteristics
+                typical_resolution TEXT,
+                is_tv INTEGER,
+                tv_brand TEXT,
+                connection_type TEXT,
+
+                UNIQUE(display_identifier)
+            )
+        """)
+
         # Create indexes for fast queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_date ON unlock_attempts(date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_speaker ON unlock_attempts(speaker_name)")
@@ -352,6 +496,18 @@ class MetricsDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pattern_analytics_type ON typing_pattern_analytics(pattern_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pattern_analytics_char ON typing_pattern_analytics(char_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_progress_time ON learning_progress(timestamp)")
+
+        # 🖥️ Indexes for Display-Aware SAI tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_context_attempt ON display_context(attempt_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_context_timestamp ON display_context(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_context_tv ON display_context(is_tv_connected)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_context_mode ON display_context(display_mode)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_context_strategy ON display_context(typing_strategy)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_analytics_date ON tv_unlock_analytics(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_analytics_period ON tv_unlock_analytics(period_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_identifier ON display_success_history(display_identifier)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_type ON display_success_history(display_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_tv ON display_success_history(is_tv)")
 
         conn.commit()
         conn.close()
@@ -1116,6 +1272,667 @@ class MetricsDatabase:
         except Exception as e:
             logger.error(f"Failed to update learning progress: {e}", exc_info=True)
             return None
+
+    # 🖥️ DISPLAY-AWARE SAI METHODS
+
+    async def store_display_context(
+        self,
+        attempt_id: Optional[int],
+        display_context: Dict[str, Any],
+        typing_config: Dict[str, Any] = None,
+        detection_metrics: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Store display context information for an unlock attempt.
+
+        This tracks the display configuration during each unlock attempt
+        to enable analytics and learning for TV/multi-display scenarios.
+
+        Args:
+            attempt_id: ID of the unlock attempt (can be None for standalone tracking)
+            display_context: Display configuration from DisplayDetector
+            typing_config: Typing strategy configuration used
+            detection_metrics: Performance metrics from display detection
+
+        Returns:
+            Row ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Extract display context data
+            displays = display_context.get('displays', [])
+            mode = display_context.get('mode', 'SINGLE')
+            is_mirrored = display_context.get('is_mirrored', False)
+            has_external = display_context.get('has_external', False)
+            tv_info = display_context.get('tv_info', {})
+            primary_display = display_context.get('primary_display', {})
+            external_display = display_context.get('external_display', {})
+
+            # Extract typing config
+            strategy = typing_config.get('strategy', 'UNKNOWN') if typing_config else 'UNKNOWN'
+            keystroke_delay = typing_config.get('keystroke_delay_ms', 0) if typing_config else 0
+            wake_delay = typing_config.get('wake_delay_ms', 0) if typing_config else 0
+            strategy_reasoning = typing_config.get('reasoning', '') if typing_config else ''
+
+            # Extract detection metrics
+            detection_time = detection_metrics.get('detection_time_ms', 0) if detection_metrics else 0
+            detection_method = detection_metrics.get('method', 'unknown') if detection_metrics else 'unknown'
+
+            cursor.execute("""
+                INSERT INTO display_context (
+                    attempt_id, timestamp,
+                    total_displays, display_mode, is_mirrored, has_external,
+                    is_tv_connected, tv_name, tv_brand, tv_detection_confidence, tv_detection_reasons,
+                    primary_display_name, primary_display_type, primary_width, primary_height, primary_is_builtin,
+                    external_display_name, external_display_type, external_width, external_height,
+                    typing_strategy, keystroke_delay_ms, wake_delay_ms, strategy_reasoning,
+                    detection_time_ms, detection_method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                attempt_id,
+                datetime.now().isoformat(),
+                len(displays),
+                mode,
+                1 if is_mirrored else 0,
+                1 if has_external else 0,
+                1 if tv_info.get('is_tv', False) else 0,
+                tv_info.get('name'),
+                tv_info.get('brand'),
+                tv_info.get('confidence', 0),
+                json.dumps(tv_info.get('reasons', [])),
+                primary_display.get('name'),
+                primary_display.get('type'),
+                primary_display.get('width'),
+                primary_display.get('height'),
+                1 if primary_display.get('is_builtin', False) else 0,
+                external_display.get('name'),
+                external_display.get('type'),
+                external_display.get('width'),
+                external_display.get('height'),
+                strategy,
+                keystroke_delay,
+                wake_delay,
+                strategy_reasoning,
+                detection_time,
+                detection_method
+            ))
+
+            row_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            logger.info(f"✅ Stored display_context (ID: {row_id}, mode: {mode}, tv: {tv_info.get('is_tv', False)}, strategy: {strategy})")
+            return row_id
+
+        except Exception as e:
+            logger.error(f"Failed to store display context: {e}", exc_info=True)
+            return None
+
+    async def update_tv_analytics(
+        self,
+        is_tv: bool,
+        success: bool,
+        typing_strategy: str,
+        unlock_duration_ms: float = 0,
+        tv_brand: str = None,
+        is_mirrored: bool = False
+    ) -> Optional[int]:
+        """
+        Update TV unlock analytics with results from an unlock attempt.
+
+        This aggregates statistics for TV vs non-TV unlocks, strategy effectiveness,
+        and brand-specific success rates for continuous learning.
+
+        Args:
+            is_tv: Whether a TV was connected during this attempt
+            success: Whether the unlock was successful
+            typing_strategy: The typing strategy used ('CORE_GRAPHICS_FAST', 'APPLESCRIPT_DIRECT', etc.)
+            unlock_duration_ms: Duration of the unlock in milliseconds
+            tv_brand: Brand of the TV (if detected)
+            is_mirrored: Whether display was mirrored
+
+        Returns:
+            Row ID of the updated analytics record, None on failure
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            today = datetime.now().strftime("%Y-%m-%d")
+            now = datetime.now().isoformat()
+
+            # Check if we have a record for today
+            cursor.execute("""
+                SELECT id, tv_unlock_attempts, tv_unlock_successes, tv_unlock_failures,
+                       non_tv_unlock_attempts, non_tv_unlock_successes, non_tv_unlock_failures,
+                       applescript_attempts, applescript_successes,
+                       core_graphics_attempts, core_graphics_successes,
+                       hybrid_attempts, hybrid_successes,
+                       avg_tv_unlock_duration_ms, avg_non_tv_unlock_duration_ms,
+                       unique_tv_brands, tv_brand_success_rates,
+                       mirrored_attempts, mirrored_successes,
+                       extended_attempts, extended_successes
+                FROM tv_unlock_analytics
+                WHERE date = ? AND period_type = 'daily'
+            """, (today,))
+
+            row = cursor.fetchone()
+
+            if row:
+                # Update existing record
+                row_id = row[0]
+                tv_attempts = row[1] or 0
+                tv_successes = row[2] or 0
+                tv_failures = row[3] or 0
+                non_tv_attempts = row[4] or 0
+                non_tv_successes = row[5] or 0
+                non_tv_failures = row[6] or 0
+                applescript_attempts = row[7] or 0
+                applescript_successes = row[8] or 0
+                cg_attempts = row[9] or 0
+                cg_successes = row[10] or 0
+                hybrid_attempts = row[11] or 0
+                hybrid_successes = row[12] or 0
+                avg_tv_duration = row[13] or 0
+                avg_non_tv_duration = row[14] or 0
+                unique_brands = json.loads(row[15]) if row[15] else []
+                brand_rates = json.loads(row[16]) if row[16] else {}
+                mirrored_attempts = row[17] or 0
+                mirrored_successes = row[18] or 0
+                extended_attempts = row[19] or 0
+                extended_successes = row[20] or 0
+            else:
+                # Create new record
+                row_id = None
+                tv_attempts = tv_successes = tv_failures = 0
+                non_tv_attempts = non_tv_successes = non_tv_failures = 0
+                applescript_attempts = applescript_successes = 0
+                cg_attempts = cg_successes = 0
+                hybrid_attempts = hybrid_successes = 0
+                avg_tv_duration = avg_non_tv_duration = 0
+                unique_brands = []
+                brand_rates = {}
+                mirrored_attempts = mirrored_successes = 0
+                extended_attempts = extended_successes = 0
+
+            # Update counters based on this attempt
+            if is_tv:
+                tv_attempts += 1
+                if success:
+                    tv_successes += 1
+                else:
+                    tv_failures += 1
+                # Update rolling average for TV duration
+                if avg_tv_duration > 0:
+                    avg_tv_duration = (avg_tv_duration * (tv_attempts - 1) + unlock_duration_ms) / tv_attempts
+                else:
+                    avg_tv_duration = unlock_duration_ms
+
+                # Track TV brand
+                if tv_brand and tv_brand not in unique_brands:
+                    unique_brands.append(tv_brand)
+                if tv_brand:
+                    if tv_brand not in brand_rates:
+                        brand_rates[tv_brand] = {'attempts': 0, 'successes': 0}
+                    brand_rates[tv_brand]['attempts'] += 1
+                    if success:
+                        brand_rates[tv_brand]['successes'] += 1
+            else:
+                non_tv_attempts += 1
+                if success:
+                    non_tv_successes += 1
+                else:
+                    non_tv_failures += 1
+                if avg_non_tv_duration > 0:
+                    avg_non_tv_duration = (avg_non_tv_duration * (non_tv_attempts - 1) + unlock_duration_ms) / non_tv_attempts
+                else:
+                    avg_non_tv_duration = unlock_duration_ms
+
+            # Update strategy counters
+            strategy_upper = typing_strategy.upper() if typing_strategy else ''
+            if 'APPLESCRIPT' in strategy_upper:
+                applescript_attempts += 1
+                if success:
+                    applescript_successes += 1
+            elif 'CORE_GRAPHICS' in strategy_upper or 'CG_' in strategy_upper:
+                cg_attempts += 1
+                if success:
+                    cg_successes += 1
+            elif 'HYBRID' in strategy_upper:
+                hybrid_attempts += 1
+                if success:
+                    hybrid_successes += 1
+
+            # Update mirrored/extended counters
+            if is_mirrored:
+                mirrored_attempts += 1
+                if success:
+                    mirrored_successes += 1
+            elif is_tv:  # External but not mirrored = extended
+                extended_attempts += 1
+                if success:
+                    extended_successes += 1
+
+            # Calculate success rates
+            tv_success_rate = tv_successes / tv_attempts if tv_attempts > 0 else 0
+            non_tv_success_rate = non_tv_successes / non_tv_attempts if non_tv_attempts > 0 else 0
+            applescript_rate = applescript_successes / applescript_attempts if applescript_attempts > 0 else 0
+            cg_rate = cg_successes / cg_attempts if cg_attempts > 0 else 0
+            hybrid_rate = hybrid_successes / hybrid_attempts if hybrid_attempts > 0 else 0
+            mirrored_rate = mirrored_successes / mirrored_attempts if mirrored_attempts > 0 else 0
+            extended_rate = extended_successes / extended_attempts if extended_attempts > 0 else 0
+
+            # Calculate brand success rates
+            brand_success_rates = {brand: data['successes'] / data['attempts'] if data['attempts'] > 0 else 0
+                                   for brand, data in brand_rates.items()}
+
+            # Find most common TV
+            most_common_tv = max(brand_rates.items(), key=lambda x: x[1]['attempts'])[0] if brand_rates else None
+
+            # Performance overhead
+            tv_overhead = avg_tv_duration - avg_non_tv_duration if avg_tv_duration > 0 and avg_non_tv_duration > 0 else 0
+
+            if row_id:
+                # Update existing record
+                cursor.execute("""
+                    UPDATE tv_unlock_analytics SET
+                        timestamp = ?,
+                        tv_unlock_attempts = ?, tv_unlock_successes = ?, tv_unlock_failures = ?, tv_success_rate = ?,
+                        non_tv_unlock_attempts = ?, non_tv_unlock_successes = ?, non_tv_unlock_failures = ?, non_tv_success_rate = ?,
+                        applescript_attempts = ?, applescript_successes = ?, applescript_success_rate = ?,
+                        core_graphics_attempts = ?, core_graphics_successes = ?, core_graphics_success_rate = ?,
+                        hybrid_attempts = ?, hybrid_successes = ?, hybrid_success_rate = ?,
+                        avg_tv_unlock_duration_ms = ?, avg_non_tv_unlock_duration_ms = ?, tv_performance_overhead_ms = ?,
+                        unique_tv_brands = ?, most_common_tv = ?, tv_brand_success_rates = ?,
+                        mirrored_attempts = ?, mirrored_successes = ?, mirrored_success_rate = ?,
+                        extended_attempts = ?, extended_successes = ?, extended_success_rate = ?
+                    WHERE id = ?
+                """, (
+                    now,
+                    tv_attempts, tv_successes, tv_failures, tv_success_rate,
+                    non_tv_attempts, non_tv_successes, non_tv_failures, non_tv_success_rate,
+                    applescript_attempts, applescript_successes, applescript_rate,
+                    cg_attempts, cg_successes, cg_rate,
+                    hybrid_attempts, hybrid_successes, hybrid_rate,
+                    avg_tv_duration, avg_non_tv_duration, tv_overhead,
+                    json.dumps(unique_brands), most_common_tv, json.dumps(brand_success_rates),
+                    mirrored_attempts, mirrored_successes, mirrored_rate,
+                    extended_attempts, extended_successes, extended_rate,
+                    row_id
+                ))
+            else:
+                # Insert new record
+                cursor.execute("""
+                    INSERT INTO tv_unlock_analytics (
+                        timestamp, date, period_type, period_start, period_end,
+                        tv_unlock_attempts, tv_unlock_successes, tv_unlock_failures, tv_success_rate,
+                        non_tv_unlock_attempts, non_tv_unlock_successes, non_tv_unlock_failures, non_tv_success_rate,
+                        applescript_attempts, applescript_successes, applescript_success_rate,
+                        core_graphics_attempts, core_graphics_successes, core_graphics_success_rate,
+                        hybrid_attempts, hybrid_successes, hybrid_success_rate,
+                        avg_tv_unlock_duration_ms, avg_non_tv_unlock_duration_ms, tv_performance_overhead_ms,
+                        unique_tv_brands, most_common_tv, tv_brand_success_rates,
+                        mirrored_attempts, mirrored_successes, mirrored_success_rate,
+                        extended_attempts, extended_successes, extended_success_rate
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    now, today, 'daily', f"{today} 00:00:00", f"{today} 23:59:59",
+                    tv_attempts, tv_successes, tv_failures, tv_success_rate,
+                    non_tv_attempts, non_tv_successes, non_tv_failures, non_tv_success_rate,
+                    applescript_attempts, applescript_successes, applescript_rate,
+                    cg_attempts, cg_successes, cg_rate,
+                    hybrid_attempts, hybrid_successes, hybrid_rate,
+                    avg_tv_duration, avg_non_tv_duration, tv_overhead,
+                    json.dumps(unique_brands), most_common_tv, json.dumps(brand_success_rates),
+                    mirrored_attempts, mirrored_successes, mirrored_rate,
+                    extended_attempts, extended_successes, extended_rate
+                ))
+                row_id = cursor.lastrowid
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"✅ Updated tv_unlock_analytics (ID: {row_id}, tv_rate: {tv_success_rate:.1%}, non_tv_rate: {non_tv_success_rate:.1%})")
+            return row_id
+
+        except Exception as e:
+            logger.error(f"Failed to update TV analytics: {e}", exc_info=True)
+            return None
+
+    async def update_display_success_history(
+        self,
+        display_identifier: str,
+        display_type: str,  # 'TV', 'MONITOR', 'BUILTIN'
+        success: bool,
+        typing_strategy: str,
+        unlock_duration_ms: float = 0,
+        keystroke_delay_ms: float = 0,
+        wake_delay_ms: float = 0,
+        resolution: str = None,
+        is_tv: bool = False,
+        tv_brand: str = None,
+        connection_type: str = None
+    ) -> Optional[int]:
+        """
+        Update per-display success history for learning optimal strategies.
+
+        This tracks success rates and timing parameters for each unique display,
+        allowing JARVIS to learn which strategies work best for specific displays.
+
+        Args:
+            display_identifier: Unique display name/ID
+            display_type: Type of display ('TV', 'MONITOR', 'BUILTIN')
+            success: Whether the unlock was successful
+            typing_strategy: Strategy used for this attempt
+            unlock_duration_ms: Duration of the unlock
+            keystroke_delay_ms: Keystroke delay used
+            wake_delay_ms: Wake delay used
+            resolution: Display resolution string (e.g., "3840x2160")
+            is_tv: Whether this display is a TV
+            tv_brand: TV brand if applicable
+            connection_type: How the display is connected (HDMI, USB-C, etc.)
+
+        Returns:
+            Row ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+
+            # Check if we have a record for this display
+            cursor.execute("""
+                SELECT id, first_seen, total_attempts, successful_attempts, failed_attempts,
+                       current_streak, best_streak, worst_streak,
+                       applescript_attempts, applescript_successes,
+                       core_graphics_attempts, core_graphics_successes,
+                       preferred_strategy, optimal_keystroke_delay_ms, optimal_wake_delay_ms,
+                       avg_unlock_duration_ms, fastest_unlock_ms, slowest_unlock_ms
+                FROM display_success_history
+                WHERE display_identifier = ?
+            """, (display_identifier,))
+
+            row = cursor.fetchone()
+
+            if row:
+                # Update existing record
+                row_id = row[0]
+                first_seen = row[1]
+                total_attempts = (row[2] or 0) + 1
+                successful_attempts = (row[3] or 0) + (1 if success else 0)
+                failed_attempts = (row[4] or 0) + (0 if success else 1)
+                current_streak = row[5] or 0
+                best_streak = row[6] or 0
+                worst_streak = row[7] or 0
+                applescript_attempts = row[8] or 0
+                applescript_successes = row[9] or 0
+                cg_attempts = row[10] or 0
+                cg_successes = row[11] or 0
+                preferred_strategy = row[12]
+                optimal_keystroke = row[13]
+                optimal_wake = row[14]
+                avg_duration = row[15] or 0
+                fastest = row[16]
+                slowest = row[17]
+
+                # Update streak
+                if success:
+                    if current_streak >= 0:
+                        current_streak += 1
+                    else:
+                        current_streak = 1
+                    best_streak = max(best_streak, current_streak)
+                else:
+                    if current_streak <= 0:
+                        current_streak -= 1
+                    else:
+                        current_streak = -1
+                    worst_streak = min(worst_streak, current_streak)
+
+                # Update strategy counters
+                strategy_upper = typing_strategy.upper() if typing_strategy else ''
+                if 'APPLESCRIPT' in strategy_upper:
+                    applescript_attempts += 1
+                    if success:
+                        applescript_successes += 1
+                elif 'CORE_GRAPHICS' in strategy_upper or 'CG_' in strategy_upper:
+                    cg_attempts += 1
+                    if success:
+                        cg_successes += 1
+
+                # Determine preferred strategy based on success rates
+                applescript_rate = applescript_successes / applescript_attempts if applescript_attempts > 0 else 0
+                cg_rate = cg_successes / cg_attempts if cg_attempts > 0 else 0
+
+                if applescript_attempts >= 3 and cg_attempts >= 3:
+                    preferred_strategy = 'APPLESCRIPT_DIRECT' if applescript_rate > cg_rate else 'CORE_GRAPHICS_FAST'
+                elif applescript_attempts >= 3:
+                    preferred_strategy = 'APPLESCRIPT_DIRECT' if applescript_rate >= 0.8 else preferred_strategy
+                elif cg_attempts >= 3:
+                    preferred_strategy = 'CORE_GRAPHICS_FAST' if cg_rate >= 0.8 else preferred_strategy
+
+                # Update timing optimization (exponential moving average)
+                alpha = 0.3  # Learning rate
+                if success:  # Only learn from successful attempts
+                    if optimal_keystroke and keystroke_delay_ms > 0:
+                        optimal_keystroke = optimal_keystroke * (1 - alpha) + keystroke_delay_ms * alpha
+                    elif keystroke_delay_ms > 0:
+                        optimal_keystroke = keystroke_delay_ms
+
+                    if optimal_wake and wake_delay_ms > 0:
+                        optimal_wake = optimal_wake * (1 - alpha) + wake_delay_ms * alpha
+                    elif wake_delay_ms > 0:
+                        optimal_wake = wake_delay_ms
+
+                # Update duration stats
+                if unlock_duration_ms > 0:
+                    if avg_duration > 0:
+                        avg_duration = (avg_duration * (total_attempts - 1) + unlock_duration_ms) / total_attempts
+                    else:
+                        avg_duration = unlock_duration_ms
+
+                    if fastest is None or unlock_duration_ms < fastest:
+                        fastest = unlock_duration_ms
+                    if slowest is None or unlock_duration_ms > slowest:
+                        slowest = unlock_duration_ms
+
+                success_rate = successful_attempts / total_attempts if total_attempts > 0 else 0
+
+                cursor.execute("""
+                    UPDATE display_success_history SET
+                        last_seen = ?,
+                        total_attempts = ?, successful_attempts = ?, failed_attempts = ?, success_rate = ?,
+                        current_streak = ?, best_streak = ?, worst_streak = ?,
+                        applescript_attempts = ?, applescript_successes = ?,
+                        core_graphics_attempts = ?, core_graphics_successes = ?,
+                        preferred_strategy = ?, optimal_keystroke_delay_ms = ?, optimal_wake_delay_ms = ?,
+                        avg_unlock_duration_ms = ?, fastest_unlock_ms = ?, slowest_unlock_ms = ?
+                    WHERE id = ?
+                """, (
+                    now,
+                    total_attempts, successful_attempts, failed_attempts, success_rate,
+                    current_streak, best_streak, worst_streak,
+                    applescript_attempts, applescript_successes,
+                    cg_attempts, cg_successes,
+                    preferred_strategy, optimal_keystroke, optimal_wake,
+                    avg_duration, fastest, slowest,
+                    row_id
+                ))
+            else:
+                # Insert new record
+                success_rate = 1.0 if success else 0.0
+                current_streak = 1 if success else -1
+
+                cursor.execute("""
+                    INSERT INTO display_success_history (
+                        display_identifier, display_type, first_seen, last_seen,
+                        total_attempts, successful_attempts, failed_attempts, success_rate,
+                        current_streak, best_streak, worst_streak,
+                        applescript_attempts, applescript_successes,
+                        core_graphics_attempts, core_graphics_successes,
+                        preferred_strategy, optimal_keystroke_delay_ms, optimal_wake_delay_ms,
+                        avg_unlock_duration_ms, fastest_unlock_ms, slowest_unlock_ms,
+                        typical_resolution, is_tv, tv_brand, connection_type
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    display_identifier, display_type, now, now,
+                    1, 1 if success else 0, 0 if success else 1, success_rate,
+                    current_streak, max(current_streak, 0), min(current_streak, 0),
+                    1 if 'APPLESCRIPT' in (typing_strategy or '').upper() else 0,
+                    1 if success and 'APPLESCRIPT' in (typing_strategy or '').upper() else 0,
+                    1 if 'CORE_GRAPHICS' in (typing_strategy or '').upper() else 0,
+                    1 if success and 'CORE_GRAPHICS' in (typing_strategy or '').upper() else 0,
+                    typing_strategy, keystroke_delay_ms, wake_delay_ms,
+                    unlock_duration_ms, unlock_duration_ms if success else None, unlock_duration_ms if success else None,
+                    resolution, 1 if is_tv else 0, tv_brand, connection_type
+                ))
+                row_id = cursor.lastrowid
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"✅ Updated display_success_history for '{display_identifier}' (ID: {row_id}, rate: {success_rate:.1%})")
+            return row_id
+
+        except Exception as e:
+            logger.error(f"Failed to update display success history: {e}", exc_info=True)
+            return None
+
+    async def get_display_learning_stats(
+        self,
+        display_identifier: str = None
+    ) -> Dict[str, Any]:
+        """
+        Get learned display statistics for analytics or strategy selection.
+
+        Args:
+            display_identifier: Specific display to query, or None for all displays
+
+        Returns:
+            Dictionary with display learning statistics
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            if display_identifier:
+                cursor.execute("""
+                    SELECT * FROM display_success_history WHERE display_identifier = ?
+                """, (display_identifier,))
+                row = cursor.fetchone()
+                if row:
+                    result = dict(row)
+                else:
+                    result = None
+            else:
+                cursor.execute("""
+                    SELECT * FROM display_success_history ORDER BY total_attempts DESC
+                """)
+                rows = cursor.fetchall()
+                result = {
+                    'displays': [dict(row) for row in rows],
+                    'total_displays': len(rows),
+                    'tv_displays': sum(1 for row in rows if row['is_tv']),
+                    'overall_success_rate': sum(row['successful_attempts'] for row in rows) / sum(row['total_attempts'] for row in rows) if rows else 0
+                }
+
+            conn.close()
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to get display learning stats: {e}", exc_info=True)
+            return {'error': str(e)}
+
+    async def get_tv_analytics_summary(
+        self,
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Get TV unlock analytics summary for the specified period.
+
+        Args:
+            days: Number of days to include in summary
+
+        Returns:
+            Dictionary with aggregated TV unlock analytics
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Get aggregated stats
+            cursor.execute("""
+                SELECT
+                    SUM(tv_unlock_attempts) as total_tv_attempts,
+                    SUM(tv_unlock_successes) as total_tv_successes,
+                    SUM(non_tv_unlock_attempts) as total_non_tv_attempts,
+                    SUM(non_tv_unlock_successes) as total_non_tv_successes,
+                    SUM(applescript_attempts) as total_applescript_attempts,
+                    SUM(applescript_successes) as total_applescript_successes,
+                    SUM(core_graphics_attempts) as total_cg_attempts,
+                    SUM(core_graphics_successes) as total_cg_successes,
+                    SUM(mirrored_attempts) as total_mirrored_attempts,
+                    SUM(mirrored_successes) as total_mirrored_successes,
+                    AVG(avg_tv_unlock_duration_ms) as avg_tv_duration,
+                    AVG(avg_non_tv_unlock_duration_ms) as avg_non_tv_duration
+                FROM tv_unlock_analytics
+                WHERE date >= date('now', ? || ' days')
+            """, (f'-{days}',))
+
+            row = cursor.fetchone()
+
+            if row and row['total_tv_attempts']:
+                total_tv = row['total_tv_attempts']
+                total_non_tv = row['total_non_tv_attempts'] or 0
+
+                summary = {
+                    'period_days': days,
+                    'tv_unlocks': {
+                        'total_attempts': total_tv,
+                        'successes': row['total_tv_successes'],
+                        'success_rate': row['total_tv_successes'] / total_tv if total_tv > 0 else 0,
+                        'avg_duration_ms': row['avg_tv_duration']
+                    },
+                    'non_tv_unlocks': {
+                        'total_attempts': total_non_tv,
+                        'successes': row['total_non_tv_successes'],
+                        'success_rate': row['total_non_tv_successes'] / total_non_tv if total_non_tv > 0 else 0,
+                        'avg_duration_ms': row['avg_non_tv_duration']
+                    },
+                    'strategy_effectiveness': {
+                        'applescript': {
+                            'attempts': row['total_applescript_attempts'] or 0,
+                            'success_rate': (row['total_applescript_successes'] or 0) / (row['total_applescript_attempts'] or 1)
+                        },
+                        'core_graphics': {
+                            'attempts': row['total_cg_attempts'] or 0,
+                            'success_rate': (row['total_cg_successes'] or 0) / (row['total_cg_attempts'] or 1)
+                        }
+                    },
+                    'mirrored_display': {
+                        'attempts': row['total_mirrored_attempts'] or 0,
+                        'success_rate': (row['total_mirrored_successes'] or 0) / (row['total_mirrored_attempts'] or 1)
+                    }
+                }
+            else:
+                summary = {
+                    'period_days': days,
+                    'message': 'No TV unlock data available for this period',
+                    'tv_unlocks': {'total_attempts': 0, 'success_rate': 0},
+                    'non_tv_unlocks': {'total_attempts': 0, 'success_rate': 0}
+                }
+
+            conn.close()
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to get TV analytics summary: {e}", exc_info=True)
+            return {'error': str(e)}
 
 
 # Singleton instance

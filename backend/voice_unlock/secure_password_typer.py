@@ -1296,6 +1296,8 @@ async def type_password_with_display_awareness(
     This function uses LangGraph-powered SAI to detect display configuration
     (especially mirrored 85" Sony TV) and select the optimal typing strategy.
 
+    Now also stores display context in SQLite for TV unlock analytics!
+
     Args:
         password: Password to type
         submit: Press Enter after typing
@@ -1304,6 +1306,11 @@ async def type_password_with_display_awareness(
     Returns:
         Tuple of (success, metrics_dict, display_context)
     """
+    start_time = time.time()
+    display_context_dict = None
+    typing_config_dict = None
+    detection_metrics = None
+
     try:
         from voice_unlock.display_aware_sai import (
             get_optimal_typing_strategy,
@@ -1314,15 +1321,35 @@ async def type_password_with_display_awareness(
         logger.info("🖥️ [SAI] Running Display-Aware Situational Intelligence...")
 
         # Get optimal strategy from SAI
+        detection_start = time.time()
         typing_config, display_context, reasoning = await get_optimal_typing_strategy()
+        detection_time_ms = (time.time() - detection_start) * 1000
+
+        # Store detection metrics
+        detection_metrics = {
+            'detection_time_ms': detection_time_ms,
+            'method': 'sai_langgraph'
+        }
 
         logger.info(f"🖥️ [SAI] Display Mode: {display_context.display_mode.name}")
         logger.info(f"🖥️ [SAI] Mirrored: {display_context.is_mirrored}")
         logger.info(f"🖥️ [SAI] TV Connected: {display_context.is_tv_connected}")
         logger.info(f"🖥️ [SAI] Selected Strategy: {typing_config.strategy.name}")
+        logger.info(f"🖥️ [SAI] Detection Time: {detection_time_ms:.1f}ms")
 
         for step in reasoning[-3:]:  # Log last 3 reasoning steps
             logger.info(f"🖥️ [SAI] {step}")
+
+        # Prepare display context for DB storage
+        display_context_dict = display_context.to_dict()
+
+        # Prepare typing config dict for DB storage
+        typing_config_dict = {
+            'strategy': typing_config.strategy.name,
+            'keystroke_delay_ms': typing_config.base_keystroke_delay_ms,
+            'wake_delay_ms': typing_config.wake_delay_ms,
+            'reasoning': "; ".join(reasoning[-5:]) if reasoning else ''
+        }
 
         # Use strategy-specific typing
         if typing_config.strategy == TypingStrategy.APPLESCRIPT_DIRECT:
@@ -1344,7 +1371,17 @@ async def type_password_with_display_awareness(
                 password, submit, typing_config, attempt_id
             )
 
-        return success, metrics, display_context.to_dict()
+        # 📊 Store display context and update analytics in SQLite
+        await _store_display_tracking_data(
+            attempt_id=attempt_id,
+            display_context=display_context_dict,
+            typing_config=typing_config_dict,
+            detection_metrics=detection_metrics,
+            success=success,
+            unlock_duration_ms=(time.time() - start_time) * 1000
+        )
+
+        return success, metrics, display_context_dict
 
     except ImportError:
         logger.warning("🖥️ [SAI] Display SAI not available, using standard typing")
@@ -1359,7 +1396,122 @@ async def type_password_with_display_awareness(
         success, metrics = await type_password_securely(
             password, submit, randomize_timing=True, attempt_id=attempt_id
         )
-        return success, metrics, None
+
+        # Still try to store display context if we have it
+        if display_context_dict:
+            await _store_display_tracking_data(
+                attempt_id=attempt_id,
+                display_context=display_context_dict,
+                typing_config=typing_config_dict,
+                detection_metrics=detection_metrics,
+                success=success,
+                unlock_duration_ms=(time.time() - start_time) * 1000
+            )
+
+        return success, metrics, display_context_dict
+
+
+async def _store_display_tracking_data(
+    attempt_id: Optional[int],
+    display_context: Dict[str, Any],
+    typing_config: Dict[str, Any],
+    detection_metrics: Dict[str, Any],
+    success: bool,
+    unlock_duration_ms: float
+) -> None:
+    """
+    Store display context and update TV analytics in SQLite.
+
+    This enables continuous learning and analytics for TV unlock scenarios.
+    """
+    try:
+        from voice_unlock.metrics_database import get_metrics_database
+
+        db = get_metrics_database()
+
+        # Extract display info
+        is_tv = display_context.get('is_tv_connected', False)
+        is_mirrored = display_context.get('is_mirrored', False)
+        tv_info = display_context.get('tv_info', {})
+        tv_brand = tv_info.get('brand') if tv_info else None
+        tv_name = tv_info.get('name') if tv_info else None
+        display_mode = display_context.get('display_mode', 'SINGLE')
+
+        typing_strategy = typing_config.get('strategy', 'UNKNOWN') if typing_config else 'UNKNOWN'
+        keystroke_delay = typing_config.get('keystroke_delay_ms', 0) if typing_config else 0
+        wake_delay = typing_config.get('wake_delay_ms', 0) if typing_config else 0
+
+        # 1. Store display_context record
+        context_id = await db.store_display_context(
+            attempt_id=attempt_id,
+            display_context=display_context,
+            typing_config=typing_config,
+            detection_metrics=detection_metrics
+        )
+
+        if context_id:
+            logger.info(f"📊 [DB] Stored display_context (ID: {context_id})")
+
+        # 2. Update TV analytics
+        analytics_id = await db.update_tv_analytics(
+            is_tv=is_tv,
+            success=success,
+            typing_strategy=typing_strategy,
+            unlock_duration_ms=unlock_duration_ms,
+            tv_brand=tv_brand,
+            is_mirrored=is_mirrored
+        )
+
+        if analytics_id:
+            logger.info(f"📊 [DB] Updated tv_unlock_analytics (ID: {analytics_id})")
+
+        # 3. Update display success history (per-display learning)
+        # Determine display identifier
+        if is_tv and tv_name:
+            display_identifier = tv_name
+            display_type = 'TV'
+        elif display_context.get('external_display', {}).get('name'):
+            display_identifier = display_context['external_display']['name']
+            display_type = 'MONITOR'
+        else:
+            display_identifier = display_context.get('primary_display', {}).get('name', 'Built-in Display')
+            display_type = 'BUILTIN'
+
+        # Get resolution
+        if is_tv and tv_info:
+            resolution = f"{tv_info.get('width', 0)}x{tv_info.get('height', 0)}"
+        elif display_context.get('external_display'):
+            ext = display_context['external_display']
+            resolution = f"{ext.get('width', 0)}x{ext.get('height', 0)}"
+        else:
+            primary = display_context.get('primary_display', {})
+            resolution = f"{primary.get('width', 0)}x{primary.get('height', 0)}"
+
+        history_id = await db.update_display_success_history(
+            display_identifier=display_identifier,
+            display_type=display_type,
+            success=success,
+            typing_strategy=typing_strategy,
+            unlock_duration_ms=unlock_duration_ms,
+            keystroke_delay_ms=keystroke_delay,
+            wake_delay_ms=wake_delay,
+            resolution=resolution,
+            is_tv=is_tv,
+            tv_brand=tv_brand,
+            connection_type=display_context.get('connection_type')
+        )
+
+        if history_id:
+            logger.info(f"📊 [DB] Updated display_success_history for '{display_identifier}' (ID: {history_id})")
+
+        # Log summary
+        status = "✅ SUCCESS" if success else "❌ FAILURE"
+        tv_status = f"📺 TV: {tv_brand or 'Unknown'}" if is_tv else "💻 No TV"
+        logger.info(f"📊 [DB] {status} | {tv_status} | Strategy: {typing_strategy} | Duration: {unlock_duration_ms:.0f}ms")
+
+    except Exception as e:
+        logger.error(f"📊 [DB] Failed to store display tracking data: {e}", exc_info=True)
+        # Don't let DB errors affect the unlock flow
 
 
 async def _type_password_applescript_sai(

@@ -123,12 +123,52 @@ class DisplayContext:
     is_mirrored: bool = False
     is_tv_connected: bool = False
     tv_name: Optional[str] = None
+    tv_brand: Optional[str] = None
+    tv_confidence: float = 0.0
+    tv_detection_reasons: List[str] = field(default_factory=list)
     primary_display: Optional[DisplayInfo] = None
     external_displays: List[DisplayInfo] = field(default_factory=list)
     detection_time_ms: float = 0.0
     detection_method: str = "unknown"
 
     def to_dict(self) -> Dict[str, Any]:
+        # Build TV info dict if TV is connected
+        tv_info = None
+        if self.is_tv_connected:
+            tv_display = None
+            for d in self.external_displays:
+                if d.display_type == DisplayType.TV:
+                    tv_display = d
+                    break
+
+            tv_info = {
+                "name": self.tv_name,
+                "brand": self.tv_brand,
+                "confidence": self.tv_confidence,
+                "reasons": self.tv_detection_reasons,
+                "width": tv_display.width if tv_display else None,
+                "height": tv_display.height if tv_display else None,
+                "is_tv": True,
+            }
+
+        # Build primary display dict
+        primary_dict = None
+        if self.primary_display:
+            primary_dict = {
+                **self.primary_display.to_dict(),
+                "is_builtin": self.primary_display.is_builtin,
+                "type": self.primary_display.display_type.name,
+            }
+
+        # Build external display dict (first external)
+        external_dict = None
+        if self.external_displays:
+            ext = self.external_displays[0]
+            external_dict = {
+                **ext.to_dict(),
+                "type": ext.display_type.name,
+            }
+
         return {
             "display_mode": self.display_mode.name,
             "total_displays": self.total_displays,
@@ -136,7 +176,9 @@ class DisplayContext:
             "is_mirrored": self.is_mirrored,
             "is_tv_connected": self.is_tv_connected,
             "tv_name": self.tv_name,
-            "primary_display": self.primary_display.to_dict() if self.primary_display else None,
+            "tv_info": tv_info,
+            "primary_display": primary_dict,
+            "external_display": external_dict,
             "external_displays": [d.to_dict() for d in self.external_displays],
             "detection_time_ms": self.detection_time_ms,
             "detection_method": self.detection_method,
@@ -406,9 +448,16 @@ class DisplayDetector:
                 if is_tv:
                     context.is_tv_connected = True
                     context.tv_name = display.name
+                    context.tv_confidence = confidence
+                    context.tv_detection_reasons = reasons
+
+                    # Extract brand from name using known brand patterns
+                    detected_brand = self._extract_tv_brand(display.name)
+                    context.tv_brand = detected_brand
+
                     logger.info(
                         f"🖥️ TV DETECTED: '{display.name}' "
-                        f"(confidence: {confidence:.0%}, reasons: {reasons})"
+                        f"(brand: {detected_brand or 'Unknown'}, confidence: {confidence:.0%}, reasons: {reasons})"
                     )
                     break
 
@@ -764,6 +813,64 @@ class DisplayDetector:
         is_tv, _, _ = self._is_tv(display)
         return is_tv
 
+    def _extract_tv_brand(self, display_name: str) -> Optional[str]:
+        """
+        Extract TV brand from display name.
+
+        Args:
+            display_name: Name of the display
+
+        Returns:
+            Brand name in title case, or None if not detected
+        """
+        if not display_name:
+            return None
+
+        name_lower = display_name.lower()
+
+        # Known major TV brands (order matters - check specific before generic)
+        tv_brands = [
+            ("sony", "Sony"),
+            ("samsung", "Samsung"),
+            ("lg", "LG"),
+            ("vizio", "Vizio"),
+            ("tcl", "TCL"),
+            ("hisense", "Hisense"),
+            ("philips", "Philips"),
+            ("panasonic", "Panasonic"),
+            ("sharp", "Sharp"),
+            ("toshiba", "Toshiba"),
+            ("sanyo", "Sanyo"),
+            ("insignia", "Insignia"),
+            ("element", "Element"),
+            ("westinghouse", "Westinghouse"),
+            ("sceptre", "Sceptre"),
+            ("onn", "Onn"),
+            ("hitachi", "Hitachi"),
+            ("jvc", "JVC"),
+            ("funai", "Funai"),
+            ("skyworth", "Skyworth"),
+            ("haier", "Haier"),
+            ("konka", "Konka"),
+            ("changhong", "Changhong"),
+            ("bravia", "Sony"),  # Bravia is Sony
+            ("qled", "Samsung"),  # QLED is typically Samsung
+            ("neo qled", "Samsung"),
+            ("nanocell", "LG"),  # NanoCell is LG
+            ("roku tv", "Roku"),
+            ("fire tv", "Amazon"),
+            ("android tv", "Android TV"),
+            ("google tv", "Google TV"),
+            ("webos", "LG"),  # WebOS is LG
+            ("tizen", "Samsung"),  # Tizen is Samsung
+        ]
+
+        for search_term, brand_name in tv_brands:
+            if search_term in name_lower:
+                return brand_name
+
+        return None
+
 
 # =============================================================================
 # LangGraph Reasoning Engine for Typing Strategy
@@ -1016,6 +1123,10 @@ class DisplayAwareReasoningEngine:
             )
 
             context_dict = final_state.get("display_context", {})
+
+            # Extract TV info from context dict
+            tv_info = context_dict.get("tv_info", {}) or {}
+
             context = DisplayContext(
                 display_mode=DisplayMode[context_dict.get("display_mode", "SINGLE")],
                 total_displays=context_dict.get("total_displays", 1),
@@ -1023,6 +1134,9 @@ class DisplayAwareReasoningEngine:
                 is_mirrored=context_dict.get("is_mirrored", False),
                 is_tv_connected=context_dict.get("is_tv_connected", False),
                 tv_name=context_dict.get("tv_name"),
+                tv_brand=tv_info.get("brand"),
+                tv_confidence=tv_info.get("confidence", 0.0),
+                tv_detection_reasons=tv_info.get("reasons", []),
             )
 
             reasoning = final_state.get("reasoning_steps", [])
