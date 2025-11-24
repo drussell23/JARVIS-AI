@@ -478,6 +478,122 @@ class MetricsDatabase:
             )
         """)
 
+        # 🎙️ VOICE PROFILE LEARNING: Track voice sample collection and confidence improvement
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_profile_learning (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                speaker_name TEXT NOT NULL,
+
+                -- Sample Collection Stats
+                total_samples_collected INTEGER DEFAULT 0,
+                samples_added_today INTEGER DEFAULT 0,
+                samples_added_this_week INTEGER DEFAULT 0,
+                high_confidence_samples INTEGER DEFAULT 0,  -- Samples with confidence > 85%
+                low_quality_samples_rejected INTEGER DEFAULT 0,
+
+                -- Confidence Tracking
+                current_avg_confidence REAL,
+                best_confidence_ever REAL,
+                worst_confidence_ever REAL,
+                confidence_7day_avg REAL,
+                confidence_30day_avg REAL,
+                confidence_trend TEXT,  -- 'improving', 'stable', 'declining'
+                confidence_improvement_rate REAL,  -- % improvement per week
+
+                -- Embedding Evolution
+                embedding_last_updated TEXT,
+                embedding_version INTEGER DEFAULT 1,
+                rolling_samples_used INTEGER DEFAULT 0,
+                embedding_quality_score REAL,
+
+                -- Authentication Performance
+                total_unlock_attempts INTEGER DEFAULT 0,
+                successful_unlocks INTEGER DEFAULT 0,
+                false_rejections INTEGER DEFAULT 0,  -- User rejected incorrectly
+                false_acceptances INTEGER DEFAULT 0,  -- Non-user accepted incorrectly
+                unlock_success_rate REAL,
+                avg_verification_time_ms REAL,
+
+                -- Learning Milestones
+                first_sample_date TEXT,
+                reached_50_samples_date TEXT,
+                reached_100_samples_date TEXT,
+                reached_optimal_confidence_date TEXT,
+
+                -- Quality Metrics
+                avg_audio_quality REAL,
+                avg_snr_db REAL,
+                environments_learned TEXT,  -- JSON array of environment types
+
+                UNIQUE(speaker_name)
+            )
+        """)
+
+        # 🎙️ VOICE SAMPLE LOG: Individual sample tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_sample_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                speaker_name TEXT NOT NULL,
+
+                -- Sample Details
+                sample_source TEXT,  -- 'unlock_attempt', 'enrollment', 'calibration'
+                audio_duration_ms REAL,
+                audio_quality_score REAL,
+                snr_db REAL,
+
+                -- Verification Result
+                confidence REAL,
+                was_verified INTEGER,
+                threshold_used REAL,
+
+                -- Whether sample was used for learning
+                added_to_profile INTEGER DEFAULT 0,
+                rejection_reason TEXT,  -- 'low_quality', 'low_confidence', 'daily_limit', etc.
+
+                -- Context
+                environment_type TEXT,
+                time_of_day TEXT,  -- 'morning', 'afternoon', 'evening', 'night'
+                display_mode TEXT,  -- 'single', 'tv_mirrored', etc.
+
+                -- Embedding (stored as base64)
+                embedding_stored INTEGER DEFAULT 0,
+                embedding_dimensions INTEGER
+            )
+        """)
+
+        # 🎙️ CONFIDENCE HISTORY: Track confidence over time for trending
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_confidence_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                speaker_name TEXT NOT NULL,
+                date TEXT NOT NULL,
+
+                -- Daily Aggregates
+                attempts_today INTEGER DEFAULT 0,
+                avg_confidence_today REAL,
+                best_confidence_today REAL,
+                worst_confidence_today REAL,
+
+                -- Cumulative Stats at this point
+                total_samples_to_date INTEGER,
+                rolling_avg_confidence REAL,  -- Last 50 attempts
+
+                -- Environmental Performance
+                home_confidence_avg REAL,
+                office_confidence_avg REAL,
+                noisy_confidence_avg REAL,
+
+                -- Time-of-day Performance
+                morning_confidence_avg REAL,
+                afternoon_confidence_avg REAL,
+                evening_confidence_avg REAL,
+                night_confidence_avg REAL
+            )
+        """)
+
         # 🖥️ DYNAMIC SAI: Display connection events (real-time TV detection)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS display_connection_events (
@@ -628,6 +744,14 @@ class MetricsDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_identifier ON display_success_history(display_identifier)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_type ON display_success_history(display_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_tv ON display_success_history(is_tv)")
+
+        # 🎙️ Indexes for Voice Profile Learning tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_profile_speaker ON voice_profile_learning(speaker_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_sample_speaker ON voice_sample_log(speaker_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_sample_timestamp ON voice_sample_log(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_sample_confidence ON voice_sample_log(confidence)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_confidence_speaker ON voice_confidence_history(speaker_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_confidence_date ON voice_confidence_history(date)")
 
         # 🖥️ Indexes for Dynamic SAI tables
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_connection_events_timestamp ON display_connection_events(timestamp)")
@@ -2523,6 +2647,409 @@ class MetricsDatabase:
         except Exception as e:
             logger.error(f"Failed to get connection history: {e}", exc_info=True)
             return []
+
+    # =========================================================================
+    # 🎙️ VOICE PROFILE LEARNING: Continuous voice enrollment tracking
+    # =========================================================================
+
+    async def record_voice_sample(
+        self,
+        speaker_name: str,
+        confidence: float,
+        was_verified: bool,
+        audio_quality: float = 0.5,
+        snr_db: float = 15.0,
+        audio_duration_ms: float = 0,
+        sample_source: str = "unlock_attempt",
+        environment_type: str = "unknown",
+        threshold_used: float = 0.85,
+        added_to_profile: bool = False,
+        rejection_reason: str = None,
+        embedding_dimensions: int = 192
+    ) -> Optional[int]:
+        """
+        Record a voice sample from an unlock attempt for continuous learning tracking.
+
+        This tracks every voice sample JARVIS hears, whether it's added to the
+        profile or not, enabling analytics on voice recognition improvement.
+
+        Args:
+            speaker_name: Name of the speaker
+            confidence: Confidence score from verification
+            was_verified: Whether verification passed
+            audio_quality: Quality score (0-1)
+            snr_db: Signal-to-noise ratio
+            audio_duration_ms: Duration of audio
+            sample_source: Source of sample
+            environment_type: Environment where recorded
+            threshold_used: Threshold used for verification
+            added_to_profile: Whether sample was added to voice profile
+            rejection_reason: Why sample was rejected (if applicable)
+            embedding_dimensions: Dimensions of the embedding
+
+        Returns:
+            Sample ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now()
+
+            # Determine time of day
+            hour = now.hour
+            if 5 <= hour < 12:
+                time_of_day = 'morning'
+            elif 12 <= hour < 17:
+                time_of_day = 'afternoon'
+            elif 17 <= hour < 21:
+                time_of_day = 'evening'
+            else:
+                time_of_day = 'night'
+
+            cursor.execute("""
+                INSERT INTO voice_sample_log (
+                    timestamp, speaker_name,
+                    sample_source, audio_duration_ms, audio_quality_score, snr_db,
+                    confidence, was_verified, threshold_used,
+                    added_to_profile, rejection_reason,
+                    environment_type, time_of_day,
+                    embedding_stored, embedding_dimensions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now.isoformat(), speaker_name,
+                sample_source, audio_duration_ms, audio_quality, snr_db,
+                confidence, 1 if was_verified else 0, threshold_used,
+                1 if added_to_profile else 0, rejection_reason,
+                environment_type, time_of_day,
+                1 if added_to_profile else 0, embedding_dimensions
+            ))
+
+            sample_id = cursor.lastrowid
+
+            # Update voice profile learning stats
+            await self._update_voice_profile_learning(
+                cursor, speaker_name, confidence, was_verified,
+                audio_quality, added_to_profile
+            )
+
+            # Update confidence history
+            await self._update_confidence_history(
+                cursor, speaker_name, confidence, environment_type, time_of_day
+            )
+
+            conn.commit()
+            conn.close()
+
+            status = "✅ ADDED" if added_to_profile else "📝 LOGGED"
+            logger.info(
+                f"🎙️ [VOICE] {status} sample #{sample_id} for {speaker_name} "
+                f"(conf: {confidence:.1%}, quality: {audio_quality:.2f})"
+            )
+
+            return sample_id
+
+        except Exception as e:
+            logger.error(f"Failed to record voice sample: {e}", exc_info=True)
+            return None
+
+    async def _update_voice_profile_learning(
+        self,
+        cursor,
+        speaker_name: str,
+        confidence: float,
+        was_verified: bool,
+        audio_quality: float,
+        added_to_profile: bool
+    ):
+        """Update the voice profile learning stats for a speaker"""
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+
+        # Check if profile exists
+        cursor.execute("""
+            SELECT id, total_samples_collected, samples_added_today,
+                   high_confidence_samples, low_quality_samples_rejected,
+                   best_confidence_ever, worst_confidence_ever,
+                   total_unlock_attempts, successful_unlocks
+            FROM voice_profile_learning
+            WHERE speaker_name = ?
+        """, (speaker_name,))
+
+        row = cursor.fetchone()
+
+        if row:
+            # Update existing
+            row_id = row[0]
+            total_samples = (row[1] or 0) + (1 if added_to_profile else 0)
+            samples_today = (row[2] or 0) + (1 if added_to_profile else 0)
+            high_conf_samples = (row[3] or 0) + (1 if confidence >= 0.85 and added_to_profile else 0)
+            rejected = (row[4] or 0) + (1 if not added_to_profile else 0)
+            best_conf = max(row[5] or 0, confidence)
+            worst_conf = min(row[6] or 1.0, confidence) if row[6] else confidence
+            total_attempts = (row[7] or 0) + 1
+            successful = (row[8] or 0) + (1 if was_verified else 0)
+
+            success_rate = successful / total_attempts if total_attempts > 0 else 0
+
+            # Calculate confidence trend (simple: compare to best)
+            if confidence >= best_conf * 0.95:
+                trend = 'improving'
+            elif confidence >= best_conf * 0.85:
+                trend = 'stable'
+            else:
+                trend = 'declining'
+
+            cursor.execute("""
+                UPDATE voice_profile_learning SET
+                    timestamp = ?,
+                    total_samples_collected = ?,
+                    samples_added_today = ?,
+                    high_confidence_samples = ?,
+                    low_quality_samples_rejected = ?,
+                    current_avg_confidence = ?,
+                    best_confidence_ever = ?,
+                    worst_confidence_ever = ?,
+                    confidence_trend = ?,
+                    total_unlock_attempts = ?,
+                    successful_unlocks = ?,
+                    unlock_success_rate = ?,
+                    avg_audio_quality = ?
+                WHERE id = ?
+            """, (
+                now.isoformat(),
+                total_samples,
+                samples_today,
+                high_conf_samples,
+                rejected,
+                confidence,  # Latest confidence as current
+                best_conf,
+                worst_conf,
+                trend,
+                total_attempts,
+                successful,
+                success_rate,
+                audio_quality,
+                row_id
+            ))
+
+            # Check for milestones
+            if total_samples == 50 and row[1] < 50:
+                cursor.execute("""
+                    UPDATE voice_profile_learning SET reached_50_samples_date = ?
+                    WHERE id = ?
+                """, (today, row_id))
+                logger.info(f"🎉 [VOICE] {speaker_name} reached 50 voice samples!")
+
+            if total_samples == 100 and row[1] < 100:
+                cursor.execute("""
+                    UPDATE voice_profile_learning SET reached_100_samples_date = ?
+                    WHERE id = ?
+                """, (today, row_id))
+                logger.info(f"🎉 [VOICE] {speaker_name} reached 100 voice samples!")
+
+        else:
+            # Create new profile
+            cursor.execute("""
+                INSERT INTO voice_profile_learning (
+                    timestamp, speaker_name,
+                    total_samples_collected, samples_added_today, high_confidence_samples,
+                    low_quality_samples_rejected,
+                    current_avg_confidence, best_confidence_ever, worst_confidence_ever,
+                    confidence_trend,
+                    total_unlock_attempts, successful_unlocks, unlock_success_rate,
+                    avg_audio_quality,
+                    first_sample_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now.isoformat(), speaker_name,
+                1 if added_to_profile else 0,
+                1 if added_to_profile else 0,
+                1 if confidence >= 0.85 and added_to_profile else 0,
+                0 if added_to_profile else 1,
+                confidence, confidence, confidence,
+                'stable',
+                1, 1 if was_verified else 0,
+                1.0 if was_verified else 0.0,
+                audio_quality,
+                today
+            ))
+
+    async def _update_confidence_history(
+        self,
+        cursor,
+        speaker_name: str,
+        confidence: float,
+        environment_type: str,
+        time_of_day: str
+    ):
+        """Update daily confidence history for trending"""
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+
+        # Check if today's record exists
+        cursor.execute("""
+            SELECT id, attempts_today, avg_confidence_today,
+                   best_confidence_today, worst_confidence_today
+            FROM voice_confidence_history
+            WHERE speaker_name = ? AND date = ?
+        """, (speaker_name, today))
+
+        row = cursor.fetchone()
+
+        if row:
+            row_id = row[0]
+            attempts = (row[1] or 0) + 1
+            # Rolling average
+            old_avg = row[2] or confidence
+            new_avg = (old_avg * (attempts - 1) + confidence) / attempts
+            best = max(row[3] or 0, confidence)
+            worst = min(row[4] or 1.0, confidence)
+
+            cursor.execute("""
+                UPDATE voice_confidence_history SET
+                    timestamp = ?,
+                    attempts_today = ?,
+                    avg_confidence_today = ?,
+                    best_confidence_today = ?,
+                    worst_confidence_today = ?
+                WHERE id = ?
+            """, (now.isoformat(), attempts, new_avg, best, worst, row_id))
+        else:
+            cursor.execute("""
+                INSERT INTO voice_confidence_history (
+                    timestamp, speaker_name, date,
+                    attempts_today, avg_confidence_today,
+                    best_confidence_today, worst_confidence_today
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now.isoformat(), speaker_name, today,
+                1, confidence, confidence, confidence
+            ))
+
+    async def get_voice_profile_stats(self, speaker_name: str) -> Dict[str, Any]:
+        """
+        Get comprehensive voice profile learning stats for a speaker.
+
+        Returns stats about sample collection, confidence trends,
+        and authentication performance.
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Get profile learning stats
+            cursor.execute("""
+                SELECT * FROM voice_profile_learning WHERE speaker_name = ?
+            """, (speaker_name,))
+            profile = cursor.fetchone()
+
+            # Get recent samples
+            cursor.execute("""
+                SELECT confidence, was_verified, audio_quality_score, time_of_day
+                FROM voice_sample_log
+                WHERE speaker_name = ?
+                ORDER BY timestamp DESC
+                LIMIT 50
+            """, (speaker_name,))
+            recent_samples = cursor.fetchall()
+
+            # Get confidence history (last 7 days)
+            cursor.execute("""
+                SELECT date, avg_confidence_today, attempts_today
+                FROM voice_confidence_history
+                WHERE speaker_name = ?
+                ORDER BY date DESC
+                LIMIT 7
+            """, (speaker_name,))
+            history = cursor.fetchall()
+
+            conn.close()
+
+            if profile:
+                stats = dict(profile)
+
+                # Add recent sample analysis
+                if recent_samples:
+                    confidences = [s['confidence'] for s in recent_samples]
+                    stats['recent_50_avg_confidence'] = sum(confidences) / len(confidences)
+                    stats['recent_50_best'] = max(confidences)
+                    stats['recent_50_worst'] = min(confidences)
+
+                    # Time-of-day performance
+                    tod_stats = {}
+                    for s in recent_samples:
+                        tod = s['time_of_day']
+                        if tod not in tod_stats:
+                            tod_stats[tod] = []
+                        tod_stats[tod].append(s['confidence'])
+
+                    stats['time_of_day_performance'] = {
+                        tod: sum(confs) / len(confs)
+                        for tod, confs in tod_stats.items()
+                    }
+
+                # Add history
+                stats['confidence_history_7days'] = [
+                    {'date': h['date'], 'avg': h['avg_confidence_today'], 'attempts': h['attempts_today']}
+                    for h in history
+                ]
+
+                return stats
+            else:
+                return {
+                    'speaker_name': speaker_name,
+                    'message': 'No voice profile learning data yet',
+                    'total_samples_collected': 0
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get voice profile stats: {e}", exc_info=True)
+            return {'error': str(e)}
+
+    async def get_voice_learning_summary(self, speaker_name: str) -> str:
+        """
+        Get a human-readable summary of voice learning progress.
+
+        This can be spoken by JARVIS to inform the user about
+        their voice profile's improvement.
+        """
+        stats = await self.get_voice_profile_stats(speaker_name)
+
+        if 'error' in stats or stats.get('total_samples_collected', 0) == 0:
+            return f"I haven't collected enough voice samples yet for {speaker_name}."
+
+        total = stats.get('total_samples_collected', 0)
+        best = stats.get('best_confidence_ever', 0)
+        current = stats.get('current_avg_confidence', 0)
+        trend = stats.get('confidence_trend', 'stable')
+        success_rate = stats.get('unlock_success_rate', 0)
+
+        summary_parts = [
+            f"Voice profile for {speaker_name}:",
+            f"I've collected {total} voice samples.",
+            f"Your best confidence score is {best:.0%}.",
+            f"Current average confidence is {current:.0%}.",
+            f"Confidence trend is {trend}.",
+            f"Unlock success rate is {success_rate:.0%}."
+        ]
+
+        # Milestones
+        if stats.get('reached_100_samples_date'):
+            summary_parts.append(f"Reached 100 samples on {stats['reached_100_samples_date']}!")
+        elif stats.get('reached_50_samples_date'):
+            summary_parts.append(f"Reached 50 samples on {stats['reached_50_samples_date']}!")
+
+        # Recommendation
+        if total < 50:
+            summary_parts.append(f"I need about {50 - total} more samples for optimal recognition.")
+        elif trend == 'declining':
+            summary_parts.append("Consider re-enrolling in a quiet environment.")
+        elif trend == 'improving':
+            summary_parts.append("Your voice profile is getting better with each use!")
+
+        return " ".join(summary_parts)
 
 
 # Singleton instance

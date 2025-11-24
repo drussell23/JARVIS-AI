@@ -3802,6 +3802,30 @@ class SpeakerVerificationService:
             if verified and embedding is not None:
                 await self._update_rolling_embeddings(speaker_name, embedding)
 
+            # 🎙️ Track in metrics database for voice learning analytics
+            try:
+                from voice_unlock.metrics_database import get_metrics_database
+                metrics_db = get_metrics_database()
+
+                # Determine if sample was added to profile (high quality + verified)
+                added_to_profile = verified and quality_score >= 0.5 and confidence >= 0.50
+
+                await metrics_db.record_voice_sample(
+                    speaker_name=speaker_name,
+                    confidence=confidence,
+                    was_verified=verified,
+                    audio_quality=quality_score,
+                    snr_db=self._estimate_snr(np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0) if audio_data else 15.0,
+                    sample_source="unlock_attempt",
+                    environment_type=environment_type or "unknown",
+                    threshold_used=self.verification_threshold,
+                    added_to_profile=added_to_profile,
+                    rejection_reason=None if added_to_profile else ("low_quality" if quality_score < 0.5 else "low_confidence" if confidence < 0.50 else "not_verified"),
+                    embedding_dimensions=len(embedding) if embedding is not None else 192
+                )
+            except Exception as metrics_error:
+                logger.debug(f"Metrics tracking skipped: {metrics_error}")
+
         except Exception as e:
             logger.error(f"Failed to store voice sample: {e}")
 
