@@ -803,38 +803,512 @@ class VoiceFeedbackGenerator:
 
 
 # ============================================================================
-# Multi-Factor Authentication Fusion Engine
+# LangChain Tools for Multi-Factor Authentication
+# ============================================================================
+
+try:
+    from langchain.tools import BaseTool
+    from langchain.agents import AgentExecutor
+    from langchain_core.runnables import RunnablePassthrough
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    logger.info("LangChain not available - using direct orchestration")
+
+
+class VoiceAnalysisHypothesis(str, Enum):
+    """Hypotheses for why voice verification might fail."""
+    WRONG_PERSON = "wrong_person"
+    AUDIO_EQUIPMENT_CHANGE = "audio_equipment_change"
+    ENVIRONMENTAL_NOISE = "environmental_noise"
+    VOICE_ILLNESS = "voice_illness"
+    VOICE_STRESS = "voice_stress"
+    VOICE_FATIGUE = "voice_fatigue"
+    MICROPHONE_DISTANCE = "microphone_distance"
+    RECORDING_QUALITY = "recording_quality"
+
+
+@dataclass
+class VoiceAnalysisResult:
+    """Result of advanced voice analysis."""
+    fundamental_frequency_hz: float = 0.0
+    frequency_deviation_percent: float = 0.0  # Deviation from baseline
+    speech_rate_wpm: float = 0.0
+    speech_rate_deviation_percent: float = 0.0
+    voice_quality_score: float = 0.0  # Roughness, breathiness indicators
+    snr_db: float = 0.0
+    microphone_signature: str = "unknown"
+    detected_anomalies: List[str] = field(default_factory=list)
+    illness_indicators: List[str] = field(default_factory=list)
+    hypothesis: Optional[VoiceAnalysisHypothesis] = None
+    hypothesis_confidence: float = 0.0
+
+
+@dataclass
+class ChallengeQuestion:
+    """Challenge question for borderline authentication."""
+    question: str
+    expected_answer: str
+    answer_type: str  # 'exact', 'contains', 'semantic'
+    difficulty: str  # 'easy', 'medium', 'hard'
+    context_source: str  # 'git_history', 'calendar', 'project', 'personal'
+
+
+# ============================================================================
+# Multi-Factor Authentication Fusion Engine (Enhanced)
 # ============================================================================
 
 class MultiFactorAuthFusionEngine:
     """
-    Fuses multiple authentication signals for robust verification.
+    Advanced multi-factor authentication fusion with LangChain orchestration.
 
     Factors:
     - Voice biometric (primary)
-    - Behavioral patterns
-    - Contextual intelligence
-    - Device proximity (Apple Watch)
-    - Time-based patterns
+    - Behavioral patterns (time, location, usage patterns)
+    - Contextual intelligence (device state, recent activity)
+    - Device proximity (Apple Watch, Bluetooth)
+    - Historical patterns (success rate, typical confidence)
+
+    Enhanced Features:
+    - Sick voice detection with acoustic analysis
+    - Microphone adaptation and signature learning
+    - Challenge question generation for borderline cases
+    - Graceful degradation chain
+    - Hypothesis generation for failures
     """
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.MultiFactor")
 
-        # Factor weights (should sum to 1.0)
-        self.weights = {
-            "voice": 0.50,      # Primary voice biometric
+        # Factor weights (dynamically adjusted based on reliability)
+        self.base_weights = {
+            "voice": 0.50,       # Primary voice biometric
             "behavioral": 0.20,  # Speaking patterns, timing
-            "context": 0.15,    # Location, device, time
-            "proximity": 0.10,  # Apple Watch, Bluetooth devices
-            "history": 0.05    # Past verification history
+            "context": 0.15,     # Location, device, time
+            "proximity": 0.10,   # Apple Watch, Bluetooth devices
+            "history": 0.05      # Past verification history
+        }
+        self.weights = self.base_weights.copy()
+
+        # Minimum thresholds per factor (adaptive)
+        self.factor_thresholds = {
+            "voice": 0.60,        # Voice must be at least 60% alone
+            "overall": 0.80,      # Combined must reach 80%
+            "voice_with_context": 0.55,  # Lower voice threshold when context is strong
+            "challenge_trigger": 0.70    # Trigger challenge question below this
         }
 
-        # Minimum thresholds per factor
-        self.factor_thresholds = {
-            "voice": 0.60,       # Voice must be at least 60% alone
-            "overall": 0.80     # Combined must reach 80%
-        }
+        # Microphone signatures (learned over time)
+        self.known_microphones: Dict[str, Dict[str, Any]] = {}
+        self.current_microphone: Optional[str] = None
+
+        # Voice baseline for illness/stress detection
+        self.voice_baselines: Dict[str, Dict[str, float]] = {}
+
+        # Challenge questions database
+        self.challenge_questions: List[ChallengeQuestion] = []
+        self._init_challenge_questions()
+
+        # Graceful degradation chain
+        self.degradation_chain = [
+            ("primary", self._primary_voice_auth, 0.85),
+            ("voice_behavioral_fusion", self._voice_behavioral_fusion, 0.80),
+            ("challenge_question", self._challenge_question_auth, 0.75),
+            ("proximity_boost", self._proximity_boost_auth, 0.70),
+            ("manual_fallback", self._manual_fallback, 0.0)
+        ]
+
+        # Hypothesis engine for failures
+        self.failure_hypotheses: Dict[str, List[VoiceAnalysisHypothesis]] = {}
+
+    def _init_challenge_questions(self):
+        """Initialize dynamic challenge questions."""
+        # These are templates - actual answers are fetched dynamically
+        self.challenge_questions = [
+            ChallengeQuestion(
+                question="What was the last project you worked on?",
+                expected_answer="",  # Fetched from git/activity
+                answer_type="semantic",
+                difficulty="easy",
+                context_source="git_history"
+            ),
+            ChallengeQuestion(
+                question="What GCP project ID are you using?",
+                expected_answer="jarvis-473803",
+                answer_type="exact",
+                difficulty="medium",
+                context_source="project"
+            ),
+            ChallengeQuestion(
+                question="What time did you last commit code?",
+                expected_answer="",  # Fetched from git
+                answer_type="contains",
+                difficulty="medium",
+                context_source="git_history"
+            )
+        ]
+
+    async def analyze_voice_for_illness(
+        self,
+        audio_data: bytes,
+        speaker_name: str,
+        baseline: Optional[Dict[str, float]] = None
+    ) -> VoiceAnalysisResult:
+        """
+        Analyze voice for signs of illness, stress, or fatigue.
+
+        Detects:
+        - Fundamental frequency shifts (hoarseness)
+        - Voice quality changes (roughness, breathiness)
+        - Speech rate changes (fatigue, illness)
+        - Formant shifts (congestion)
+        """
+        result = VoiceAnalysisResult()
+
+        try:
+            # Convert audio to numpy array
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+            if len(audio_array) < 1600:  # Less than 0.1 second
+                return result
+
+            # Estimate fundamental frequency (F0)
+            result.fundamental_frequency_hz = self._estimate_f0(audio_array)
+
+            # Calculate voice quality (roughness indicator)
+            result.voice_quality_score = self._calculate_voice_quality(audio_array)
+
+            # Estimate SNR
+            result.snr_db = self._estimate_snr(audio_array)
+
+            # Compare to baseline if available
+            if baseline or speaker_name in self.voice_baselines:
+                base = baseline or self.voice_baselines.get(speaker_name, {})
+
+                if "f0" in base and base["f0"] > 0:
+                    deviation = abs(result.fundamental_frequency_hz - base["f0"]) / base["f0"] * 100
+                    result.frequency_deviation_percent = deviation
+
+                    # Illness indicators
+                    if deviation > 15:  # More than 15% deviation
+                        if result.fundamental_frequency_hz < base["f0"]:
+                            result.illness_indicators.append("lower_pitch_hoarseness")
+                            result.detected_anomalies.append("voice_sounds_hoarse")
+                        else:
+                            result.illness_indicators.append("higher_pitch_congestion")
+                            result.detected_anomalies.append("possible_nasal_congestion")
+
+                    if result.voice_quality_score < base.get("quality", 0.7) - 0.15:
+                        result.illness_indicators.append("rougher_voice_quality")
+                        result.detected_anomalies.append("voice_quality_degraded")
+
+            # Generate hypothesis
+            if result.illness_indicators:
+                result.hypothesis = VoiceAnalysisHypothesis.VOICE_ILLNESS
+                result.hypothesis_confidence = min(0.9, len(result.illness_indicators) * 0.3)
+            elif result.snr_db < 10:
+                result.hypothesis = VoiceAnalysisHypothesis.ENVIRONMENTAL_NOISE
+                result.hypothesis_confidence = 0.8
+
+        except Exception as e:
+            self.logger.debug(f"Voice analysis error: {e}")
+
+        return result
+
+    def _estimate_f0(self, audio: np.ndarray, sr: int = 16000) -> float:
+        """Estimate fundamental frequency using autocorrelation."""
+        try:
+            # Use autocorrelation for F0 estimation
+            # Look for periodicity in typical voice range (75-400 Hz)
+            min_period = int(sr / 400)  # 400 Hz
+            max_period = int(sr / 75)   # 75 Hz
+
+            # Compute autocorrelation
+            corr = np.correlate(audio, audio, mode='full')
+            corr = corr[len(corr)//2:]
+
+            # Find peak in voice range
+            search_range = corr[min_period:max_period]
+            if len(search_range) > 0:
+                peak_idx = np.argmax(search_range) + min_period
+                f0 = sr / peak_idx
+                return float(f0)
+        except Exception:
+            pass
+        return 0.0
+
+    def _calculate_voice_quality(self, audio: np.ndarray) -> float:
+        """Calculate voice quality score (1.0 = clear, 0.0 = rough/breathy)."""
+        try:
+            # Harmonic-to-noise ratio approximation
+            # Higher HNR = clearer voice
+            fft = np.fft.rfft(audio[:2048])
+            magnitude = np.abs(fft)
+
+            # Find harmonics (peaks) vs noise floor
+            threshold = np.median(magnitude) * 2
+            harmonics = magnitude[magnitude > threshold]
+            noise = magnitude[magnitude <= threshold]
+
+            if len(noise) > 0 and np.mean(noise) > 0:
+                hnr = np.mean(harmonics) / np.mean(noise)
+                # Normalize to 0-1 range
+                quality = min(1.0, hnr / 20)
+                return float(quality)
+        except Exception:
+            pass
+        return 0.7  # Default moderate quality
+
+    def _estimate_snr(self, audio: np.ndarray) -> float:
+        """Estimate signal-to-noise ratio in dB."""
+        try:
+            # Assume first 10% is noise, rest is signal
+            noise_samples = int(len(audio) * 0.1)
+            noise = audio[:noise_samples]
+            signal = audio[noise_samples:]
+
+            noise_power = np.mean(noise ** 2) + 1e-10
+            signal_power = np.mean(signal ** 2) + 1e-10
+
+            snr = 10 * np.log10(signal_power / noise_power)
+            return float(snr)
+        except Exception:
+            return 15.0  # Default moderate SNR
+
+    async def detect_microphone_change(
+        self,
+        audio_data: bytes,
+        speaker_name: str
+    ) -> Tuple[bool, str, float]:
+        """
+        Detect if user is using a different microphone than usual.
+
+        Returns:
+            Tuple of (is_different, microphone_signature, confidence)
+        """
+        try:
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+            # Extract spectral characteristics for microphone fingerprinting
+            fft = np.fft.rfft(audio_array[:4096])
+            magnitude = np.abs(fft)
+
+            # Low-frequency response (microphone characteristic)
+            low_freq_response = np.mean(magnitude[:50])
+            # High-frequency response
+            high_freq_response = np.mean(magnitude[200:])
+            # Overall spectral shape
+            spectral_centroid = np.sum(np.arange(len(magnitude)) * magnitude) / (np.sum(magnitude) + 1e-10)
+
+            # Create signature
+            signature = f"lf{low_freq_response:.2f}_hf{high_freq_response:.2f}_sc{spectral_centroid:.0f}"
+
+            # Compare to known microphones
+            if speaker_name in self.known_microphones:
+                known = self.known_microphones[speaker_name]
+                best_match = None
+                best_similarity = 0.0
+
+                for mic_name, mic_data in known.items():
+                    # Calculate similarity
+                    diff = abs(mic_data.get("spectral_centroid", 0) - spectral_centroid)
+                    similarity = max(0, 1 - diff / 500)  # Normalize difference
+
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = mic_name
+
+                if best_similarity < 0.7:  # New microphone detected
+                    return True, signature, 1 - best_similarity
+                else:
+                    return False, best_match or signature, best_similarity
+
+            # First time - store as default
+            self.known_microphones[speaker_name] = {
+                "default": {
+                    "signature": signature,
+                    "spectral_centroid": spectral_centroid,
+                    "low_freq": low_freq_response,
+                    "high_freq": high_freq_response
+                }
+            }
+            return False, "default", 1.0
+
+        except Exception as e:
+            self.logger.debug(f"Microphone detection error: {e}")
+            return False, "unknown", 0.5
+
+    async def generate_hypothesis(
+        self,
+        voice_confidence: float,
+        audio_analysis: VoiceAnalysisResult,
+        behavioral_confidence: float,
+        context: Dict[str, Any]
+    ) -> Tuple[VoiceAnalysisHypothesis, str, float]:
+        """
+        Generate hypothesis for why authentication might be failing.
+
+        Returns intelligent retry suggestion based on analysis.
+        """
+        hypotheses: List[Tuple[VoiceAnalysisHypothesis, float, str]] = []
+
+        # Audio quality issues
+        if audio_analysis.snr_db < 12:
+            hypotheses.append((
+                VoiceAnalysisHypothesis.ENVIRONMENTAL_NOISE,
+                0.85,
+                "I'm having trouble hearing you clearly due to background noise. Could you speak closer to the microphone?"
+            ))
+
+        # Illness detection
+        if audio_analysis.illness_indicators:
+            hypotheses.append((
+                VoiceAnalysisHypothesis.VOICE_ILLNESS,
+                0.80,
+                "Your voice sounds different today. Are you feeling alright? Your speech patterns still match, so I can use additional verification."
+            ))
+
+        # Microphone change
+        if context.get("microphone_changed"):
+            hypotheses.append((
+                VoiceAnalysisHypothesis.AUDIO_EQUIPMENT_CHANGE,
+                0.90,
+                f"You're using a different microphone ({context.get('microphone_name', 'unknown')}). Let me recalibrate - say 'unlock my screen' one more time."
+            ))
+
+        # Low voice but good behavioral
+        if voice_confidence < 0.70 and behavioral_confidence > 0.85:
+            if not hypotheses:  # Only if no other hypothesis
+                hypotheses.append((
+                    VoiceAnalysisHypothesis.VOICE_FATIGUE,
+                    0.70,
+                    "Your voice is a bit different than usual, but your patterns match perfectly. Just checking - could you speak a bit clearer?"
+                ))
+
+        # Very low confidence - might be wrong person
+        if voice_confidence < 0.40 and behavioral_confidence < 0.50:
+            hypotheses.append((
+                VoiceAnalysisHypothesis.WRONG_PERSON,
+                0.60,
+                "I'm having significant trouble verifying your voice. Are you using a different microphone or location?"
+            ))
+
+        # Return best hypothesis (sorted by confidence, return as hypothesis, message, confidence)
+        if hypotheses:
+            hypotheses.sort(key=lambda x: x[1], reverse=True)
+            best = hypotheses[0]
+            # Return in order: (hypothesis, message, confidence)
+            return (best[0], best[2], best[1])
+
+        return (VoiceAnalysisHypothesis.RECORDING_QUALITY,
+                "Could you try speaking again? A clearer sample might help.",
+                0.50)
+
+    async def get_challenge_question(
+        self,
+        speaker_name: str,
+        difficulty: str = "easy"
+    ) -> Optional[ChallengeQuestion]:
+        """Get a dynamic challenge question for verification."""
+        import random
+
+        # Filter by difficulty
+        candidates = [q for q in self.challenge_questions if q.difficulty == difficulty]
+
+        if not candidates:
+            candidates = self.challenge_questions
+
+        if not candidates:
+            return None
+
+        question = random.choice(candidates)
+
+        # Try to populate dynamic answer
+        if question.context_source == "git_history":
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["git", "log", "-1", "--format=%s", "--", "."],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode == 0:
+                    question.expected_answer = result.stdout.strip()
+            except Exception:
+                pass
+
+        return question
+
+    async def verify_challenge_answer(
+        self,
+        question: ChallengeQuestion,
+        answer: str
+    ) -> Tuple[bool, float]:
+        """Verify a challenge question answer."""
+        if not answer or not question.expected_answer:
+            return False, 0.0
+
+        answer_lower = answer.lower().strip()
+        expected_lower = question.expected_answer.lower().strip()
+
+        if question.answer_type == "exact":
+            match = answer_lower == expected_lower
+            return match, 1.0 if match else 0.0
+
+        elif question.answer_type == "contains":
+            # Check if key parts are present
+            key_words = expected_lower.split()
+            matches = sum(1 for word in key_words if word in answer_lower)
+            confidence = matches / len(key_words) if key_words else 0
+            return confidence > 0.6, confidence
+
+        elif question.answer_type == "semantic":
+            # Simple semantic matching
+            # In production, this would use embeddings
+            common_words = set(answer_lower.split()) & set(expected_lower.split())
+            all_words = set(answer_lower.split()) | set(expected_lower.split())
+            confidence = len(common_words) / len(all_words) if all_words else 0
+            return confidence > 0.3, confidence
+
+        return False, 0.0
+
+    async def _primary_voice_auth(self, factors: Dict[str, float]) -> Tuple[bool, float]:
+        """Primary voice-only authentication."""
+        voice = factors.get("voice", 0)
+        return voice >= 0.85, voice
+
+    async def _voice_behavioral_fusion(self, factors: Dict[str, float]) -> Tuple[bool, float]:
+        """Voice + behavioral fusion."""
+        voice = factors.get("voice", 0)
+        behavioral = factors.get("behavioral", 0)
+
+        # Lower voice threshold when behavioral is strong
+        fused = voice * 0.6 + behavioral * 0.4
+
+        # Allow lower voice if behavioral is very strong
+        if voice >= 0.55 and behavioral >= 0.90:
+            return True, fused
+
+        return fused >= 0.80, fused
+
+    async def _challenge_question_auth(self, factors: Dict[str, float]) -> Tuple[bool, float]:
+        """Challenge question authentication (placeholder - actual impl in caller)."""
+        return False, factors.get("voice", 0)
+
+    async def _proximity_boost_auth(self, factors: Dict[str, float]) -> Tuple[bool, float]:
+        """Proximity-boosted authentication."""
+        voice = factors.get("voice", 0)
+        proximity = factors.get("proximity", 0)
+
+        if proximity >= 0.95:  # Very close proximity (Apple Watch)
+            # Boost voice confidence
+            boosted = min(1.0, voice * 1.3)
+            return boosted >= 0.70, boosted
+
+        return False, voice
+
+    async def _manual_fallback(self, factors: Dict[str, float]) -> Tuple[bool, float]:
+        """Manual fallback - signals need for password."""
+        return False, 0.0
 
     async def fuse_factors(
         self,
@@ -842,56 +1316,123 @@ class MultiFactorAuthFusionEngine:
         behavioral_confidence: Optional[float] = None,
         context_confidence: Optional[float] = None,
         proximity_confidence: Optional[float] = None,
-        history_confidence: Optional[float] = None
+        history_confidence: Optional[float] = None,
+        audio_analysis: Optional[VoiceAnalysisResult] = None,
+        speaker_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Fuse multiple authentication factors into a final decision.
+        Enhanced multi-factor fusion with adaptive weighting and intelligent decision making.
+
+        Now includes:
+        - Dynamic weight adjustment based on factor reliability
+        - Graceful degradation through authentication chain
+        - Hypothesis generation for failures
+        - Challenge question triggering for borderline cases
 
         Returns:
-            Dict with fused_confidence, decision, and factor breakdown
+            Dict with fused_confidence, decision, factor breakdown, and recommendations
         """
         factors = {
             "voice": voice_confidence
         }
 
-        # Add available factors with defaults
+        # Add available factors with intelligent defaults
         factors["behavioral"] = behavioral_confidence if behavioral_confidence is not None else voice_confidence * 0.9
         factors["context"] = context_confidence if context_confidence is not None else 0.95
         factors["proximity"] = proximity_confidence if proximity_confidence is not None else 0.90
         factors["history"] = history_confidence if history_confidence is not None else 0.85
 
-        # Calculate weighted fusion
+        # Dynamic weight adjustment based on audio quality
+        adjusted_weights = self.base_weights.copy()
+        if audio_analysis:
+            # If poor audio quality, reduce voice weight and increase behavioral
+            if audio_analysis.snr_db < 10:
+                adjusted_weights["voice"] = 0.40
+                adjusted_weights["behavioral"] = 0.30
+                self.logger.debug(f"Reduced voice weight due to low SNR ({audio_analysis.snr_db:.1f} dB)")
+
+            # If illness detected, increase behavioral weight
+            if audio_analysis.illness_indicators:
+                adjusted_weights["voice"] = 0.35
+                adjusted_weights["behavioral"] = 0.35
+                self.logger.debug(f"Adjusted weights for illness indicators: {audio_analysis.illness_indicators}")
+
+        # Calculate weighted fusion with adjusted weights
         fused_confidence = 0.0
         total_weight = 0.0
 
         for factor, confidence in factors.items():
-            weight = self.weights.get(factor, 0.1)
+            weight = adjusted_weights.get(factor, 0.1)
             fused_confidence += confidence * weight
             total_weight += weight
 
         if total_weight > 0:
             fused_confidence = fused_confidence / total_weight
 
-        # Check minimum voice threshold
-        voice_pass = factors["voice"] >= self.factor_thresholds["voice"]
+        # Check thresholds with context-awareness
+        voice_threshold = self.factor_thresholds["voice"]
+
+        # Lower voice threshold if other factors are very strong
+        if factors["behavioral"] > 0.90 and factors["context"] > 0.95:
+            voice_threshold = self.factor_thresholds.get("voice_with_context", 0.55)
+
+        voice_pass = factors["voice"] >= voice_threshold
         overall_pass = fused_confidence >= self.factor_thresholds["overall"]
 
-        # Decision logic
+        # Enhanced decision logic with graceful degradation
+        decision = "denied"
+        recommendation = None
+        retry_strategy = None
+        challenge_required = False
+
         if voice_pass and overall_pass:
             decision = "authenticated"
-        elif not voice_pass and fused_confidence >= 0.85:
-            # Voice low but other factors strong - require confirmation
-            decision = "requires_confirmation"
+        elif voice_pass and fused_confidence >= 0.75:
+            # Voice ok but fused not quite there - try with context boost
+            decision = "authenticated"  # Allow with strong voice
+        elif not voice_pass and factors["behavioral"] >= 0.90 and factors["context"] >= 0.90:
+            # Voice low but behavioral and context excellent - challenge question
+            decision = "requires_challenge"
+            challenge_required = True
+            recommendation = "Voice confidence low but patterns match. Asking verification question."
+        elif fused_confidence >= self.factor_thresholds.get("challenge_trigger", 0.70):
+            # Borderline case - try degradation chain
+            decision = "requires_challenge"
+            challenge_required = True
+        elif factors["voice"] >= 0.50 and factors["proximity"] >= 0.95:
+            # Low voice but device is very close - might be equipment issue
+            decision = "retry_recommended"
+            if audio_analysis:
+                hypothesis, msg, _ = await self.generate_hypothesis(
+                    voice_confidence, audio_analysis, factors["behavioral"], {}
+                )
+                retry_strategy = hypothesis.value
+                recommendation = msg
         else:
             decision = "denied"
+            # Generate helpful feedback
+            if audio_analysis:
+                hypothesis, msg, conf = await self.generate_hypothesis(
+                    voice_confidence, audio_analysis, factors["behavioral"], {}
+                )
+                recommendation = msg
 
         return {
             "fused_confidence": fused_confidence,
             "decision": decision,
             "factors": factors,
-            "weights_used": self.weights,
+            "weights_used": adjusted_weights,
+            "voice_threshold_used": voice_threshold,
             "voice_threshold_met": voice_pass,
-            "overall_threshold_met": overall_pass
+            "overall_threshold_met": overall_pass,
+            "challenge_required": challenge_required,
+            "recommendation": recommendation,
+            "retry_strategy": retry_strategy,
+            "audio_quality": {
+                "snr_db": audio_analysis.snr_db if audio_analysis else None,
+                "voice_quality": audio_analysis.voice_quality_score if audio_analysis else None,
+                "illness_detected": bool(audio_analysis.illness_indicators) if audio_analysis else False
+            } if audio_analysis else None
         }
 
     def calculate_behavioral_confidence(

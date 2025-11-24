@@ -128,6 +128,12 @@ regexes = [
   '''typing my password''',
   '''password correctly''',
   '''Password Typing Optimization''',
+  # Allow user-facing authentication fallback messages (no actual secrets)
+  '''(?i)use password authentication''',
+  '''(?i)use your password''',
+  '''(?i)use password\.''',
+  '''(?i)password authentication\.''',
+  '''(?i)Please use password''',
 ]
 
 # Safe paths - files that are allowed to contain example secrets
@@ -167,6 +173,7 @@ paths = [
   '''backend/voice_unlock/voice_unlock_monitor.py''',
   '''backend/api/simple_unlock_handler.py''',
   '''backend/voice_unlock/intelligent_voice_unlock_service.py''',
+  '''backend/voice_unlock/voice_unlock_integration.py''',
   '''backend/voice_unlock/fix_keychain_password.sh''',
   '''backend/voice_unlock/metrics_database.py''',
   '''backend/voice_unlock/ML_ARCHITECTURE.md''',

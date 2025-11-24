@@ -125,16 +125,26 @@ class AdaptiveAuthenticationEngine:
             self._build_graph()
 
     def _build_graph(self):
-        """Build LangGraph state machine for adaptive authentication."""
+        """
+        Build enhanced LangGraph state machine for adaptive authentication.
+
+        Graph structure:
+        analyze_audio -> verify_speaker -> check_confidence
+                                              ├── success -> generate_feedback
+                                              ├── challenge -> challenge_question -> generate_feedback
+                                              ├── retry -> determine_retry -> generate_feedback
+                                              └── fail -> generate_feedback
+        """
         if not LANGGRAPH_AVAILABLE:
             return
 
         graph = StateGraph(dict)
 
-        # Add nodes
+        # Add nodes including new challenge question node
         graph.add_node("analyze_audio", self._analyze_audio_node)
         graph.add_node("verify_speaker", self._verify_speaker_node)
         graph.add_node("check_confidence", self._check_confidence_node)
+        graph.add_node("challenge_question", self._challenge_question_node)  # NEW
         graph.add_node("generate_feedback", self._generate_feedback_node)
         graph.add_node("determine_retry", self._determine_retry_node)
         graph.add_node("final_decision", self._final_decision_node)
@@ -144,32 +154,97 @@ class AdaptiveAuthenticationEngine:
         graph.add_edge("analyze_audio", "verify_speaker")
         graph.add_edge("verify_speaker", "check_confidence")
 
-        # Conditional edges based on confidence
+        # Enhanced conditional edges including challenge path
         graph.add_conditional_edges(
             "check_confidence",
             self._route_after_confidence,
             {
                 "success": "generate_feedback",
+                "challenge": "challenge_question",  # NEW path
                 "retry": "determine_retry",
                 "fail": "generate_feedback"
             }
         )
 
+        graph.add_edge("challenge_question", "generate_feedback")
         graph.add_edge("determine_retry", "generate_feedback")
         graph.add_edge("generate_feedback", "final_decision")
         graph.add_edge("final_decision", END)
 
         self._graph = graph.compile()
 
+    async def _challenge_question_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle challenge question verification for borderline cases.
+
+        This is triggered when:
+        - Voice confidence is low but behavioral patterns match strongly
+        - User might be sick, using different microphone, or in unusual environment
+        """
+        try:
+            if self.speaker_service and hasattr(self.speaker_service, 'multi_factor_fusion'):
+                fusion_engine = self.speaker_service.multi_factor_fusion
+
+                # Get a challenge question
+                question = await fusion_engine.get_challenge_question(
+                    state.get("speaker_name", "Derek"),
+                    difficulty="easy"
+                )
+
+                if question:
+                    state["challenge_question"] = question.question
+                    state["challenge_expected"] = question.expected_answer
+                    state["challenge_type"] = question.answer_type
+
+                    # Generate appropriate feedback based on reason
+                    reason = state.get("challenge_reason", "borderline_confidence")
+
+                    if reason == "voice_low_behavioral_high":
+                        state["feedback_message"] = (
+                            f"Your voice sounds different today, but your patterns match perfectly. "
+                            f"Quick verification: {question.question}"
+                        )
+                    else:
+                        state["feedback_message"] = (
+                            f"For security, quick question: {question.question}"
+                        )
+
+                    # Mark as requiring challenge answer
+                    state["awaiting_challenge_answer"] = True
+                    state["decision"] = "challenge_pending"
+                else:
+                    # No question available, allow with warning
+                    state["decision"] = "authenticated"
+                    state["feedback_message"] = "Voice slightly different but patterns match. Unlocking."
+
+        except Exception as e:
+            self.logger.error(f"Challenge question error: {e}")
+            # Fall back to authenticated if behavioral is very strong
+            if state.get("behavioral_confidence", 0) >= 0.95:
+                state["decision"] = "authenticated"
+                state["feedback_message"] = "Patterns match. Unlocking."
+            else:
+                state["decision"] = "denied"
+
+        return state
+
     async def _analyze_audio_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze audio quality and detect environmental issues."""
+        """
+        Enhanced audio analysis with illness detection and microphone fingerprinting.
+
+        Analyzes:
+        - Audio quality (SNR, clipping, volume)
+        - Environmental noise
+        - Voice characteristics for illness/stress detection
+        - Microphone signature for equipment changes
+        """
         audio_data = state.get("audio_data", b"")
+        speaker_name = state.get("speaker_name", "Derek")
 
         # Basic audio analysis
         if len(audio_data) < 1000:
             state["environmental_issues"].append("audio_too_short")
         else:
-            # Estimate SNR and quality
             try:
                 audio_array = np.frombuffer(audio_data[:4000], dtype=np.int16).astype(np.float32) / 32768.0
                 rms = np.sqrt(np.mean(audio_array ** 2))
@@ -179,13 +254,50 @@ class AdaptiveAuthenticationEngine:
                 elif rms > 0.9:
                     state["environmental_issues"].append("audio_clipping")
 
-                # Estimate background noise
+                # Estimate background noise and SNR
                 noise_estimate = np.std(audio_array[:500])
                 if noise_estimate > 0.05:
                     state["environmental_issues"].append("background_noise")
 
+                # Enhanced analysis using MultiFactorFusion engine
+                if self.speaker_service and hasattr(self.speaker_service, 'multi_factor_fusion'):
+                    fusion = self.speaker_service.multi_factor_fusion
+
+                    # Analyze for illness/stress indicators
+                    voice_analysis = await fusion.analyze_voice_for_illness(
+                        audio_data, speaker_name
+                    )
+                    state["voice_analysis"] = {
+                        "f0_hz": voice_analysis.fundamental_frequency_hz,
+                        "f0_deviation_percent": voice_analysis.frequency_deviation_percent,
+                        "voice_quality": voice_analysis.voice_quality_score,
+                        "snr_db": voice_analysis.snr_db,
+                        "illness_indicators": voice_analysis.illness_indicators,
+                        "anomalies": voice_analysis.detected_anomalies
+                    }
+
+                    if voice_analysis.illness_indicators:
+                        state["environmental_issues"].append("voice_anomaly_detected")
+                        state["illness_detected"] = True
+                        self.logger.info(f"Illness indicators detected: {voice_analysis.illness_indicators}")
+
+                    # Detect microphone changes
+                    mic_changed, mic_sig, mic_conf = await fusion.detect_microphone_change(
+                        audio_data, speaker_name
+                    )
+                    state["microphone_info"] = {
+                        "changed": mic_changed,
+                        "signature": mic_sig,
+                        "confidence": mic_conf
+                    }
+
+                    if mic_changed:
+                        state["environmental_issues"].append("microphone_changed")
+                        state["microphone_changed"] = True
+                        self.logger.info(f"Microphone change detected: {mic_sig}")
+
             except Exception as e:
-                self.logger.debug(f"Audio analysis error: {e}")
+                self.logger.debug(f"Enhanced audio analysis error: {e}")
 
         return state
 
@@ -226,71 +338,216 @@ class AdaptiveAuthenticationEngine:
         return state
 
     async def _check_confidence_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Check confidence levels and determine next action."""
+        """
+        Enhanced confidence checking with multi-factor analysis.
+
+        Now includes:
+        - Sick voice detection
+        - Microphone change detection
+        - Challenge question triggering
+        - Hypothesis-based retry suggestions
+        """
         if state.get("threat_detected"):
             state["decision"] = "denied"
         elif state.get("is_verified"):
             state["decision"] = "authenticated"
-        elif state.get("attempt_count", 0) < state.get("max_attempts", 3):
-            state["decision"] = "retry"
         else:
-            state["decision"] = "denied"
+            voice_conf = state.get("voice_confidence", 0.0)
+            behavioral_conf = state.get("behavioral_confidence", 0.0)
+            fused_conf = state.get("fused_confidence", 0.0)
+
+            # Check for challenge question scenario
+            # Voice low but behavioral/context excellent
+            if voice_conf < 0.70 and behavioral_conf >= 0.90:
+                state["decision"] = "challenge_question"
+                state["challenge_reason"] = "voice_low_behavioral_high"
+                self.logger.info(f"Challenge question triggered: voice={voice_conf:.2f}, behavioral={behavioral_conf:.2f}")
+            # Borderline case - might be sick voice or equipment issue
+            elif 0.60 <= voice_conf < 0.85 and fused_conf >= 0.75:
+                state["decision"] = "challenge_question"
+                state["challenge_reason"] = "borderline_confidence"
+            # Retry if under max attempts
+            elif state.get("attempt_count", 0) < state.get("max_attempts", 3):
+                state["decision"] = "retry"
+            else:
+                state["decision"] = "denied"
 
         return state
 
     def _route_after_confidence(self, state: Dict[str, Any]) -> str:
-        """Route based on verification result."""
+        """Route based on verification result with enhanced decision paths."""
         decision = state.get("decision", "pending")
 
         if decision == "authenticated":
             return "success"
+        elif decision == "challenge_question":
+            return "challenge"  # New route for challenge questions
         elif decision == "retry":
             return "retry"
         else:
             return "fail"
 
     async def _determine_retry_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Determine optimal retry strategy based on issues detected."""
+        """
+        Enhanced retry strategy determination using hypothesis generation.
+
+        Uses the MultiFactorFusion engine to:
+        - Analyze why verification might have failed
+        - Generate intelligent, context-aware retry suggestions
+        - Adapt to microphone changes, illness, environment
+        """
         issues = state.get("environmental_issues", [])
         confidence = state.get("fused_confidence", 0.0)
+        voice_conf = state.get("voice_confidence", 0.0)
+        behavioral_conf = state.get("behavioral_confidence", 0.0)
 
-        # Determine retry strategy
-        if "background_noise" in issues:
-            state["retry_strategy"] = "noise_mitigation"
-            state["feedback_message"] = "I'm having trouble hearing you clearly due to background noise. Could you speak closer to the microphone?"
-        elif "audio_too_quiet" in issues:
-            state["retry_strategy"] = "volume_boost"
-            state["feedback_message"] = "Your voice was a bit quiet. Could you speak a little louder?"
-        elif confidence >= 0.70:
-            state["retry_strategy"] = "minor_adjustment"
-            state["feedback_message"] = "Almost there! Could you say that one more time?"
-        elif confidence >= 0.50:
-            state["retry_strategy"] = "different_phrase"
-            state["feedback_message"] = "I'm having trouble matching your voice. Try speaking more naturally."
+        # Try to use enhanced hypothesis generation
+        if self.speaker_service and hasattr(self.speaker_service, 'multi_factor_fusion'):
+            fusion = self.speaker_service.multi_factor_fusion
+
+            # Build context for hypothesis generation
+            context = {
+                "microphone_changed": state.get("microphone_changed", False),
+                "microphone_name": state.get("microphone_info", {}).get("signature", "unknown"),
+                "illness_detected": state.get("illness_detected", False)
+            }
+
+            # Get voice analysis if available
+            voice_analysis = state.get("voice_analysis", {})
+            from voice.speaker_verification_service import VoiceAnalysisResult
+            analysis_result = VoiceAnalysisResult(
+                fundamental_frequency_hz=voice_analysis.get("f0_hz", 0),
+                frequency_deviation_percent=voice_analysis.get("f0_deviation_percent", 0),
+                voice_quality_score=voice_analysis.get("voice_quality", 0.7),
+                snr_db=voice_analysis.get("snr_db", 15),
+                illness_indicators=voice_analysis.get("illness_indicators", []),
+                detected_anomalies=voice_analysis.get("anomalies", [])
+            )
+
+            # Generate hypothesis and retry suggestion
+            hypothesis, message, conf = await fusion.generate_hypothesis(
+                voice_conf, analysis_result, behavioral_conf, context
+            )
+
+            state["retry_strategy"] = hypothesis.value if hasattr(hypothesis, 'value') else str(hypothesis)
+            state["feedback_message"] = message
+            state["hypothesis_confidence"] = conf
+
         else:
-            state["retry_strategy"] = "full_retry"
-            state["feedback_message"] = "Voice verification didn't match. Please try again, speaking clearly."
+            # Fallback to basic retry strategies
+            if "microphone_changed" in issues:
+                state["retry_strategy"] = "microphone_recalibration"
+                mic_sig = state.get("microphone_info", {}).get("signature", "new device")
+                state["feedback_message"] = f"You're using a different microphone ({mic_sig}). Say 'unlock my screen' one more time so I can recalibrate."
+            elif "voice_anomaly_detected" in issues or state.get("illness_detected"):
+                state["retry_strategy"] = "illness_adaptation"
+                state["feedback_message"] = "Your voice sounds different today - are you feeling alright? Let me try with adjusted parameters..."
+            elif "background_noise" in issues:
+                state["retry_strategy"] = "noise_mitigation"
+                state["feedback_message"] = "I'm having trouble hearing you clearly due to background noise. Could you speak closer to the microphone?"
+            elif "audio_too_quiet" in issues:
+                state["retry_strategy"] = "volume_boost"
+                state["feedback_message"] = "Your voice was a bit quiet. Could you speak a little louder?"
+            elif confidence >= 0.70:
+                state["retry_strategy"] = "minor_adjustment"
+                state["feedback_message"] = "Almost there! Could you say that one more time?"
+            elif confidence >= 0.50:
+                state["retry_strategy"] = "different_phrase"
+                state["feedback_message"] = "I'm having trouble matching your voice. Try speaking more naturally."
+            else:
+                state["retry_strategy"] = "full_retry"
+                state["feedback_message"] = "Voice verification didn't match. Please try again, speaking clearly."
 
         state["attempt_count"] = state.get("attempt_count", 0) + 1
 
         return state
 
     async def _generate_feedback_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate appropriate voice feedback."""
+        """
+        Generate contextual, personalized voice feedback.
+
+        Provides:
+        - Progressive confidence communication
+        - Environmental awareness narration
+        - Security incident reporting
+        - Illness/equipment acknowledgment
+        """
         decision = state.get("decision", "pending")
         confidence = state.get("fused_confidence", 0.0)
+        voice_conf = state.get("voice_confidence", 0.0)
+        behavioral_conf = state.get("behavioral_confidence", 0.0)
+        speaker_name = state.get("speaker_name", "Derek")
 
+        # Only generate if not already set
         if not state.get("feedback_message"):
             if decision == "authenticated":
-                if confidence >= 0.90:
-                    state["feedback_message"] = "Welcome back! Unlocking for you now."
+                # Progressive confidence feedback
+                if confidence >= 0.95:
+                    state["feedback_message"] = f"Of course, {speaker_name}. Unlocking for you."
+                elif confidence >= 0.90:
+                    state["feedback_message"] = f"Welcome back, {speaker_name}. Unlocking now."
+                elif confidence >= 0.85:
+                    state["feedback_message"] = f"Verified. Unlocking for you, {speaker_name}."
                 else:
-                    state["feedback_message"] = "Verified. Unlocking now."
+                    # Lower confidence but still authenticated (behavioral helped)
+                    if state.get("illness_detected"):
+                        state["feedback_message"] = (
+                            f"Your voice sounds different today, {speaker_name} - hope you're feeling okay. "
+                            f"Your patterns match though, so unlocking now."
+                        )
+                    elif state.get("microphone_changed"):
+                        state["feedback_message"] = (
+                            f"Got it, {speaker_name}! I've learned your voice on this microphone. "
+                            f"Unlocking now."
+                        )
+                    elif voice_conf < 0.75 and behavioral_conf >= 0.90:
+                        state["feedback_message"] = (
+                            f"Voice was a bit different but your patterns are perfect. "
+                            f"Unlocking for you, {speaker_name}."
+                        )
+                    else:
+                        state["feedback_message"] = f"One moment... verified. Unlocking for you, {speaker_name}."
+
+            elif decision == "challenge_pending":
+                # Already set by challenge node, but provide fallback
+                if not state.get("feedback_message"):
+                    state["feedback_message"] = "Quick verification needed. Please answer the question."
+
             elif decision == "denied":
                 if state.get("threat_detected"):
-                    state["feedback_message"] = f"Security alert: {state['threat_detected']}. Access denied."
+                    threat = state["threat_detected"]
+                    if threat == "replay_attack":
+                        state["feedback_message"] = (
+                            "Security alert: I detected characteristics consistent with a recording playback. "
+                            "Access denied. If you're the owner, please speak live to the microphone."
+                        )
+                    elif threat == "unknown_speaker":
+                        state["feedback_message"] = (
+                            f"I don't recognize this voice. This Mac is voice-locked to {speaker_name} only. "
+                            "Please use password authentication."
+                        )
+                    else:
+                        state["feedback_message"] = f"Security alert: {threat}. Access denied."
                 else:
-                    state["feedback_message"] = "Voice verification failed. Please try password or Face ID."
+                    # Helpful denial with suggestions
+                    issues = state.get("environmental_issues", [])
+                    attempts = state.get("attempt_count", 1)
+
+                    if attempts >= 3:
+                        state["feedback_message"] = (
+                            "I couldn't verify your voice after multiple attempts. "
+                            "Please use your password or Face ID to unlock."
+                        )
+                    elif "background_noise" in issues:
+                        state["feedback_message"] = (
+                            "Voice verification failed due to background noise. "
+                            "Try again in a quieter environment, or use password."
+                        )
+                    else:
+                        state["feedback_message"] = (
+                            "Voice verification didn't match. "
+                            "You can try again or use password authentication."
+                        )
 
         return state
 

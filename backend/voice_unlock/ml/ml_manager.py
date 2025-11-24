@@ -47,6 +47,9 @@ except ImportError:
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import OneClassSVM
 
+# Setup logger early (needed for import error handling)
+logger = logging.getLogger(__name__)
+
 # Import resource manager for strict control
 try:
     from ...resource_manager import get_resource_manager, throttled_operation
@@ -54,8 +57,6 @@ try:
 except ImportError:
     RESOURCE_MANAGER_AVAILABLE = False
     logger.warning("Resource manager not available - running without strict limits")
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
