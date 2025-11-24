@@ -407,11 +407,11 @@ class WakeWordDetector:
         self.is_listening = True
         
         # Start audio capture thread
-        self.capture_thread = Thread(target=self._capture_audio)
+        self.capture_thread = Thread(target=self._capture_audio, daemon=True)
         self.capture_thread.start()
-        
+
         # Start detection thread
-        self.detection_thread = Thread(target=self._detect_wake_word)
+        self.detection_thread = Thread(target=self._detect_wake_word, daemon=True)
         self.detection_thread.start()
         
     def stop_listening(self):
@@ -521,7 +521,7 @@ class VoiceCommandProcessor:
         self.audio_queue = queue.Queue()  # Clear queue
         
         # Start recording thread
-        record_thread = Thread(target=self._record_audio)
+        record_thread = Thread(target=self._record_audio, daemon=True)
         record_thread.start()
         
         return record_thread
