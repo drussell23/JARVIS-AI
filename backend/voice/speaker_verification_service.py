@@ -3908,8 +3908,9 @@ class SpeakerVerificationService:
         logger.info("✅ Speaker Verification Service cleaned up")
 
 
-# Global singleton instance
+# Global singleton instances
 _speaker_verification_service: Optional[SpeakerVerificationService] = None
+_global_speaker_service: Optional[SpeakerVerificationService] = None  # Pre-loaded service from start_system.py
 
 
 async def get_speaker_verification_service(
