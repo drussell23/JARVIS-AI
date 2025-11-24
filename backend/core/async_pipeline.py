@@ -1260,27 +1260,49 @@ class AdvancedAsyncPipeline:
                             # Pass audio data for voice verification in fallback path
                             if audio_data:
                                 logger.info(f"🎤 [LOCK-UNLOCK-FALLBACK] Passing {len(audio_data)} bytes of audio to keychain unlock")
-                                # Verify speaker before unlocking
+                                # Use enhanced verification with multi-factor fusion
                                 from voice.speaker_verification_service import get_speaker_verification_service
                                 speaker_service = await get_speaker_verification_service()
 
-                                verification_result = await speaker_service.verify_speaker(
+                                # Use enhanced verification for sick voice detection, challenge questions, etc.
+                                verification_result = await speaker_service.verify_speaker_enhanced(
                                     audio_data,
-                                    speaker_name or user_name
+                                    speaker_name or user_name,
+                                    context={"environment": "default", "source": "unlock_fallback"}
                                 )
 
-                                if verification_result.get("is_verified", False):
+                                if verification_result.get("verified", False):
                                     confidence = verification_result.get("confidence", 0.0)
+                                    feedback = verification_result.get("feedback", {})
+                                    feedback_msg = feedback.get("message", "") if isinstance(feedback, dict) else ""
                                     logger.info(f"✅ [LOCK-UNLOCK-FALLBACK] Voice verified: {confidence:.1%} confidence")
+                                    if feedback_msg:
+                                        logger.info(f"💬 [LOCK-UNLOCK-FALLBACK] Feedback: {feedback_msg}")
                                     result = await keychain_unlock.unlock_screen(
                                         verified_speaker=speaker_name or user_name
                                     )
-                                else:
+                                elif verification_result.get("decision") == "challenge_pending":
+                                    # Challenge question required - for now, deny and prompt retry
                                     confidence = verification_result.get("confidence", 0.0)
-                                    logger.warning(f"🚫 [LOCK-UNLOCK-FALLBACK] Voice verification failed: {confidence:.1%}")
+                                    feedback = verification_result.get("feedback", {})
+                                    feedback_msg = feedback.get("message", "Voice verification needs additional confirmation.") if isinstance(feedback, dict) else "Voice verification needs additional confirmation."
+                                    logger.info(f"🔐 [LOCK-UNLOCK-FALLBACK] Challenge required: {feedback_msg}")
                                     result = {
                                         "success": False,
-                                        "message": f"Voice verification failed (confidence: {confidence:.1%})",
+                                        "message": feedback_msg,
+                                        "action": "challenge_required"
+                                    }
+                                else:
+                                    confidence = verification_result.get("confidence", 0.0)
+                                    feedback = verification_result.get("feedback", {})
+                                    recommendation = verification_result.get("recommendation", "")
+                                    feedback_msg = feedback.get("message", "") if isinstance(feedback, dict) else ""
+                                    logger.warning(f"🚫 [LOCK-UNLOCK-FALLBACK] Voice verification failed: {confidence:.1%}")
+                                    if recommendation:
+                                        logger.info(f"💡 [LOCK-UNLOCK-FALLBACK] Recommendation: {recommendation}")
+                                    result = {
+                                        "success": False,
+                                        "message": feedback_msg or f"Voice verification failed (confidence: {confidence:.1%})",
                                         "action": "denied"
                                     }
                             else:
@@ -1306,27 +1328,38 @@ class AdvancedAsyncPipeline:
                         logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Unlock failed: {e}", exc_info=True)
                         logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Exception handler - trying controller.unlock_screen()...")
 
-                        # Try voice verification even in exception fallback if we have audio
+                        # Try enhanced voice verification even in exception fallback if we have audio
                         if audio_data:
                             try:
-                                logger.info(f"🎤 [LOCK-UNLOCK-FALLBACK] Attempting voice verification before controller fallback...")
+                                logger.info(f"🎤 [LOCK-UNLOCK-FALLBACK] Attempting enhanced voice verification before controller fallback...")
                                 from voice.speaker_verification_service import get_speaker_verification_service
                                 speaker_service = await get_speaker_verification_service()
 
-                                verification_result = await speaker_service.verify_speaker(
+                                # Use enhanced verification for better feedback and multi-factor auth
+                                verification_result = await speaker_service.verify_speaker_enhanced(
                                     audio_data,
-                                    speaker_name or user_name
+                                    speaker_name or user_name,
+                                    context={"environment": "default", "source": "exception_fallback"}
                                 )
 
-                                if not verification_result.get("is_verified", False):
+                                if not verification_result.get("verified", False):
                                     confidence = verification_result.get("confidence", 0.0)
+                                    feedback = verification_result.get("feedback", {})
+                                    recommendation = verification_result.get("recommendation", "")
+                                    feedback_msg = feedback.get("message", "") if isinstance(feedback, dict) else ""
                                     logger.warning(f"🚫 [LOCK-UNLOCK-FALLBACK] Voice verification failed in exception handler: {confidence:.1%}")
+                                    if recommendation:
+                                        logger.info(f"💡 [LOCK-UNLOCK-FALLBACK] Recommendation: {recommendation}")
                                     success = False
-                                    message = f"Voice verification failed (confidence: {confidence:.1%}). Please try again."
+                                    message = feedback_msg or f"Voice verification failed (confidence: {confidence:.1%}). Please try again."
                                     action = "denied"
                                 else:
                                     confidence = verification_result.get("confidence", 0.0)
+                                    feedback = verification_result.get("feedback", {})
+                                    feedback_msg = feedback.get("message", "") if isinstance(feedback, dict) else ""
                                     logger.info(f"✅ [LOCK-UNLOCK-FALLBACK] Voice verified in exception handler: {confidence:.1%}")
+                                    if feedback_msg:
+                                        logger.info(f"💬 [LOCK-UNLOCK-FALLBACK] Feedback: {feedback_msg}")
                                     success, message = await controller.unlock_screen()
                                     action = "unlocked"
                             except Exception as verify_error:
