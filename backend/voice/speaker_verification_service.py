@@ -110,11 +110,17 @@ except ImportError:
 
 # Langfuse for observability
 try:
-    from langfuse import Langfuse
-    from langfuse.decorators import observe, langfuse_context
+    from langfuse import Langfuse, observe
+    # langfuse_context moved in newer versions
+    try:
+        from langfuse.decorators import langfuse_context
+    except ImportError:
+        langfuse_context = None  # Optional in newer versions
     LANGFUSE_AVAILABLE = True
 except ImportError:
     LANGFUSE_AVAILABLE = False
+    observe = None
+    langfuse_context = None
     logger.info("Langfuse not available - audit trails disabled")
 
 # LangGraph for reasoning
