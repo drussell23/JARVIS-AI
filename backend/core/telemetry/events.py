@@ -71,7 +71,7 @@ class EventType(Enum):
     ERROR_OCCURRED = "error.occurred"
 
 
-@dataclass(slots=True)
+@dataclass
 class TelemetryEvent:
     """Base telemetry event with structured data.
     

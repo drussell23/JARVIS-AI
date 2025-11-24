@@ -33,7 +33,7 @@ from backend.core.intent.adaptive_classifier import IntentResult
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class RoutingResult:
     """Result of a routing operation.
     
@@ -178,7 +178,7 @@ class BaseRouteHandler(ABC):
             )
 
 
-@dataclass(slots=True)
+@dataclass
 class RouteConfig:
     """Configuration for a route mapping.
     

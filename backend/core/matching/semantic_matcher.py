@@ -30,7 +30,7 @@ from backend.core.models.context_envelope import ContextEnvelope
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class MatchScore:
     """Represents a semantic match result between user input and a context.
     

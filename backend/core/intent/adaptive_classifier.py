@@ -33,7 +33,7 @@ import re
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class IntentSignal:
     """Single intent detection signal from a classifier.
     
@@ -71,7 +71,7 @@ class IntentSignal:
             raise ValueError(f"Confidence must be 0-1, got {self.confidence}")
 
 
-@dataclass(slots=True)
+@dataclass
 class IntentResult:
     """Aggregated intent classification result from multiple classifiers.
     

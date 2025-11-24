@@ -150,7 +150,7 @@ class ContextPayload(Protocol):
 T = TypeVar('T', bound=ContextPayload)
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class ContextMetadata:
     """Immutable metadata for context tracking.
     
@@ -203,7 +203,7 @@ class ContextMetadata:
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class ContextEnvelope(Generic[T]):
     """Dynamic context container with lifecycle management.
     
@@ -397,7 +397,7 @@ class ContextEnvelope(Generic[T]):
         }
 
 
-@dataclass(slots=True)
+@dataclass
 class VisionContextPayload:
     """Concrete vision context payload for UI/screen analysis data.
     
@@ -473,7 +473,7 @@ class VisionContextPayload:
         return bool(self.window_id and self.snapshot_id and self.summary)
 
 
-@dataclass(slots=True)
+@dataclass
 class InteractionContextPayload:
     """Context payload for follow-up interactions and clarifications.
     
