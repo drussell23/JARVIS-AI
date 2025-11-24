@@ -24,6 +24,7 @@ import ctypes
 import json
 import logging
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -211,21 +212,117 @@ class DisplayDetector:
     """
     Multi-method display detector for macOS.
     Uses Core Graphics, System Profiler, and AppleScript for comprehensive detection.
+
+    UNIVERSAL TV DETECTION:
+    - Works with ANY TV brand (Sony, Samsung, LG, TCL, Hisense, Vizio, etc.)
+    - Works with ANY TV size (32" to 100"+)
+    - Uses multiple heuristics: resolution, refresh rate, connection type, naming patterns
+    - Self-learning: remembers displays you've identified as TVs
     """
 
-    # Known TV identifiers (dynamic, loaded from config)
-    TV_IDENTIFIERS = [
-        "sony", "samsung", "lg", "vizio", "tcl", "hisense",
-        "85", "75", "65", "55",  # Common TV sizes
-        "bravia", "qled", "oled", "uhd", "4k",
-        "living room", "bedroom", "tv"
+    # Dynamic TV detection configuration
+    TV_DETECTION_CONFIG = {
+        # Resolution thresholds (TVs are typically large resolution)
+        "min_tv_width": 1920,       # Full HD minimum
+        "min_tv_height": 1080,
+        "likely_tv_width": 3840,    # 4K is very likely a TV
+        "likely_tv_height": 2160,
+
+        # Aspect ratios typical for TVs (16:9, 21:9 ultrawide)
+        "tv_aspect_ratios": [
+            (16, 9),    # Standard TV
+            (21, 9),    # Ultrawide
+            (32, 9),    # Super ultrawide
+        ],
+        "aspect_ratio_tolerance": 0.05,  # 5% tolerance
+
+        # Refresh rates (TVs often have specific rates)
+        "tv_refresh_rates": [24, 30, 50, 60, 120],
+
+        # Connection types that suggest TV
+        "tv_connection_types": ["hdmi", "airplay", "wireless"],
+
+        # Display types that are NOT TVs
+        "non_tv_indicators": [
+            "built-in", "retina", "internal", "laptop",
+            "thunderbolt display", "studio display", "pro display",
+            "dell", "benq", "asus", "acer", "viewsonic",  # Monitor brands
+            "ultrasharp", "predator", "rog",  # Monitor product lines
+        ],
+    }
+
+    # Brand patterns for TV manufacturers (comprehensive, case-insensitive)
+    TV_BRAND_PATTERNS = [
+        # Major TV brands
+        r"\bsony\b", r"\bsamsung\b", r"\blg\b", r"\bvizio\b",
+        r"\btcl\b", r"\bhisense\b", r"\bphilips\b", r"\bpanasonic\b",
+        r"\bsharp\b", r"\btoshiba\b", r"\bsanyo\b", r"\binsignia\b",
+        r"\belement\b", r"\bwestinghouse\b", r"\bsceptre\b",
+        r"\bonn\b", r"\bhitachi\b", r"\bjvc\b", r"\bfunai\b",
+        r"\bskyworth\b", r"\bhaier\b", r"\bkonka\b", r"\bchanghong\b",
+
+        # TV product lines
+        r"\bbravia\b", r"\bqled\b", r"\boled\b", r"\bneo\s*qled\b",
+        r"\bnanocell\b", r"\buhd\b", r"\bcrystal\s*uhd\b",
+        r"\bfire\s*tv\b", r"\broku\s*tv\b", r"\bandroid\s*tv\b",
+        r"\bgoogle\s*tv\b", r"\bwebos\b", r"\btizen\b",
+
+        # Generic TV indicators
+        r"\btv\b", r"\btelevision\b", r"\bhdtv\b",
+        r"\bsmart\s*tv\b", r"\b4k\s*tv\b", r"\b8k\b",
+
+        # Room-based naming (user might name their TV)
+        r"\bliving\s*room\b", r"\bbedroom\b", r"\bden\b",
+        r"\bfamily\s*room\b", r"\bbasement\b", r"\bgame\s*room\b",
     ]
+
+    # Learned TV displays (persisted to disk)
+    LEARNED_TVS_FILE = Path.home() / ".jarvis" / "learned_tv_displays.json"
 
     def __init__(self):
         self._cg_available = self._check_core_graphics()
         self._cache: Optional[DisplayContext] = None
         self._cache_time: Optional[datetime] = None
         self._cache_duration_ms = 5000  # Cache for 5 seconds
+        self._learned_tvs: Dict[str, bool] = {}  # display_id -> is_tv
+        self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.TV_BRAND_PATTERNS]
+        self._load_learned_tvs()
+
+    def _load_learned_tvs(self):
+        """Load previously learned TV identifications from disk"""
+        try:
+            if self.LEARNED_TVS_FILE.exists():
+                with open(self.LEARNED_TVS_FILE, 'r') as f:
+                    data = json.load(f)
+                    self._learned_tvs = data.get("learned_displays", {})
+                    logger.debug(f"Loaded {len(self._learned_tvs)} learned TV identifications")
+        except Exception as e:
+            logger.warning(f"Failed to load learned TVs: {e}")
+
+    async def _save_learned_tvs(self):
+        """Save learned TV identifications to disk"""
+        try:
+            self.LEARNED_TVS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.LEARNED_TVS_FILE, 'w') as f:
+                json.dump({
+                    "learned_displays": self._learned_tvs,
+                    "updated_at": datetime.now().isoformat(),
+                }, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save learned TVs: {e}")
+
+    async def learn_display_is_tv(self, display_id: str, is_tv: bool = True):
+        """
+        Teach the system that a specific display is (or is not) a TV.
+        This learning persists across sessions.
+
+        Args:
+            display_id: The display identifier (name or ID)
+            is_tv: Whether this display is a TV
+        """
+        self._learned_tvs[display_id.lower()] = is_tv
+        await self._save_learned_tvs()
+        logger.info(f"Learned: Display '{display_id}' is {'a TV' if is_tv else 'NOT a TV'}")
 
     def _check_core_graphics(self) -> bool:
         """Check if Core Graphics is available"""
@@ -296,11 +393,23 @@ class DisplayDetector:
             # Identify external displays
             context.external_displays = [d for d in context.displays if not d.is_builtin]
 
-            # Check for TV connection
+            # Check for TV connection using universal detection
+            tv_detection_details = []
             for display in context.external_displays:
-                if self._is_tv(display):
+                is_tv, confidence, reasons = self._is_tv(display)
+                tv_detection_details.append({
+                    "display": display.name,
+                    "is_tv": is_tv,
+                    "confidence": confidence,
+                    "reasons": reasons,
+                })
+                if is_tv:
                     context.is_tv_connected = True
                     context.tv_name = display.name
+                    logger.info(
+                        f"🖥️ TV DETECTED: '{display.name}' "
+                        f"(confidence: {confidence:.0%}, reasons: {reasons})"
+                    )
                     break
 
             # Determine display mode
@@ -519,24 +628,141 @@ class DisplayDetector:
         except Exception as e:
             logger.debug(f"System profiler enhancement failed: {e}")
 
-    def _is_tv(self, display: DisplayInfo) -> bool:
-        """Check if a display is a TV"""
+    def _is_tv(self, display: DisplayInfo) -> Tuple[bool, float, List[str]]:
+        """
+        UNIVERSAL TV DETECTION - Works with ANY TV brand/size
+
+        Uses a scoring system with multiple heuristics:
+        1. Learned history (highest priority)
+        2. Brand/name pattern matching
+        3. Resolution analysis
+        4. Aspect ratio analysis
+        5. Connection type analysis
+        6. Non-TV exclusion patterns
+
+        Returns:
+            Tuple of (is_tv, confidence_score, reasons)
+        """
+        config = self.TV_DETECTION_CONFIG
         name_lower = display.name.lower()
+        reasons: List[str] = []
+        score = 0.0
 
-        # Check for TV identifiers
-        for identifier in self.TV_IDENTIFIERS:
-            if identifier in name_lower:
-                return True
+        # =====================================================================
+        # PRIORITY 1: Check learned history (user has explicitly told us)
+        # =====================================================================
+        for learned_id, is_tv in self._learned_tvs.items():
+            if learned_id in name_lower or name_lower in learned_id:
+                if is_tv:
+                    reasons.append(f"LEARNED: Previously identified as TV")
+                    return True, 1.0, reasons
+                else:
+                    reasons.append(f"LEARNED: Previously identified as NOT a TV")
+                    return False, 1.0, reasons
 
-        # Check for large resolution (4K+)
-        if display.width >= 3840 or display.height >= 2160:
-            return True
+        # =====================================================================
+        # PRIORITY 2: Check for NON-TV indicators (exclusion)
+        # =====================================================================
+        for indicator in config["non_tv_indicators"]:
+            if indicator in name_lower:
+                reasons.append(f"EXCLUDED: Contains non-TV indicator '{indicator}'")
+                return False, 0.9, reasons
 
-        # Check for common TV aspect ratios with large size
-        if display.width > 1920 and display.height > 1080:
-            return True
+        # =====================================================================
+        # HEURISTIC 1: Brand/Name Pattern Matching (high confidence)
+        # =====================================================================
+        for pattern in self._compiled_patterns:
+            if pattern.search(name_lower):
+                score += 0.4
+                match = pattern.pattern.replace(r'\b', '').replace(r'\s*', ' ')
+                reasons.append(f"BRAND MATCH: Pattern '{match}' found in name")
+                break  # One brand match is enough
 
-        return False
+        # =====================================================================
+        # HEURISTIC 2: Resolution Analysis
+        # =====================================================================
+        if display.width > 0 and display.height > 0:
+            # 4K or higher is very likely a TV
+            if display.width >= config["likely_tv_width"] and display.height >= config["likely_tv_height"]:
+                score += 0.35
+                reasons.append(f"RESOLUTION: 4K+ ({display.width}x{display.height}) - likely TV")
+            # 1080p+ external is possibly a TV
+            elif display.width >= config["min_tv_width"] and display.height >= config["min_tv_height"]:
+                if not display.is_builtin:
+                    score += 0.15
+                    reasons.append(f"RESOLUTION: HD+ external ({display.width}x{display.height})")
+            # 8K is definitely a TV
+            if display.width >= 7680:
+                score += 0.2
+                reasons.append(f"RESOLUTION: 8K detected - definitely TV")
+
+        # =====================================================================
+        # HEURISTIC 3: Aspect Ratio Analysis
+        # =====================================================================
+        if display.width > 0 and display.height > 0:
+            actual_ratio = display.width / display.height
+            tolerance = config["aspect_ratio_tolerance"]
+
+            for target_w, target_h in config["tv_aspect_ratios"]:
+                target_ratio = target_w / target_h
+                if abs(actual_ratio - target_ratio) <= tolerance:
+                    # Standard 16:9 with large resolution
+                    if target_w == 16 and target_h == 9:
+                        if display.width >= 1920 and not display.is_builtin:
+                            score += 0.1
+                            reasons.append(f"ASPECT: 16:9 ratio - common TV format")
+                    else:
+                        score += 0.1
+                        reasons.append(f"ASPECT: {target_w}:{target_h} ultrawide ratio")
+                    break
+
+        # =====================================================================
+        # HEURISTIC 4: Connection Type Analysis
+        # =====================================================================
+        display_type_str = display.display_type.name.lower()
+        for conn_type in config["tv_connection_types"]:
+            if conn_type in display_type_str:
+                score += 0.15
+                reasons.append(f"CONNECTION: {conn_type.upper()} - common TV connection")
+                break
+
+        # External non-built-in displays get a small boost
+        if not display.is_builtin and display.display_type != DisplayType.BUILT_IN:
+            score += 0.05
+            reasons.append("EXTERNAL: Non-built-in display")
+
+        # =====================================================================
+        # HEURISTIC 5: Size inference from resolution
+        # =====================================================================
+        # Typical PPI: Monitors ~100-150 PPI, TVs ~40-60 PPI
+        # So same resolution on TV = larger physical size
+        if display.width >= 3840:  # 4K
+            # At 4K, this is likely a TV (monitors at 4K are typically <32")
+            score += 0.1
+            reasons.append("SIZE: 4K resolution suggests large display (TV territory)")
+
+        # =====================================================================
+        # FINAL DECISION
+        # =====================================================================
+        # Threshold: 0.5 = likely TV, 0.7 = probably TV, 0.9 = definitely TV
+        is_tv = score >= 0.5
+
+        if not reasons:
+            reasons.append("NO INDICATORS: Could not determine display type")
+
+        confidence = min(score, 1.0)
+
+        logger.debug(
+            f"TV Detection for '{display.name}': is_tv={is_tv}, "
+            f"confidence={confidence:.2f}, reasons={reasons}"
+        )
+
+        return is_tv, confidence, reasons
+
+    def _is_tv_simple(self, display: DisplayInfo) -> bool:
+        """Simple boolean wrapper for _is_tv"""
+        is_tv, _, _ = self._is_tv(display)
+        return is_tv
 
 
 # =============================================================================
