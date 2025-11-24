@@ -5831,25 +5831,45 @@ class AsyncSystemManager:
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Anti-Spoofing Detection...")
             try:
-                from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+                from voice_unlock.core.anti_spoofing import AntiSpoofingDetector, SpoofType
 
-                unlock_service = IntelligentVoiceUnlockService()
+                # Initialize the detector
+                detector = AntiSpoofingDetector(fingerprint_cache_ttl=3600)
 
-                # Check if anti-spoofing is available
-                anti_spoofing_available = hasattr(unlock_service, '_check_anti_spoofing')
+                # Verify it's properly instantiated with all detection methods
+                detection_methods = []
+                if hasattr(detector, '_detect_replay_attack'):
+                    detection_methods.append('replay_detection')
+                if hasattr(detector, '_detect_synthetic_voice'):
+                    detection_methods.append('synthesis_detection')
+                if hasattr(detector, '_detect_recording_playback'):
+                    detection_methods.append('recording_playback_detection')
+                if hasattr(detector, 'detect_spoofing'):
+                    detection_methods.append('unified_detection')
+
+                anti_spoofing_available = len(detection_methods) >= 3
 
                 status['detailed_checks']['anti_spoofing'] = {
                     'available': anti_spoofing_available,
-                    'features': ['replay_detection', 'synthesis_detection', 'voice_conversion_detection'] if anti_spoofing_available else []
+                    'features': detection_methods,
+                    'spoof_types': [st.value for st in SpoofType]
                 }
 
                 if anti_spoofing_available:
                     logger.info("[VOICE UNLOCK] ✅ Anti-Spoofing: AVAILABLE")
-                    logger.info("[VOICE UNLOCK]    ├─ Replay Detection: ENABLED")
-                    logger.info("[VOICE UNLOCK]    ├─ Synthesis Detection: ENABLED")
-                    logger.info("[VOICE UNLOCK]    └─ Voice Conversion Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Replay Attack Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Synthetic Voice Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Recording Playback Detection: ENABLED")
+                    logger.info(f"[VOICE UNLOCK]    └─ Spoof Types: {[st.value for st in SpoofType]}")
                 else:
-                    logger.warning("[VOICE UNLOCK] ⚠️  Anti-Spoofing: NOT AVAILABLE")
+                    logger.warning("[VOICE UNLOCK] ⚠️  Anti-Spoofing: PARTIALLY AVAILABLE")
+                    logger.warning(f"[VOICE UNLOCK]    └─ Available methods: {detection_methods}")
+            except ImportError as e:
+                status['detailed_checks']['anti_spoofing'] = {
+                    'available': False,
+                    'error': f'Import failed: {e}'
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Anti-Spoofing: MODULE NOT FOUND - {e}")
             except Exception as e:
                 status['detailed_checks']['anti_spoofing'] = {
                     'available': False,

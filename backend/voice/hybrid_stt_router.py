@@ -74,9 +74,92 @@ class HybridSTTRouter:
         self.cloud_requests = 0
         self.cache_hits = 0
 
+        # Available engines (lazy-loaded)
+        self.available_engines = {}
+        self._initialized = False
+
         logger.info("🎤 Hybrid STT Router initialized")
         logger.info(f"   Strategy: {self.config.default_strategy.value}")
         logger.info(f"   Models configured: {len(self.config.models)}")
+
+    async def initialize(self) -> bool:
+        """
+        Async initialization - loads engines and connects to learning DB.
+
+        Returns:
+            True if initialization succeeded, False otherwise.
+        """
+        if self._initialized:
+            return True
+
+        try:
+            # Connect to learning database
+            await self._get_learning_db()
+
+            # Discover available engines
+            await self._discover_engines()
+
+            self._initialized = True
+            logger.info(f"✅ Hybrid STT Router fully initialized")
+            logger.info(f"   Available engines: {list(self.available_engines.keys())}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Hybrid STT Router initialization failed: {e}")
+            return False
+
+    async def _discover_engines(self):
+        """Discover and validate available STT engines."""
+        discovered = {}
+
+        # Check Vosk (local, fast, low resource)
+        try:
+            from vosk import Model
+            discovered['vosk'] = {
+                'type': 'local',
+                'loaded': False,
+                'ram_required_gb': 0.5
+            }
+            logger.info("   ✓ Vosk engine available")
+        except ImportError:
+            logger.debug("   ✗ Vosk not available")
+
+        # Check Whisper (local, accurate, medium resource)
+        try:
+            import whisper
+            discovered['whisper_local'] = {
+                'type': 'local',
+                'loaded': False,
+                'ram_required_gb': 2.0
+            }
+            logger.info("   ✓ Whisper (local) engine available")
+        except ImportError:
+            logger.debug("   ✗ Whisper local not available")
+
+        # Check Google Cloud STT (cloud, high accuracy)
+        try:
+            from google.cloud import speech_v1
+            discovered['google_cloud'] = {
+                'type': 'cloud',
+                'loaded': True,
+                'ram_required_gb': 0.1
+            }
+            logger.info("   ✓ Google Cloud STT available")
+        except ImportError:
+            logger.debug("   ✗ Google Cloud STT not available")
+
+        # Check SpeechBrain (local, speaker-aware)
+        try:
+            from speechbrain.inference.interfaces import Pretrained
+            discovered['speechbrain'] = {
+                'type': 'local',
+                'loaded': False,
+                'ram_required_gb': 1.5
+            }
+            logger.info("   ✓ SpeechBrain engine available")
+        except ImportError:
+            logger.debug("   ✗ SpeechBrain not available")
+
+        self.available_engines = discovered
 
     async def _get_learning_db(self):
         """Lazy-load learning database"""
