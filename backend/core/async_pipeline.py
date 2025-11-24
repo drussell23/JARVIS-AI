@@ -24,6 +24,7 @@ Example:
 
 import asyncio
 import logging
+import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -31,6 +32,11 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+# Ensure project root is in path for 'from backend.X' imports
+_project_root = Path(__file__).parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 logger = logging.getLogger(__name__)
 
