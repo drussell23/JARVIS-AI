@@ -3865,10 +3865,21 @@ class SpeakerVerificationService:
 
     async def _update_rolling_embeddings(self, speaker_name: str, new_embedding: np.ndarray):
         """
-        Update rolling embeddings for adaptive learning
+        Update rolling embeddings for adaptive learning.
+
+        NOW PERSISTS TO CLOUD SQL/DATABASE for permanent voice profile improvement!
         """
         if speaker_name not in self.rolling_embeddings:
             self.rolling_embeddings[speaker_name] = []
+
+        # Track total samples for this speaker (for persistence decisions)
+        if not hasattr(self, '_rolling_sample_counts'):
+            self._rolling_sample_counts = {}
+        if speaker_name not in self._rolling_sample_counts:
+            self._rolling_sample_counts[speaker_name] = 0
+
+        self._rolling_sample_counts[speaker_name] += 1
+        total_samples = self._rolling_sample_counts[speaker_name]
 
         embeddings_list = self.rolling_embeddings[speaker_name]
         embeddings_list.append(new_embedding)
@@ -3893,9 +3904,136 @@ class SpeakerVerificationService:
                     self.rolling_weight * rolling_avg
                 )
 
-                # Update in memory (not database yet)
+                # Update in memory
                 self.speaker_profiles[speaker_name]['rolling_embedding'] = updated_embedding
-                logger.info(f"📊 Updated rolling embedding for {speaker_name} ({len(embeddings_list)} samples)")
+                logger.info(f"📊 Updated rolling embedding for {speaker_name} ({len(embeddings_list)} samples, total: {total_samples})")
+
+                # 🎙️ PERSIST TO DATABASE every 10 samples or at key milestones
+                should_persist = (
+                    total_samples % 10 == 0 or  # Every 10 samples
+                    total_samples in [5, 25, 50, 100, 200]  # Key milestones
+                )
+
+                if should_persist:
+                    await self._persist_improved_embedding(
+                        speaker_name=speaker_name,
+                        improved_embedding=updated_embedding,
+                        samples_used=len(embeddings_list),
+                        total_samples=total_samples
+                    )
+
+    async def _persist_improved_embedding(
+        self,
+        speaker_name: str,
+        improved_embedding: np.ndarray,
+        samples_used: int,
+        total_samples: int
+    ):
+        """
+        Persist the improved voice embedding to Cloud SQL/database.
+
+        This is the KEY function that makes voice learning permanent!
+        Every successful unlock now improves your voiceprint.
+        """
+        try:
+            logger.info(f"🎙️ [PERSIST] Saving improved voiceprint for {speaker_name} (samples: {total_samples})...")
+
+            # Try learning database first (Cloud SQL)
+            if self.learning_db:
+                try:
+                    # Get speaker profile to find speaker_id
+                    profile = self.speaker_profiles.get(speaker_name, {})
+                    speaker_id = profile.get('speaker_id')
+
+                    if speaker_id:
+                        # Update the voiceprint embedding in Cloud SQL
+                        embedding_bytes = improved_embedding.tobytes()
+
+                        success = await self.learning_db.update_speaker_embedding(
+                            speaker_id=speaker_id,
+                            embedding=embedding_bytes,
+                            confidence=0.95,  # High confidence since this is a learned improvement
+                            is_primary_user=profile.get('is_primary_user', False)
+                        )
+
+                        if success:
+                            logger.info(
+                                f"✅ [PERSIST] Voiceprint saved to Cloud SQL for {speaker_name}! "
+                                f"(samples: {samples_used}, total: {total_samples})"
+                            )
+
+                            # Also update the in-memory profile with the new embedding
+                            self.speaker_profiles[speaker_name]['embedding'] = improved_embedding
+                            self.speaker_profiles[speaker_name]['last_embedding_update'] = datetime.now().isoformat()
+                            self.speaker_profiles[speaker_name]['total_learning_samples'] = total_samples
+
+                            # Track in metrics database
+                            try:
+                                from voice_unlock.metrics_database import get_metrics_database
+                                metrics_db = get_metrics_database()
+
+                                # Update voice profile learning to mark embedding was persisted
+                                conn = __import__('sqlite3').connect(metrics_db.sqlite_path)
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE voice_profile_learning SET
+                                        embedding_last_updated = ?,
+                                        embedding_version = embedding_version + 1,
+                                        rolling_samples_used = ?
+                                    WHERE speaker_name = ?
+                                """, (datetime.now().isoformat(), samples_used, speaker_name))
+                                conn.commit()
+                                conn.close()
+                            except Exception as metrics_err:
+                                logger.debug(f"Metrics update skipped: {metrics_err}")
+
+                            return True
+                        else:
+                            logger.warning(f"⚠️ [PERSIST] Cloud SQL update returned False for {speaker_name}")
+                    else:
+                        logger.warning(f"⚠️ [PERSIST] No speaker_id found for {speaker_name}")
+
+                except Exception as db_err:
+                    logger.error(f"❌ [PERSIST] Cloud SQL error: {db_err}")
+
+            # Fallback: Store in local file
+            try:
+                import json
+                from pathlib import Path
+
+                persist_dir = Path.home() / ".jarvis" / "voice_profiles"
+                persist_dir.mkdir(parents=True, exist_ok=True)
+
+                profile_file = persist_dir / f"{speaker_name.replace(' ', '_')}_embedding.json"
+
+                # Save embedding as base64
+                import base64
+                embedding_b64 = base64.b64encode(improved_embedding.tobytes()).decode('utf-8')
+
+                profile_data = {
+                    'speaker_name': speaker_name,
+                    'embedding_b64': embedding_b64,
+                    'embedding_dimensions': len(improved_embedding),
+                    'samples_used': samples_used,
+                    'total_learning_samples': total_samples,
+                    'last_updated': datetime.now().isoformat(),
+                    'dtype': str(improved_embedding.dtype)
+                }
+
+                with open(profile_file, 'w') as f:
+                    json.dump(profile_data, f, indent=2)
+
+                logger.info(f"✅ [PERSIST] Voiceprint saved locally for {speaker_name}: {profile_file}")
+                return True
+
+            except Exception as file_err:
+                logger.error(f"❌ [PERSIST] Local file save failed: {file_err}")
+
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ [PERSIST] Failed to persist embedding for {speaker_name}: {e}", exc_info=True)
+            return False
 
     async def perform_rag_similarity_search(
         self, speaker_name: str, current_embedding: np.ndarray, top_k: int = 5
