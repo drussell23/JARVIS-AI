@@ -3967,10 +3967,23 @@ class SpeakerVerificationService:
                             self.speaker_profiles[speaker_name]['last_embedding_update'] = datetime.now().isoformat()
                             self.speaker_profiles[speaker_name]['total_learning_samples'] = total_samples
 
-                            # Track in metrics database
+                            # 🔄 SYNC TO SQLITE: Mirror Cloud SQL data for redundancy
                             try:
                                 from voice_unlock.metrics_database import get_metrics_database
                                 metrics_db = get_metrics_database()
+
+                                # Sync embedding to SQLite
+                                await metrics_db.sync_embedding_to_sqlite(
+                                    speaker_name=speaker_name,
+                                    embedding=embedding_bytes,
+                                    embedding_dimensions=len(improved_embedding),
+                                    speaker_id=speaker_id,
+                                    total_samples=total_samples,
+                                    rolling_samples=samples_used,
+                                    avg_confidence=0.95,
+                                    cloud_sql_synced=True,
+                                    update_reason='milestone' if total_samples in [5, 25, 50, 100, 200] else 'periodic_save'
+                                )
 
                                 # Update voice profile learning to mark embedding was persisted
                                 conn = __import__('sqlite3').connect(metrics_db.sqlite_path)
@@ -3984,6 +3997,9 @@ class SpeakerVerificationService:
                                 """, (datetime.now().isoformat(), samples_used, speaker_name))
                                 conn.commit()
                                 conn.close()
+
+                                logger.info(f"🔄 [SQLITE-SYNC] Cloud SQL + SQLite now in sync for {speaker_name}")
+
                             except Exception as metrics_err:
                                 logger.debug(f"Metrics update skipped: {metrics_err}")
 

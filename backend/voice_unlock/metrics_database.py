@@ -563,6 +563,69 @@ class MetricsDatabase:
             )
         """)
 
+        # 🎙️ VOICE EMBEDDINGS: Store actual voiceprint embeddings (synced with Cloud SQL)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                speaker_name TEXT NOT NULL,
+                speaker_id INTEGER,  -- Cloud SQL speaker_id for sync
+
+                -- Current Embedding (base64 encoded)
+                embedding_b64 TEXT NOT NULL,
+                embedding_dimensions INTEGER DEFAULT 192,
+                embedding_dtype TEXT DEFAULT 'float32',
+
+                -- Version Control
+                version INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+
+                -- Learning Stats
+                total_samples_used INTEGER DEFAULT 0,
+                rolling_samples_in_avg INTEGER DEFAULT 0,
+
+                -- Quality Metrics
+                embedding_quality_score REAL,
+                avg_sample_confidence REAL,
+
+                -- Sync Status with Cloud SQL
+                cloud_sql_synced INTEGER DEFAULT 0,
+                cloud_sql_sync_time TEXT,
+                cloud_sql_version INTEGER,
+
+                -- Source Info
+                source TEXT DEFAULT 'continuous_learning',  -- 'enrollment', 'continuous_learning', 'calibration'
+                last_verification_confidence REAL,
+
+                UNIQUE(speaker_name)
+            )
+        """)
+
+        # 🎙️ EMBEDDING HISTORY: Track all embedding updates for rollback capability
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS voice_embedding_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                speaker_name TEXT NOT NULL,
+
+                -- Embedding Snapshot
+                embedding_b64 TEXT NOT NULL,
+                embedding_dimensions INTEGER,
+                version INTEGER,
+
+                -- What triggered this update
+                update_reason TEXT,  -- 'periodic_save', 'milestone', 'calibration', 'manual'
+                samples_used INTEGER,
+                total_samples_at_update INTEGER,
+
+                -- Quality at time of save
+                avg_confidence_at_save REAL,
+
+                -- Cloud SQL sync
+                cloud_sql_synced INTEGER DEFAULT 0
+            )
+        """)
+
         # 🎙️ CONFIDENCE HISTORY: Track confidence over time for trending
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS voice_confidence_history (
@@ -744,6 +807,12 @@ class MetricsDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_identifier ON display_success_history(display_identifier)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_type ON display_success_history(display_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_tv ON display_success_history(is_tv)")
+
+        # 🎙️ Indexes for Voice Embeddings tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_embeddings_speaker ON voice_embeddings(speaker_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_embeddings_synced ON voice_embeddings(cloud_sql_synced)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_embedding_history_speaker ON voice_embedding_history(speaker_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_embedding_history_timestamp ON voice_embedding_history(timestamp)")
 
         # 🎙️ Indexes for Voice Profile Learning tables
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_profile_speaker ON voice_profile_learning(speaker_name)")
@@ -3007,6 +3076,300 @@ class MetricsDatabase:
         except Exception as e:
             logger.error(f"Failed to get voice profile stats: {e}", exc_info=True)
             return {'error': str(e)}
+
+    async def sync_embedding_to_sqlite(
+        self,
+        speaker_name: str,
+        embedding: bytes,
+        embedding_dimensions: int = 192,
+        speaker_id: int = None,
+        total_samples: int = 0,
+        rolling_samples: int = 0,
+        avg_confidence: float = 0.0,
+        cloud_sql_synced: bool = True,
+        update_reason: str = "periodic_save"
+    ) -> Optional[int]:
+        """
+        Sync voice embedding to SQLite (mirrors Cloud SQL data).
+
+        This ensures SQLite and Cloud SQL stay in sync for redundancy.
+
+        Args:
+            speaker_name: Speaker name
+            embedding: Raw embedding bytes (numpy array.tobytes())
+            embedding_dimensions: Dimensions of the embedding
+            speaker_id: Cloud SQL speaker_id
+            total_samples: Total samples used to create this embedding
+            rolling_samples: Number of samples in rolling average
+            avg_confidence: Average confidence score
+            cloud_sql_synced: Whether this is synced with Cloud SQL
+            update_reason: Why this update happened
+
+        Returns:
+            Embedding ID if successful, None otherwise
+        """
+        try:
+            import base64
+
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+
+            # Encode embedding as base64
+            embedding_b64 = base64.b64encode(embedding).decode('utf-8')
+
+            # Check if embedding exists for this speaker
+            cursor.execute("""
+                SELECT id, version FROM voice_embeddings WHERE speaker_name = ?
+            """, (speaker_name,))
+
+            row = cursor.fetchone()
+
+            if row:
+                # Update existing
+                embedding_id = row[0]
+                new_version = (row[1] or 0) + 1
+
+                cursor.execute("""
+                    UPDATE voice_embeddings SET
+                        embedding_b64 = ?,
+                        embedding_dimensions = ?,
+                        speaker_id = COALESCE(?, speaker_id),
+                        version = ?,
+                        updated_at = ?,
+                        total_samples_used = ?,
+                        rolling_samples_in_avg = ?,
+                        avg_sample_confidence = ?,
+                        cloud_sql_synced = ?,
+                        cloud_sql_sync_time = ?,
+                        source = 'continuous_learning',
+                        last_verification_confidence = ?
+                    WHERE id = ?
+                """, (
+                    embedding_b64,
+                    embedding_dimensions,
+                    speaker_id,
+                    new_version,
+                    now,
+                    total_samples,
+                    rolling_samples,
+                    avg_confidence,
+                    1 if cloud_sql_synced else 0,
+                    now if cloud_sql_synced else None,
+                    avg_confidence,
+                    embedding_id
+                ))
+
+                # Save to history
+                cursor.execute("""
+                    INSERT INTO voice_embedding_history (
+                        timestamp, speaker_name, embedding_b64, embedding_dimensions,
+                        version, update_reason, samples_used, total_samples_at_update,
+                        avg_confidence_at_save, cloud_sql_synced
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    now, speaker_name, embedding_b64, embedding_dimensions,
+                    new_version, update_reason, rolling_samples, total_samples,
+                    avg_confidence, 1 if cloud_sql_synced else 0
+                ))
+
+                logger.info(
+                    f"🔄 [SQLITE-SYNC] Updated embedding for {speaker_name} "
+                    f"(v{new_version}, {total_samples} samples, synced={cloud_sql_synced})"
+                )
+
+            else:
+                # Insert new
+                cursor.execute("""
+                    INSERT INTO voice_embeddings (
+                        speaker_name, speaker_id, embedding_b64, embedding_dimensions,
+                        version, created_at, updated_at,
+                        total_samples_used, rolling_samples_in_avg, avg_sample_confidence,
+                        cloud_sql_synced, cloud_sql_sync_time, source, last_verification_confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    speaker_name, speaker_id, embedding_b64, embedding_dimensions,
+                    1, now, now,
+                    total_samples, rolling_samples, avg_confidence,
+                    1 if cloud_sql_synced else 0, now if cloud_sql_synced else None,
+                    'continuous_learning', avg_confidence
+                ))
+
+                embedding_id = cursor.lastrowid
+
+                # Save initial state to history
+                cursor.execute("""
+                    INSERT INTO voice_embedding_history (
+                        timestamp, speaker_name, embedding_b64, embedding_dimensions,
+                        version, update_reason, samples_used, total_samples_at_update,
+                        avg_confidence_at_save, cloud_sql_synced
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    now, speaker_name, embedding_b64, embedding_dimensions,
+                    1, 'initial_save', rolling_samples, total_samples,
+                    avg_confidence, 1 if cloud_sql_synced else 0
+                ))
+
+                logger.info(
+                    f"🆕 [SQLITE-SYNC] Created embedding for {speaker_name} "
+                    f"(ID: {embedding_id}, {total_samples} samples)"
+                )
+
+            conn.commit()
+            conn.close()
+
+            return embedding_id
+
+        except Exception as e:
+            logger.error(f"Failed to sync embedding to SQLite: {e}", exc_info=True)
+            return None
+
+    async def get_sqlite_embedding(self, speaker_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get voice embedding from SQLite.
+
+        Returns:
+            Dict with embedding data or None if not found
+        """
+        try:
+            import base64
+            import numpy as np
+
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM voice_embeddings WHERE speaker_name = ?
+            """, (speaker_name,))
+
+            row = cursor.fetchone()
+            conn.close()
+
+            if row:
+                result = dict(row)
+
+                # Decode embedding from base64
+                embedding_b64 = result.get('embedding_b64')
+                if embedding_b64:
+                    embedding_bytes = base64.b64decode(embedding_b64)
+                    result['embedding'] = np.frombuffer(embedding_bytes, dtype=np.float32)
+
+                return result
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get SQLite embedding: {e}", exc_info=True)
+            return None
+
+    async def get_embedding_history(
+        self,
+        speaker_name: str,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Get embedding update history for rollback capability.
+
+        Args:
+            speaker_name: Speaker name
+            limit: Max history entries to return
+
+        Returns:
+            List of embedding history records
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT id, timestamp, version, update_reason, samples_used,
+                       total_samples_at_update, avg_confidence_at_save, cloud_sql_synced
+                FROM voice_embedding_history
+                WHERE speaker_name = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (speaker_name, limit))
+
+            history = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+
+            return history
+
+        except Exception as e:
+            logger.error(f"Failed to get embedding history: {e}", exc_info=True)
+            return []
+
+    async def rollback_embedding(self, speaker_name: str, version: int) -> bool:
+        """
+        Rollback embedding to a previous version.
+
+        Args:
+            speaker_name: Speaker name
+            version: Version number to rollback to
+
+        Returns:
+            True if successful
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Get the historical embedding
+            cursor.execute("""
+                SELECT embedding_b64, embedding_dimensions, avg_confidence_at_save
+                FROM voice_embedding_history
+                WHERE speaker_name = ? AND version = ?
+            """, (speaker_name, version))
+
+            row = cursor.fetchone()
+
+            if not row:
+                logger.warning(f"No embedding found for {speaker_name} version {version}")
+                conn.close()
+                return False
+
+            embedding_b64, dimensions, confidence = row
+
+            # Update current embedding
+            now = datetime.now().isoformat()
+            cursor.execute("""
+                UPDATE voice_embeddings SET
+                    embedding_b64 = ?,
+                    embedding_dimensions = ?,
+                    updated_at = ?,
+                    cloud_sql_synced = 0,
+                    source = 'rollback'
+                WHERE speaker_name = ?
+            """, (embedding_b64, dimensions, now, speaker_name))
+
+            # Record rollback in history
+            cursor.execute("""
+                SELECT version FROM voice_embeddings WHERE speaker_name = ?
+            """, (speaker_name,))
+            current_version = cursor.fetchone()[0]
+
+            cursor.execute("""
+                INSERT INTO voice_embedding_history (
+                    timestamp, speaker_name, embedding_b64, embedding_dimensions,
+                    version, update_reason, avg_confidence_at_save, cloud_sql_synced
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now, speaker_name, embedding_b64, dimensions,
+                current_version + 1, f'rollback_to_v{version}', confidence, 0
+            ))
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"🔙 [ROLLBACK] Rolled back {speaker_name} to version {version}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to rollback embedding: {e}", exc_info=True)
+            return False
 
     async def get_voice_learning_summary(self, speaker_name: str) -> str:
         """
