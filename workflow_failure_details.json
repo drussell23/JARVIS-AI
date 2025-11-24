@@ -1,0 +1,83 @@
+{
+  "workflow_name": "Environment Variable Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19631284748",
+  "branch": "dependabot/pip/backend/anthropic-989a25a3c8",
+  "commit_sha": "b10e3c7",
+  "run_number": 477,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/environment-variable-validation-run477-20251124-112854",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Environment Variable Validation (Run #477)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 52,
+              "content": "2025-11-24T10:37:03.9341932Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 35,
+              "content": "2025-11-24T10:37:03.9284898Z \u274c VALIDATION FAILED",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2025-11-24T10:37:04.3006895Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 40,
+              "content": "2025-11-24T10:37:03.9287052Z \u26a0\ufe0f  WARNINGS",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 75,
+              "content": "2025-11-24T10:37:03.9560384Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2025-11-24T10:37:04.1629278Z ##[warning]No files were found with the provided path: /tmp/env_summary.txt. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2025-11-24T10:37:04.3006895Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2025-11-24T11:28:54.797949"
+}
