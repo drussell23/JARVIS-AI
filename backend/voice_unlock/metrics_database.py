@@ -777,6 +777,121 @@ class MetricsDatabase:
             )
         """)
 
+        # 🧠 STT HALLUCINATION LEARNING: Track detected hallucinations for continuous learning
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stt_hallucinations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                date TEXT NOT NULL,
+
+                -- Original Transcription
+                original_text TEXT NOT NULL,
+                original_text_normalized TEXT NOT NULL,
+                stt_confidence REAL,
+
+                -- Correction
+                corrected_text TEXT,
+                was_corrected INTEGER DEFAULT 0,
+                correction_source TEXT,  -- 'consensus_alternative', 'learned', 'contextual_default', 'user_feedback'
+
+                -- Detection Details
+                hallucination_type TEXT NOT NULL,  -- 'known_pattern', 'contextual_mismatch', etc.
+                detection_confidence REAL NOT NULL,
+                detection_method TEXT,  -- 'langgraph_reasoning', 'pattern_match', etc.
+                reasoning_steps INTEGER DEFAULT 0,
+
+                -- Context at Detection
+                context TEXT DEFAULT 'unlock_command',
+                audio_hash TEXT,
+                sai_tv_connected INTEGER DEFAULT 0,
+                sai_display_count INTEGER,
+
+                -- Learning Stats
+                occurrence_count INTEGER DEFAULT 1,
+                last_occurrence TEXT,
+                times_corrected INTEGER DEFAULT 0,
+                times_flagged INTEGER DEFAULT 0,
+
+                -- User Feedback
+                user_confirmed INTEGER DEFAULT 0,  -- User confirmed this was wrong
+                user_correction TEXT,  -- User provided correction
+
+                UNIQUE(original_text_normalized)
+            )
+        """)
+
+        # 🧠 HALLUCINATION CORRECTIONS: Map hallucinations to corrections
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hallucination_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+
+                -- Mapping
+                hallucination_normalized TEXT NOT NULL,
+                correction TEXT NOT NULL,
+
+                -- Confidence in this correction
+                correction_confidence REAL DEFAULT 0.9,
+                times_applied INTEGER DEFAULT 1,
+                last_applied TEXT,
+
+                -- Source
+                source TEXT,  -- 'auto_learned', 'user_feedback', 'consensus'
+
+                UNIQUE(hallucination_normalized)
+            )
+        """)
+
+        # 🧠 USER BEHAVIORAL PATTERNS: Track typical user phrases and times
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_behavioral_patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                context TEXT NOT NULL,  -- 'unlock_command', 'general', etc.
+
+                -- Phrase Patterns
+                phrase TEXT NOT NULL,
+                phrase_normalized TEXT NOT NULL,
+                occurrence_count INTEGER DEFAULT 1,
+                last_used TEXT,
+
+                -- Time Patterns
+                typical_hours TEXT,  -- JSON array of typical hours [6, 7, 8, 17, 18]
+
+                -- Success Rate
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+
+                UNIQUE(context, phrase_normalized)
+            )
+        """)
+
+        # 🧠 HALLUCINATION REASONING LOG: Detailed reasoning traces
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hallucination_reasoning_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                hallucination_id INTEGER,
+
+                -- Reasoning Details
+                reasoning_steps_json TEXT,  -- Full reasoning chain as JSON
+                hypotheses_json TEXT,  -- Hypotheses formed
+                evidence_json TEXT,  -- Evidence gathered
+
+                -- Analysis Results
+                pattern_analysis_json TEXT,
+                consensus_analysis_json TEXT,
+                context_analysis_json TEXT,
+                phonetic_analysis_json TEXT,
+                behavioral_analysis_json TEXT,
+                sai_analysis_json TEXT,
+
+                -- Final Decision
+                final_decision TEXT,
+
+                FOREIGN KEY (hallucination_id) REFERENCES stt_hallucinations(id)
+            )
+        """)
+
         # Create indexes for fast queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_date ON unlock_attempts(date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_speaker ON unlock_attempts(speaker_name)")
@@ -830,6 +945,18 @@ class MetricsDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_active ON tv_sessions(is_active)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_tv ON tv_sessions(tv_identifier)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_start ON tv_sessions(session_start)")
+
+        # 🧠 Indexes for Hallucination Learning tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hallucinations_normalized ON stt_hallucinations(original_text_normalized)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hallucinations_type ON stt_hallucinations(hallucination_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hallucinations_date ON stt_hallucinations(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hallucinations_timestamp ON stt_hallucinations(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hallucinations_context ON stt_hallucinations(context)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_corrections_normalized ON hallucination_corrections(hallucination_normalized)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_behavioral_context ON user_behavioral_patterns(context)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_behavioral_phrase ON user_behavioral_patterns(phrase_normalized)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reasoning_hallucination ON hallucination_reasoning_log(hallucination_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reasoning_timestamp ON hallucination_reasoning_log(timestamp)")
 
         conn.commit()
         conn.close()
@@ -3413,6 +3540,376 @@ class MetricsDatabase:
             summary_parts.append("Your voice profile is getting better with each use!")
 
         return " ".join(summary_parts)
+
+    # =========================================================================
+    # 🧠 STT HALLUCINATION LEARNING METHODS
+    # =========================================================================
+
+    async def record_hallucination(
+        self,
+        original_text: str,
+        corrected_text: Optional[str],
+        hallucination_type: str,
+        confidence: float,
+        detection_method: str,
+        reasoning_steps: int = 0,
+        sai_context: Optional[Dict[str, Any]] = None,
+        audio_hash: Optional[str] = None,
+        context: str = "unlock_command"
+    ) -> Optional[int]:
+        """
+        Record a detected hallucination for continuous learning.
+
+        Args:
+            original_text: The hallucinated transcription
+            corrected_text: The correction (if any)
+            hallucination_type: Type of hallucination
+            confidence: Detection confidence
+            detection_method: How it was detected
+            reasoning_steps: Number of LangGraph reasoning steps
+            sai_context: SAI context at detection
+            audio_hash: Hash of the audio (for deduplication)
+            context: Context (unlock_command, general, etc.)
+
+        Returns:
+            Hallucination ID if successful
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+            date = datetime.now().strftime("%Y-%m-%d")
+            normalized = original_text.lower().strip()
+
+            # Check if this hallucination already exists
+            cursor.execute("""
+                SELECT id, occurrence_count, times_corrected, times_flagged
+                FROM stt_hallucinations WHERE original_text_normalized = ?
+            """, (normalized,))
+
+            existing = cursor.fetchone()
+
+            if existing:
+                # Update existing record
+                hallucination_id = existing[0]
+                occurrence_count = existing[1] + 1
+                times_corrected = existing[2] + (1 if corrected_text else 0)
+                times_flagged = existing[3] + (0 if corrected_text else 1)
+
+                cursor.execute("""
+                    UPDATE stt_hallucinations SET
+                        occurrence_count = ?,
+                        last_occurrence = ?,
+                        times_corrected = ?,
+                        times_flagged = ?,
+                        detection_confidence = MAX(detection_confidence, ?),
+                        corrected_text = COALESCE(?, corrected_text)
+                    WHERE id = ?
+                """, (
+                    occurrence_count, now, times_corrected, times_flagged,
+                    confidence, corrected_text, hallucination_id
+                ))
+
+                logger.debug(f"📚 Updated hallucination #{hallucination_id}: occurrence {occurrence_count}")
+
+            else:
+                # Insert new record
+                sai_tv = sai_context.get("is_tv_connected", False) if sai_context else False
+                sai_displays = sai_context.get("display_context", {}).get("display_count", 0) if sai_context else 0
+
+                cursor.execute("""
+                    INSERT INTO stt_hallucinations (
+                        timestamp, date, original_text, original_text_normalized,
+                        corrected_text, was_corrected, correction_source,
+                        hallucination_type, detection_confidence, detection_method,
+                        reasoning_steps, context, audio_hash,
+                        sai_tv_connected, sai_display_count,
+                        occurrence_count, last_occurrence, times_corrected, times_flagged
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    now, date, original_text, normalized,
+                    corrected_text, 1 if corrected_text else 0,
+                    "auto_learned" if corrected_text else None,
+                    hallucination_type, confidence, detection_method,
+                    reasoning_steps, context, audio_hash,
+                    1 if sai_tv else 0, sai_displays,
+                    1, now, 1 if corrected_text else 0, 0 if corrected_text else 1
+                ))
+
+                hallucination_id = cursor.lastrowid
+                logger.info(f"📚 Recorded new hallucination #{hallucination_id}: '{original_text[:30]}...'")
+
+            # Also update/create correction mapping if we have a correction
+            if corrected_text:
+                cursor.execute("""
+                    INSERT INTO hallucination_corrections (
+                        timestamp, hallucination_normalized, correction,
+                        correction_confidence, times_applied, last_applied, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(hallucination_normalized) DO UPDATE SET
+                        times_applied = times_applied + 1,
+                        last_applied = ?,
+                        correction_confidence = MAX(correction_confidence, ?)
+                """, (
+                    now, normalized, corrected_text,
+                    confidence, 1, now, "auto_learned",
+                    now, confidence
+                ))
+
+            conn.commit()
+            conn.close()
+
+            return hallucination_id
+
+        except Exception as e:
+            logger.error(f"Failed to record hallucination: {e}", exc_info=True)
+            return None
+
+    async def get_hallucination_patterns(self) -> List[str]:
+        """
+        Get all learned hallucination patterns.
+
+        Returns:
+            List of normalized hallucination texts
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Get patterns with at least 1 occurrence
+            cursor.execute("""
+                SELECT original_text_normalized
+                FROM stt_hallucinations
+                WHERE occurrence_count >= 1
+                ORDER BY occurrence_count DESC
+            """)
+
+            patterns = [row[0] for row in cursor.fetchall()]
+            conn.close()
+
+            return patterns
+
+        except Exception as e:
+            logger.error(f"Failed to get hallucination patterns: {e}")
+            return []
+
+    async def get_hallucination_corrections(self) -> Dict[str, str]:
+        """
+        Get mapping of hallucinations to their corrections.
+
+        Returns:
+            Dict mapping normalized hallucination text to correction
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT hallucination_normalized, correction
+                FROM hallucination_corrections
+                WHERE correction_confidence >= 0.5
+                ORDER BY times_applied DESC
+            """)
+
+            corrections = {row[0]: row[1] for row in cursor.fetchall()}
+            conn.close()
+
+            return corrections
+
+        except Exception as e:
+            logger.error(f"Failed to get hallucination corrections: {e}")
+            return {}
+
+    async def get_user_behavioral_patterns(self, context: str) -> Dict[str, Any]:
+        """
+        Get user behavioral patterns for a context.
+
+        Returns:
+            Dict with typical_phrases, typical_hours, score
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Get typical phrases
+            cursor.execute("""
+                SELECT phrase, occurrence_count, success_count, failure_count
+                FROM user_behavioral_patterns
+                WHERE context = ?
+                ORDER BY occurrence_count DESC
+                LIMIT 10
+            """, (context,))
+
+            phrases_data = cursor.fetchall()
+            typical_phrases = [row[0] for row in phrases_data]
+
+            # Calculate success rate
+            total_success = sum(row[2] for row in phrases_data)
+            total_failure = sum(row[3] for row in phrases_data)
+            success_rate = total_success / max(total_success + total_failure, 1)
+
+            # Get typical hours from unlock_attempts
+            cursor.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as hour, COUNT(*) as cnt
+                FROM unlock_attempts
+                WHERE success = 1
+                GROUP BY hour
+                HAVING cnt >= 3
+                ORDER BY cnt DESC
+            """)
+
+            typical_hours = [row[0] for row in cursor.fetchall()]
+
+            conn.close()
+
+            return {
+                "has_behavioral_data": len(typical_phrases) > 0,
+                "typical_phrases": typical_phrases,
+                "typical_hours": typical_hours,
+                "success_rate": success_rate,
+                "score": min(1.0, success_rate + 0.3 if typical_phrases else 0.5)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get behavioral patterns: {e}")
+            return {"has_behavioral_data": False, "typical_phrases": [], "typical_hours": [], "score": 0.5}
+
+    async def record_user_phrase(
+        self,
+        context: str,
+        phrase: str,
+        success: bool = True
+    ):
+        """
+        Record a user phrase for behavioral pattern learning.
+
+        Args:
+            context: Context (unlock_command, general, etc.)
+            phrase: The phrase the user said
+            success: Whether this led to a successful action
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+            normalized = phrase.lower().strip()
+
+            cursor.execute("""
+                INSERT INTO user_behavioral_patterns (
+                    context, phrase, phrase_normalized, occurrence_count,
+                    last_used, success_count, failure_count
+                ) VALUES (?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(context, phrase_normalized) DO UPDATE SET
+                    occurrence_count = occurrence_count + 1,
+                    last_used = ?,
+                    success_count = success_count + ?,
+                    failure_count = failure_count + ?
+            """, (
+                context, phrase, normalized, now, 1 if success else 0, 0 if success else 1,
+                now, 1 if success else 0, 0 if success else 1
+            ))
+
+            conn.commit()
+            conn.close()
+
+        except Exception as e:
+            logger.error(f"Failed to record user phrase: {e}")
+
+    async def store_hallucination_reasoning(
+        self,
+        hallucination_id: int,
+        reasoning_steps: List[Dict[str, Any]],
+        hypotheses: List[Dict[str, Any]],
+        evidence: Dict[str, Any],
+        pattern_analysis: Dict[str, Any] = None,
+        consensus_analysis: Dict[str, Any] = None,
+        context_analysis: Dict[str, Any] = None,
+        phonetic_analysis: Dict[str, Any] = None,
+        behavioral_analysis: Dict[str, Any] = None,
+        sai_analysis: Dict[str, Any] = None,
+        final_decision: str = None
+    ):
+        """
+        Store detailed reasoning trace for a hallucination detection.
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+
+            cursor.execute("""
+                INSERT INTO hallucination_reasoning_log (
+                    timestamp, hallucination_id, reasoning_steps_json, hypotheses_json,
+                    evidence_json, pattern_analysis_json, consensus_analysis_json,
+                    context_analysis_json, phonetic_analysis_json, behavioral_analysis_json,
+                    sai_analysis_json, final_decision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now, hallucination_id,
+                json.dumps(reasoning_steps),
+                json.dumps(hypotheses),
+                json.dumps(evidence),
+                json.dumps(pattern_analysis) if pattern_analysis else None,
+                json.dumps(consensus_analysis) if consensus_analysis else None,
+                json.dumps(context_analysis) if context_analysis else None,
+                json.dumps(phonetic_analysis) if phonetic_analysis else None,
+                json.dumps(behavioral_analysis) if behavioral_analysis else None,
+                json.dumps(sai_analysis) if sai_analysis else None,
+                final_decision
+            ))
+
+            conn.commit()
+            conn.close()
+
+        except Exception as e:
+            logger.error(f"Failed to store hallucination reasoning: {e}")
+
+    async def get_hallucination_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about hallucination detection.
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Total hallucinations
+            cursor.execute("SELECT COUNT(*) FROM stt_hallucinations")
+            total = cursor.fetchone()[0]
+
+            # By type
+            cursor.execute("""
+                SELECT hallucination_type, COUNT(*), SUM(occurrence_count)
+                FROM stt_hallucinations
+                GROUP BY hallucination_type
+            """)
+            by_type = {row[0]: {"unique": row[1], "total_occurrences": row[2]} for row in cursor.fetchall()}
+
+            # Corrections
+            cursor.execute("SELECT COUNT(*) FROM hallucination_corrections")
+            total_corrections = cursor.fetchone()[0]
+
+            # Recent (last 7 days)
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            cursor.execute("""
+                SELECT COUNT(*) FROM stt_hallucinations WHERE date >= ?
+            """, (week_ago,))
+            recent = cursor.fetchone()[0]
+
+            conn.close()
+
+            return {
+                "total_unique_hallucinations": total,
+                "by_type": by_type,
+                "total_corrections_learned": total_corrections,
+                "hallucinations_last_7_days": recent
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get hallucination stats: {e}")
+            return {}
 
 
 # Singleton instance
