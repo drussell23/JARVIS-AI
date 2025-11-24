@@ -1331,7 +1331,8 @@ class IntelligentVoiceUnlockService:
 
             # Try multiple keychain service names for compatibility
             keychain_services = [
-                ("jarvis_voice_unlock", "jarvis"),  # Primary (new format)
+                ("com.jarvis.voiceunlock", "unlock_token"),  # Primary (enable_screen_unlock.sh format)
+                ("jarvis_voice_unlock", "jarvis"),  # Alternative format
                 ("JARVIS_Screen_Unlock", "jarvis_user"),  # Legacy format
             ]
 
@@ -1361,7 +1362,7 @@ class IntelligentVoiceUnlockService:
 
             if not password:
                 logger.error("Password not found in keychain")
-                logger.error("Tried services: jarvis_voice_unlock, JARVIS_Screen_Unlock")
+                logger.error("Tried services: com.jarvis.voiceunlock, jarvis_voice_unlock, JARVIS_Screen_Unlock")
                 logger.error("Run: ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/fix_keychain_password.sh")
                 return {
                     "success": False,

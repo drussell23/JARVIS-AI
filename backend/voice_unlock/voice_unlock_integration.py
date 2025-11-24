@@ -28,6 +28,13 @@ import gc
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import DaemonThreadPoolExecutor
+    DAEMON_EXECUTOR_AVAILABLE = True
+except ImportError:
+    DAEMON_EXECUTOR_AVAILABLE = False
 from enum import Enum
 
 # ML optimization components
@@ -634,8 +641,11 @@ class VoiceUnlockSystem:
         self._proximity_auth = None
         self._apple_watch_detector = None
         
-        # Thread pool for async operations
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Thread pool for async operations (use daemon threads for clean shutdown)
+        if DAEMON_EXECUTOR_AVAILABLE:
+            self.executor = DaemonThreadPoolExecutor(max_workers=4, thread_name_prefix='VoiceUnlock')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=4)
 
         # System state
         self.is_active = False

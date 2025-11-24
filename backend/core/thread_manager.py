@@ -42,6 +42,86 @@ import atexit
 logger = logging.getLogger(__name__)
 
 
+class DaemonThreadPoolExecutor(ThreadPoolExecutor):
+    """
+    ThreadPoolExecutor that uses daemon threads.
+
+    Daemon threads are automatically terminated when the main program exits,
+    preventing hanging on shutdown. This is essential for clean JARVIS shutdown.
+
+    Usage:
+        executor = DaemonThreadPoolExecutor(max_workers=4)
+        future = executor.submit(some_function)
+    """
+
+    def __init__(self, max_workers=None, thread_name_prefix='', initializer=None, initargs=()):
+        super().__init__(
+            max_workers=max_workers,
+            thread_name_prefix=thread_name_prefix or 'DaemonPool',
+            initializer=initializer,
+            initargs=initargs
+        )
+        # Register for cleanup on exit
+        atexit.register(self._cleanup)
+
+    def _adjust_thread_count(self):
+        """Override to make threads daemon"""
+        super()._adjust_thread_count()
+        # Make all threads daemon
+        for thread in self._threads:
+            if not thread.daemon:
+                thread.daemon = True
+
+    def _cleanup(self):
+        """Cleanup on exit"""
+        try:
+            self.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass  # Ignore errors during cleanup
+
+
+# Global registry of all executors for cleanup
+_executor_registry: List['DaemonThreadPoolExecutor'] = []
+_executor_lock = threading.Lock()
+
+
+def get_daemon_executor(max_workers: int = 4, name: str = 'jarvis') -> DaemonThreadPoolExecutor:
+    """
+    Get a daemon thread pool executor.
+
+    Creates a new executor and registers it for cleanup on shutdown.
+
+    Args:
+        max_workers: Maximum number of worker threads
+        name: Thread name prefix for identification
+
+    Returns:
+        DaemonThreadPoolExecutor instance
+    """
+    executor = DaemonThreadPoolExecutor(
+        max_workers=max_workers,
+        thread_name_prefix=f'{name}-daemon-'
+    )
+    with _executor_lock:
+        _executor_registry.append(executor)
+    return executor
+
+
+def shutdown_all_executors():
+    """Shutdown all registered executors"""
+    with _executor_lock:
+        for executor in _executor_registry:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+        _executor_registry.clear()
+
+
+# Register cleanup on module exit
+atexit.register(shutdown_all_executors)
+
+
 class ThreadState(Enum):
     """Thread lifecycle states"""
     CREATED = auto()

@@ -14,6 +14,13 @@ import queue
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import DaemonThreadPoolExecutor
+    DAEMON_EXECUTOR_AVAILABLE = True
+except ImportError:
+    DAEMON_EXECUTOR_AVAILABLE = False
+
 from .optimization_config import StreamingConfig, OPTIMIZATION_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -57,8 +64,14 @@ class StreamingAudioProcessor:
         self.total_latency = 0.0
         self.dropped_chunks = 0
         
-        # Threading
-        self.executor = ThreadPoolExecutor(max_workers=self.config.worker_threads)
+        # Threading (use daemon threads for clean shutdown)
+        if DAEMON_EXECUTOR_AVAILABLE:
+            self.executor = DaemonThreadPoolExecutor(
+                max_workers=self.config.worker_threads,
+                thread_name_prefix='StreamingProcessor'
+            )
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=self.config.worker_threads)
         self.processing_thread = None
         self.running = False
         

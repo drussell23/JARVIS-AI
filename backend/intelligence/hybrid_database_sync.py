@@ -34,6 +34,13 @@ import random
 import time
 from collections import deque, defaultdict
 from concurrent.futures import ThreadPoolExecutor
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import DaemonThreadPoolExecutor
+    DAEMON_EXECUTOR_AVAILABLE = True
+except ImportError:
+    DAEMON_EXECUTOR_AVAILABLE = False
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
@@ -997,8 +1004,11 @@ class HybridDatabaseSync:
         if enable_ml_prefetch and self.faiss_cache:
             self.ml_prefetcher = MLCachePrefetcher(faiss_cache=self.faiss_cache)
 
-        # Thread pool for parallel operations
-        self.thread_pool = ThreadPoolExecutor(max_workers=4)
+        # Thread pool for parallel operations (use daemon threads for clean shutdown)
+        if DAEMON_EXECUTOR_AVAILABLE:
+            self.thread_pool = DaemonThreadPoolExecutor(max_workers=4, thread_name_prefix='HybridSync')
+        else:
+            self.thread_pool = ThreadPoolExecutor(max_workers=4)
 
         # Background tasks
         self.sync_task: Optional[asyncio.Task] = None
