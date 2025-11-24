@@ -5636,12 +5636,12 @@ class AsyncSystemManager:
                 logger.error(f"[VOICE UNLOCK] ❌ Voice Profiles: FAILED - {e}")
 
             # ═══════════════════════════════════════════════════════════
-            # 3. CHECK KEYCHAIN PASSWORD (JARVIS_Screen_Unlock)
+            # 3. CHECK KEYCHAIN PASSWORD (com.jarvis.voiceunlock)
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking Keychain password...")
             try:
                 result = subprocess.run(
-                    ['security', 'find-generic-password', '-s', 'JARVIS_Screen_Unlock', '-a', 'jarvis_user', '-w'],
+                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -5651,7 +5651,7 @@ class AsyncSystemManager:
                     status['keychain_password_stored'] = True
                     status['detailed_checks']['keychain'] = {
                         'stored': True,
-                        'service': 'JARVIS_Screen_Unlock',
+                        'service': 'com.jarvis.voiceunlock',
                         'password_length': len(password)
                     }
                     logger.info(f"[VOICE UNLOCK] ✅ Keychain: Password stored ({len(password)} chars)")
@@ -5661,7 +5661,7 @@ class AsyncSystemManager:
                         'stored': False,
                         'error': 'Not found in Keychain'
                     }
-                    status['issues'].append('Password not stored in Keychain (JARVIS_Screen_Unlock)')
+                    status['issues'].append('Password not stored in Keychain (com.jarvis.voiceunlock)')
                     logger.warning("[VOICE UNLOCK] ⚠️  Keychain: PASSWORD NOT FOUND")
             except Exception as e:
                 status['keychain_password_stored'] = False
