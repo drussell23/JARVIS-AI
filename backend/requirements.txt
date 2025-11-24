@@ -24,7 +24,7 @@ torchaudio==2.1.2  # Required by SpeechBrain
 psutil==5.9.6  # Resource monitoring for STT routing
 
 # Configuration dependencies
-PyYAML==6.0.1
+PyYAML==6.0.3
 edge-tts==7.2.3
 websockets==12.0
 numpy==1.24.3
