@@ -593,8 +593,12 @@ try:
 except ImportError:
     pass
 
-# Add backend to path for autonomous systems
-sys.path.insert(0, str(Path(__file__).parent / "backend"))
+# Add project root AND backend to path for autonomous systems
+# Project root needed for 'from backend.X' imports
+# Backend dir needed for 'from core.X' imports
+_project_root = Path(__file__).parent
+sys.path.insert(0, str(_project_root))
+sys.path.insert(0, str(_project_root / "backend"))
 
 # CRITICAL: Clear ALL Python caches BEFORE any backend imports
 # This ensures we get fresh code with all fixes
