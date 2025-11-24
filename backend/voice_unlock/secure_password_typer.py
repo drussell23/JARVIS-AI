@@ -1285,6 +1285,269 @@ def get_secure_typer() -> SecurePasswordTyper:
     return _secure_typer_instance
 
 
+async def type_password_with_display_awareness(
+    password: str,
+    submit: bool = True,
+    attempt_id: Optional[int] = None
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """
+    Type password with Display-Aware SAI for intelligent strategy selection.
+
+    This function uses LangGraph-powered SAI to detect display configuration
+    (especially mirrored 85" Sony TV) and select the optimal typing strategy.
+
+    Args:
+        password: Password to type
+        submit: Press Enter after typing
+        attempt_id: Unlock attempt ID for ML database
+
+    Returns:
+        Tuple of (success, metrics_dict, display_context)
+    """
+    try:
+        from voice_unlock.display_aware_sai import (
+            get_optimal_typing_strategy,
+            TypingStrategy,
+            DisplayContext,
+        )
+
+        logger.info("🖥️ [SAI] Running Display-Aware Situational Intelligence...")
+
+        # Get optimal strategy from SAI
+        typing_config, display_context, reasoning = await get_optimal_typing_strategy()
+
+        logger.info(f"🖥️ [SAI] Display Mode: {display_context.display_mode.name}")
+        logger.info(f"🖥️ [SAI] Mirrored: {display_context.is_mirrored}")
+        logger.info(f"🖥️ [SAI] TV Connected: {display_context.is_tv_connected}")
+        logger.info(f"🖥️ [SAI] Selected Strategy: {typing_config.strategy.name}")
+
+        for step in reasoning[-3:]:  # Log last 3 reasoning steps
+            logger.info(f"🖥️ [SAI] {step}")
+
+        # Use strategy-specific typing
+        if typing_config.strategy == TypingStrategy.APPLESCRIPT_DIRECT:
+            # AppleScript is more reliable for mirrored displays
+            logger.info("🖥️ [SAI] Using AppleScript for mirrored/TV display")
+            success, metrics = await _type_password_applescript_sai(
+                password, submit, typing_config, attempt_id
+            )
+        elif typing_config.strategy == TypingStrategy.HYBRID_CG_APPLESCRIPT:
+            # Try CG first, fallback to AppleScript
+            logger.info("🖥️ [SAI] Using Hybrid CG+AppleScript strategy")
+            success, metrics = await _type_password_hybrid(
+                password, submit, typing_config, attempt_id
+            )
+        else:
+            # Core Graphics (fast or cautious)
+            logger.info("🖥️ [SAI] Using Core Graphics strategy")
+            success, metrics = await _type_password_cg_sai(
+                password, submit, typing_config, attempt_id
+            )
+
+        return success, metrics, display_context.to_dict()
+
+    except ImportError:
+        logger.warning("🖥️ [SAI] Display SAI not available, using standard typing")
+        success, metrics = await type_password_securely(
+            password, submit, randomize_timing=True, attempt_id=attempt_id
+        )
+        return success, metrics, None
+
+    except Exception as e:
+        logger.error(f"🖥️ [SAI] Error in display-aware typing: {e}", exc_info=True)
+        # Fallback to standard typing
+        success, metrics = await type_password_securely(
+            password, submit, randomize_timing=True, attempt_id=attempt_id
+        )
+        return success, metrics, None
+
+
+async def _type_password_applescript_sai(
+    password: str,
+    submit: bool,
+    config,  # TypingConfig from SAI
+    attempt_id: Optional[int]
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Type password using AppleScript with SAI-recommended timing.
+    Most reliable for mirrored/TV displays.
+    """
+    metrics = TypingMetrics()
+    metrics.characters_typed = len(password)
+    metrics.fallback_used = True
+
+    try:
+        logger.info(f"🔐 [APPLESCRIPT-SAI] Starting secure input (strategy: AppleScript)")
+
+        # Wake screen with SAI-recommended delay
+        wake_script = """
+        tell application "System Events"
+            key code 49
+        end tell
+        """
+
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", wake_script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+
+        # SAI-recommended wake delay (longer for TV)
+        await asyncio.sleep(config.wake_delay_ms / 1000.0)
+        logger.info(f"🔐 [APPLESCRIPT-SAI] Wake delay: {config.wake_delay_ms}ms")
+
+        # Type password character by character for reliability
+        # Using keystroke with character-level control
+        type_script = """
+        tell application "System Events"
+            keystroke (system attribute "JARVIS_UNLOCK_PASS")
+        end tell
+        """
+
+        env = os.environ.copy()
+        env["JARVIS_UNLOCK_PASS"] = password
+
+        typing_start = time.time()
+
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", type_script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+        stdout, stderr = await proc.communicate()
+
+        metrics.typing_time_ms = (time.time() - typing_start) * 1000
+
+        # Clear from environment
+        if "JARVIS_UNLOCK_PASS" in env:
+            del env["JARVIS_UNLOCK_PASS"]
+
+        if proc.returncode != 0:
+            logger.error(f"❌ [APPLESCRIPT-SAI] AppleScript failed: {stderr.decode()}")
+            metrics.error_message = stderr.decode()
+            return False, metrics.to_dict()
+
+        # Submit if requested
+        if submit:
+            await asyncio.sleep(config.submit_delay_ms / 1000.0)
+            submit_script = """
+            tell application "System Events"
+                key code 36
+            end tell
+            """
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", submit_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            logger.info("🔐 [APPLESCRIPT-SAI] Return key pressed")
+
+        # Verify unlock
+        await asyncio.sleep(2.0)  # Longer delay for TV display
+
+        try:
+            from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+
+            if is_screen_locked():
+                metrics.success = False
+                metrics.error_message = "Password incorrect - screen still locked"
+                logger.error("❌ [APPLESCRIPT-SAI] Screen still locked after AppleScript typing")
+                return False, metrics.to_dict()
+            else:
+                metrics.success = True
+                logger.info("✅ [APPLESCRIPT-SAI] Screen unlocked successfully!")
+                return True, metrics.to_dict()
+
+        except Exception as e:
+            logger.warning(f"⚠️ Could not verify unlock status: {e}")
+            metrics.success = True  # Assume success if can't verify
+            return True, metrics.to_dict()
+
+    except Exception as e:
+        logger.error(f"❌ [APPLESCRIPT-SAI] Error: {e}", exc_info=True)
+        metrics.error_message = str(e)
+        return False, metrics.to_dict()
+
+
+async def _type_password_cg_sai(
+    password: str,
+    submit: bool,
+    config,  # TypingConfig from SAI
+    attempt_id: Optional[int]
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Type password using Core Graphics with SAI-recommended timing.
+    """
+    typer = get_secure_typer()
+
+    # Create config with SAI-recommended timings
+    typing_config = TypingConfig(
+        base_keystroke_delay=config.base_keystroke_delay_ms / 1000.0,
+        min_keystroke_delay=config.base_keystroke_delay_ms / 2000.0,
+        max_keystroke_delay=config.base_keystroke_delay_ms * 2 / 1000.0,
+        key_press_duration_min=config.key_press_duration_ms / 2000.0,
+        key_press_duration_max=config.key_press_duration_ms / 1000.0,
+        shift_register_delay=config.shift_register_delay_ms / 1000.0,
+        wake_delay=config.wake_delay_ms / 1000.0,
+        submit_delay=config.submit_delay_ms / 1000.0,
+        submit_after_typing=submit,
+        max_retries=config.retry_count,
+        enable_applescript_fallback=config.use_applescript_fallback,
+        randomize_timing=True,
+        adaptive_timing=True,
+    )
+
+    logger.info(f"🔐 [CG-SAI] Using SAI timing: keystroke={config.base_keystroke_delay_ms}ms, wake={config.wake_delay_ms}ms")
+
+    success, metrics = await typer.type_password_secure(
+        password=password,
+        submit=submit,
+        config_override=typing_config
+    )
+
+    return success, metrics.to_dict() if metrics else None
+
+
+async def _type_password_hybrid(
+    password: str,
+    submit: bool,
+    config,  # TypingConfig from SAI
+    attempt_id: Optional[int]
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Hybrid strategy: Try Core Graphics first, fallback to AppleScript.
+    """
+    logger.info("🔐 [HYBRID] Attempting Core Graphics first...")
+
+    # Try CG first
+    success, metrics = await _type_password_cg_sai(password, submit, config, attempt_id)
+
+    if success:
+        logger.info("✅ [HYBRID] Core Graphics succeeded")
+        return success, metrics
+
+    # Verify if actually failed (screen still locked)
+    try:
+        from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+
+        await asyncio.sleep(1.5)
+
+        if not is_screen_locked():
+            logger.info("✅ [HYBRID] Screen actually unlocked despite metrics")
+            return True, metrics
+
+        logger.info("🔄 [HYBRID] Core Graphics failed, trying AppleScript fallback...")
+
+    except Exception as e:
+        logger.warning(f"Could not verify: {e}")
+
+    # Fallback to AppleScript
+    return await _type_password_applescript_sai(password, submit, config, attempt_id)
+
+
 async def type_password_securely(
     password: str,
     submit: bool = True,

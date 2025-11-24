@@ -1370,16 +1370,21 @@ class IntelligentVoiceUnlockService:
                     "message": "Password not found in keychain. Run fix_keychain_password.sh to fix.",
                 }
 
-            # 🤖 ML LEARNING: Type password with ML metrics collection
-            # Pass attempt_id to enable character-level metrics storage
-            from voice_unlock.secure_password_typer import type_password_securely
+            # 🖥️ DISPLAY-AWARE SAI: Use situational awareness for display configuration
+            # Automatically detects mirrored/TV displays and adapts typing strategy
+            from voice_unlock.secure_password_typer import type_password_with_display_awareness
 
-            unlock_success, typing_metrics = await type_password_securely(
+            unlock_success, typing_metrics, display_context = await type_password_with_display_awareness(
                 password=password,
                 submit=True,
-                randomize_timing=True,
                 attempt_id=attempt_id  # Enable ML metrics collection
             )
+
+            # Log display context for debugging
+            if display_context:
+                logger.info(f"🖥️ [SAI] Display context: mode={display_context.get('display_mode')}, "
+                           f"mirrored={display_context.get('is_mirrored')}, "
+                           f"tv={display_context.get('is_tv_connected')}")
 
             # 🤖 ML LEARNING: Update typing model with results (CRITICAL: Learn from failures too!)
             if self.ml_engine and typing_metrics:
