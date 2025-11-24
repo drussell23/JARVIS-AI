@@ -32,11 +32,12 @@ class JARVISCommandHandler:
     
     # Command patterns
     UNLOCK_PATTERNS = [
-        (r"(?:hey |hi |hello )?jarvis[,.]? (?:please )?unlock (?:my |the )?mac", None),
-        (r"jarvis[,.]? (?:this is |it'?s) (\w+)", 'user'),
+        (r"(?:hey |hi |hello )?jarvis[,.]? (?:please )?unlock (?:my |the )?(?:mac|screen|computer|system)", None),
+        (r"jarvis[,.\s]* (?:this is |it'?s )(\w+)", 'user'),  # "jarvis this is derek"
         (r"(?:hey )?jarvis[,.]? (\w+) (?:is )?here", 'user'),
         (r"jarvis[,.]? authenticate (?:me|user)?\s*(\w+)?", 'user'),
         (r"open sesame[,.]? jarvis", None),
+        (r"unlock (?:my |the )?screen", None),  # Direct "unlock my screen" without JARVIS prefix
     ]
     
     LOCK_PATTERNS = [

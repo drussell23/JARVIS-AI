@@ -438,6 +438,12 @@ class AuthenticationAuditTrail:
     Langfuse-based audit trail for authentication attempts.
 
     Provides complete transparency into authentication decisions.
+
+    Features:
+    - Session management for tracking authentication sessions
+    - Detailed trace recording with phases and metrics
+    - Cost estimation for voice processing
+    - Local file backup for reliability
     """
 
     def __init__(self):
@@ -445,6 +451,8 @@ class AuthenticationAuditTrail:
         self._langfuse = None
         self._initialized = False
         self._trace_cache: Dict[str, AuthenticationTrace] = {}
+        self._session_cache: Dict[str, Dict[str, Any]] = {}  # Session management
+        self._current_session_id: Optional[str] = None
 
     async def initialize(self):
         """Initialize Langfuse client."""
@@ -461,7 +469,90 @@ class AuthenticationAuditTrail:
             self.logger.warning(f"Langfuse initialization failed, using local: {e}")
             self._initialized = True  # Fallback to local
 
-    def start_trace(self, speaker_name: str, environment: str = "default") -> str:
+    def start_session(self, user_id: str, device: str = "mac") -> str:
+        """
+        Start a new authentication session.
+
+        A session groups multiple authentication attempts (e.g., retries)
+        for a single unlock request.
+
+        Args:
+            user_id: The user attempting authentication
+            device: The device being unlocked
+
+        Returns:
+            Session ID for tracking
+        """
+        session_id = f"session_{uuid4().hex[:12]}"
+        self._current_session_id = session_id
+
+        session_data = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "device": device,
+            "started_at": datetime.utcnow().isoformat(),
+            "traces": [],
+            "total_attempts": 0,
+            "final_outcome": None
+        }
+        self._session_cache[session_id] = session_data
+
+        self.logger.info(f"🔐 Started authentication session: {session_id}")
+        return session_id
+
+    def end_session(self, session_id: str, outcome: str) -> Dict[str, Any]:
+        """
+        End an authentication session.
+
+        Args:
+            session_id: The session to end
+            outcome: 'authenticated', 'denied', 'timeout', 'cancelled'
+
+        Returns:
+            Session summary
+        """
+        if session_id not in self._session_cache:
+            return {}
+
+        session = self._session_cache[session_id]
+        session["ended_at"] = datetime.utcnow().isoformat()
+        session["final_outcome"] = outcome
+        session["duration_ms"] = (
+            datetime.fromisoformat(session["ended_at"]) -
+            datetime.fromisoformat(session["started_at"])
+        ).total_seconds() * 1000
+
+        # Log session summary to Langfuse
+        if self._langfuse:
+            try:
+                self._langfuse.trace(
+                    id=f"{session_id}_summary",
+                    name="authentication_session",
+                    user_id=session["user_id"],
+                    session_id=session_id,
+                    metadata={
+                        "device": session["device"],
+                        "total_attempts": session["total_attempts"],
+                        "final_outcome": outcome,
+                        "duration_ms": session["duration_ms"]
+                    },
+                    tags=["voice_auth", "session", outcome]
+                )
+            except Exception as e:
+                self.logger.debug(f"Langfuse session log failed: {e}")
+
+        self.logger.info(f"🔐 Ended session {session_id}: {outcome} after {session['total_attempts']} attempts")
+
+        if self._current_session_id == session_id:
+            self._current_session_id = None
+
+        return session
+
+    def get_current_session(self) -> Optional[str]:
+        """Get the current active session ID."""
+        return self._current_session_id
+
+    def start_trace(self, speaker_name: str, environment: str = "default", session_id: Optional[str] = None) -> str:
         """Start a new authentication trace."""
         trace_id = f"auth_{uuid4().hex[:16]}"
         trace = AuthenticationTrace(
@@ -472,13 +563,28 @@ class AuthenticationAuditTrail:
         )
         self._trace_cache[trace_id] = trace
 
+        # Link to session if available
+        session_id = session_id or self._current_session_id
+        if session_id and session_id in self._session_cache:
+            self._session_cache[session_id]["traces"].append(trace_id)
+            self._session_cache[session_id]["total_attempts"] += 1
+
         if self._langfuse:
             try:
+                trace_tags = ["voice_auth", environment]
+                if session_id:
+                    trace_tags.append(f"session:{session_id}")
+
                 self._langfuse.trace(
                     id=trace_id,
                     name="voice_authentication",
                     user_id=speaker_name,
-                    metadata={"environment": environment}
+                    session_id=session_id,  # Link to Langfuse session
+                    metadata={
+                        "environment": environment,
+                        "attempt_number": self._session_cache.get(session_id, {}).get("total_attempts", 1)
+                    },
+                    tags=trace_tags
                 )
             except Exception as e:
                 self.logger.debug(f"Langfuse trace failed: {e}")
@@ -509,20 +615,64 @@ class AuthenticationAuditTrail:
 
         if self._langfuse:
             try:
+                # Use span with proper timing and status
                 self._langfuse.span(
                     trace_id=trace_id,
                     name=phase.value,
-                    metadata=metrics
+                    metadata=metrics,
+                    level="DEFAULT" if success else "WARNING",
+                    status_message="completed" if success else "failed"
                 )
             except Exception:
                 pass
+
+    def log_reasoning_step(
+        self,
+        trace_id: str,
+        step_name: str,
+        input_data: Dict[str, Any],
+        output_data: Dict[str, Any],
+        reasoning: str,
+        duration_ms: float = 0.0
+    ):
+        """
+        Log a LangGraph reasoning step for observability.
+
+        This allows tracking the adaptive authentication decision-making process.
+
+        Args:
+            trace_id: The trace this step belongs to
+            step_name: Name of the reasoning step (e.g., 'analyze_audio', 'check_confidence')
+            input_data: Input to this step
+            output_data: Output from this step
+            reasoning: Human-readable explanation of the reasoning
+            duration_ms: Time taken for this step
+        """
+        if self._langfuse:
+            try:
+                # Log as a generation for LLM-style reasoning tracking
+                self._langfuse.generation(
+                    trace_id=trace_id,
+                    name=f"reasoning_{step_name}",
+                    input=json.dumps(input_data, default=str),
+                    output=json.dumps(output_data, default=str),
+                    metadata={
+                        "reasoning": reasoning,
+                        "duration_ms": duration_ms,
+                        "step_type": "langgraph_node"
+                    },
+                    model="langgraph_adaptive_auth"
+                )
+            except Exception as e:
+                self.logger.debug(f"Langfuse reasoning log failed: {e}")
 
     def complete_trace(
         self,
         trace_id: str,
         decision: str,
         confidence: float,
-        threat: ThreatType = ThreatType.NONE
+        threat: ThreatType = ThreatType.NONE,
+        additional_metrics: Optional[Dict[str, Any]] = None
     ) -> Optional[AuthenticationTrace]:
         """Complete and finalize an authentication trace."""
         if trace_id not in self._trace_cache:
@@ -539,18 +689,42 @@ class AuthenticationAuditTrail:
 
         if self._langfuse:
             try:
+                # Score confidence
                 self._langfuse.score(
                     trace_id=trace_id,
                     name="confidence",
-                    value=confidence
+                    value=confidence,
+                    comment=f"Fused confidence from multi-factor auth"
                 )
+
+                # Score decision (binary)
                 self._langfuse.score(
                     trace_id=trace_id,
-                    name="decision",
-                    value=1.0 if decision == "authenticated" else 0.0
+                    name="authenticated",
+                    value=1.0 if decision == "authenticated" else 0.0,
+                    comment=f"Final decision: {decision}"
                 )
-            except Exception:
-                pass
+
+                # Score threat level
+                threat_score = 0.0 if threat == ThreatType.NONE else 1.0
+                self._langfuse.score(
+                    trace_id=trace_id,
+                    name="threat_detected",
+                    value=threat_score,
+                    comment=f"Threat type: {threat.value}"
+                )
+
+                # Log additional metrics if provided
+                if additional_metrics:
+                    for metric_name, metric_value in additional_metrics.items():
+                        if isinstance(metric_value, (int, float)):
+                            self._langfuse.score(
+                                trace_id=trace_id,
+                                name=metric_name,
+                                value=float(metric_value)
+                            )
+            except Exception as e:
+                self.logger.debug(f"Langfuse scoring failed: {e}")
 
         # Log to local file as backup
         self._log_to_file(trace)
@@ -3958,3 +4132,7 @@ async def reset_speaker_verification_service():
     if _speaker_verification_service:
         await _speaker_verification_service.cleanup()
     _speaker_verification_service = None
+
+
+# Alias for backward compatibility
+get_speaker_service = get_speaker_verification_service

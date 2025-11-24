@@ -81,16 +81,58 @@ try:
 except ImportError:
     LANGGRAPH_AVAILABLE = False
 
+# TypedDict for LangGraph state (required for langgraph 0.6.x+)
+try:
+    from typing_extensions import TypedDict, Annotated
+    import operator
+    TYPEDDICT_AVAILABLE = True
+except ImportError:
+    TYPEDDICT_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# LangGraph Adaptive Authentication State
+# LangGraph Adaptive Authentication State (TypedDict for langgraph 0.6.x+)
 # ============================================================================
+
+class AdaptiveAuthStateDict(TypedDict, total=False):
+    """TypedDict state for LangGraph adaptive authentication reasoning.
+
+    Using TypedDict instead of dataclass for compatibility with langgraph 0.6.x+
+    which requires proper state typing.
+    """
+    audio_data: bytes
+    speaker_name: Optional[str]
+    attempt_count: int
+    max_attempts: int
+    voice_confidence: float
+    behavioral_confidence: float
+    context_confidence: float
+    fused_confidence: float
+    is_verified: bool
+    decision: str
+    feedback_message: str
+    retry_strategy: Optional[str]
+    environmental_issues: List[str]
+    threat_detected: Optional[str]
+    trace_id: Optional[str]
+    # Additional fields for enhanced analysis
+    voice_analysis: Optional[Dict[str, Any]]
+    microphone_info: Optional[Dict[str, Any]]
+    illness_detected: bool
+    microphone_changed: bool
+    challenge_question: Optional[str]
+    challenge_expected: Optional[str]
+    challenge_type: Optional[str]
+    challenge_reason: Optional[str]
+    awaiting_challenge_answer: bool
+    hypothesis_confidence: float
+
 
 @dataclass
 class AdaptiveAuthState:
-    """State for LangGraph adaptive authentication reasoning."""
+    """State for LangGraph adaptive authentication reasoning (legacy dataclass)."""
     audio_data: bytes
     speaker_name: Optional[str] = None
     attempt_count: int = 0
@@ -145,7 +187,8 @@ class AdaptiveAuthenticationEngine:
         if not LANGGRAPH_AVAILABLE:
             return
 
-        graph = StateGraph(dict)
+        # Use TypedDict state for langgraph 0.6.x+ compatibility
+        graph = StateGraph(AdaptiveAuthStateDict)
 
         # Add nodes including new challenge question node
         graph.add_node("analyze_audio", self._analyze_audio_node)
@@ -1118,7 +1161,7 @@ class VoiceUnlockSystem:
         - LangGraph adaptive retry with intelligent feedback
         - Anti-spoofing detection (replay attacks, voice cloning)
         - Progressive voice feedback
-        - Full audit trail
+        - Full audit trail with Langfuse sessions
 
         Args:
             timeout: Maximum time to wait for voice input
@@ -1130,6 +1173,7 @@ class VoiceUnlockSystem:
             Enhanced authentication result with feedback and trace
         """
         start_time = time.time()
+        session_id = None
 
         result = {
             'authenticated': False,
@@ -1143,10 +1187,20 @@ class VoiceUnlockSystem:
             'watch_nearby': False,
             'feedback': None,
             'trace_id': None,
+            'session_id': None,
             'attempts': 0
         }
 
         try:
+            # Start a Langfuse session for this unlock attempt
+            if self.speaker_service and hasattr(self.speaker_service, 'audit_trail'):
+                session_id = self.speaker_service.audit_trail.start_session(
+                    user_id=self.authorized_user,
+                    device="mac"
+                )
+                result['session_id'] = session_id
+                logger.info(f"📊 Started Langfuse session: {session_id}")
+
             # Check Apple Watch proximity if required
             proximity_confidence = 0.90  # Default high confidence
             if require_watch:
@@ -1253,6 +1307,14 @@ class VoiceUnlockSystem:
             logger.error(f"Enhanced authentication error: {e}", exc_info=True)
             result['error'] = str(e)
             result['feedback'] = "An error occurred during authentication. Please try again."
+
+        # End the Langfuse session
+        if session_id and self.speaker_service and hasattr(self.speaker_service, 'audit_trail'):
+            outcome = "authenticated" if result['authenticated'] else "denied"
+            if result.get('error'):
+                outcome = "error"
+            session_summary = self.speaker_service.audit_trail.end_session(session_id, outcome)
+            logger.info(f"📊 Ended Langfuse session: {session_id} - {outcome}")
 
         result['processing_time_ms'] = (time.time() - start_time) * 1000
         return result
