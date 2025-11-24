@@ -286,6 +286,19 @@ class UnlockMetricsLogger:
                 metrics_db = get_metrics_database()
                 await metrics_db.store_unlock_attempt(entry, stage_details)
                 logger.debug(f"✅ Stored in database (SQLite + CloudSQL)")
+
+                # Update learning progress for continuous learning tracking
+                match_type = entry.get('metadata', {}).get('match_type', 'regex')
+                command_text = entry.get('transcribed_text', '')
+                await metrics_db.update_learning_progress(
+                    speaker_name=speaker_name,
+                    command_text=command_text,
+                    success=success,
+                    confidence=current_confidence,
+                    match_type=match_type,
+                    duration_ms=total_duration_ms
+                )
+                logger.debug(f"✅ Updated learning_progress table")
             except Exception as e:
                 logger.warning(f"Failed to store in database: {e}")
 

@@ -944,6 +944,179 @@ class MetricsDatabase:
             logger.error(f"Failed to get optimal timing: {e}", exc_info=True)
             return None
 
+    async def update_learning_progress(
+        self,
+        speaker_name: str = None,
+        command_text: str = None,
+        success: bool = True,
+        confidence: float = 0.0,
+        match_type: str = "regex",
+        duration_ms: float = 0.0
+    ) -> Optional[int]:
+        """
+        Update learning progress for voice unlock attempts.
+        Tracks continuous learning metrics for command recognition and authentication.
+
+        Args:
+            speaker_name: Name of the speaker
+            command_text: The command text that was parsed
+            success: Whether the unlock was successful
+            confidence: Confidence score of the command/voice match
+            match_type: How the command was matched (regex, fuzzy, learned)
+            duration_ms: Total duration of the unlock attempt
+
+        Returns:
+            Row ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Get current aggregated stats
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_attempts,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_attempts,
+                    AVG(total_duration_ms) as avg_duration_all
+                FROM unlock_attempts
+            """)
+            row = cursor.fetchone()
+            total_attempts = (row[0] or 0) + 1
+            successful_attempts = (row[1] or 0) + (1 if success else 0)
+            avg_duration_all = row[2] or duration_ms
+
+            # Calculate success rate
+            success_rate = successful_attempts / total_attempts if total_attempts > 0 else 0.0
+
+            # Get last 10 attempts average duration
+            cursor.execute("""
+                SELECT AVG(total_duration_ms) as avg_last_10
+                FROM (
+                    SELECT total_duration_ms
+                    FROM unlock_attempts
+                    ORDER BY timestamp DESC
+                    LIMIT 10
+                )
+            """)
+            avg_last_10 = cursor.fetchone()[0] or duration_ms
+
+            # Get last 50 attempts average duration
+            cursor.execute("""
+                SELECT AVG(total_duration_ms) as avg_last_50
+                FROM (
+                    SELECT total_duration_ms
+                    FROM unlock_attempts
+                    ORDER BY timestamp DESC
+                    LIMIT 50
+                )
+            """)
+            avg_last_50 = cursor.fetchone()[0] or duration_ms
+
+            # Get fastest ever
+            cursor.execute("""
+                SELECT MIN(total_duration_ms) FROM unlock_attempts WHERE success = 1
+            """)
+            fastest_ever = cursor.fetchone()[0] or duration_ms
+
+            # Calculate improvement
+            improvement = ((avg_duration_all - avg_last_10) / avg_duration_all * 100) if avg_duration_all > 0 else 0
+
+            # Get consecutive successes/failures
+            cursor.execute("""
+                SELECT success FROM unlock_attempts ORDER BY timestamp DESC LIMIT 20
+            """)
+            recent_results = [r[0] for r in cursor.fetchall()]
+
+            consecutive_successes = 0
+            consecutive_failures = 0
+            for r in recent_results:
+                if r == 1:
+                    if consecutive_failures == 0:
+                        consecutive_successes += 1
+                    else:
+                        break
+                else:
+                    if consecutive_successes == 0:
+                        consecutive_failures += 1
+                    else:
+                        break
+
+            # Calculate failure rate last 10
+            failure_rate_last_10 = sum(1 for r in recent_results[:10] if r == 0) / min(10, len(recent_results)) if recent_results else 0
+
+            # Determine strategy based on success rate
+            if success_rate >= 0.95:
+                strategy = "aggressive"
+            elif success_rate >= 0.85:
+                strategy = "balanced"
+            else:
+                strategy = "conservative"
+
+            # Insert learning progress entry
+            cursor.execute("""
+                INSERT INTO learning_progress (
+                    timestamp,
+                    total_attempts,
+                    successful_attempts,
+                    success_rate,
+                    avg_typing_duration_last_10,
+                    avg_typing_duration_last_50,
+                    avg_typing_duration_all_time,
+                    improvement_percentage,
+                    avg_char_duration_last_10,
+                    avg_char_duration_last_50,
+                    fastest_ever_typing_ms,
+                    consecutive_successes,
+                    consecutive_failures,
+                    failure_rate_last_10,
+                    model_version,
+                    prediction_accuracy,
+                    optimal_timing_applied,
+                    best_time_of_day,
+                    best_system_load_range,
+                    current_strategy,
+                    timing_adjustments_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.now().isoformat(),
+                total_attempts,
+                successful_attempts,
+                success_rate,
+                avg_last_10,
+                avg_last_50,
+                avg_duration_all,
+                improvement,
+                avg_last_10 / 10 if avg_last_10 else 0,  # Rough estimate
+                avg_last_50 / 10 if avg_last_50 else 0,
+                fastest_ever,
+                consecutive_successes,
+                consecutive_failures,
+                failure_rate_last_10,
+                "v1.0-fuzzy",
+                confidence,
+                1 if match_type == "learned" else 0,
+                datetime.now().strftime("%H:00"),
+                "normal",
+                strategy,
+                json.dumps({
+                    "match_type": match_type,
+                    "command_text": command_text[:100] if command_text else None,
+                    "speaker": speaker_name,
+                    "confidence": confidence,
+                })
+            ))
+
+            row_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            logger.info(f"✅ Updated learning_progress (ID: {row_id}, success_rate: {success_rate:.1%}, strategy: {strategy})")
+            return row_id
+
+        except Exception as e:
+            logger.error(f"Failed to update learning progress: {e}", exc_info=True)
+            return None
+
 
 # Singleton instance
 _metrics_db = None
