@@ -423,6 +423,30 @@ class IntelligentVoiceUnlockService:
         logger.info(f"📝 Transcribed: '{transcribed_text}' (confidence: {stt_confidence:.2f})")
         logger.info(f"👤 Speaker: {speaker_identified or 'Unknown'}")
 
+        # 🧠 HALLUCINATION GUARD: Check and correct STT hallucinations
+        try:
+            from voice.stt_hallucination_guard import verify_stt_transcription
+
+            original_text = transcribed_text
+            transcribed_text, was_corrected, hallucination_detection = await verify_stt_transcription(
+                text=transcribed_text,
+                confidence=stt_confidence,
+                audio_data=audio_data,
+                context="unlock_command"
+            )
+
+            if was_corrected:
+                logger.info(
+                    f"🧠 [HALLUCINATION-GUARD] Corrected: '{original_text}' → '{transcribed_text}'"
+                )
+                diagnostics.error_messages.append(
+                    f"STT hallucination corrected: '{original_text}' → '{transcribed_text}'"
+                )
+        except ImportError:
+            logger.debug("Hallucination guard not available, skipping")
+        except Exception as e:
+            logger.warning(f"Hallucination guard error (continuing): {e}")
+
         # Stage 3: Intent Verification
         stage_intent = metrics_logger.create_stage(
             "intent_verification",

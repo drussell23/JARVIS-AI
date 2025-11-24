@@ -1122,7 +1122,76 @@ class STTHallucinationGuard:
 
         logger.info(f"🔍 Verifying: '{transcription}' (conf: {confidence:.2f})")
 
-        # Run LangGraph reasoning chain
+        # 🚀 FAST PATH: Check for obvious hallucinations first (skip full reasoning)
+        normalized = transcription.lower().strip()
+
+        # Fast check 1: Known learned hallucinations
+        if normalized in self._learned_hallucinations:
+            correction = self._learned_corrections.get(normalized, "unlock my screen")
+            self.metrics["learned_patterns_used"] += 1
+            self.metrics["hallucinations_detected"] += 1
+            self.metrics["hallucinations_corrected"] += 1
+
+            detection = HallucinationDetection(
+                original_text=transcription,
+                corrected_text=correction,
+                hallucination_type=HallucinationType.KNOWN_PATTERN,
+                confidence=0.95,
+                detection_method="fast_path_learned",
+                audio_hash=audio_hash
+            )
+            self._detection_history.append(detection)
+
+            logger.info(f"🚀 [FAST-PATH] Learned hallucination: '{transcription}' → '{correction}'")
+            self._update_timing_metrics((time.time() - start_time) * 1000)
+            return VerificationResult.CORRECTED, detection, correction
+
+        # Fast check 2: Known pattern match (e.g., "Hey Jarvis, I'm [name]")
+        for pattern in self._compiled_hallucination_patterns:
+            if pattern.search(normalized):
+                correction = "unlock my screen"  # Default correction for unlock context
+                self.metrics["hallucinations_detected"] += 1
+                self.metrics["hallucinations_corrected"] += 1
+
+                detection = HallucinationDetection(
+                    original_text=transcription,
+                    corrected_text=correction,
+                    hallucination_type=HallucinationType.KNOWN_PATTERN,
+                    confidence=0.95,
+                    detection_method="fast_path_pattern",
+                    evidence={"matched_pattern": pattern.pattern},
+                    audio_hash=audio_hash
+                )
+                self._detection_history.append(detection)
+
+                # Learn this for next time
+                self._learned_hallucinations.add(normalized)
+                self._learned_corrections[normalized] = correction
+
+                logger.info(f"🚀 [FAST-PATH] Pattern match: '{transcription}' → '{correction}'")
+                self._update_timing_metrics((time.time() - start_time) * 1000)
+
+                # Store in SQLite (fire and forget)
+                if self._metrics_db and self.config.enable_learning:
+                    asyncio.create_task(self._metrics_db.record_hallucination(
+                        original_text=transcription,
+                        corrected_text=correction,
+                        hallucination_type="known_pattern",
+                        confidence=0.95,
+                        detection_method="fast_path_pattern",
+                        context=context or "unlock_command"
+                    ))
+
+                return VerificationResult.CORRECTED, detection, correction
+
+        # Fast check 3: Already looks like valid unlock command - skip full reasoning
+        for pattern in self._compiled_unlock_patterns:
+            if pattern.search(normalized):
+                logger.debug(f"✅ [FAST-PATH] Valid unlock pattern, skipping full reasoning")
+                self._update_timing_metrics((time.time() - start_time) * 1000)
+                return VerificationResult.CLEAN, None, transcription
+
+        # 🧠 FULL REASONING: Run LangGraph for ambiguous cases
         if self.config.use_langgraph_reasoning:
             self.metrics["langgraph_reasoning_calls"] += 1
 
