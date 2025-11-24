@@ -110,12 +110,22 @@ class WhisperLocalEngine(BaseSTTEngine):
             audio_duration_ms = len(audio_array) / 16000 * 1000
 
             # Transcribe with Whisper
+            # 🔑 KEY FIX: Use initial_prompt to prevent hallucinations
+            # Without this, Whisper can hallucinate random names like "Mark McCree"
+            initial_prompt = "unlock my screen, unlock screen, jarvis unlock, hey jarvis"
+
             result = await asyncio.to_thread(
                 self.model.transcribe,
                 audio_array,
                 language="en",  # Derek speaks English
                 fp16=False,  # Use FP32 for CPU (more stable)
                 verbose=False,
+                initial_prompt=initial_prompt,  # Bias toward expected unlock phrases
+                condition_on_previous_text=False,  # Don't hallucinate from context
+                temperature=0.0,  # Deterministic output
+                no_speech_threshold=0.6,  # Higher = more strict speech detection
+                logprob_threshold=-1.0,  # Reject low-confidence outputs
+                compression_ratio_threshold=2.4,  # Reject repetitive hallucinations
             )
 
             # Extract transcription

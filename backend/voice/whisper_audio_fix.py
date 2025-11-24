@@ -512,14 +512,28 @@ class WhisperAudioHandler:
                     audio_to_transcribe = np.pad(audio_to_transcribe, (0, min_samples - len(audio_to_transcribe)))
 
                 # Pass audio array directly to Whisper
-                # Use word_timestamps to get better results
+                # Use initial_prompt to guide Whisper toward expected content
+                # This PREVENTS hallucinations like "Hey Jarvis, I'm Mark McCree"
+
+                # Mode-specific prompts to bias Whisper toward expected phrases
+                mode_prompts = {
+                    'unlock': "unlock my screen, unlock screen, unlock, jarvis unlock, open screen",
+                    'command': "jarvis, hey jarvis, computer, assistant",
+                    'general': ""  # No bias for general transcription
+                }
+                initial_prompt = mode_prompts.get(mode, "")
+
                 result = model.transcribe(
                     audio_to_transcribe,
                     language="en",
                     fp16=False,
                     word_timestamps=False,  # Faster without word timestamps
                     condition_on_previous_text=False,  # Don't use context from previous
-                    temperature=0.0  # Deterministic (no randomness)
+                    temperature=0.0,  # Deterministic (no randomness)
+                    initial_prompt=initial_prompt,  # 🔑 KEY FIX: Bias toward expected phrases
+                    no_speech_threshold=0.6,  # Higher threshold = more strict speech detection
+                    logprob_threshold=-1.0,  # Reject low-confidence outputs
+                    compression_ratio_threshold=2.4  # Reject repetitive hallucinations
                 )
                 logger.info(f"   Raw Whisper result: {result}")
                 return result["text"].strip() # Strip leading/trailing whitespace from text

@@ -255,8 +255,20 @@ async def transcribe(
     # Convert to numpy array
     audio_array, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
 
-    # Transcribe
-    result = model.transcribe(audio_array, language=language, fp16=True)
+    # Transcribe with anti-hallucination settings
+    # 🔑 KEY FIX: Use initial_prompt to prevent random name hallucinations
+    initial_prompt = "unlock my screen, unlock screen, jarvis unlock, hey jarvis"
+
+    result = model.transcribe(
+        audio_array,
+        language=language,
+        fp16=True,
+        initial_prompt=initial_prompt,
+        condition_on_previous_text=False,
+        temperature=0.0,
+        no_speech_threshold=0.6,
+        compression_ratio_threshold=2.4
+    )
 
     # Calculate confidence
     segments = result.get("segments", [])
