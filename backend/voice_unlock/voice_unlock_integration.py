@@ -288,8 +288,13 @@ class AdaptiveAuthenticationEngine:
         - Voice characteristics for illness/stress detection
         - Microphone signature for equipment changes
         """
+        import time
+        start_time = time.time()
+
         audio_data = state.get("audio_data", b"")
         speaker_name = state.get("speaker_name", "Derek")
+
+        self.logger.debug(f"🔊 [analyze_audio] Starting analysis for {speaker_name}, audio_length={len(audio_data)}")
 
         # Basic audio analysis
         if len(audio_data) < 1000:
@@ -349,10 +354,18 @@ class AdaptiveAuthenticationEngine:
             except Exception as e:
                 self.logger.debug(f"Enhanced audio analysis error: {e}")
 
+        duration_ms = (time.time() - start_time) * 1000
+        issues = state.get("environmental_issues", [])
+        self.logger.debug(f"🔊 [analyze_audio] Complete in {duration_ms:.1f}ms, issues={issues}")
+
         return state
 
     async def _verify_speaker_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Perform speaker verification using enhanced service."""
+        import time
+        start_time = time.time()
+        self.logger.debug(f"🔐 [verify_speaker] Starting speaker verification")
+
         if not self.speaker_service:
             state["decision"] = "error"
             state["feedback_message"] = "Speaker service not available"
@@ -385,6 +398,10 @@ class AdaptiveAuthenticationEngine:
             state["decision"] = "error"
             state["feedback_message"] = f"Verification error: {str(e)}"
 
+        duration_ms = (time.time() - start_time) * 1000
+        self.logger.debug(f"🔐 [verify_speaker] Complete in {duration_ms:.1f}ms")
+        self.logger.debug(f"   └─ voice={state.get('voice_confidence', 0):.1%}, behavioral={state.get('behavioral_confidence', 0):.1%}, fused={state.get('fused_confidence', 0):.1%}")
+
         return state
 
     async def _check_confidence_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -397,6 +414,11 @@ class AdaptiveAuthenticationEngine:
         - Challenge question triggering
         - Hypothesis-based retry suggestions
         """
+        voice_conf = state.get("voice_confidence", 0.0)
+        behavioral_conf = state.get("behavioral_confidence", 0.0)
+        fused_conf = state.get("fused_confidence", 0.0)
+        self.logger.debug(f"🎯 [check_confidence] Evaluating: voice={voice_conf:.1%}, behavioral={behavioral_conf:.1%}, fused={fused_conf:.1%}")
+
         if state.get("threat_detected"):
             state["decision"] = "denied"
         elif state.get("is_verified"):
@@ -421,6 +443,8 @@ class AdaptiveAuthenticationEngine:
                 state["decision"] = "retry"
             else:
                 state["decision"] = "denied"
+
+        self.logger.debug(f"🎯 [check_confidence] Decision: {state.get('decision')}")
 
         return state
 
@@ -642,15 +666,56 @@ class AdaptiveAuthenticationEngine:
             "trace_id": None
         }
 
-        # Run graph
+        # Run graph with detailed logging
         try:
+            self.logger.info(f"🧠 LangGraph adaptive auth starting for {speaker_name}")
+            self.logger.debug(f"   Initial state: audio_length={len(audio_data)}, max_attempts={max_attempts}")
+
             final_state = await self._graph.ainvoke(initial_state)
+
+            # Log detailed results
+            is_verified = final_state.get("is_verified", False)
+            fused_confidence = final_state.get("fused_confidence", 0.0)
+            voice_conf = final_state.get("voice_confidence", 0.0)
+            behavioral_conf = final_state.get("behavioral_confidence", 0.0)
+            decision = final_state.get("decision", "error")
+
+            self.logger.info(f"🧠 LangGraph auth complete: decision={decision}, confidence={fused_confidence:.1%}")
+            self.logger.debug(f"   └─ Voice: {voice_conf:.1%}, Behavioral: {behavioral_conf:.1%}")
+            self.logger.debug(f"   └─ Attempts: {final_state.get('attempt_count', 1)}, Retry strategy: {final_state.get('retry_strategy')}")
+
+            if final_state.get("threat_detected"):
+                self.logger.warning(f"   ⚠️ Threat detected: {final_state.get('threat_detected')}")
+
+            # Log to Langfuse if speaker service has audit trail
+            if self.speaker_service and hasattr(self.speaker_service, 'audit_trail'):
+                trace_id = final_state.get("trace_id")
+                if trace_id:
+                    self.speaker_service.audit_trail.log_reasoning_step(
+                        trace_id=trace_id,
+                        step_name="langgraph_complete",
+                        input_data={
+                            "audio_length": len(audio_data),
+                            "speaker_name": speaker_name,
+                            "max_attempts": max_attempts
+                        },
+                        output_data={
+                            "decision": decision,
+                            "fused_confidence": fused_confidence,
+                            "voice_confidence": voice_conf,
+                            "behavioral_confidence": behavioral_conf,
+                            "attempts": final_state.get("attempt_count", 1)
+                        },
+                        reasoning=f"LangGraph adaptive auth completed with {decision}",
+                        duration_ms=0.0
+                    )
+
             return {
-                "verified": final_state.get("is_verified", False),
-                "confidence": final_state.get("fused_confidence", 0.0),
-                "voice_confidence": final_state.get("voice_confidence", 0.0),
-                "behavioral_confidence": final_state.get("behavioral_confidence", 0.0),
-                "decision": final_state.get("decision", "error"),
+                "verified": is_verified,
+                "confidence": fused_confidence,
+                "voice_confidence": voice_conf,
+                "behavioral_confidence": behavioral_conf,
+                "decision": decision,
                 "feedback": final_state.get("feedback_message", ""),
                 "retry_strategy": final_state.get("retry_strategy"),
                 "attempts": final_state.get("attempt_count", 1),
@@ -658,7 +723,7 @@ class AdaptiveAuthenticationEngine:
                 "trace_id": final_state.get("trace_id")
             }
         except Exception as e:
-            self.logger.error(f"Adaptive auth error: {e}")
+            self.logger.error(f"Adaptive auth error: {e}", exc_info=True)
             return {
                 "verified": False,
                 "confidence": 0.0,

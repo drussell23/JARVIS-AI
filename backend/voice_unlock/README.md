@@ -395,18 +395,280 @@ voice_unlock/
 - JARVIS command integration with direct unlock
 - Automatic startup with JARVIS
 - Integrated lifecycle management
+- **🆕 LangGraph Adaptive Authentication** - Intelligent retry with reasoning
+- **🆕 LangChain Multi-Factor Fusion** - Voice + Behavioral + Context authentication
+- **🆕 Langfuse Observability** - Full tracing and session management
+- **🆕 Anti-Spoofing Detection** - Replay attack and voice cloning protection
+- **🆕 Progressive Voice Feedback** - Confidence-aware responses
 
 ### 🚧 Known Limitations
-- Voice authentication currently uses a default profile (not speaker-specific)
 - Wake phrase detection requires clear speech in quiet environment
 - Screen lock detection may vary with different macOS versions
 
 ### 🔜 Future Enhancements
-- Enhanced speaker-specific voice enrollment
-- Advanced anti-spoofing for voice verification
-- Support for multiple user profiles
-- System daemon auto-start on boot
-- Additional biometric fallback options
+- ChromaDB voice pattern storage for enhanced anti-spoofing
+- Claude Computer Use for visual security verification
+- Playwright remote unlock for multi-device authentication
+- Helicone cost optimization for voice processing
+
+---
+
+## 🧠 Advanced AI Integration (v2.0)
+
+### LangGraph Adaptive Authentication
+
+The voice unlock system uses **LangGraph** for intelligent, multi-step authentication reasoning. Instead of simple pass/fail, JARVIS adapts to challenging conditions:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  LangGraph Authentication Flow                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   analyze_audio ──► verify_speaker ──► check_confidence             │
+│                                              │                       │
+│                          ┌───────────────────┼───────────────────┐  │
+│                          │                   │                   │  │
+│                          ▼                   ▼                   ▼  │
+│                      success            challenge             retry  │
+│                          │                   │                   │  │
+│                          └───────┬───────────┴───────────────────┘  │
+│                                  ▼                                   │
+│                          generate_feedback ──► final_decision        │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- **Intelligent Retry**: Detects why verification failed (noise, illness, microphone change)
+- **Challenge Questions**: Borderline confidence triggers contextual questions
+- **Environmental Awareness**: Adapts to background noise and microphone changes
+- **Sick Voice Detection**: Recognizes voice changes due to illness
+
+**Example Flow:**
+```
+You: "unlock my screen" (72% confidence - below threshold)
+
+JARVIS reasoning chain:
+├── Step 1: Partial match detected (72%)
+├── Step 2: Analyze why confidence is low
+│   └── Background noise detected (SNR: 12 dB, normally 18 dB)
+├── Step 3: Generate intelligent retry strategy
+│
+JARVIS: "I'm having trouble hearing you clearly - there's some
+         background noise. Could you try again?"
+
+You: "unlock my screen" (91% confidence)
+JARVIS: "Much better! Unlocking for you now, Derek."
+```
+
+### LangChain Multi-Factor Authentication
+
+The system uses **LangChain** to orchestrate multiple authentication signals:
+
+```python
+# Factor Weights (dynamically adjusted)
+{
+    "voice": 0.50,       # Primary voice biometric (ECAPA-TDNN embeddings)
+    "behavioral": 0.20,  # Speaking patterns, timing, usage history
+    "context": 0.15,     # Location, device state, time of day
+    "proximity": 0.10,   # Apple Watch, Bluetooth devices
+    "history": 0.05      # Past verification success rate
+}
+```
+
+**Multi-Factor Fusion Example:**
+```
+Voice: 72% (BELOW threshold alone)
+Behavioral: 94% (STRONG - typical unlock time)
+Context: 98% (EXCELLENT - home WiFi, known device)
+
+Weighted combination: 91% → PASS
+
+JARVIS: "Voice confidence was a bit lower than usual (you sound tired!),
+         but your behavioral patterns and context are perfect."
+```
+
+**Graceful Degradation Chain:**
+```
+1. Primary Voice Auth (85% threshold) → FAILS
+2. Voice + Behavioral Fusion (80% threshold) → PASSES ✓
+   OR
+3. Challenge Question → "What GCP project are you using?"
+   OR
+4. Proximity Boost (Apple Watch nearby)
+   OR
+5. Manual Password Fallback
+```
+
+### Langfuse Observability
+
+Full tracing and session management for authentication transparency:
+
+**Dashboard**: https://us.cloud.langfuse.com
+
+**What's Tracked:**
+
+| Metric | Description |
+|--------|-------------|
+| `session_id` | Groups multiple authentication attempts |
+| `trace_id` | Individual authentication trace |
+| `voice_confidence` | ECAPA-TDNN embedding match score |
+| `behavioral_confidence` | Speaking patterns & timing match |
+| `context_confidence` | Environment & device state |
+| `fused_confidence` | Final weighted combination |
+| `decision` | authenticated / denied / challenge_pending |
+| `threat_detected` | none / replay_attack / voice_cloning |
+| `duration_ms` | Processing time per phase |
+| `api_cost_usd` | Estimated API cost |
+
+**Local Backup Logs:**
+```bash
+# View authentication logs
+cat /tmp/jarvis_auth_logs/auth_$(date +%Y%m%d).jsonl | jq .
+
+# Example log entry:
+{
+  "trace_id": "auth_8e46b9f078754d7e",
+  "speaker_name": "Derek",
+  "phases": [
+    {"phase": "audio_capture", "duration_ms": 45.2, "metrics": {"snr_db": 18.5}},
+    {"phase": "speaker_verification", "duration_ms": 150.0, "metrics": {"confidence": 0.92}}
+  ],
+  "decision": "authenticated",
+  "fused_confidence": 0.92,
+  "threat_detected": "none"
+}
+```
+
+### Enabling Detailed Logging
+
+Set environment variables for comprehensive logging:
+
+```bash
+# In your .env file or shell
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_HOST="https://us.cloud.langfuse.com"
+
+# Enable debug logging
+export JARVIS_LOG_LEVEL="DEBUG"
+export JARVIS_AUTH_LOG_LEVEL="DEBUG"
+```
+
+**Log Locations:**
+- **Langfuse Dashboard**: https://us.cloud.langfuse.com (real-time traces)
+- **Local Backup**: `/tmp/jarvis_auth_logs/auth_YYYYMMDD.jsonl`
+- **JARVIS Logs**: Standard JARVIS output
+- **Daemon Logs**: `/tmp/daemon_debug.log`
+- **WebSocket Logs**: `/tmp/websocket_debug.log`
+
+### Anti-Spoofing Detection
+
+The system includes multiple layers of protection:
+
+| Attack Type | Detection Method |
+|-------------|------------------|
+| **Replay Attack** | Audio fingerprint + temporal matching |
+| **Voice Cloning** | Spectral artifact analysis |
+| **Recording Playback** | Room acoustics + liveness detection |
+| **Deepfake** | Temporal inconsistencies + breathing patterns |
+
+**Security Alert Example:**
+```
+Attacker: [Plays recording of your voice]
+Voice match: 89% - SHOULD pass
+
+But ChromaDB detects anomalies:
+├── Speech rhythm: Too perfect (95% anomaly score)
+├── Background noise: Exact same pattern (playback indicator)
+├── Breathing pattern: Missing (recorded audio artifact)
+
+JARVIS: "Security alert: I detected characteristics consistent
+         with a recording playback. Access denied."
+```
+
+### Progressive Voice Feedback
+
+Confidence-aware responses that feel natural:
+
+| Confidence | Response Style |
+|------------|----------------|
+| **>90%** | "Of course, Derek. Unlocking for you." |
+| **85-90%** | "Good morning, Derek. Unlocking now." |
+| **80-85%** | "One moment... yes, verified. Unlocking." |
+| **75-80%** | "I'm having trouble hearing you. Try again?" |
+| **<75%** | "Voice verification didn't match. Use password?" |
+
+**Environmental Awareness:**
+```
+Noisy environment:
+JARVIS: "Give me a second - filtering out background noise...
+         Got it - verified despite the coffee shop chatter."
+
+Late night:
+JARVIS: "Up late again? Unlocking quietly for you."
+
+Sick voice:
+JARVIS: "Your voice sounds different - hope you're feeling okay.
+         I can still verify it's you from your speech patterns."
+```
+
+---
+
+## 📊 Observability Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Voice Unlock Observability                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐           │
+│  │   Voice     │────►│  LangGraph  │────►│  Langfuse   │           │
+│  │   Input     │     │  Reasoning  │     │  Tracing    │           │
+│  └─────────────┘     └─────────────┘     └─────────────┘           │
+│         │                   │                   │                   │
+│         ▼                   ▼                   ▼                   │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐           │
+│  │  ECAPA-TDNN │     │  Multi-     │     │   Cloud     │           │
+│  │  Embeddings │     │  Factor     │     │  Dashboard  │           │
+│  └─────────────┘     │  Fusion     │     └─────────────┘           │
+│         │            └─────────────┘            │                   │
+│         ▼                   │                   ▼                   │
+│  ┌─────────────┐            │            ┌─────────────┐           │
+│  │  ChromaDB   │◄───────────┘            │   Local     │           │
+│  │  Patterns   │                         │   Backup    │           │
+│  └─────────────┘                         └─────────────┘           │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Session Lifecycle
+
+```python
+# Session groups multiple authentication attempts
+session_id = audit.start_session(user_id='Derek', device='mac')
+
+# Each attempt creates a trace
+trace_id = audit.start_trace(speaker_name='Derek', environment='home')
+
+# Phases are logged as nested spans
+audit.log_phase(trace_id, 'audio_capture', 45.2, {'snr_db': 18.5})
+audit.log_phase(trace_id, 'speaker_verification', 150.0, {'confidence': 0.92})
+
+# Reasoning steps are tracked
+audit.log_reasoning_step(
+    trace_id, 'check_confidence',
+    input_data={'voice_confidence': 0.92},
+    output_data={'decision': 'authenticated'},
+    reasoning='Confidence above threshold'
+)
+
+# Trace completion
+audit.complete_trace(trace_id, 'authenticated', 0.92)
+
+# Session ends
+audit.end_session(session_id, 'authenticated')
+```
 
 ## License
 
