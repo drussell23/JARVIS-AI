@@ -1423,6 +1423,7 @@ async def _store_display_tracking_data(
     Store display context and update TV analytics in SQLite.
 
     This enables continuous learning and analytics for TV unlock scenarios.
+    Now also updates active TV sessions and records SAI connection events!
     """
     try:
         from voice_unlock.metrics_database import get_metrics_database
@@ -1503,6 +1504,26 @@ async def _store_display_tracking_data(
 
         if history_id:
             logger.info(f"📊 [DB] Updated display_success_history for '{display_identifier}' (ID: {history_id})")
+
+        # 4. 🖥️ DYNAMIC SAI: Record connection event and update active TV session
+        sai_reasoning = typing_config.get('reasoning', '').split('; ') if typing_config else []
+
+        # Record SAI check event (shows SAI awareness during unlock)
+        await db.record_connection_event(
+            event_type='SAI_CHECK',
+            display_context=display_context,
+            sai_reasoning=sai_reasoning,
+            trigger_source='unlock_attempt'
+        )
+
+        # 5. Update active TV session if TV is connected
+        if is_tv:
+            await db.update_active_tv_session(
+                success=success,
+                typing_strategy=typing_strategy,
+                unlock_duration_ms=unlock_duration_ms
+            )
+            logger.info(f"📺 [SAI] Updated active TV session for '{tv_name or 'Unknown TV'}'")
 
         # Log summary
         status = "✅ SUCCESS" if success else "❌ FAILURE"

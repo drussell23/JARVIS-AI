@@ -1260,6 +1260,238 @@ class DisplayAwareSAI:
 
 
 # =============================================================================
+# 🖥️ DYNAMIC SAI: Display Connection Monitor
+# =============================================================================
+
+class DisplayConnectionMonitor:
+    """
+    Proactive display connection monitoring for dynamic SAI awareness.
+
+    This class provides real-time TV connection detection without waiting
+    for unlock attempts. It can:
+    - Detect TV connections/disconnections
+    - Record connection events to SQLite
+    - Start/end TV sessions
+    - Provide instant TV state awareness
+
+    Usage:
+        monitor = DisplayConnectionMonitor()
+        await monitor.check_and_record()  # Manual check
+        await monitor.start_periodic_monitoring(interval_seconds=30)  # Background
+    """
+
+    def __init__(self):
+        self._detector = DisplayDetector()
+        self._last_state: Optional[Dict[str, Any]] = None
+        self._monitoring = False
+        self._monitor_task: Optional[asyncio.Task] = None
+
+    async def check_and_record(self, trigger_source: str = "manual_check") -> Dict[str, Any]:
+        """
+        Check current display state and record any changes.
+
+        This is the core SAI awareness function - it detects the current
+        display configuration and records events when changes occur.
+
+        Args:
+            trigger_source: What triggered this check
+
+        Returns:
+            Current display state dict with change info
+        """
+        try:
+            # Detect current displays
+            context = await self._detector.detect_displays()
+            current_state = context.to_dict()
+
+            # Determine if this is a change
+            event_type = None
+            is_tv = context.is_tv_connected
+
+            if self._last_state is None:
+                # First check - record as SAI startup
+                event_type = 'SAI_CHECK'
+                if is_tv:
+                    event_type = 'CONNECTED'
+            else:
+                last_tv = self._last_state.get('is_tv_connected', False)
+
+                if is_tv and not last_tv:
+                    # TV was just connected
+                    event_type = 'CONNECTED'
+                    logger.info(f"📺 [SAI-MONITOR] TV CONNECTED: {context.tv_name}")
+                elif not is_tv and last_tv:
+                    # TV was just disconnected
+                    event_type = 'DISCONNECTED'
+                    logger.info(f"📺 [SAI-MONITOR] TV DISCONNECTED")
+                elif self._has_config_changed(current_state, self._last_state):
+                    # Configuration changed (e.g., mirror mode toggled)
+                    event_type = 'CONFIG_CHANGED'
+                    logger.info(f"📺 [SAI-MONITOR] Config changed: {context.display_mode.name}")
+
+            # Record event to database
+            if event_type:
+                reasoning = [
+                    f"SAI Monitor: {trigger_source}",
+                    f"Displays: {context.total_displays}",
+                    f"Mode: {context.display_mode.name}",
+                    f"TV: {context.tv_name or 'None'}",
+                    f"Mirrored: {context.is_mirrored}",
+                ]
+
+                try:
+                    from voice_unlock.metrics_database import get_metrics_database
+                    db = get_metrics_database()
+
+                    await db.record_connection_event(
+                        event_type=event_type,
+                        display_context=current_state,
+                        sai_reasoning=reasoning,
+                        trigger_source=trigger_source
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to record connection event: {e}")
+
+            # Update last state
+            self._last_state = current_state
+
+            # Return state with event info
+            return {
+                **current_state,
+                'event_type': event_type,
+                'is_tv_connected': is_tv,
+                'tv_name': context.tv_name,
+                'tv_brand': context.tv_brand,
+                'display_mode': context.display_mode.name,
+            }
+
+        except Exception as e:
+            logger.error(f"Display check failed: {e}", exc_info=True)
+            return {'error': str(e)}
+
+    def _has_config_changed(self, current: Dict, last: Dict) -> bool:
+        """Check if display configuration has changed significantly"""
+        keys_to_check = [
+            'display_mode', 'is_mirrored', 'total_displays'
+        ]
+        for key in keys_to_check:
+            if current.get(key) != last.get(key):
+                return True
+        return False
+
+    async def get_current_tv_awareness(self) -> Dict[str, Any]:
+        """
+        Get JARVIS's current awareness of TV connection state.
+
+        This is a fast query that returns what SAI currently knows about
+        the TV connection state.
+
+        Returns:
+            Dict with TV awareness info
+        """
+        try:
+            from voice_unlock.metrics_database import get_metrics_database
+            db = get_metrics_database()
+
+            # Get current state from DB
+            state = await db.get_current_tv_state()
+
+            # Enhance with fresh detection if needed
+            if not state.get('is_tv_currently_connected'):
+                # Quick check if TV might have connected
+                context = await self._detector.detect_displays()
+                if context.is_tv_connected:
+                    # TV connected but DB not updated - update now
+                    await self.check_and_record(trigger_source='awareness_check')
+                    state = await db.get_current_tv_state()
+
+            return state
+
+        except Exception as e:
+            logger.error(f"Failed to get TV awareness: {e}")
+            return {'error': str(e)}
+
+    async def start_periodic_monitoring(self, interval_seconds: float = 30):
+        """
+        Start background monitoring for display changes.
+
+        Args:
+            interval_seconds: How often to check (default 30s)
+        """
+        if self._monitoring:
+            logger.warning("Monitor already running")
+            return
+
+        self._monitoring = True
+
+        async def monitor_loop():
+            logger.info(f"📺 [SAI-MONITOR] Starting periodic monitoring (every {interval_seconds}s)")
+            while self._monitoring:
+                try:
+                    await self.check_and_record(trigger_source='auto_monitor')
+                except Exception as e:
+                    logger.error(f"Monitor check failed: {e}")
+
+                await asyncio.sleep(interval_seconds)
+
+        self._monitor_task = asyncio.create_task(monitor_loop())
+        logger.info("📺 [SAI-MONITOR] Background monitoring started")
+
+    async def stop_monitoring(self):
+        """Stop background monitoring"""
+        self._monitoring = False
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            self._monitor_task = None
+        logger.info("📺 [SAI-MONITOR] Background monitoring stopped")
+
+    @property
+    def is_monitoring(self) -> bool:
+        """Check if background monitoring is active"""
+        return self._monitoring
+
+
+# Singleton monitor instance
+_monitor_instance: Optional[DisplayConnectionMonitor] = None
+
+
+async def get_display_monitor() -> DisplayConnectionMonitor:
+    """Get or create the singleton monitor instance"""
+    global _monitor_instance
+    if _monitor_instance is None:
+        _monitor_instance = DisplayConnectionMonitor()
+    return _monitor_instance
+
+
+async def check_tv_connection() -> Dict[str, Any]:
+    """
+    Convenience function to check TV connection state.
+
+    This can be called from anywhere to get JARVIS's current
+    awareness of whether a TV is connected.
+
+    Returns:
+        Dict with TV connection info
+    """
+    monitor = await get_display_monitor()
+    return await monitor.check_and_record(trigger_source='external_check')
+
+
+async def get_tv_awareness() -> Dict[str, Any]:
+    """
+    Get JARVIS's current TV awareness state.
+
+    Returns the most recent known state without forcing a new detection.
+    """
+    monitor = await get_display_monitor()
+    return await monitor.get_current_tv_awareness()
+
+
+# =============================================================================
 # Singleton and Convenience Functions
 # =============================================================================
 

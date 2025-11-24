@@ -478,6 +478,126 @@ class MetricsDatabase:
             )
         """)
 
+        # 🖥️ DYNAMIC SAI: Display connection events (real-time TV detection)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS display_connection_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,  -- 'CONNECTED', 'DISCONNECTED', 'CONFIG_CHANGED', 'SAI_CHECK'
+
+                -- Display Identification
+                display_identifier TEXT NOT NULL,
+                display_name TEXT,
+                display_type TEXT,  -- 'TV', 'MONITOR', 'BUILTIN'
+                is_tv INTEGER DEFAULT 0,
+                tv_brand TEXT,
+                tv_confidence REAL,
+                tv_detection_reasons TEXT,  -- JSON array
+
+                -- Display Configuration at Event Time
+                total_displays INTEGER,
+                display_mode TEXT,  -- 'SINGLE', 'MIRRORED', 'EXTENDED', 'CLAMSHELL'
+                is_mirrored INTEGER DEFAULT 0,
+                resolution TEXT,
+                refresh_rate REAL,
+
+                -- SAI Detection Details
+                sai_detection_method TEXT,  -- 'core_graphics', 'system_profiler', 'iokit', 'fallback'
+                sai_detection_time_ms REAL,
+                sai_confidence REAL,
+                sai_reasoning TEXT,  -- JSON array of reasoning steps
+
+                -- Connection Duration (for DISCONNECTED events)
+                connection_duration_seconds REAL,
+                unlocks_while_connected INTEGER DEFAULT 0,
+                unlock_success_rate_while_connected REAL,
+
+                -- System Context
+                system_uptime_seconds REAL,
+                was_screen_locked INTEGER,
+                trigger_source TEXT  -- 'manual_check', 'auto_monitor', 'unlock_attempt', 'startup'
+            )
+        """)
+
+        # 📊 ENHANCED TV ANALYTICS: Real-time connection state tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tv_connection_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                last_updated TEXT NOT NULL,
+
+                -- Current State (SAI real-time awareness)
+                is_tv_currently_connected INTEGER DEFAULT 0,
+                current_tv_name TEXT,
+                current_tv_brand TEXT,
+                current_display_mode TEXT,
+                current_is_mirrored INTEGER DEFAULT 0,
+
+                -- Connection Statistics
+                total_tv_connections INTEGER DEFAULT 0,
+                total_tv_disconnections INTEGER DEFAULT 0,
+                avg_connection_duration_minutes REAL,
+                longest_connection_minutes REAL,
+                shortest_connection_minutes REAL,
+
+                -- Time-based Patterns (SAI learning)
+                most_common_connection_hour INTEGER,  -- 0-23
+                most_common_disconnection_hour INTEGER,
+                typical_session_duration_minutes REAL,
+                connection_pattern TEXT,  -- JSON: {"morning": 0.2, "afternoon": 0.5, "evening": 0.8, "night": 0.1}
+
+                -- TV-specific Learning
+                known_tvs TEXT,  -- JSON array of {name, brand, total_connections, success_rate}
+                preferred_tv TEXT,  -- Most frequently used TV
+                tv_reliability_scores TEXT,  -- JSON: {tv_name: reliability_score}
+
+                -- SAI Recommendations
+                sai_recommended_strategy TEXT,
+                sai_confidence REAL,
+                sai_last_analysis TEXT,
+                sai_reasoning TEXT
+            )
+        """)
+
+        # 📈 TV SESSION TRACKING: Track each TV connection session
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tv_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_start TEXT NOT NULL,
+                session_end TEXT,
+                is_active INTEGER DEFAULT 1,
+
+                -- TV Identity
+                tv_identifier TEXT NOT NULL,
+                tv_name TEXT,
+                tv_brand TEXT,
+                tv_confidence REAL,
+
+                -- Session Configuration
+                display_mode TEXT,
+                is_mirrored INTEGER DEFAULT 0,
+                resolution TEXT,
+
+                -- Session Performance
+                unlock_attempts INTEGER DEFAULT 0,
+                unlock_successes INTEGER DEFAULT 0,
+                unlock_failures INTEGER DEFAULT 0,
+                session_success_rate REAL,
+
+                -- Strategy Performance During Session
+                applescript_attempts INTEGER DEFAULT 0,
+                applescript_successes INTEGER DEFAULT 0,
+                core_graphics_attempts INTEGER DEFAULT 0,
+                core_graphics_successes INTEGER DEFAULT 0,
+                best_strategy_this_session TEXT,
+
+                -- Timing
+                session_duration_minutes REAL,
+                avg_unlock_duration_ms REAL,
+                fastest_unlock_ms REAL,
+                slowest_unlock_ms REAL
+            )
+        """)
+
         # Create indexes for fast queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_date ON unlock_attempts(date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_speaker ON unlock_attempts(speaker_name)")
@@ -508,6 +628,15 @@ class MetricsDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_identifier ON display_success_history(display_identifier)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_type ON display_success_history(display_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_history_tv ON display_success_history(is_tv)")
+
+        # 🖥️ Indexes for Dynamic SAI tables
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_connection_events_timestamp ON display_connection_events(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_connection_events_type ON display_connection_events(event_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_connection_events_display ON display_connection_events(display_identifier)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_connection_events_tv ON display_connection_events(is_tv)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_active ON tv_sessions(is_active)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_tv ON tv_sessions(tv_identifier)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tv_sessions_start ON tv_sessions(session_start)")
 
         conn.commit()
         conn.close()
@@ -1933,6 +2062,467 @@ class MetricsDatabase:
         except Exception as e:
             logger.error(f"Failed to get TV analytics summary: {e}", exc_info=True)
             return {'error': str(e)}
+
+    # =========================================================================
+    # 🖥️ DYNAMIC SAI: Real-time TV Connection Tracking
+    # =========================================================================
+
+    async def record_connection_event(
+        self,
+        event_type: str,  # 'CONNECTED', 'DISCONNECTED', 'CONFIG_CHANGED', 'SAI_CHECK'
+        display_context: Dict[str, Any],
+        sai_reasoning: List[str] = None,
+        trigger_source: str = "auto_monitor"
+    ) -> Optional[int]:
+        """
+        Record a display connection event detected by SAI.
+
+        This enables dynamic tracking of TV connections/disconnections
+        independent of unlock attempts.
+
+        Args:
+            event_type: Type of event
+            display_context: Current display context from SAI
+            sai_reasoning: SAI reasoning steps for this detection
+            trigger_source: What triggered this check
+
+        Returns:
+            Event ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            now = datetime.now().isoformat()
+
+            # Extract display info
+            tv_info = display_context.get('tv_info', {}) or {}
+            is_tv = display_context.get('is_tv_connected', False)
+
+            # Determine display identifier
+            if is_tv and display_context.get('tv_name'):
+                display_identifier = display_context['tv_name']
+                display_type = 'TV'
+            elif display_context.get('external_display', {}).get('name'):
+                display_identifier = display_context['external_display']['name']
+                display_type = 'MONITOR'
+            else:
+                display_identifier = display_context.get('primary_display', {}).get('name', 'Built-in Display')
+                display_type = 'BUILTIN'
+
+            # Get resolution
+            ext = display_context.get('external_display', {})
+            resolution = f"{ext.get('width', 0)}x{ext.get('height', 0)}" if ext else None
+
+            # Get system uptime
+            system_uptime = None
+            try:
+                import subprocess
+                result = subprocess.run(['sysctl', '-n', 'kern.boottime'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    import time
+                    boot_time = int(result.stdout.split('sec = ')[1].split(',')[0])
+                    system_uptime = time.time() - boot_time
+            except:
+                pass
+
+            # Check if screen is locked
+            was_screen_locked = 0
+            try:
+                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+                was_screen_locked = 1 if is_screen_locked() else 0
+            except:
+                pass
+
+            cursor.execute("""
+                INSERT INTO display_connection_events (
+                    timestamp, event_type,
+                    display_identifier, display_name, display_type,
+                    is_tv, tv_brand, tv_confidence, tv_detection_reasons,
+                    total_displays, display_mode, is_mirrored, resolution, refresh_rate,
+                    sai_detection_method, sai_detection_time_ms, sai_confidence, sai_reasoning,
+                    system_uptime_seconds, was_screen_locked, trigger_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now, event_type,
+                display_identifier,
+                display_context.get('tv_name') or display_identifier,
+                display_type,
+                1 if is_tv else 0,
+                tv_info.get('brand'),
+                tv_info.get('confidence', 0),
+                json.dumps(tv_info.get('reasons', [])),
+                display_context.get('total_displays', 1),
+                display_context.get('display_mode', 'SINGLE'),
+                1 if display_context.get('is_mirrored', False) else 0,
+                resolution,
+                ext.get('refresh_rate') if ext else None,
+                display_context.get('detection_method', 'sai_langgraph'),
+                display_context.get('detection_time_ms', 0),
+                tv_info.get('confidence', 0.5),
+                json.dumps(sai_reasoning or []),
+                system_uptime,
+                was_screen_locked,
+                trigger_source
+            ))
+
+            event_id = cursor.lastrowid
+
+            # Update TV connection state
+            await self._update_tv_connection_state(cursor, event_type, display_context, tv_info)
+
+            # Handle TV session tracking
+            if event_type == 'CONNECTED' and is_tv:
+                await self._start_tv_session(cursor, display_identifier, display_context, tv_info)
+            elif event_type == 'DISCONNECTED' and is_tv:
+                await self._end_tv_session(cursor, display_identifier)
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"📊 [SAI-EVENT] Recorded {event_type} for '{display_identifier}' (ID: {event_id})")
+            return event_id
+
+        except Exception as e:
+            logger.error(f"Failed to record connection event: {e}", exc_info=True)
+            return None
+
+    async def _update_tv_connection_state(
+        self,
+        cursor,
+        event_type: str,
+        display_context: Dict[str, Any],
+        tv_info: Dict[str, Any]
+    ):
+        """Update the singleton TV connection state record"""
+        now = datetime.now().isoformat()
+        is_tv = display_context.get('is_tv_connected', False)
+
+        # Check if state record exists
+        cursor.execute("SELECT id FROM tv_connection_state LIMIT 1")
+        row = cursor.fetchone()
+
+        if row:
+            # Update existing
+            if event_type in ('CONNECTED', 'SAI_CHECK') and is_tv:
+                cursor.execute("""
+                    UPDATE tv_connection_state SET
+                        last_updated = ?,
+                        is_tv_currently_connected = 1,
+                        current_tv_name = ?,
+                        current_tv_brand = ?,
+                        current_display_mode = ?,
+                        current_is_mirrored = ?,
+                        total_tv_connections = total_tv_connections + ?
+                    WHERE id = ?
+                """, (
+                    now,
+                    display_context.get('tv_name'),
+                    tv_info.get('brand'),
+                    display_context.get('display_mode', 'MIRRORED'),
+                    1 if display_context.get('is_mirrored', False) else 0,
+                    1 if event_type == 'CONNECTED' else 0,
+                    row[0]
+                ))
+            elif event_type == 'DISCONNECTED':
+                cursor.execute("""
+                    UPDATE tv_connection_state SET
+                        last_updated = ?,
+                        is_tv_currently_connected = 0,
+                        current_tv_name = NULL,
+                        current_tv_brand = NULL,
+                        total_tv_disconnections = total_tv_disconnections + 1
+                    WHERE id = ?
+                """, (now, row[0]))
+        else:
+            # Create initial state
+            cursor.execute("""
+                INSERT INTO tv_connection_state (
+                    last_updated,
+                    is_tv_currently_connected,
+                    current_tv_name,
+                    current_tv_brand,
+                    current_display_mode,
+                    current_is_mirrored,
+                    total_tv_connections,
+                    total_tv_disconnections
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now,
+                1 if is_tv else 0,
+                display_context.get('tv_name') if is_tv else None,
+                tv_info.get('brand') if is_tv else None,
+                display_context.get('display_mode', 'SINGLE'),
+                1 if display_context.get('is_mirrored', False) else 0,
+                1 if is_tv and event_type == 'CONNECTED' else 0,
+                0
+            ))
+
+    async def _start_tv_session(
+        self,
+        cursor,
+        tv_identifier: str,
+        display_context: Dict[str, Any],
+        tv_info: Dict[str, Any]
+    ):
+        """Start a new TV session"""
+        now = datetime.now().isoformat()
+
+        # End any existing active sessions for this TV
+        cursor.execute("""
+            UPDATE tv_sessions SET
+                is_active = 0,
+                session_end = ?
+            WHERE tv_identifier = ? AND is_active = 1
+        """, (now, tv_identifier))
+
+        # Get resolution
+        ext = display_context.get('external_display', {})
+        resolution = f"{ext.get('width', 0)}x{ext.get('height', 0)}" if ext else None
+
+        cursor.execute("""
+            INSERT INTO tv_sessions (
+                session_start, is_active,
+                tv_identifier, tv_name, tv_brand, tv_confidence,
+                display_mode, is_mirrored, resolution
+            ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            now,
+            tv_identifier,
+            display_context.get('tv_name'),
+            tv_info.get('brand'),
+            tv_info.get('confidence', 0),
+            display_context.get('display_mode', 'MIRRORED'),
+            1 if display_context.get('is_mirrored', False) else 0,
+            resolution
+        ))
+
+        logger.info(f"📺 [TV-SESSION] Started new session for '{tv_identifier}'")
+
+    async def _end_tv_session(self, cursor, tv_identifier: str):
+        """End an active TV session"""
+        now = datetime.now().isoformat()
+
+        # Get active session
+        cursor.execute("""
+            SELECT id, session_start, unlock_attempts, unlock_successes
+            FROM tv_sessions
+            WHERE tv_identifier = ? AND is_active = 1
+        """, (tv_identifier,))
+
+        row = cursor.fetchone()
+        if row:
+            session_id, start_time, attempts, successes = row
+
+            # Calculate duration
+            start_dt = datetime.fromisoformat(start_time)
+            duration_minutes = (datetime.now() - start_dt).total_seconds() / 60
+
+            # Calculate success rate
+            success_rate = successes / attempts if attempts > 0 else 0
+
+            cursor.execute("""
+                UPDATE tv_sessions SET
+                    is_active = 0,
+                    session_end = ?,
+                    session_duration_minutes = ?,
+                    session_success_rate = ?
+                WHERE id = ?
+            """, (now, duration_minutes, success_rate, session_id))
+
+            logger.info(
+                f"📺 [TV-SESSION] Ended session for '{tv_identifier}' "
+                f"(duration: {duration_minutes:.1f}min, success_rate: {success_rate:.1%})"
+            )
+
+    async def update_active_tv_session(
+        self,
+        success: bool,
+        typing_strategy: str,
+        unlock_duration_ms: float
+    ):
+        """
+        Update the active TV session with unlock attempt results.
+        Called after each unlock attempt when TV is connected.
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Get active session
+            cursor.execute("""
+                SELECT id, unlock_attempts, unlock_successes, unlock_failures,
+                       applescript_attempts, applescript_successes,
+                       core_graphics_attempts, core_graphics_successes,
+                       avg_unlock_duration_ms, fastest_unlock_ms, slowest_unlock_ms
+                FROM tv_sessions
+                WHERE is_active = 1
+                LIMIT 1
+            """)
+
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return
+
+            session_id = row[0]
+            attempts = (row[1] or 0) + 1
+            successes = (row[2] or 0) + (1 if success else 0)
+            failures = (row[3] or 0) + (0 if success else 1)
+            applescript_attempts = row[4] or 0
+            applescript_successes = row[5] or 0
+            cg_attempts = row[6] or 0
+            cg_successes = row[7] or 0
+            avg_duration = row[8] or 0
+            fastest = row[9]
+            slowest = row[10]
+
+            # Update strategy counters
+            strategy_upper = typing_strategy.upper() if typing_strategy else ''
+            if 'APPLESCRIPT' in strategy_upper:
+                applescript_attempts += 1
+                if success:
+                    applescript_successes += 1
+            elif 'CORE_GRAPHICS' in strategy_upper:
+                cg_attempts += 1
+                if success:
+                    cg_successes += 1
+
+            # Update duration stats
+            if avg_duration > 0:
+                avg_duration = (avg_duration * (attempts - 1) + unlock_duration_ms) / attempts
+            else:
+                avg_duration = unlock_duration_ms
+
+            if fastest is None or unlock_duration_ms < fastest:
+                fastest = unlock_duration_ms
+            if slowest is None or unlock_duration_ms > slowest:
+                slowest = unlock_duration_ms
+
+            # Determine best strategy
+            applescript_rate = applescript_successes / applescript_attempts if applescript_attempts > 0 else 0
+            cg_rate = cg_successes / cg_attempts if cg_attempts > 0 else 0
+            best_strategy = 'APPLESCRIPT_DIRECT' if applescript_rate >= cg_rate else 'CORE_GRAPHICS_FAST'
+
+            success_rate = successes / attempts if attempts > 0 else 0
+
+            cursor.execute("""
+                UPDATE tv_sessions SET
+                    unlock_attempts = ?,
+                    unlock_successes = ?,
+                    unlock_failures = ?,
+                    session_success_rate = ?,
+                    applescript_attempts = ?,
+                    applescript_successes = ?,
+                    core_graphics_attempts = ?,
+                    core_graphics_successes = ?,
+                    best_strategy_this_session = ?,
+                    avg_unlock_duration_ms = ?,
+                    fastest_unlock_ms = ?,
+                    slowest_unlock_ms = ?
+                WHERE id = ?
+            """, (
+                attempts, successes, failures, success_rate,
+                applescript_attempts, applescript_successes,
+                cg_attempts, cg_successes,
+                best_strategy,
+                avg_duration, fastest, slowest,
+                session_id
+            ))
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"📺 [TV-SESSION] Updated: attempts={attempts}, rate={success_rate:.1%}")
+
+        except Exception as e:
+            logger.error(f"Failed to update TV session: {e}", exc_info=True)
+
+    async def get_current_tv_state(self) -> Dict[str, Any]:
+        """
+        Get the current TV connection state from SAI's perspective.
+        Returns real-time awareness of TV connectivity.
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM tv_connection_state LIMIT 1")
+            row = cursor.fetchone()
+
+            if row:
+                state = dict(row)
+
+                # Get active session info if TV connected
+                if state.get('is_tv_currently_connected'):
+                    cursor.execute("""
+                        SELECT * FROM tv_sessions WHERE is_active = 1 LIMIT 1
+                    """)
+                    session = cursor.fetchone()
+                    if session:
+                        state['active_session'] = dict(session)
+                        # Calculate current session duration
+                        start = datetime.fromisoformat(session['session_start'])
+                        state['active_session']['current_duration_minutes'] = (
+                            (datetime.now() - start).total_seconds() / 60
+                        )
+
+                conn.close()
+                return state
+            else:
+                conn.close()
+                return {
+                    'is_tv_currently_connected': False,
+                    'message': 'No TV state recorded yet'
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get TV state: {e}", exc_info=True)
+            return {'error': str(e)}
+
+    async def get_tv_connection_history(
+        self,
+        limit: int = 50,
+        event_type: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent TV connection events.
+
+        Args:
+            limit: Maximum events to return
+            event_type: Filter by event type (optional)
+
+        Returns:
+            List of connection events
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            if event_type:
+                cursor.execute("""
+                    SELECT * FROM display_connection_events
+                    WHERE event_type = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (event_type, limit))
+            else:
+                cursor.execute("""
+                    SELECT * FROM display_connection_events
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,))
+
+            events = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+
+            return events
+
+        except Exception as e:
+            logger.error(f"Failed to get connection history: {e}", exc_info=True)
+            return []
 
 
 # Singleton instance
