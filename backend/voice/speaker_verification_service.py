@@ -103,7 +103,6 @@ logger = logging.getLogger(__name__)
 # ChromaDB for voice pattern recognition
 try:
     import chromadb
-    from chromadb.config import Settings as ChromaSettings
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
@@ -290,11 +289,14 @@ class VoicePatternStore:
             return
 
         try:
-            self._client = chromadb.Client(ChromaSettings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=self.persist_directory,
-                anonymized_telemetry=False
-            ))
+            # Use PersistentClient for ChromaDB 0.4.x+ (new API)
+            import os
+            os.makedirs(self.persist_directory, exist_ok=True)
+
+            self._client = chromadb.PersistentClient(
+                path=self.persist_directory,
+                settings=chromadb.Settings(anonymized_telemetry=False)
+            )
 
             self._collection = self._client.get_or_create_collection(
                 name="voice_patterns",
