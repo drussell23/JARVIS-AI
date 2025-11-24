@@ -22,7 +22,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import sys
 
 # Add backend to path
