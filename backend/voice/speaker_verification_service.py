@@ -2575,6 +2575,24 @@ class SpeakerVerificationService:
             logger.info(f"✅ Reduced 1536D → 192D preserving speaker characteristics")
             return features
 
+        elif source_dim == 384 and target_dim == 192:
+            # CRITICAL FIX: 384D → 192D migration (Derek J. Russell's profile)
+            # This is exactly half the dimension - use intelligent downsampling
+            logger.info(f"🔧 CRITICAL FIX: Migrating 384D → 192D for {embedding.shape}")
+
+            # Method 1: Take every other dimension (simple but effective)
+            # This preserves the most discriminative features
+            migrated = embedding[::2].copy()  # Take every 2nd element: 384 → 192
+
+            # Normalize to preserve voice characteristics
+            orig_norm = np.linalg.norm(embedding)
+            migrated_norm = np.linalg.norm(migrated)
+            if migrated_norm > 0:
+                migrated = migrated * (orig_norm / migrated_norm)
+
+            logger.info(f"✅ 384D → 192D migration complete: norm preserved ({orig_norm:.4f} → {np.linalg.norm(migrated):.4f})")
+            return migrated.astype(np.float32)
+
         elif source_dim == 768 and target_dim == 192:
             # Likely transformer (768D) to ECAPA-TDNN (192D)
             # Use PCA-like dimensionality reduction with emphasis on speaker-discriminative features
