@@ -170,6 +170,31 @@ class ThreatType(str, Enum):
     NONE = "none"
 
 
+class MigrationStrategy(str, Enum):
+    """Strategies for embedding dimension migration."""
+    SPECTRAL_RESAMPLE = "spectral_resample"      # FFT-based resampling
+    PCA_REDUCTION = "pca_reduction"               # PCA dimensionality reduction
+    STATISTICAL_POOLING = "statistical_pooling"  # Block statistics extraction
+    INTERPOLATION = "interpolation"              # Cubic/linear interpolation
+    HARMONIC_EXPANSION = "harmonic_expansion"    # For upsampling with harmonics
+    LEARNED_PROJECTION = "learned_projection"    # Using learned weights if available
+    HYBRID = "hybrid"                            # Combination of methods
+
+
+@dataclass
+class MigrationResult:
+    """Result of an embedding migration with quality metrics."""
+    embedding: np.ndarray
+    strategy_used: MigrationStrategy
+    quality_score: float  # 0.0-1.0, higher is better
+    source_dim: int
+    target_dim: int
+    norm_preserved: bool
+    variance_ratio: float  # How much variance was preserved
+    processing_time_ms: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 # ============================================================================
 # Data Classes for Enhanced Authentication
 # ============================================================================
@@ -2534,10 +2559,17 @@ class SpeakerVerificationService:
 
     async def _cross_model_migration(self, embedding: np.ndarray, source_dim: int, target_dim: int) -> np.ndarray:
         """
-        Advanced cross-model migration using transfer learning principles.
+        Advanced cross-model migration using adaptive transfer learning principles.
 
-        This handles the case where embeddings come from fundamentally different models,
-        not just different dimensions of the same model.
+        This handles embeddings from fundamentally different models using dynamic
+        strategy selection based on dimension ratios and embedding characteristics.
+
+        Features:
+        - Dynamic strategy selection (no hardcoded dimension pairs)
+        - Multi-method fusion for optimal quality
+        - Quality scoring for migration validation
+        - Async processing with proper error handling
+        - Voice characteristic preservation
 
         Args:
             embedding: Source embedding
@@ -2547,106 +2579,453 @@ class SpeakerVerificationService:
         Returns:
             Migrated embedding optimized for cross-model compatibility
         """
+        import time
+        start_time = time.perf_counter()
+
         logger.info(f"🔀 Cross-model migration: {source_dim}D → {target_dim}D")
 
-        # Apply model-specific transformations
-        if source_dim == 1536 and target_dim == 192:
-            # Large model (1536D) to ECAPA-TDNN (192D)
-            # Use advanced dimension reduction preserving speaker characteristics
+        # Validate inputs
+        if embedding is None or len(embedding) == 0:
+            logger.error("Empty embedding provided for migration")
+            return np.zeros(target_dim, dtype=np.float32)
 
-            # Method 1: Intelligent downsampling with feature preservation
-            # Divide into 8 segments (1536/192 = 8)
-            segment_size = source_dim // target_dim  # 8
+        embedding = np.asarray(embedding, dtype=np.float64).flatten()
+        orig_norm = np.linalg.norm(embedding)
+        orig_variance = np.var(embedding)
 
-            # Extract key features from each segment
-            features = []
-            for i in range(target_dim):
-                segment = embedding[i*segment_size:(i+1)*segment_size]
-                # Take weighted combination: mean + variance information
-                feature = np.mean(segment) * 0.7 + np.std(segment) * 0.3
-                features.append(feature)
+        # Determine migration direction and ratio
+        is_downsampling = target_dim < source_dim
+        ratio = source_dim / target_dim if is_downsampling else target_dim / source_dim
+        is_integer_ratio = abs(ratio - round(ratio)) < 0.01
+        integer_ratio = int(round(ratio))
 
-            features = np.array(features)
+        # Select optimal strategy based on characteristics
+        strategy = await self._select_migration_strategy(
+            source_dim=source_dim,
+            target_dim=target_dim,
+            ratio=ratio,
+            is_integer_ratio=is_integer_ratio,
+            is_downsampling=is_downsampling,
+            embedding_variance=orig_variance
+        )
 
-            # Preserve energy distribution
-            orig_norm = np.linalg.norm(embedding)
-            features = features / (np.linalg.norm(features) + 1e-10) * orig_norm
+        logger.info(f"📊 Selected strategy: {strategy.value} (ratio: {ratio:.2f}, integer: {is_integer_ratio})")
 
-            logger.info(f"✅ Reduced 1536D → 192D preserving speaker characteristics")
-            return features
+        # Execute migration with selected strategy
+        try:
+            if is_downsampling:
+                migrated = await self._execute_downsampling(
+                    embedding=embedding,
+                    source_dim=source_dim,
+                    target_dim=target_dim,
+                    strategy=strategy,
+                    integer_ratio=integer_ratio if is_integer_ratio else None
+                )
+            else:
+                migrated = await self._execute_upsampling(
+                    embedding=embedding,
+                    source_dim=source_dim,
+                    target_dim=target_dim,
+                    strategy=strategy,
+                    integer_ratio=integer_ratio if is_integer_ratio else None
+                )
 
-        elif source_dim == 384 and target_dim == 192:
-            # CRITICAL FIX: 384D → 192D migration (Derek J. Russell's profile)
-            # This is exactly half the dimension - use intelligent downsampling
-            logger.info(f"🔧 CRITICAL FIX: Migrating 384D → 192D for {embedding.shape}")
+            # Normalize to preserve voice characteristics (critical for speaker verification)
+            migrated = self._normalize_embedding(migrated, orig_norm)
 
-            # Method 1: Take every other dimension (simple but effective)
-            # This preserves the most discriminative features
-            migrated = embedding[::2].copy()  # Take every 2nd element: 384 → 192
+            # Calculate quality metrics
+            processing_time_ms = (time.perf_counter() - start_time) * 1000
+            migrated_variance = np.var(migrated)
+            variance_ratio = migrated_variance / (orig_variance + 1e-10)
+            quality_score = self._calculate_migration_quality(
+                original=embedding,
+                migrated=migrated,
+                variance_ratio=variance_ratio
+            )
 
-            # Normalize to preserve voice characteristics
-            orig_norm = np.linalg.norm(embedding)
-            migrated_norm = np.linalg.norm(migrated)
-            if migrated_norm > 0:
-                migrated = migrated * (orig_norm / migrated_norm)
+            # Log migration result
+            result = MigrationResult(
+                embedding=migrated,
+                strategy_used=strategy,
+                quality_score=quality_score,
+                source_dim=source_dim,
+                target_dim=target_dim,
+                norm_preserved=abs(np.linalg.norm(migrated) - orig_norm) < 0.01,
+                variance_ratio=variance_ratio,
+                processing_time_ms=processing_time_ms,
+                metadata={
+                    "is_downsampling": is_downsampling,
+                    "ratio": ratio,
+                    "is_integer_ratio": is_integer_ratio
+                }
+            )
 
-            logger.info(f"✅ 384D → 192D migration complete: norm preserved ({orig_norm:.4f} → {np.linalg.norm(migrated):.4f})")
+            logger.info(
+                f"✅ Migration complete: {source_dim}D → {target_dim}D | "
+                f"Strategy: {strategy.value} | Quality: {quality_score:.3f} | "
+                f"Norm: {orig_norm:.4f} → {np.linalg.norm(migrated):.4f} | "
+                f"Time: {processing_time_ms:.2f}ms"
+            )
+
             return migrated.astype(np.float32)
 
-        elif source_dim == 768 and target_dim == 192:
-            # Likely transformer (768D) to ECAPA-TDNN (192D)
-            # Use PCA-like dimensionality reduction with emphasis on speaker-discriminative features
+        except Exception as e:
+            logger.error(f"❌ Migration failed with strategy {strategy.value}: {e}", exc_info=True)
+            # Fallback to simple interpolation
+            return await self._fallback_migration(embedding, target_dim, orig_norm)
 
-            # Reshape to blocks and take statistics
-            num_blocks = 4
-            block_size = source_dim // num_blocks
-            blocks = embedding.reshape(num_blocks, block_size)
+    async def _select_migration_strategy(
+        self,
+        source_dim: int,
+        target_dim: int,
+        ratio: float,
+        is_integer_ratio: bool,
+        is_downsampling: bool,
+        embedding_variance: float
+    ) -> MigrationStrategy:
+        """
+        Dynamically select the best migration strategy based on characteristics.
 
-            # Extract features from each block
-            features = []
-            for block in blocks:
-                features.extend([
-                    np.mean(block),
-                    np.std(block),
-                    np.max(block),
-                    np.min(block),
-                    np.median(block)
-                ])
+        Strategy selection criteria:
+        - Integer ratios prefer statistical pooling (downsampling) or harmonic expansion (upsampling)
+        - Large ratio differences prefer spectral methods
+        - High variance embeddings prefer PCA to preserve discriminative features
+        - Small differences can use interpolation
+        """
+        # For very small dimension differences, use interpolation
+        if abs(source_dim - target_dim) <= 32:
+            return MigrationStrategy.INTERPOLATION
 
-            # Pad or truncate to target dimension
-            features = np.array(features)
-            if len(features) < target_dim:
-                # Pad with computed statistics
-                padding = target_dim - len(features)
-                features = np.pad(features, (0, padding), mode='wrap')
+        if is_downsampling:
+            # Downsampling strategies
+            if is_integer_ratio:
+                # Perfect divisor - statistical pooling is optimal
+                return MigrationStrategy.STATISTICAL_POOLING
+            elif ratio > 4:
+                # Large reduction - use hybrid approach
+                return MigrationStrategy.HYBRID
+            elif embedding_variance > 0.1:
+                # High variance - try to preserve with spectral
+                return MigrationStrategy.SPECTRAL_RESAMPLE
             else:
-                features = features[:target_dim]
+                # Default to spectral for non-integer ratios
+                return MigrationStrategy.SPECTRAL_RESAMPLE
+        else:
+            # Upsampling strategies
+            if is_integer_ratio:
+                # Perfect multiple - harmonic expansion preserves patterns
+                return MigrationStrategy.HARMONIC_EXPANSION
+            elif ratio > 4:
+                # Large expansion - use hybrid
+                return MigrationStrategy.HYBRID
+            else:
+                # Default to interpolation for upsampling
+                return MigrationStrategy.INTERPOLATION
 
-            # Normalize to maintain speaker characteristics
-            features = features / (np.linalg.norm(features) + 1e-10) * np.linalg.norm(embedding)
-            return features
+    async def _execute_downsampling(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        strategy: MigrationStrategy,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """Execute downsampling migration using the selected strategy."""
 
-        elif source_dim == 96 and target_dim == 192:
-            # Likely smaller model to ECAPA-TDNN
-            # Use harmonic expansion to preserve speaker patterns
+        if strategy == MigrationStrategy.STATISTICAL_POOLING:
+            return self._statistical_pooling_downsample(embedding, source_dim, target_dim, integer_ratio)
 
-            # Duplicate and add harmonics
-            base = np.repeat(embedding, 2)  # 96 → 192
+        elif strategy == MigrationStrategy.SPECTRAL_RESAMPLE:
+            return self._spectral_resample(embedding, target_dim)
 
-            # Add frequency-domain variations
-            fft = np.fft.rfft(embedding)
-            harmonics = np.fft.irfft(fft * 1.1, target_dim)  # Slight frequency shift
+        elif strategy == MigrationStrategy.PCA_REDUCTION:
+            return self._pca_like_reduction(embedding, source_dim, target_dim)
 
-            # Blend base and harmonics
-            migrated = 0.8 * base + 0.2 * harmonics
+        elif strategy == MigrationStrategy.HYBRID:
+            # Combine multiple methods and blend
+            spectral = self._spectral_resample(embedding, target_dim)
+            statistical = self._statistical_pooling_downsample(
+                embedding, source_dim, target_dim,
+                integer_ratio or int(round(source_dim / target_dim))
+            )
+            # Weighted blend favoring spectral for voice characteristics
+            return 0.6 * spectral + 0.4 * statistical
 
-            # Normalize
-            migrated = migrated / (np.linalg.norm(migrated) + 1e-10) * np.linalg.norm(embedding)
+        elif strategy == MigrationStrategy.INTERPOLATION:
+            return self._interpolate_embedding(embedding, target_dim)
+
+        else:
+            # Default fallback
+            return self._spectral_resample(embedding, target_dim)
+
+    async def _execute_upsampling(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        strategy: MigrationStrategy,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """Execute upsampling migration using the selected strategy."""
+
+        if strategy == MigrationStrategy.HARMONIC_EXPANSION:
+            return self._harmonic_expansion_upsample(embedding, source_dim, target_dim, integer_ratio)
+
+        elif strategy == MigrationStrategy.INTERPOLATION:
+            return self._interpolate_embedding(embedding, target_dim)
+
+        elif strategy == MigrationStrategy.SPECTRAL_RESAMPLE:
+            return self._spectral_resample(embedding, target_dim)
+
+        elif strategy == MigrationStrategy.HYBRID:
+            # Combine interpolation and harmonic for rich upsampling
+            interpolated = self._interpolate_embedding(embedding, target_dim)
+            harmonic = self._harmonic_expansion_upsample(
+                embedding, source_dim, target_dim,
+                integer_ratio or int(round(target_dim / source_dim))
+            )
+            return 0.5 * interpolated + 0.5 * harmonic
+
+        else:
+            return self._interpolate_embedding(embedding, target_dim)
+
+    def _statistical_pooling_downsample(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Downsample using statistical pooling - extracts mean, std, and weighted features.
+        Optimal for integer ratio reductions.
+        """
+        if integer_ratio and source_dim == target_dim * integer_ratio:
+            # Perfect division - use block-wise statistics
+            blocks = embedding.reshape(target_dim, integer_ratio)
+
+            # Extract weighted statistics from each block
+            # Weight: 60% mean (central tendency) + 25% std (variance) + 15% max (peaks)
+            means = np.mean(blocks, axis=1)
+            stds = np.std(blocks, axis=1)
+            maxs = np.max(blocks, axis=1)
+
+            migrated = 0.60 * means + 0.25 * stds + 0.15 * maxs
             return migrated
 
         else:
-            # Generic cross-model migration
-            return await self._migrate_embedding_dimension(embedding, target_dim)
+            # Non-perfect division - use adaptive block sizes
+            ratio = source_dim / target_dim
+            migrated = np.zeros(target_dim)
+
+            for i in range(target_dim):
+                start_idx = int(i * ratio)
+                end_idx = int((i + 1) * ratio)
+                end_idx = min(end_idx, source_dim)
+
+                if start_idx < end_idx:
+                    block = embedding[start_idx:end_idx]
+                    migrated[i] = np.mean(block) * 0.7 + np.std(block) * 0.3
+
+            return migrated
+
+    def _spectral_resample(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
+        """
+        Resample using FFT - preserves frequency characteristics important for voice.
+        Works well for any dimension ratio.
+        """
+        try:
+            from scipy import signal
+            # Use scipy's resample which uses FFT internally
+            return signal.resample(embedding, target_dim)
+        except ImportError:
+            # Fallback to numpy FFT
+            fft = np.fft.rfft(embedding)
+            # Resample in frequency domain
+            if target_dim < len(embedding):
+                # Downsampling - truncate high frequencies
+                n_freq = target_dim // 2 + 1
+                fft_truncated = fft[:n_freq]
+                return np.fft.irfft(fft_truncated, target_dim)
+            else:
+                # Upsampling - zero-pad high frequencies
+                n_freq = target_dim // 2 + 1
+                fft_padded = np.zeros(n_freq, dtype=complex)
+                fft_padded[:len(fft)] = fft
+                return np.fft.irfft(fft_padded, target_dim)
+
+    def _pca_like_reduction(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int
+    ) -> np.ndarray:
+        """
+        PCA-like dimensionality reduction that preserves maximum variance.
+        Extracts statistical features across blocks to preserve discriminative info.
+        """
+        # Determine optimal number of blocks
+        num_blocks = max(4, target_dim // 48)  # At least 4 blocks
+        block_size = source_dim // num_blocks
+        remainder = source_dim % num_blocks
+
+        features = []
+        idx = 0
+
+        for i in range(num_blocks):
+            # Handle remainder by distributing extra elements
+            current_block_size = block_size + (1 if i < remainder else 0)
+            block = embedding[idx:idx + current_block_size]
+            idx += current_block_size
+
+            # Extract 5 statistics per block
+            features.extend([
+                np.mean(block),
+                np.std(block),
+                np.max(block),
+                np.min(block),
+                np.median(block)
+            ])
+
+        features = np.array(features)
+
+        # Adjust to target dimension
+        if len(features) < target_dim:
+            # Pad with interpolated values
+            features = self._interpolate_embedding(features, target_dim)
+        elif len(features) > target_dim:
+            # Truncate or resample
+            features = self._spectral_resample(features, target_dim)
+
+        return features
+
+    def _harmonic_expansion_upsample(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Upsample using harmonic expansion - preserves voice patterns by adding harmonics.
+        """
+        if integer_ratio and target_dim == source_dim * integer_ratio:
+            # Perfect multiple - replicate with harmonic variation
+            base = np.repeat(embedding, integer_ratio)
+        else:
+            # Non-perfect - interpolate first
+            base = self._interpolate_embedding(embedding, target_dim)
+
+        # Add frequency-domain harmonics to enrich the representation
+        try:
+            fft = np.fft.rfft(embedding)
+            # Generate harmonics with slight frequency shift
+            harmonics = np.fft.irfft(fft * 1.05, target_dim)
+
+            # Blend base and harmonics (80% base, 20% harmonics)
+            migrated = 0.8 * base + 0.2 * harmonics
+        except Exception:
+            # If FFT fails, just use the base
+            migrated = base
+
+        return migrated
+
+    def _interpolate_embedding(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
+        """
+        Interpolate embedding to target dimension using cubic spline.
+        """
+        source_dim = len(embedding)
+        if source_dim == target_dim:
+            return embedding.copy()
+
+        try:
+            from scipy import interpolate
+            x_old = np.linspace(0, 1, source_dim)
+            x_new = np.linspace(0, 1, target_dim)
+            # Use cubic interpolation with extrapolation handling
+            f = interpolate.interp1d(x_old, embedding, kind='cubic', bounds_error=False, fill_value="extrapolate")
+            return f(x_new).astype(np.float64)
+        except (ImportError, ValueError):
+            # Fallback to numpy linear interpolation
+            x_old = np.linspace(0, 1, source_dim)
+            x_new = np.linspace(0, 1, target_dim)
+            return np.interp(x_new, x_old, embedding)
+
+    def _normalize_embedding(self, embedding: np.ndarray, target_norm: float) -> np.ndarray:
+        """Normalize embedding to preserve original magnitude."""
+        current_norm = np.linalg.norm(embedding)
+        if current_norm > 1e-10:
+            return embedding * (target_norm / current_norm)
+        return embedding
+
+    def _calculate_migration_quality(
+        self,
+        original: np.ndarray,
+        migrated: np.ndarray,
+        variance_ratio: float
+    ) -> float:
+        """
+        Calculate quality score for migration (0.0 - 1.0).
+
+        Factors:
+        - Variance preservation (how much signal variance is retained)
+        - Distribution similarity (are statistical properties preserved)
+        - Norm preservation (energy conservation)
+        """
+        # Variance ratio component (50% weight)
+        # Ideal is close to 1.0, penalize both over and under
+        variance_score = 1.0 - min(abs(1.0 - variance_ratio), 1.0)
+
+        # Distribution similarity (30% weight)
+        # Compare normalized histograms
+        try:
+            orig_normalized = (original - np.mean(original)) / (np.std(original) + 1e-10)
+            mig_normalized = (migrated - np.mean(migrated)) / (np.std(migrated) + 1e-10)
+
+            # Compare moments
+            orig_skew = np.mean(orig_normalized ** 3)
+            mig_skew = np.mean(mig_normalized ** 3)
+            orig_kurt = np.mean(orig_normalized ** 4) - 3
+            mig_kurt = np.mean(mig_normalized ** 4) - 3
+
+            skew_diff = abs(orig_skew - mig_skew)
+            kurt_diff = abs(orig_kurt - mig_kurt)
+
+            distribution_score = 1.0 - min((skew_diff + kurt_diff) / 4, 1.0)
+        except Exception:
+            distribution_score = 0.5
+
+        # Energy preservation (20% weight)
+        orig_energy = np.sum(original ** 2)
+        mig_energy = np.sum(migrated ** 2)
+        energy_ratio = mig_energy / (orig_energy + 1e-10)
+        energy_score = 1.0 - min(abs(1.0 - energy_ratio), 1.0)
+
+        # Weighted combination
+        quality = 0.50 * variance_score + 0.30 * distribution_score + 0.20 * energy_score
+
+        return float(np.clip(quality, 0.0, 1.0))
+
+    async def _fallback_migration(
+        self,
+        embedding: np.ndarray,
+        target_dim: int,
+        orig_norm: float
+    ) -> np.ndarray:
+        """Fallback migration using simple but reliable methods."""
+        source_dim = len(embedding)
+
+        logger.warning(f"⚠️ Using fallback migration: {source_dim}D → {target_dim}D")
+
+        if target_dim > source_dim:
+            # Pad with edge values
+            migrated = np.pad(embedding, (0, target_dim - source_dim), mode='edge')
+        else:
+            # Truncate
+            migrated = embedding[:target_dim]
+
+        # Normalize
+        return self._normalize_embedding(migrated, orig_norm).astype(np.float32)
 
     async def _auto_migrate_profile(self, profile: dict, speaker_name: str) -> dict:
         """
