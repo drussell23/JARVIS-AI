@@ -1217,51 +1217,91 @@ class IntelligentVoiceUnlockService:
             # 2. DATABASE PROFILE ANALYSIS
             if self.speaker_engine and hasattr(self.speaker_engine, 'speaker_profiles'):
                 profiles = self.speaker_engine.speaker_profiles
-                if speaker_name in profiles:
-                    profile = profiles[speaker_name]
 
+                # Handle case where speaker_name is "unknown" or not in profiles
+                # This happens when verification didn't find a match
+                target_profile = None
+                target_name = speaker_name
+
+                if speaker_name in profiles:
+                    target_profile = profiles[speaker_name]
+                elif speaker_name in ("unknown", "error", None, ""):
+                    # Verification failed to identify speaker - use primary user profile for diagnostics
+                    # This is NOT "profile not found" - it's "voice didn't match the profile"
+                    for name, profile in profiles.items():
+                        if profile.get('is_primary_user', False):
+                            target_profile = profile
+                            target_name = name
+                            diagnostics['expected_speaker'] = name
+                            break
+                    # If no primary user, use the first profile
+                    if not target_profile and profiles:
+                        target_name, target_profile = next(iter(profiles.items()))
+                        diagnostics['expected_speaker'] = target_name
+
+                if target_profile:
                     # Get embedding info
-                    embedding = profile.get('embedding')
+                    embedding = target_profile.get('embedding')
                     if embedding is not None:
                         if hasattr(embedding, 'shape'):
                             diagnostics['embedding_dimension'] = int(embedding.shape[0])
                         elif hasattr(embedding, '__len__'):
                             diagnostics['embedding_dimension'] = len(embedding)
 
-                    # Get sample count from database
-                    if self.speaker_engine.learning_db:
+                    # Get sample count from profile or database
+                    diagnostics['samples_in_db'] = target_profile.get('total_samples', 0)
+
+                    if self.speaker_engine.learning_db and diagnostics['samples_in_db'] == 0:
                         try:
-                            profile_data = await self.speaker_engine.learning_db.get_speaker_profile(speaker_name)
+                            profile_data = await self.speaker_engine.learning_db.get_speaker_profile(target_name)
                             if profile_data:
                                 diagnostics['samples_in_db'] = profile_data.get('total_samples', 0)
-
-                                # Check if insufficient samples
-                                if diagnostics['samples_in_db'] < 10:
-                                    diagnostics['primary_reason'] = f'Insufficient voice samples ({diagnostics["samples_in_db"]}/30 recommended)'
-                                    diagnostics['suggested_fix'] = 'Re-enroll voice profile with more samples'
-                                    diagnostics['architecture_issue'] = 'Voice enrollment may not have captured enough samples'
-                                    diagnostics['user_message'] = 'Voice profile needs more training samples.'
-                                    diagnostics['severity'] = 'high'
                         except Exception as e:
                             logger.debug(f"Could not get sample count: {e}")
 
+                    # Check if insufficient samples
+                    if diagnostics['samples_in_db'] < 10:
+                        diagnostics['primary_reason'] = f'Insufficient voice samples ({diagnostics["samples_in_db"]}/30 recommended)'
+                        diagnostics['suggested_fix'] = 'Re-enroll voice profile with more samples'
+                        diagnostics['architecture_issue'] = 'Voice enrollment may not have captured enough samples'
+                        diagnostics['user_message'] = 'Voice profile needs more training samples.'
+                        diagnostics['severity'] = 'high'
+
                     # Get threshold
+                    diagnostics['threshold'] = f"{target_profile.get('threshold', 0.40):.2%}"
                     if hasattr(self.speaker_engine, '_get_adaptive_threshold'):
                         try:
-                            threshold = await self.speaker_engine._get_adaptive_threshold(speaker_name, profile)
+                            threshold = await self.speaker_engine._get_adaptive_threshold(target_name, target_profile)
                             diagnostics['threshold'] = f"{threshold:.2%}"
                         except:
-                            diagnostics['threshold'] = profile.get('threshold', 'unknown')
-                else:
-                    diagnostics['primary_reason'] = f'No voice profile found for speaker: {speaker_name}'
+                            pass
+
+                elif len(profiles) == 0:
+                    # Truly no profiles loaded
+                    diagnostics['primary_reason'] = 'No voice profiles loaded in system'
                     diagnostics['suggested_fix'] = 'Enroll voice profile first'
-                    diagnostics['architecture_issue'] = 'Speaker not registered in database'
+                    diagnostics['architecture_issue'] = 'No speaker profiles registered in database'
                     diagnostics['user_message'] = 'Voice profile not found. Please enroll first.'
                     diagnostics['severity'] = 'critical'
+                else:
+                    # Profiles exist but speaker_name doesn't match any
+                    available_profiles = list(profiles.keys())
+                    diagnostics['primary_reason'] = f'Speaker "{speaker_name}" not in registered profiles: {available_profiles}'
+                    diagnostics['suggested_fix'] = 'Voice may not match enrolled profile. Try re-enrolling.'
+                    diagnostics['architecture_issue'] = 'Speaker name mismatch'
+                    diagnostics['user_message'] = 'Voice not recognized. Try speaking more clearly.'
+                    diagnostics['severity'] = 'high'
 
             # 3. CONFIDENCE ANALYSIS
             if diagnostics['audio_quality'] == 'acceptable' and diagnostics['samples_in_db'] >= 10:
-                if confidence < 0.05:
+                if confidence == 0.0:
+                    # Exactly 0% means either silent audio or a processing error
+                    diagnostics['primary_reason'] = 'Zero confidence - possible audio processing issue'
+                    diagnostics['suggested_fix'] = 'Check microphone input and try speaking more clearly'
+                    diagnostics['architecture_issue'] = 'Audio may not be reaching embedding extraction'
+                    diagnostics['user_message'] = 'Could not process voice. Please try again.'
+                    diagnostics['severity'] = 'critical'
+                elif confidence < 0.05:
                     diagnostics['primary_reason'] = 'Voice does not match enrolled profile'
                     diagnostics['suggested_fix'] = 'Verify speaker identity or re-enroll'
                     diagnostics['architecture_issue'] = 'Possible embedding dimension mismatch or model version incompatibility'
