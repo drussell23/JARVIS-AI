@@ -3,13 +3,13 @@
 ## Executive Summary
 
 - **Workflow**: PR Automation & Validation
-- **Run Number**: #668
-- **Branch**: `cursor/explore-jarvis-claude-vision-integration-benefits-claude-4.5-sonnet-thinking-85ac`
-- **Commit**: `6f8c567ee62e442060224b664a6efef348a5d1d8`
+- **Run Number**: #674
+- **Branch**: `fix/ci/pr-automation-validation-run668-20251126-231649`
+- **Commit**: `047502c15d90892add45712cdd3874f06c7f74b6`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-26T23:14:48Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19720046451)
+- **Timestamp**: 2025-11-26T23:17:16Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19720091267)
 
 ## Failure Overview
 
@@ -17,7 +17,7 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | Validate PR Title | timeout | high | 5s |
+| 1 | Validate PR Title | timeout | high | 4s |
 
 ## Detailed Analysis
 
@@ -26,10 +26,10 @@ Total Failed Jobs: **1**
 **Status**: ❌ failure
 **Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-26T23:15:16Z
-**Completed**: 2025-11-26T23:15:21Z
-**Duration**: 5 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19720046451/job/56500682940)
+**Started**: 2025-11-26T23:17:21Z
+**Completed**: 2025-11-26T23:17:25Z
+**Duration**: 4 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19720091267/job/56500810179)
 
 #### Failed Steps
 
@@ -42,8 +42,8 @@ Total Failed Jobs: **1**
 - Pattern: `ERROR|Error|error`
   - Occurrences: 2
   - Sample matches:
-    - Line 25: `2025-11-26T23:15:18.8427328Z   subjectPatternError: The PR title must start with a capital letter.`
-    - Line 37: `2025-11-26T23:15:19.4667120Z ##[error]No release type found in pull request title "Explore jarvis cl`
+    - Line 25: `2025-11-26T23:17:23.2319388Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-26T23:17:23.7098057Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: PR A`
 
 - Pattern: `timeout|timed out`
   - Occurrences: 1
@@ -73,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-26T23:16:49.089860*
+📊 *Report generated on 2025-11-26T23:18:28.914963*
 🤖 *JARVIS CI/CD Auto-PR Manager*

@@ -1,12 +1,12 @@
 {
   "workflow_name": "PR Automation & Validation",
-  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19720046451",
-  "branch": "cursor/explore-jarvis-claude-vision-integration-benefits-claude-4.5-sonnet-thinking-85ac",
-  "commit_sha": "6f8c567",
-  "run_number": 668,
+  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19720091267",
+  "branch": "fix/ci/pr-automation-validation-run668-20251126-231649",
+  "commit_sha": "047502c",
+  "run_number": 674,
   "failed_count": 1,
-  "fix_branch": "fix/ci/pr-automation-validation-run668-20251126-231649",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #668)",
+  "fix_branch": "fix/ci/pr-automation-validation-run674-20251126-231828",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #674)",
   "analyses": [
     {
       "error_patterns": [
@@ -15,13 +15,13 @@
           "matches": [
             {
               "line_number": 25,
-              "content": "2025-11-26T23:15:18.8427328Z   subjectPatternError: The PR title must start with a capital letter.",
+              "content": "2025-11-26T23:17:23.2319388Z   subjectPatternError: The PR title must start with a capital letter.",
               "severity": "high",
               "emoji": "\u274c"
             },
             {
               "line_number": 37,
-              "content": "2025-11-26T23:15:19.4667120Z ##[error]No release type found in pull request title \"Explore jarvis claude vision integration benefits\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
+              "content": "2025-11-26T23:17:23.7098057Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #668)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
               "severity": "high",
               "emoji": "\u274c"
             }
@@ -50,5 +50,5 @@
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-26T23:16:49.089969"
+  "timestamp": "2025-11-26T23:18:28.915061"
 }
