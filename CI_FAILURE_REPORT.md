@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-- **Workflow**: Database Connection Validation
-- **Run Number**: #374
-- **Branch**: `cursor/explore-jarvis-claude-vision-integration-benefits-claude-4.5-sonnet-thinking-85ac`
-- **Commit**: `6f8c567ee62e442060224b664a6efef348a5d1d8`
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #673
+- **Branch**: `fix/ci/database-connection-validation-run374-20251126-231646`
+- **Commit**: `e8190137225560384d55915896e7a50053526b25`
 - **Status**: ❌ FAILED
-- **Timestamp**: 2025-11-26T23:14:48Z
-- **Triggered By**: @drussell23
-- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19720046434)
+- **Timestamp**: 2025-11-26T23:17:11Z
+- **Triggered By**: @cubic-dev-ai[bot]
+- **Workflow URL**: [View Run](https://github.com/drussell23/JARVIS/actions/runs/19720089809)
 
 ## Failure Overview
 
@@ -17,53 +17,43 @@ Total Failed Jobs: **1**
 
 | # | Job Name | Category | Severity | Duration |
 |---|----------|----------|----------|----------|
-| 1 | Validate Database Configuration | syntax_error | high | 39s |
+| 1 | Validate PR Title | timeout | high | 4s |
 
 ## Detailed Analysis
 
-### 1. Validate Database Configuration
+### 1. Validate PR Title
 
 **Status**: ❌ failure
-**Category**: Syntax Error
+**Category**: Timeout
 **Severity**: HIGH
-**Started**: 2025-11-26T23:15:08Z
-**Completed**: 2025-11-26T23:15:47Z
-**Duration**: 39 seconds
-**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19720046434/job/56500682990)
+**Started**: 2025-11-26T23:17:14Z
+**Completed**: 2025-11-26T23:17:18Z
+**Duration**: 4 seconds
+**Job URL**: [View Logs](https://github.com/drussell23/JARVIS/actions/runs/19720089809/job/56500806134)
 
 #### Failed Steps
 
-- **Step 5**: Validate .env.example Completeness
+- **Step 2**: Validate Conventional Commits
 
 #### Error Analysis
 
 **Detected Error Patterns:**
 
 - Pattern: `ERROR|Error|error`
-  - Occurrences: 1
+  - Occurrences: 2
   - Sample matches:
-    - Line 63: `2025-11-26T23:15:46.5926787Z ##[error]Process completed with exit code 1.`
-
-- Pattern: `FAIL|Failed|failed`
-  - Occurrences: 1
-  - Sample matches:
-    - Line 97: `2025-11-26T23:15:46.7361309Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
-
-- Pattern: `WARN|Warning|warning`
-  - Occurrences: 1
-  - Sample matches:
-    - Line 97: `2025-11-26T23:15:46.7361309Z ##[warning]The process '/usr/bin/git' failed with exit code 128`
+    - Line 25: `2025-11-26T23:17:16.4637573Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 37: `2025-11-26T23:17:16.9647054Z ##[error]No release type found in pull request title "🚨 Fix CI/CD: Data`
 
 - Pattern: `timeout|timed out`
-  - Occurrences: 3
+  - Occurrences: 1
   - Sample matches:
-    - Line 3: `2025-11-26T23:15:43.6502932Z Downloading async_timeout-5.0.1-py3-none-any.whl (6.2 kB)`
-    - Line 17: `2025-11-26T23:15:43.8195447Z Installing collected packages: urllib3, typing-extensions, pyyaml, pycp`
-    - Line 19: `2025-11-26T23:15:46.2704179Z Successfully installed Requests-2.32.5 aiofiles-25.1.0 aiohappyeyeballs`
+    - Line 29: `- fix: Resolve database connection timeout`
 
 #### Suggested Fixes
 
 1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
 
 ---
 
@@ -83,5 +73,5 @@ Total Failed Jobs: **1**
 
 ---
 
-📊 *Report generated on 2025-11-26T23:16:46.716039*
+📊 *Report generated on 2025-11-26T23:18:34.917418*
 🤖 *JARVIS CI/CD Auto-PR Manager*
