@@ -1303,6 +1303,7 @@ class SpeechBrainEngine(BaseSTTEngine):
         """Try decoding with soundfile (libsndfile backend)"""
         try:
             import soundfile as sf
+            import io
             audio_io = io.BytesIO(audio_data)
             waveform, sample_rate = sf.read(audio_io, dtype='float32')
             logger.debug(f"✅ soundfile decoded: {waveform.shape}, {sample_rate}Hz")
