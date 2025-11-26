@@ -1,12 +1,12 @@
 {
-  "workflow_name": "Environment Variable Validation",
-  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19720046454",
-  "branch": "cursor/explore-jarvis-claude-vision-integration-benefits-claude-4.5-sonnet-thinking-85ac",
-  "commit_sha": "6f8c567",
-  "run_number": 501,
+  "workflow_name": "PR Automation & Validation",
+  "workflow_url": "https://github.com/drussell23/JARVIS/actions/runs/19720087938",
+  "branch": "fix/ci/environment-variable-validation-run501-20251126-231632",
+  "commit_sha": "0ef16c2",
+  "run_number": 672,
   "failed_count": 1,
-  "fix_branch": "fix/ci/environment-variable-validation-run501-20251126-231632",
-  "pr_title": "\ud83d\udea8 Fix CI/CD: Environment Variable Validation (Run #501)",
+  "fix_branch": "fix/ci/pr-automation-validation-run672-20251126-231821",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: PR Automation & Validation (Run #672)",
   "analyses": [
     {
       "error_patterns": [
@@ -14,70 +14,41 @@
           "pattern": "ERROR|Error|error",
           "matches": [
             {
-              "line_number": 52,
-              "content": "2025-11-26T23:15:11.2872741Z ##[error]Process completed with exit code 1.",
+              "line_number": 25,
+              "content": "2025-11-26T23:17:09.2012410Z   subjectPatternError: The PR title must start with a capital letter.",
               "severity": "high",
               "emoji": "\u274c"
-            }
-          ],
-          "count": 1
-        },
-        {
-          "pattern": "FAIL|Failed|failed",
-          "matches": [
-            {
-              "line_number": 35,
-              "content": "2025-11-26T23:15:11.2813928Z \u274c VALIDATION FAILED",
-              "severity": "high",
-              "emoji": "\ud83d\udca5"
             },
             {
-              "line_number": 97,
-              "content": "2025-11-26T23:15:11.6448239Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "line_number": 37,
+              "content": "2025-11-26T23:17:09.8190483Z ##[error]No release type found in pull request title \"\ud83d\udea8 Fix CI/CD: Environment Variable Validation (Run #501)\". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/",
               "severity": "high",
-              "emoji": "\ud83d\udca5"
+              "emoji": "\u274c"
             }
           ],
           "count": 2
         },
         {
-          "pattern": "WARN|Warning|warning",
+          "pattern": "timeout|timed out",
           "matches": [
             {
-              "line_number": 40,
-              "content": "2025-11-26T23:15:11.2815901Z \u26a0\ufe0f  WARNINGS",
+              "line_number": 29,
+              "content": "- fix: Resolve database connection timeout",
               "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
-            },
-            {
-              "line_number": 75,
-              "content": "2025-11-26T23:15:11.3084398Z   if-no-files-found: warn",
-              "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
-            },
-            {
-              "line_number": 87,
-              "content": "2025-11-26T23:15:11.5131708Z ##[warning]No files were found with the provided path: /tmp/env_summary.txt. No artifacts will be uploaded.",
-              "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
-            },
-            {
-              "line_number": 97,
-              "content": "2025-11-26T23:15:11.6448239Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
-              "severity": "medium",
-              "emoji": "\u26a0\ufe0f"
+              "emoji": "\u23f1\ufe0f"
             }
           ],
-          "count": 4
+          "count": 1
         }
       ],
       "suggested_fixes": [
-        "Review the logs above for specific error messages"
+        "Consider increasing timeout values or optimizing slow operations",
+        "Check service availability and network connectivity"
       ],
       "severity": "high",
-      "category": "permission_error",
+      "category": "timeout",
       "similar_failures": []
     }
   ],
-  "timestamp": "2025-11-26T23:16:32.352637"
+  "timestamp": "2025-11-26T23:18:21.287517"
 }
