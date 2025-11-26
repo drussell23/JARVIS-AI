@@ -2590,7 +2590,23 @@ class SpeakerVerificationService:
             return np.zeros(target_dim, dtype=np.float32)
 
         embedding = np.asarray(embedding, dtype=np.float64).flatten()
+
+        # CRITICAL: Check for NaN/Inf in source embedding BEFORE migration
+        if np.any(np.isnan(embedding)):
+            logger.error(f"❌ CRITICAL: Source embedding contains {np.sum(np.isnan(embedding))} NaN values!")
+            logger.error("   Cannot migrate corrupted embedding - returning zeros")
+            return np.zeros(target_dim, dtype=np.float32)
+        if np.any(np.isinf(embedding)):
+            logger.error(f"❌ CRITICAL: Source embedding contains {np.sum(np.isinf(embedding))} Inf values!")
+            logger.error("   Cannot migrate corrupted embedding - returning zeros")
+            return np.zeros(target_dim, dtype=np.float32)
+
         orig_norm = np.linalg.norm(embedding)
+        if np.isnan(orig_norm) or orig_norm < 1e-10:
+            logger.error(f"❌ CRITICAL: Source embedding has invalid norm ({orig_norm})")
+            logger.error("   Cannot preserve voice characteristics - returning zeros")
+            return np.zeros(target_dim, dtype=np.float32)
+
         orig_variance = np.var(embedding)
 
         # Determine migration direction and ratio
@@ -2632,6 +2648,22 @@ class SpeakerVerificationService:
 
             # Normalize to preserve voice characteristics (critical for speaker verification)
             migrated = self._normalize_embedding(migrated, orig_norm)
+
+            # CRITICAL: Validate migrated embedding for NaN/Inf BEFORE returning
+            if np.any(np.isnan(migrated)):
+                logger.error(f"❌ CRITICAL: Migration produced {np.sum(np.isnan(migrated))} NaN values!")
+                logger.error(f"   Strategy {strategy.value} failed - falling back to simple method")
+                return await self._fallback_migration(embedding, target_dim, orig_norm)
+            if np.any(np.isinf(migrated)):
+                logger.error(f"❌ CRITICAL: Migration produced {np.sum(np.isinf(migrated))} Inf values!")
+                logger.error(f"   Strategy {strategy.value} failed - falling back to simple method")
+                return await self._fallback_migration(embedding, target_dim, orig_norm)
+
+            migrated_norm = np.linalg.norm(migrated)
+            if np.isnan(migrated_norm) or migrated_norm < 1e-10:
+                logger.error(f"❌ CRITICAL: Migrated embedding has invalid norm ({migrated_norm})")
+                logger.error(f"   Strategy {strategy.value} failed - falling back to simple method")
+                return await self._fallback_migration(embedding, target_dim, orig_norm)
 
             # Calculate quality metrics
             processing_time_ms = (time.perf_counter() - start_time) * 1000
@@ -2833,11 +2865,30 @@ class SpeakerVerificationService:
         """
         Resample using FFT - preserves frequency characteristics important for voice.
         Works well for any dimension ratio.
+
+        CRITICAL: Includes NaN/Inf validation since FFT operations can produce
+        numerical instability with certain inputs.
         """
+        # CRITICAL: Validate input - FFT will propagate NaN/Inf
+        if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+            logger.error(f"❌ _spectral_resample received corrupted input (NaN/Inf)")
+            return np.zeros(target_dim, dtype=np.float64)
+
         try:
             from scipy import signal
             # Use scipy's resample which uses FFT internally
-            return signal.resample(embedding, target_dim)
+            result = signal.resample(embedding, target_dim)
+
+            # CRITICAL: Validate FFT output
+            if np.any(np.isnan(result)) or np.any(np.isinf(result)):
+                logger.warning("⚠️ scipy.signal.resample produced NaN/Inf, using truncation fallback")
+                # Safe fallback: simple truncation or padding
+                if target_dim < len(embedding):
+                    return embedding[:target_dim].astype(np.float64)
+                else:
+                    return np.pad(embedding, (0, target_dim - len(embedding)), mode='edge').astype(np.float64)
+
+            return result
         except ImportError:
             # Fallback to numpy FFT
             fft = np.fft.rfft(embedding)
@@ -2846,13 +2897,23 @@ class SpeakerVerificationService:
                 # Downsampling - truncate high frequencies
                 n_freq = target_dim // 2 + 1
                 fft_truncated = fft[:n_freq]
-                return np.fft.irfft(fft_truncated, target_dim)
+                result = np.fft.irfft(fft_truncated, target_dim)
             else:
                 # Upsampling - zero-pad high frequencies
                 n_freq = target_dim // 2 + 1
                 fft_padded = np.zeros(n_freq, dtype=complex)
                 fft_padded[:len(fft)] = fft
-                return np.fft.irfft(fft_padded, target_dim)
+                result = np.fft.irfft(fft_padded, target_dim)
+
+            # CRITICAL: Validate FFT output
+            if np.any(np.isnan(result)) or np.any(np.isinf(result)):
+                logger.warning("⚠️ numpy FFT produced NaN/Inf, using truncation fallback")
+                if target_dim < len(embedding):
+                    return embedding[:target_dim].astype(np.float64)
+                else:
+                    return np.pad(embedding, (0, target_dim - len(embedding)), mode='edge').astype(np.float64)
+
+            return result
 
     def _pca_like_reduction(
         self,
@@ -2933,10 +2994,19 @@ class SpeakerVerificationService:
     def _interpolate_embedding(self, embedding: np.ndarray, target_dim: int) -> np.ndarray:
         """
         Interpolate embedding to target dimension using cubic spline.
+
+        CRITICAL: Includes NaN/Inf validation since scipy's interp1d with
+        cubic extrapolation can produce NaN in edge cases.
         """
         source_dim = len(embedding)
         if source_dim == target_dim:
             return embedding.copy()
+
+        # CRITICAL: Check for NaN/Inf in input - these will propagate through interpolation
+        if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+            logger.error(f"❌ _interpolate_embedding received corrupted input (NaN/Inf)")
+            # Fallback to zeros rather than propagating corruption
+            return np.zeros(target_dim, dtype=np.float64)
 
         try:
             from scipy import interpolate
@@ -2944,17 +3014,39 @@ class SpeakerVerificationService:
             x_new = np.linspace(0, 1, target_dim)
             # Use cubic interpolation with extrapolation handling
             f = interpolate.interp1d(x_old, embedding, kind='cubic', bounds_error=False, fill_value="extrapolate")
-            return f(x_new).astype(np.float64)
-        except (ImportError, ValueError):
-            # Fallback to numpy linear interpolation
+            result = f(x_new).astype(np.float64)
+
+            # CRITICAL: Validate output - cubic extrapolation can produce NaN
+            if np.any(np.isnan(result)) or np.any(np.isinf(result)):
+                logger.warning("⚠️ Cubic interpolation produced NaN/Inf, falling back to linear")
+                return np.interp(x_new, x_old, embedding).astype(np.float64)
+
+            return result
+        except (ImportError, ValueError) as e:
+            logger.warning(f"⚠️ Interpolation error ({e}), using linear fallback")
+            # Fallback to numpy linear interpolation (safer, never produces NaN)
             x_old = np.linspace(0, 1, source_dim)
             x_new = np.linspace(0, 1, target_dim)
-            return np.interp(x_new, x_old, embedding)
+            return np.interp(x_new, x_old, embedding).astype(np.float64)
 
     def _normalize_embedding(self, embedding: np.ndarray, target_norm: float) -> np.ndarray:
-        """Normalize embedding to preserve original magnitude."""
+        """Normalize embedding to preserve original magnitude.
+
+        CRITICAL: This function includes NaN/Inf validation to prevent
+        corrupted embeddings from propagating through the system.
+        """
+        # CRITICAL: Validate target_norm - if NaN, this would corrupt the entire embedding
+        if np.isnan(target_norm) or np.isinf(target_norm):
+            logger.error(f"❌ _normalize_embedding received invalid target_norm ({target_norm})")
+            return embedding  # Return unchanged rather than corrupt
+
+        # CRITICAL: Check for NaN/Inf in input embedding
+        if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+            logger.error(f"❌ _normalize_embedding received corrupted embedding (NaN/Inf detected)")
+            return embedding  # Return unchanged rather than corrupt further
+
         current_norm = np.linalg.norm(embedding)
-        if current_norm > 1e-10:
+        if current_norm > 1e-10 and not np.isnan(current_norm):
             return embedding * (target_norm / current_norm)
         return embedding
 
@@ -3017,6 +3109,16 @@ class SpeakerVerificationService:
 
         logger.warning(f"⚠️ Using fallback migration: {source_dim}D → {target_dim}D")
 
+        # CRITICAL: Validate inputs - if orig_norm is NaN, use safe default
+        if np.isnan(orig_norm) or orig_norm < 1e-10:
+            logger.error(f"❌ Fallback migration received invalid orig_norm ({orig_norm}), using default 1.0")
+            orig_norm = 1.0
+
+        # CRITICAL: If input embedding has NaN, return zeros instead of propagating corruption
+        if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+            logger.error(f"❌ Fallback migration received corrupted input embedding, returning zeros")
+            return np.zeros(target_dim, dtype=np.float32)
+
         if target_dim > source_dim:
             # Pad with edge values
             migrated = np.pad(embedding, (0, target_dim - source_dim), mode='edge')
@@ -3024,8 +3126,15 @@ class SpeakerVerificationService:
             # Truncate
             migrated = embedding[:target_dim]
 
-        # Normalize
-        return self._normalize_embedding(migrated, orig_norm).astype(np.float32)
+        # Normalize with validation
+        result = self._normalize_embedding(migrated, orig_norm).astype(np.float32)
+
+        # Final validation - ensure we never return corrupted data
+        if np.any(np.isnan(result)) or np.any(np.isinf(result)):
+            logger.error(f"❌ Fallback migration produced corrupted output, returning zeros")
+            return np.zeros(target_dim, dtype=np.float32)
+
+        return result
 
     async def _auto_migrate_profile(self, profile: dict, speaker_name: str) -> dict:
         """
@@ -3286,7 +3395,12 @@ class SpeakerVerificationService:
                     # Deserialize embedding
                     embedding_bytes = profile.get("voiceprint_embedding")
                     if not embedding_bytes:
-                        logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding - skipping")
+                        # Use debug level for placeholder/incomplete profiles to reduce log noise
+                        speaker_name_lower = speaker_name.lower()
+                        if speaker_name_lower in ('unknown', 'test', 'placeholder', ''):
+                            logger.debug(f"⏭️  Skipping placeholder profile '{speaker_name}' - no embedding (expected)")
+                        else:
+                            logger.warning(f"⚠️ Speaker profile {speaker_name} has no embedding - skipping (incomplete enrollment?)")
                         skipped_count += 1
                         continue
 
@@ -3304,6 +3418,33 @@ class SpeakerVerificationService:
                         logger.warning(f"⚠️ Speaker profile {speaker_name} has empty embedding - skipping")
                         skipped_count += 1
                         continue
+
+                    # CRITICAL: Validate embedding for NaN/Inf values
+                    if np.any(np.isnan(embedding)):
+                        logger.error(f"❌ CRITICAL: Speaker profile {speaker_name} embedding contains NaN values!")
+                        logger.error(f"   NaN count: {np.sum(np.isnan(embedding))} out of {embedding.shape[0]}")
+                        logger.error(f"   This profile is CORRUPTED and will ALWAYS fail verification")
+                        logger.error(f"   Solution: Re-enroll this speaker's voice profile")
+                        skipped_count += 1
+                        continue
+
+                    if np.any(np.isinf(embedding)):
+                        logger.error(f"❌ CRITICAL: Speaker profile {speaker_name} embedding contains Inf values!")
+                        logger.error(f"   This profile is CORRUPTED and will ALWAYS fail verification")
+                        skipped_count += 1
+                        continue
+
+                    # CRITICAL: Validate embedding norm
+                    embedding_norm = np.linalg.norm(embedding)
+                    if embedding_norm == 0 or embedding_norm < 1e-6:
+                        logger.error(f"❌ CRITICAL: Speaker profile {speaker_name} has zero-norm embedding!")
+                        logger.error(f"   Embedding stats: shape={embedding.shape}, norm={embedding_norm:.10f}")
+                        logger.error(f"   This profile will ALWAYS fail verification - needs re-enrollment")
+                        logger.error(f"   min={embedding.min():.6f}, max={embedding.max():.6f}, mean={embedding.mean():.6f}")
+                        skipped_count += 1
+                        continue
+                    else:
+                        logger.info(f"   ✅ {speaker_name} embedding valid: norm={embedding_norm:.4f}")
 
                     # Assess profile quality - NOW DYNAMIC!
                     is_native = embedding.shape[0] == self.current_model_dimension
@@ -3537,10 +3678,24 @@ class SpeakerVerificationService:
                 profile = self.speaker_profiles[speaker_name]
                 known_embedding = profile["embedding"]
 
-                # DEBUG: Log embedding dimensions
+                # DEBUG: Log embedding dimensions and validate stored embedding
                 logger.info(f"🔍 DEBUG: Verifying {speaker_name}")
                 logger.info(f"🔍 DEBUG: Stored embedding shape: {known_embedding.shape if hasattr(known_embedding, 'shape') else len(known_embedding)}")
                 logger.info(f"🔍 DEBUG: Stored embedding dimension in profile: {profile.get('embedding_dimension', 'unknown')}")
+
+                # CRITICAL: Validate stored embedding norm BEFORE verification
+                stored_norm = np.linalg.norm(known_embedding)
+                logger.info(f"🔍 DEBUG: Stored embedding norm: {stored_norm:.6f}")
+                if stored_norm == 0 or stored_norm < 1e-6:
+                    logger.error(f"❌ CRITICAL: Stored embedding for {speaker_name} has zero norm!")
+                    logger.error(f"   This profile is corrupted and needs re-enrollment")
+                    return {
+                        "verified": False,
+                        "confidence": 0.0,
+                        "speaker_name": speaker_name,
+                        "error": "corrupted_profile",
+                        "error_detail": "Stored embedding has zero norm - profile needs re-enrollment"
+                    }
 
                 # Get adaptive threshold based on history
                 adaptive_threshold = await self._get_adaptive_threshold(speaker_name, profile)

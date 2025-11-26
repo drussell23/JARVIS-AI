@@ -5475,6 +5475,9 @@ class JARVISLearningDatabase:
                             logger.warning(f"Could not convert embedding for {profile['speaker_name']}")
                             profile["embedding"] = None
 
+                    # Check if this is a valid profile with embedding
+                    has_embedding = profile.get("voiceprint_embedding") is not None
+
                     # Log if acoustic features are present
                     has_acoustic = any([
                         profile.get("pitch_mean_hz"),
@@ -5482,10 +5485,21 @@ class JARVISLearningDatabase:
                         profile.get("spectral_centroid_hz")
                     ])
 
+                    # Skip profiles without embeddings (they're useless for recognition)
+                    if not has_embedding:
+                        logger.debug(f"⏭️  Skipping profile '{profile['speaker_name']}' - no embedding (incomplete enrollment)")
+                        continue
+
                     if has_acoustic:
                         logger.info(f"✅ Profile '{profile['speaker_name']}' has BEAST MODE acoustic features")
                     else:
-                        logger.warning(f"⚠️  Profile '{profile['speaker_name']}' missing acoustic features")
+                        # Only warn for valid profiles (with embeddings) that are missing acoustic features
+                        # For "unknown" or placeholder profiles, use debug level
+                        speaker_name_lower = profile['speaker_name'].lower()
+                        if speaker_name_lower in ('unknown', 'test', 'placeholder', ''):
+                            logger.debug(f"⏭️  Profile '{profile['speaker_name']}' is a placeholder - missing acoustic features (expected)")
+                        else:
+                            logger.warning(f"⚠️  Profile '{profile['speaker_name']}' missing acoustic features - consider re-enrollment")
 
                     profiles.append(profile)
 

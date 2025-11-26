@@ -1195,6 +1195,14 @@ class SpeechBrainEngine(BaseSTTEngine):
             audio_tensor, sample_rate = await self._audio_bytes_to_tensor(audio_data)
             logger.info(f"   Audio tensor: shape={audio_tensor.shape}, sample_rate={sample_rate}")
 
+            # CRITICAL: Check if audio is silent BEFORE processing
+            audio_energy = float(torch.sqrt(torch.mean(audio_tensor ** 2)))
+            logger.info(f"   Audio energy (RMS): {audio_energy:.6f}")
+            if audio_energy < 1e-6:
+                logger.error(f"❌ CRITICAL: Audio tensor is SILENT (energy={audio_energy:.10f})")
+                logger.error("   This will result in 0% confidence - audio capture/decoding failed")
+                logger.error("   Check: microphone permissions, audio format, browser capture")
+
             # Resample to 16kHz if needed
             if sample_rate != 16000:
                 logger.info(f"   Resampling from {sample_rate}Hz to 16000Hz...")
@@ -1292,11 +1300,17 @@ class SpeechBrainEngine(BaseSTTEngine):
         # All strategies failed - log detailed diagnostics
         logger.error("❌ ALL audio decoding strategies failed!")
         logger.error(f"   Audio size: {len(audio_data)} bytes")
-        logger.error(f"   First 32 bytes (hex): {audio_data[:32].hex()}")
+        logger.error(f"   First 32 bytes (hex): {audio_data[:32].hex() if len(audio_data) >= 32 else audio_data.hex()}")
         logger.error(f"   Magic bytes: {self._detect_format_magic(audio_data)}")
+        logger.error("   🚨 CRITICAL: This will cause 0% confidence in voice verification!")
+        logger.error("   Possible causes:")
+        logger.error("   1. Audio format not supported (need WAV, PCM, MP3, etc.)")
+        logger.error("   2. Audio data is corrupted")
+        logger.error("   3. Browser audio capture failed")
+        logger.error("   4. Microphone permissions issue")
 
-        # Return silence as absolute last resort
-        logger.warning("⚠️  Returning silence - authentication will fail")
+        # Return silence as absolute last resort - BUT LOG THIS PROMINENTLY
+        logger.error("⚠️  RETURNING SILENCE - AUTHENTICATION WILL FAIL WITH 0% CONFIDENCE")
         return torch.zeros(16000), 16000
 
     async def _try_soundfile_decode(self, audio_data: bytes) -> tuple:
@@ -1746,8 +1760,17 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Extract test embedding
             logger.info("   📊 Extracting test embedding...")
             test_embedding = await self.extract_speaker_embedding(audio_data)
-            logger.info(f"   ✅ Test embedding: shape={test_embedding.shape}, "
-                       f"norm={np.linalg.norm(test_embedding):.4f}")
+            test_norm = np.linalg.norm(test_embedding)
+            logger.info(f"   ✅ Test embedding: shape={test_embedding.shape}, norm={test_norm:.4f}")
+
+            # CRITICAL: Validate test embedding norm BEFORE proceeding
+            if test_norm == 0 or test_norm < 1e-6:
+                logger.error(f"❌ CRITICAL: Test embedding has zero norm!")
+                logger.error(f"   Audio data: {len(audio_data)} bytes, tensor: {len(audio_tensor)} samples")
+                logger.error(f"   This means audio decoding likely failed or audio is silent")
+                logger.error(f"   Test embedding stats: min={test_embedding.min():.6f}, max={test_embedding.max():.6f}")
+                # Return failure with diagnostic info
+                return (False, 0.0)
 
             # Extract comprehensive biometric features for TEST audio
             logger.info("   🔬 Extracting comprehensive biometric features (test)...")
@@ -1893,6 +1916,19 @@ class SpeechBrainEngine(BaseSTTEngine):
                 audio_tensor, _ = await self._audio_bytes_to_tensor(audio_data)
                 audio_quality = self._compute_audio_quality(audio_tensor)
                 test_embedding = await self.extract_speaker_embedding(audio_data)
+
+                # Validate embeddings before computing similarity
+                test_norm = np.linalg.norm(test_embedding)
+                known_norm = np.linalg.norm(known_embedding)
+                logger.info(f"   Fallback: test_norm={test_norm:.4f}, known_norm={known_norm:.4f}")
+
+                if test_norm == 0 or test_norm < 1e-6:
+                    logger.error(f"❌ Fallback: Test embedding has zero norm - audio issue")
+                    return False, 0.0
+                if known_norm == 0 or known_norm < 1e-6:
+                    logger.error(f"❌ Fallback: Known embedding has zero norm - profile corrupted")
+                    return False, 0.0
+
                 base_similarity = self._compute_cosine_similarity(test_embedding, known_embedding)
                 similarity = base_similarity * 0.60 + audio_quality * 0.40
                 is_verified = similarity >= threshold
@@ -2070,6 +2106,16 @@ class SpeechBrainEngine(BaseSTTEngine):
             norm2 = np.linalg.norm(emb2)
 
             if norm1 == 0 or norm2 == 0:
+                # CRITICAL: Log detailed diagnostics for zero-norm embeddings
+                logger.error(f"❌ ZERO-NORM EMBEDDING DETECTED - Voice verification will fail!")
+                logger.error(f"   Test embedding (emb1): norm={norm1:.6f}, shape={emb1.shape}, "
+                           f"min={emb1.min():.6f}, max={emb1.max():.6f}, mean={emb1.mean():.6f}")
+                logger.error(f"   Stored embedding (emb2): norm={norm2:.6f}, shape={emb2.shape}, "
+                           f"min={emb2.min():.6f}, max={emb2.max():.6f}, mean={emb2.mean():.6f}")
+                if norm1 == 0:
+                    logger.error("   ROOT CAUSE: Test embedding is zero-norm - audio may be silent or decoding failed")
+                if norm2 == 0:
+                    logger.error("   ROOT CAUSE: Stored embedding is zero-norm - database profile may be corrupted")
                 return 0.0
 
             similarity = dot_product / (norm1 * norm2)
