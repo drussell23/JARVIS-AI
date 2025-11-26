@@ -1,0 +1,143 @@
+# JARVIS Neural Mesh Configuration
+# Version 2.0.0
+#
+# This file configures the Neural Mesh multi-agent intelligence framework.
+# All paths are relative to JARVIS_HOME (~/.jarvis by default).
+
+# Global settings
+data_directory: ""  # Empty = ~/.jarvis/neural_mesh
+log_directory: ""   # Empty = ~/.jarvis/neural_mesh/logs
+enable_telemetry: true
+debug_mode: false
+max_memory_mb: 500
+enable_memory_monitoring: true
+enable_learning_db_integration: true
+enable_chromadb_integration: true
+
+# Communication Bus Configuration
+# Ultra-fast async message passing between agents
+communication_bus:
+  # Queue sizes for each priority level
+  queue_sizes:
+    0: 1000   # CRITICAL
+    1: 5000   # HIGH
+    2: 10000  # NORMAL
+    3: 20000  # LOW
+
+  # Message history for debugging
+  message_history_size: 1000
+
+  # Latency targets (milliseconds)
+  latency_targets_ms:
+    0: 1.0    # CRITICAL: <1ms
+    1: 5.0    # HIGH: <5ms
+    2: 10.0   # NORMAL: <10ms
+    3: 50.0   # LOW: <50ms
+
+  # Message settings
+  default_ttl_seconds: 300.0  # 5 minutes
+  max_concurrent_handlers: 100
+  handler_timeout_seconds: 10.0
+
+  # Persistence
+  persist_messages: true
+  persistence_path: ""  # Uses data_directory/messages
+
+  # Metrics
+  enable_metrics: true
+  metrics_interval_seconds: 60.0
+
+# Knowledge Graph Configuration
+# Persistent, searchable collective memory
+knowledge_graph:
+  # Embedding settings
+  embedding_dimension: 384
+  embedding_model: "all-MiniLM-L6-v2"
+  similarity_threshold: 0.7
+
+  # ChromaDB settings
+  chroma_persist_directory: ""  # Uses data_directory/vector_db
+  chroma_collection_name: "jarvis_knowledge"
+
+  # Capacity settings
+  max_entries: 100000
+  default_ttl_seconds: 86400.0  # 24 hours
+
+  # Cache settings
+  cache_size: 1000
+  cache_ttl_seconds: 300.0  # 5 minutes
+
+  # Query settings
+  default_query_limit: 10
+  max_query_limit: 100
+
+  # Persistence
+  persist_graph: true
+  graph_persist_path: ""  # Uses data_directory/graph_db
+
+  # Background tasks
+  cleanup_interval_seconds: 3600.0  # 1 hour
+  sync_interval_seconds: 60.0
+
+# Agent Registry Configuration
+# Service discovery and health monitoring
+agent_registry:
+  # Heartbeat settings
+  heartbeat_interval_seconds: 10.0
+  heartbeat_timeout_seconds: 30.0
+  health_check_interval_seconds: 5.0
+
+  # Agent limits
+  max_agents: 200
+  max_capabilities_per_agent: 50
+
+  # Load balancing
+  enable_load_balancing: true
+  load_threshold: 0.8
+
+  # Persistence
+  persist_registry: true
+  registry_path: ""  # Uses data_directory/registry
+
+  # Metrics
+  enable_metrics: true
+
+# Orchestrator Configuration
+# Multi-agent workflow coordination
+orchestrator:
+  # Task settings
+  default_task_timeout_seconds: 30.0
+  max_task_timeout_seconds: 300.0
+  default_retry_count: 3
+  retry_delay_seconds: 1.0
+  retry_backoff_multiplier: 2.0
+
+  # Workflow settings
+  max_concurrent_workflows: 50
+  max_tasks_per_workflow: 100
+  workflow_timeout_seconds: 600.0  # 10 minutes
+
+  # Execution strategy
+  default_execution_strategy: "hybrid"  # sequential, parallel, hybrid, adaptive
+
+  # Resource management
+  enable_resource_pooling: true
+  max_parallel_tasks: 20
+
+# Base Agent Configuration
+# Default settings for all agents
+base_agent:
+  # Heartbeat
+  heartbeat_interval_seconds: 10.0
+
+  # Message handling
+  message_queue_size: 1000
+  message_handler_timeout_seconds: 10.0
+
+  # Knowledge access
+  enable_knowledge_access: true
+  knowledge_cache_size: 100
+
+  # Logging
+  log_messages: true
+  log_level: "INFO"
