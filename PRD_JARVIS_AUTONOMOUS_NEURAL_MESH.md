@@ -456,7 +456,173 @@ behaviors:
 
 ---
 
-### FR-12: Configuration System
+### FR-12: High-Level Action Agents
+**Priority:** P0 (Critical)
+
+**Description:** Agents that translate high-level intents into sequences of low-level actions. Bridges the gap between "understanding" and "execution."
+
+**Context:** JARVIS has low-level tools (Yabai, AppleScript, Core Graphics) but lacks agents that can orchestrate complex multi-step actions like "write an essay" or "fix a code error."
+
+**Requirements:**
+
+#### FR-12.1: Content Generation & Text Agents
+- **Essay Writer Agent**: Generate long-form content via Claude API, coordinate with Text Editor Agent
+- **Text Editor Agent**: Control TextEdit/Notes/Word, open files, position windows
+- **Typing Agent**: Stream text character-by-character via Core Graphics with natural typing speed
+- **Document Formatter Agent**: Apply formatting (bold, italic, headers, bullet points)
+
+**Example Flow:**
+```python
+# User: "Write an essay on AGI"
+Essay_Writer_Agent:
+  1. Generate content via Claude API (500 words)
+  2. Request Window_Management_Agent to open TextEdit
+  3. Send content to Typing_Agent with target="TextEdit"
+  4. Request Document_Formatter_Agent to apply title formatting
+  5. Save document via AppleScript (Cmd+S)
+```
+
+#### FR-12.2: Code & Development Agents
+- **Code Analysis Agent**: Read error messages from Vision, diagnose bugs, suggest fixes
+- **Code Solution Agent**: Generate code fixes using Claude Code or local reasoning
+- **IDE Controller Agent**: Navigate VS Code/PyCharm (go to file, go to line, select text)
+- **Code Editor Agent**: Apply code changes (delete, insert, replace lines)
+- **Test Runner Agent**: Execute tests, parse results, report failures
+- **Git Agent**: Commit changes, push, create PRs via `gh` CLI
+
+**Example Flow:**
+```python
+# User: "Fix the error in VS Code"
+Code_Fixer_Agent:
+  1. Query Vision for error message: "line 42: undefined variable 'foo'"
+  2. Query Code_Analysis_Agent for diagnosis
+  3. Generate fix via Code_Solution_Agent: "foo = get_foo()"
+  4. Request IDE_Controller_Agent.goto_line(42)
+  5. Request Code_Editor_Agent.replace_line(42, "foo = get_foo()")
+  6. Request Test_Runner_Agent.run_tests()
+  7. Report result to user
+```
+
+#### FR-12.3: UI & Window Agents
+- **Window Management Agent**: Orchestrate Yabai commands (create space, move window, focus)
+- **Multi-Window Coordinator Agent**: Manage parallel windows for multi-task workflows
+- **App Launcher Agent**: Open/close/switch applications via AppleScript
+- **UI Navigation Agent**: Navigate UI elements using Vision + Core Graphics (click buttons, fill forms)
+
+**Example Flow:**
+```python
+# User: "Open essay in one window and VS Code in another"
+Multi_Window_Coordinator_Agent:
+  1. Request Window_Management_Agent.create_space()  # Space 4
+  2. Request App_Launcher_Agent.open("TextEdit", space=4)
+  3. Request Window_Management_Agent.focus_space(3)
+  4. Request App_Launcher_Agent.activate("Visual Studio Code")
+```
+
+#### FR-12.4: File & System Agents
+- **File Manager Agent**: Create, read, move, delete files safely
+- **Browser Control Agent**: Control Chrome/Safari (open URL, navigate, click)
+- **System Monitor Agent**: Monitor CPU/memory, trigger optimizations
+- **Screenshot Agent**: Capture screenshots for documentation/debugging
+
+**Agent Implementation Template:**
+```python
+from backend.core.base_agent import BaseAgent, MessageType, MessagePriority
+
+class EssayWriterAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            agent_name="Essay_Writer",
+            agent_type="content",
+            capabilities={"content_generation", "essay_writing", "long_form_text"},
+            backend="local"
+        )
+        self.claude_api = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    
+    async def on_initialize(self):
+        # Subscribe to essay writing tasks
+        await self.subscribe(MessageType.TASK_ASSIGNED, self._handle_task)
+    
+    async def execute_task(self, task_payload: Dict[str, Any]) -> Any:
+        topic = task_payload.get("topic")
+        length = task_payload.get("length", 500)
+        
+        # 1. Generate content
+        essay = await self._generate_essay(topic, length)
+        
+        # 2. Request window setup
+        await self.publish(
+            to_agent="Window_Management_Agent",
+            message_type=MessageType.TASK_ASSIGNED,
+            payload={
+                "action": "open_text_editor",
+                "app": "TextEdit",
+                "space": "new"
+            },
+            priority=MessagePriority.HIGH
+        )
+        
+        # Wait for window ready
+        ready_msg = await self.wait_for_message("Window_Management_Agent", "TASK_COMPLETED")
+        
+        # 3. Type essay
+        await self.publish(
+            to_agent="Typing_Agent",
+            message_type=MessageType.TASK_ASSIGNED,
+            payload={
+                "text": essay,
+                "target_app": "TextEdit",
+                "speed": "fast"
+            }
+        )
+        
+        # 4. Save document
+        await self.publish(
+            to_agent="Action_Executor",
+            message_type=MessageType.TASK_ASSIGNED,
+            payload={
+                "action": "applescript",
+                "command": 'tell application "System Events" to keystroke "s" using command down'
+            }
+        )
+        
+        # 5. Store knowledge
+        await self.add_knowledge(
+            knowledge_type="completed_task",
+            data={
+                "task": "essay_writing",
+                "topic": topic,
+                "length": len(essay),
+                "timestamp": datetime.now()
+            }
+        )
+        
+        return {"success": True, "essay_length": len(essay)}
+    
+    async def _generate_essay(self, topic: str, length: int) -> str:
+        response = await asyncio.to_thread(
+            self.claude_api.messages.create,
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=length * 3,  # ~3 tokens per word
+            messages=[{
+                "role": "user",
+                "content": f"Write a {length}-word essay on {topic}. Be concise and informative."
+            }]
+        )
+        return response.content[0].text
+```
+
+**Acceptance Criteria:**
+- 10+ high-level action agents implemented
+- Each agent inherits from BaseAgent
+- Agents coordinate via Communication Bus (no direct calls)
+- Complex tasks (essay writing, code fixing) work end-to-end
+- Agents query Knowledge Graph for learned patterns
+- All actions are logged for audit trail
+
+---
+
+### FR-13: Configuration System
 **Priority:** P1 (High)
 
 **Description:** Centralized configuration for autonomous features.
@@ -640,6 +806,33 @@ backend/
 │   ├── autonomous_decision_engine.py    # NEW: Make autonomous decisions
 │   └── autonomous_behaviors_manager.py  # NEW: Manage behavior patterns
 │
+├── agents/                               # NEW: High-level action agents
+│   ├── content/                          # Content generation agents
+│   │   ├── essay_writer_agent.py        # NEW: Generate essays/articles
+│   │   ├── text_editor_agent.py         # NEW: Control text editors
+│   │   ├── typing_agent.py              # NEW: Type text via Core Graphics
+│   │   └── document_formatter_agent.py  # NEW: Apply text formatting
+│   │
+│   ├── code/                             # Code & development agents
+│   │   ├── code_analysis_agent.py       # NEW: Analyze errors
+│   │   ├── code_solution_agent.py       # NEW: Generate fixes
+│   │   ├── ide_controller_agent.py      # NEW: Navigate IDE
+│   │   ├── code_editor_agent.py         # NEW: Apply code changes
+│   │   ├── test_runner_agent.py         # NEW: Run tests
+│   │   └── git_agent.py                 # NEW: Git operations
+│   │
+│   ├── ui/                               # UI & window agents
+│   │   ├── window_management_agent.py   # NEW: Orchestrate Yabai
+│   │   ├── multi_window_coordinator.py  # NEW: Manage parallel windows
+│   │   ├── app_launcher_agent.py        # NEW: Open/close apps
+│   │   └── ui_navigation_agent.py       # NEW: Navigate UI elements
+│   │
+│   └── system/                           # File & system agents
+│       ├── file_manager_agent.py        # NEW: File operations
+│       ├── browser_control_agent.py     # NEW: Control browser
+│       ├── system_monitor_agent.py      # NEW: Monitor resources
+│       └── screenshot_agent.py          # NEW: Capture screenshots
+│
 ├── ml/
 │   └── transformer_manager.py           # NEW: Manage Transformer models
 │
@@ -662,6 +855,7 @@ tests/
 ├── test_orchestrator.py                  # NEW: Unit tests
 ├── test_registry.py                      # NEW: Unit tests
 ├── test_goal_inference.py                # NEW: Unit tests
+├── test_high_level_agents.py             # NEW: Test action agents
 └── test_integration_multi_agent.py       # NEW: Integration tests
 ```
 
@@ -759,7 +953,32 @@ tests/
 
 ---
 
-### Phase 4: Autonomous Operation (Weeks 13-16)
+### Phase 4: High-Level Action Agents (Weeks 13-16)
+**Goal:** Implement agents that execute complex actions
+
+**Deliverables:**
+- [ ] `backend/agents/content/essay_writer_agent.py`
+- [ ] `backend/agents/content/text_editor_agent.py`
+- [ ] `backend/agents/content/typing_agent.py`
+- [ ] `backend/agents/code/code_analysis_agent.py`
+- [ ] `backend/agents/code/code_solution_agent.py`
+- [ ] `backend/agents/code/ide_controller_agent.py`
+- [ ] `backend/agents/code/code_editor_agent.py`
+- [ ] `backend/agents/ui/window_management_agent.py`
+- [ ] `backend/agents/ui/multi_window_coordinator.py`
+- [ ] `backend/agents/ui/app_launcher_agent.py`
+- [ ] End-to-end tests for complex actions
+
+**Success Criteria:**
+- Can write essay and save to file autonomously
+- Can fix code errors in VS Code autonomously
+- Can manage multi-window workflows via Yabai
+- All agents coordinate via Communication Bus
+- Complex tasks complete successfully >85% of the time
+
+---
+
+### Phase 5: Autonomous Operation (Weeks 17-20)
 **Goal:** Enable proactive, autonomous behaviors
 
 **Deliverables:**
@@ -780,7 +999,7 @@ tests/
 
 ---
 
-### Phase 5: Optimization & Polish (Weeks 17-20)
+### Phase 6: Optimization & Polish (Weeks 21-24)
 **Goal:** Optimize performance and user experience
 
 **Deliverables:**
