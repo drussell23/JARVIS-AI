@@ -105,6 +105,16 @@ from .owner_identity_service import (
     verify_is_owner,
     create_identity_context,
 )
+from .startup_greeter import (
+    StartupGreeter,
+    GreetingContext,
+    GreetingStyle,
+    GreetingConfig,
+    GreetingResult,
+    get_startup_greeter,
+    greet_on_startup,
+    greet_on_wake,
+)
 
 __all__ = [
     # Main coordinator
@@ -169,4 +179,13 @@ __all__ = [
     "get_owner_name",
     "verify_is_owner",
     "create_identity_context",
+    # Startup greeter
+    "StartupGreeter",
+    "GreetingContext",
+    "GreetingStyle",
+    "GreetingConfig",
+    "GreetingResult",
+    "get_startup_greeter",
+    "greet_on_startup",
+    "greet_on_wake",
 ]
