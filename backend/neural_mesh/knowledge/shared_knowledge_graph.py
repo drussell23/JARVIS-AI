@@ -224,24 +224,35 @@ class SharedKnowledgeGraph:
             except Exception as e:
                 logger.warning("Failed to load embedding model: %s", e)
 
-        # Initialize ChromaDB
+        # Initialize ChromaDB with new API (1.0+)
         if CHROMADB_AVAILABLE:
             try:
                 persist_dir = self.config.chroma_persist_directory
                 if persist_dir:
                     Path(persist_dir).mkdir(parents=True, exist_ok=True)
-                    settings = Settings(
-                        chroma_db_impl="duckdb+parquet",
-                        persist_directory=persist_dir,
-                        anonymized_telemetry=False,
+                    # Use new PersistentClient API (ChromaDB 1.0+)
+                    self._vector_db = chromadb.PersistentClient(
+                        path=persist_dir,
+                        settings=Settings(
+                            anonymized_telemetry=False,
+                            allow_reset=True,
+                        )
                     )
-                    self._vector_db = chromadb.Client(settings)
                 else:
-                    self._vector_db = chromadb.Client()
+                    # Use ephemeral client for in-memory only
+                    self._vector_db = chromadb.EphemeralClient(
+                        settings=Settings(
+                            anonymized_telemetry=False,
+                        )
+                    )
 
                 self._collection = self._vector_db.get_or_create_collection(
                     name=self.config.chroma_collection_name,
-                    metadata={"hnsw:space": "cosine"},
+                    metadata={
+                        "hnsw:space": "cosine",
+                        "hnsw:construction_ef": 200,
+                        "hnsw:M": 16,
+                    },
                 )
 
                 # Load existing entries count

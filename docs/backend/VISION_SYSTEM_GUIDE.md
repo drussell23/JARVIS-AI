@@ -241,6 +241,59 @@ JARVIS: "The error message says: 'Connection timeout: Unable to reach server.
 - Batch processing of text regions
 - GPU acceleration where available
 
+### Async Architecture & Timeout Protection (v3.8.0)
+
+The vision system now includes comprehensive async support and timeout protection:
+
+#### ThreadPoolExecutor for Blocking Operations
+All blocking operations (PyAutoGUI, subprocess calls) now run in dedicated thread pools:
+```python
+# Example: Screen capture is now non-blocking
+async def capture(self, ...):
+    screenshot = await run_blocking(
+        self._capture_sync, region,
+        timeout=self.capture_timeout
+    )
+```
+
+#### Circuit Breaker Pattern
+API calls to Claude are protected by a circuit breaker that:
+- Opens after 3 consecutive failures
+- Prevents cascading failures during outages
+- Auto-recovers after 60 seconds
+- Returns graceful fallback responses when open
+
+```python
+# Circuit breaker states: closed -> open -> half-open -> closed
+if not await self._circuit_breaker.can_execute():
+    return fallback_response
+```
+
+#### Timeout Protection
+All operations have configurable timeouts:
+| Operation | Default Timeout | Location |
+|-----------|-----------------|----------|
+| Overall command | 45s | `vision_command_handler.py` |
+| Claude API call | 30s | `pure_vision_intelligence.py` |
+| Screen capture | 10s | `computer_use_connector.py` |
+| Action execution | 10s | `computer_use_connector.py` |
+| Yabai queries | 10s | `intelligent_vision_router.py` |
+
+#### Yabai Async Support
+Multi-space workspace detection is now fully async:
+```python
+# Non-blocking subprocess calls
+result = await run_subprocess_async(
+    ["yabai", "-m", "query", "--spaces"],
+    timeout=5.0
+)
+
+# Async workspace description
+description = await yabai_detector.describe_workspace_async()
+```
+
+This prevents "can you see my screen?" and "what's happening across my workspaces?" queries from hanging indefinitely.
+
 ## Privacy & Security
 
 - All processing happens locally
