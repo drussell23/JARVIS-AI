@@ -1039,16 +1039,33 @@ class IntelligentVisionRouter:
             return {"success": False, "response": f"Hybrid analysis failed: {str(e)}"}
 
     async def _execute_yabai(self, query: str, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """Execute Yabai multi-space query"""
+        """Execute Yabai multi-space query with async support"""
         if not self.yabai_detector:
             return {"success": False, "response": "Yabai detector not available"}
 
         try:
-            # Get all spaces
-            spaces = self.yabai_detector.enumerate_all_spaces()
-
-            # Generate natural language response
-            workspace_description = self.yabai_detector.describe_workspace()
+            # Use async versions if available, with timeout protection
+            if hasattr(self.yabai_detector, 'enumerate_all_spaces_async'):
+                # Use async version (non-blocking)
+                spaces = await asyncio.wait_for(
+                    self.yabai_detector.enumerate_all_spaces_async(),
+                    timeout=10.0
+                )
+                workspace_description = await asyncio.wait_for(
+                    self.yabai_detector.describe_workspace_async(),
+                    timeout=10.0
+                )
+            else:
+                # Fallback to sync version in thread pool
+                loop = asyncio.get_event_loop()
+                spaces = await asyncio.wait_for(
+                    loop.run_in_executor(None, self.yabai_detector.enumerate_all_spaces),
+                    timeout=10.0
+                )
+                workspace_description = await asyncio.wait_for(
+                    loop.run_in_executor(None, self.yabai_detector.describe_workspace),
+                    timeout=10.0
+                )
 
             return {
                 "success": True,
@@ -1056,6 +1073,9 @@ class IntelligentVisionRouter:
                 "spaces": spaces,
                 "yabai_powered": True,
             }
+        except asyncio.TimeoutError:
+            logger.error("[ROUTER] Yabai execution timed out")
+            return {"success": False, "response": "Yabai query timed out - workspace detection took too long"}
         except Exception as e:
             logger.error(f"[ROUTER] Yabai execution error: {e}")
             return {"success": False, "response": f"Yabai query failed: {str(e)}"}

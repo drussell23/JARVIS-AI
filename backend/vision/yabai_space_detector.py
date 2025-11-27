@@ -11,13 +11,50 @@ or manually review changes before committing. Known problematic lines:
 - Line 207: return block indentation
 """
 
+import asyncio
 import json
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for subprocess operations (avoids blocking event loop)
+_yabai_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_yabai_executor() -> ThreadPoolExecutor:
+    """Get or create thread pool for Yabai subprocess calls."""
+    global _yabai_executor
+    if _yabai_executor is None:
+        _yabai_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="yabai_")
+    return _yabai_executor
+
+
+def _run_subprocess_sync(args: List[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
+    """Run subprocess synchronously (called from thread pool)."""
+    return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+
+
+async def run_subprocess_async(args: List[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
+    """
+    Run subprocess asynchronously using thread pool.
+    Prevents blocking the event loop.
+    """
+    loop = asyncio.get_event_loop()
+    executor = _get_yabai_executor()
+
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(executor, partial(_run_subprocess_sync, args, timeout)),
+            timeout=timeout + 1.0  # Extra second for thread overhead
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"[YABAI] Subprocess timed out: {' '.join(args)}")
+        raise
 
 
 class YabaiStatus(Enum):
@@ -393,6 +430,194 @@ class YabaiSpaceDetector:
                     space_desc += f" and {len(space['applications']) - 3} more"
 
                 # Add window titles for context
+                if space["windows"]:
+                    first_window = space["windows"][0]
+                    if first_window["title"]:
+                        title = first_window["title"][:50]
+                        if len(first_window["title"]) > 50:
+                            title += "..."
+                        space_desc += f' - "{title}"'
+
+            description.append(space_desc)
+
+        return "".join(description)
+
+    # =========================================================================
+    # ASYNC METHODS - Non-blocking versions for use in async contexts
+    # =========================================================================
+
+    async def enumerate_all_spaces_async(self, include_display_info: bool = True) -> List[Dict[str, Any]]:
+        """
+        Async version of enumerate_all_spaces.
+        Uses thread pool to avoid blocking the event loop.
+        """
+        if not self.is_available():
+            logger.warning("[YABAI] Yabai not available, returning empty list")
+            return []
+
+        try:
+            # Query spaces from Yabai asynchronously
+            result = await run_subprocess_async(["yabai", "-m", "query", "--spaces"], timeout=5.0)
+
+            if result.returncode != 0:
+                logger.error(f"[YABAI] Failed to query spaces: {result.stderr}")
+                return []
+
+            spaces_data = json.loads(result.stdout)
+
+            # Query windows for more detail
+            windows_result = await run_subprocess_async(["yabai", "-m", "query", "--windows"], timeout=5.0)
+
+            windows_data = []
+            if windows_result.returncode == 0:
+                windows_data = json.loads(windows_result.stdout)
+
+            # Build enhanced space information (same logic as sync version)
+            spaces = []
+            for space in spaces_data:
+                space_id = space["index"]
+                space_windows = [w for w in windows_data if w.get("space") == space_id]
+                applications = list(set(w.get("app", "Unknown") for w in space_windows))
+
+                if not space_windows:
+                    primary_activity = "Empty"
+                elif len(applications) == 1:
+                    primary_activity = applications[0]
+                else:
+                    primary_activity = f"{applications[0]} and {len(applications)-1} others"
+
+                display_id = space.get("display", 1) if include_display_info else None
+
+                space_info = {
+                    "space_id": space_id,
+                    "space_name": f"Desktop {space_id}",
+                    "is_current": space.get("has-focus", False),
+                    "is_visible": space.get("is-visible", False),
+                    "is_fullscreen": space.get("is-native-fullscreen", False),
+                    "window_count": len(space_windows),
+                    "window_ids": space.get("windows", []),
+                    "applications": applications,
+                    "primary_activity": primary_activity,
+                    "type": space.get("type", "unknown"),
+                    "display": display_id,
+                    "uuid": space.get("uuid", ""),
+                    "windows": [
+                        {
+                            "app": w.get("app", "Unknown"),
+                            "title": w.get("title", ""),
+                            "id": w.get("id"),
+                            "minimized": w.get("minimized", False),
+                            "hidden": w.get("hidden", False),
+                        }
+                        for w in space_windows
+                    ],
+                }
+                spaces.append(space_info)
+
+            logger.info(f"[YABAI] Async: Detected {len(spaces)} spaces via Yabai")
+            return spaces
+
+        except asyncio.TimeoutError:
+            logger.error("[YABAI] Async: Yabai query timed out")
+            return []
+        except json.JSONDecodeError as e:
+            logger.error(f"[YABAI] Async: Failed to parse Yabai output: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"[YABAI] Async: Error enumerating spaces: {e}")
+            return []
+
+    async def get_workspace_summary_async(self) -> Dict[str, Any]:
+        """Async version of get_workspace_summary."""
+        spaces = await self.enumerate_all_spaces_async()
+
+        if not spaces:
+            return {
+                "total_spaces": 0,
+                "total_windows": 0,
+                "total_applications": 0,
+                "spaces": [],
+                "current_space": None,
+                "primary_activity": "No spaces detected",
+            }
+
+        total_windows = sum(space.get("window_count", 0) for space in spaces)
+        all_apps = set()
+        for space in spaces:
+            all_apps.update(space.get("applications", []))
+
+        current_space = None
+        for space in spaces:
+            if space.get("is_current"):
+                current_space = space
+                break
+
+        app_counts = {}
+        for space in spaces:
+            for app in space.get("applications", []):
+                app_counts[app] = app_counts.get(app, 0) + 1
+
+        primary_app = max(app_counts.keys(), key=app_counts.get) if app_counts else "Empty"
+
+        return {
+            "total_spaces": len(spaces),
+            "total_windows": total_windows,
+            "total_applications": len(all_apps),
+            "spaces": spaces,
+            "current_space": current_space,
+            "primary_activity": primary_app,
+            "all_applications": list(all_apps),
+        }
+
+    async def describe_workspace_async(self) -> str:
+        """Async version of describe_workspace."""
+        summary = await self.get_workspace_summary_async()
+
+        if summary["total_spaces"] == 0:
+            return "Unable to detect Mission Control spaces. Yabai may not be running."
+
+        description = []
+
+        description.append(f"You have {summary['total_spaces']} Mission Control spaces active")
+
+        if summary["total_windows"] > 0:
+            description.append(
+                f" with {summary['total_windows']} windows across {summary['total_applications']} applications."
+            )
+        else:
+            description.append(" with no windows currently open.")
+
+        if summary["current_space"]:
+            current = summary["current_space"]
+            description.append(f"\n\nCurrently viewing Space {current['space_id']}")
+            if current["window_count"] > 0:
+                description.append(f" with {current['primary_activity']}.")
+            else:
+                description.append(" which is empty.")
+
+        description.append("\n\nSpace breakdown:")
+        for space in summary["spaces"]:
+            space_desc = f"\n• Space {space['space_id']}"
+
+            if space["is_fullscreen"]:
+                space_desc += " (fullscreen)"
+            if space["is_current"]:
+                space_desc += " [CURRENT]"
+
+            space_desc += ": "
+
+            if space["window_count"] == 0:
+                space_desc += "Empty"
+            else:
+                apps = space["applications"][:3]
+                if len(apps) == 1:
+                    space_desc += apps[0]
+                else:
+                    space_desc += ", ".join(apps)
+
+                if len(space["applications"]) > 3:
+                    space_desc += f" and {len(space['applications']) - 3} more"
+
                 if space["windows"]:
                     first_window = space["windows"][0]
                     if first_window["title"]:
