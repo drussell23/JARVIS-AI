@@ -63,17 +63,27 @@ from .intelligent_action_orchestrator import (
     get_action_orchestrator,
 )
 from .jarvis_integration import (
+    # Bridges
     ScreenAnalyzerBridge,
     DecisionEngineBridge,
     VoiceSystemBridge,
     PermissionSystemBridge,
     NeuralMeshBridge,
+    # Vision types
+    VisionEventType,
+    ScreenAnalysisResult,
+    ProactiveDetectionPattern,
+    UnifiedVisionInterface,
+    # Connection functions
     connect_screen_analyzer,
     connect_decision_engine,
     integrate_voice_systems,
     integrate_approval_systems,
     connect_neural_mesh,
     integrate_all,
+    # New functions
+    get_screen_bridge,
+    get_unified_vision,
 )
 from .voice_authentication_narrator import (
     VoiceAuthNarrator,
@@ -134,6 +144,13 @@ __all__ = [
     "integrate_approval_systems",
     "connect_neural_mesh",
     "integrate_all",
+    "get_screen_bridge",
+    "get_unified_vision",
+    # Vision types and interface
+    "VisionEventType",
+    "ScreenAnalysisResult",
+    "ProactiveDetectionPattern",
+    "UnifiedVisionInterface",
     # Voice authentication narrator
     "VoiceAuthNarrator",
     "AuthenticationContext",
