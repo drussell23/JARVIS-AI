@@ -415,13 +415,56 @@ class VisionCommandHandler:
             
             logger.info("[PURE VISION] Intelligence systems initialized")
             
-    async def handle_command(self, command_text: str) -> Dict[str, Any]:
+    async def handle_command(self, command_text: str, timeout: float = 45.0) -> Dict[str, Any]:
         """
         Handle any vision command with pure intelligence.
         No pattern matching, no templates - Claude understands intent.
+
+        Args:
+            command_text: The user's command
+            timeout: Overall timeout for the command (default 45s)
+
+        Returns:
+            Response dict with handled status and response
         """
         logger.info(f"[VISION] ========== STARTING handle_command for: {command_text} ==========")
         await ws_logger.log(f"Processing vision command: {command_text}")
+
+        # Wrap the entire command handling with a timeout
+        try:
+            return await asyncio.wait_for(
+                self._handle_command_internal(command_text),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"[VISION] ❌ Command timed out after {timeout}s: {command_text}")
+            return {
+                "handled": True,
+                "response": (
+                    f"I apologize, Sir, but the request took longer than expected ({timeout}s). "
+                    "This could be due to slow API responses or system resources. "
+                    "Would you like me to try again?"
+                ),
+                "error": True,
+                "timeout": True,
+                "pure_intelligence": True,
+                "monitoring_active": self.monitoring_active,
+            }
+        except Exception as e:
+            logger.error(f"[VISION] ❌ Command failed with exception: {e}", exc_info=True)
+            return {
+                "handled": True,
+                "response": f"I encountered an unexpected error, Sir: {str(e)}. Please try again.",
+                "error": True,
+                "exception": str(e),
+                "pure_intelligence": True,
+                "monitoring_active": self.monitoring_active,
+            }
+
+    async def _handle_command_internal(self, command_text: str) -> Dict[str, Any]:
+        """
+        Internal command handling logic (called with timeout wrapper).
+        """
         
         # IMPORTANT: Check if this is a lock/unlock screen command - should NOT be handled by vision
         command_lower = command_text.lower()

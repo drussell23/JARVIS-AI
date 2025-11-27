@@ -31,15 +31,148 @@ import io
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import pyautogui
 from PIL import Image
+
+# ============================================================================
+# Async Utilities - Thread Pool for Blocking Operations
+# ============================================================================
+
+# Global thread pool for PyAutoGUI operations (max 2 workers to prevent conflicts)
+_executor: Optional[ThreadPoolExecutor] = None
+
+def _get_executor() -> ThreadPoolExecutor:
+    """Get or create the global thread pool executor."""
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_")
+    return _executor
+
+async def run_blocking(func: Callable, *args, timeout: float = 30.0, **kwargs) -> Any:
+    """
+    Run a blocking function in a thread pool with timeout protection.
+
+    Args:
+        func: The blocking function to run
+        *args: Positional arguments for the function
+        timeout: Maximum time to wait (default 30s)
+        **kwargs: Keyword arguments for the function
+
+    Returns:
+        Result of the function
+
+    Raises:
+        asyncio.TimeoutError: If operation times out
+    """
+    loop = asyncio.get_event_loop()
+    executor = _get_executor()
+
+    # Create partial function with kwargs
+    if kwargs:
+        func = partial(func, **kwargs)
+
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(executor, func, *args),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        logging.getLogger(__name__).error(f"Blocking operation timed out after {timeout}s: {func}")
+        raise
+
+
+class CircuitBreaker:
+    """
+    Circuit breaker pattern for API calls.
+    Prevents cascading failures by failing fast when service is unhealthy.
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        recovery_timeout: float = 60.0,
+        half_open_max_calls: int = 1
+    ):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max_calls = half_open_max_calls
+
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._state = "closed"  # closed, open, half-open
+        self._half_open_calls = 0
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_open(self) -> bool:
+        return self._state == "open"
+
+    async def can_execute(self) -> bool:
+        """Check if execution is allowed."""
+        async with self._lock:
+            if self._state == "closed":
+                return True
+
+            if self._state == "open":
+                # Check if recovery timeout has passed
+                if self._last_failure_time and \
+                   (time.time() - self._last_failure_time) >= self.recovery_timeout:
+                    self._state = "half-open"
+                    self._half_open_calls = 0
+                    logging.getLogger(__name__).info("[CIRCUIT] Transitioning to half-open state")
+                    return True
+                return False
+
+            if self._state == "half-open":
+                if self._half_open_calls < self.half_open_max_calls:
+                    self._half_open_calls += 1
+                    return True
+                return False
+
+            return False
+
+    async def record_success(self) -> None:
+        """Record a successful call."""
+        async with self._lock:
+            if self._state == "half-open":
+                self._state = "closed"
+                self._failure_count = 0
+                logging.getLogger(__name__).info("[CIRCUIT] Circuit closed - service recovered")
+            elif self._state == "closed":
+                self._failure_count = 0
+
+    async def record_failure(self) -> None:
+        """Record a failed call."""
+        async with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+
+            if self._state == "half-open":
+                self._state = "open"
+                logging.getLogger(__name__).warning("[CIRCUIT] Circuit opened - half-open test failed")
+            elif self._failure_count >= self.failure_threshold:
+                self._state = "open"
+                logging.getLogger(__name__).warning(
+                    f"[CIRCUIT] Circuit opened after {self._failure_count} failures"
+                )
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get circuit breaker state for debugging."""
+        return {
+            "state": self._state,
+            "failure_count": self._failure_count,
+            "last_failure": self._last_failure_time,
+            "threshold": self.failure_threshold
+        }
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -243,12 +376,45 @@ class VoiceNarrationHandler:
 # ============================================================================
 
 class ScreenCaptureHandler:
-    """Handles screen capture for Claude Computer Use."""
+    """Handles screen capture for Claude Computer Use with async support."""
 
-    def __init__(self, scale_factor: float = 1.0):
+    def __init__(self, scale_factor: float = 1.0, capture_timeout: float = 10.0):
         self.scale_factor = scale_factor
+        self.capture_timeout = capture_timeout
         self._last_screenshot: Optional[Image.Image] = None
         self._screenshot_cache: Dict[str, str] = {}
+        self._capture_lock = asyncio.Lock()
+
+    def _capture_sync(
+        self,
+        region: Optional[Tuple[int, int, int, int]] = None
+    ) -> Image.Image:
+        """Synchronous screenshot capture (runs in thread pool)."""
+        if region:
+            return pyautogui.screenshot(region=region)
+        return pyautogui.screenshot()
+
+    def _process_image_sync(
+        self,
+        screenshot: Image.Image,
+        resize_for_api: bool = True,
+        max_dimension: int = 1568
+    ) -> Tuple[Image.Image, str]:
+        """Synchronous image processing (runs in thread pool)."""
+        # Resize for API if needed (Claude has dimension limits)
+        if resize_for_api:
+            width, height = screenshot.size
+            if width > max_dimension or height > max_dimension:
+                ratio = min(max_dimension / width, max_dimension / height)
+                new_size = (int(width * ratio), int(height * ratio))
+                screenshot = screenshot.resize(new_size, Image.Resampling.LANCZOS)
+
+        # Convert to base64
+        buffer = io.BytesIO()
+        screenshot.save(buffer, format="PNG", optimize=True)
+        base64_image = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+
+        return screenshot, base64_image
 
     async def capture(
         self,
@@ -258,37 +424,43 @@ class ScreenCaptureHandler:
     ) -> Tuple[Image.Image, str]:
         """
         Capture screenshot and prepare for Claude API.
+        Now fully async with timeout protection.
 
         Returns:
             Tuple of (PIL Image, base64-encoded string)
+
+        Raises:
+            asyncio.TimeoutError: If capture times out
         """
-        try:
-            # Capture screenshot
-            if region:
-                screenshot = pyautogui.screenshot(region=region)
-            else:
-                screenshot = pyautogui.screenshot()
+        async with self._capture_lock:  # Prevent concurrent captures
+            try:
+                # Capture screenshot in thread pool with timeout
+                screenshot = await run_blocking(
+                    self._capture_sync,
+                    region,
+                    timeout=self.capture_timeout
+                )
 
-            self._last_screenshot = screenshot
+                self._last_screenshot = screenshot
 
-            # Resize for API if needed (Claude has dimension limits)
-            if resize_for_api:
-                width, height = screenshot.size
-                if width > max_dimension or height > max_dimension:
-                    ratio = min(max_dimension / width, max_dimension / height)
-                    new_size = (int(width * ratio), int(height * ratio))
-                    screenshot = screenshot.resize(new_size, Image.Resampling.LANCZOS)
+                # Process image in thread pool (resize + base64 encode)
+                processed_screenshot, base64_image = await run_blocking(
+                    self._process_image_sync,
+                    screenshot,
+                    resize_for_api,
+                    max_dimension,
+                    timeout=self.capture_timeout
+                )
 
-            # Convert to base64
-            buffer = io.BytesIO()
-            screenshot.save(buffer, format="PNG", optimize=True)
-            base64_image = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+                logger.debug(f"[CAPTURE] Screenshot captured and processed successfully")
+                return processed_screenshot, base64_image
 
-            return screenshot, base64_image
-
-        except Exception as e:
-            logger.error(f"Screenshot capture failed: {e}")
-            raise
+            except asyncio.TimeoutError:
+                logger.error(f"[CAPTURE] Screenshot capture timed out after {self.capture_timeout}s")
+                raise
+            except Exception as e:
+                logger.error(f"[CAPTURE] Screenshot capture failed: {e}")
+                raise
 
     def get_last_screenshot(self) -> Optional[Image.Image]:
         """Get the last captured screenshot."""
@@ -300,135 +472,203 @@ class ScreenCaptureHandler:
 # ============================================================================
 
 class ActionExecutor:
-    """Executes computer actions using PyAutoGUI."""
+    """Executes computer actions using PyAutoGUI with full async support."""
 
     def __init__(
         self,
         scale_factor: float = 1.0,
         safety_pause: float = 0.3,
-        movement_duration: float = 0.2
+        movement_duration: float = 0.2,
+        action_timeout: float = 10.0
     ):
         self.scale_factor = scale_factor
         self.safety_pause = safety_pause
         self.movement_duration = movement_duration
+        self.action_timeout = action_timeout
+        self._action_lock = asyncio.Lock()
 
         # Configure PyAutoGUI
         pyautogui.PAUSE = safety_pause
         pyautogui.FAILSAFE = True
 
+    # ========================================================================
+    # Synchronous action methods (run in thread pool)
+    # ========================================================================
+
+    def _click_sync(self, x: int, y: int, duration: float) -> None:
+        """Synchronous click (runs in thread pool)."""
+        pyautogui.moveTo(x, y, duration=duration)
+        time.sleep(0.05)
+        pyautogui.click(x, y)
+
+    def _double_click_sync(self, x: int, y: int, duration: float) -> None:
+        """Synchronous double click (runs in thread pool)."""
+        pyautogui.moveTo(x, y, duration=duration)
+        pyautogui.doubleClick(x, y)
+
+    def _right_click_sync(self, x: int, y: int, duration: float) -> None:
+        """Synchronous right click (runs in thread pool)."""
+        pyautogui.moveTo(x, y, duration=duration)
+        pyautogui.rightClick(x, y)
+
+    def _type_sync(self, text: str, interval: float = 0.02) -> None:
+        """Synchronous typing (runs in thread pool)."""
+        pyautogui.write(text, interval=interval)
+
+    def _key_sync(self, key: str) -> None:
+        """Synchronous key press (runs in thread pool)."""
+        if "+" in key:
+            keys = key.split("+")
+            pyautogui.hotkey(*keys)
+        else:
+            pyautogui.press(key)
+
+    def _scroll_sync(self, amount: int, x: Optional[int] = None, y: Optional[int] = None) -> None:
+        """Synchronous scroll (runs in thread pool)."""
+        if x is not None and y is not None:
+            pyautogui.moveTo(x, y)
+        pyautogui.scroll(amount)
+
+    def _move_sync(self, x: int, y: int, duration: float) -> None:
+        """Synchronous cursor move (runs in thread pool)."""
+        pyautogui.moveTo(x, y, duration=duration)
+
+    # ========================================================================
+    # Async action methods
+    # ========================================================================
+
     async def execute(self, action: ComputerAction) -> ActionResult:
-        """Execute a computer action."""
+        """Execute a computer action asynchronously with timeout protection."""
         start_time = time.time()
 
-        try:
-            if action.action_type == ActionType.CLICK:
-                await self._execute_click(action)
-            elif action.action_type == ActionType.DOUBLE_CLICK:
-                await self._execute_double_click(action)
-            elif action.action_type == ActionType.RIGHT_CLICK:
-                await self._execute_right_click(action)
-            elif action.action_type == ActionType.TYPE:
-                await self._execute_type(action)
-            elif action.action_type == ActionType.KEY:
-                await self._execute_key(action)
-            elif action.action_type == ActionType.SCROLL:
-                await self._execute_scroll(action)
-            elif action.action_type == ActionType.WAIT:
-                await self._execute_wait(action)
-            elif action.action_type == ActionType.CURSOR_POSITION:
-                await self._execute_move(action)
-            elif action.action_type == ActionType.SCREENSHOT:
-                pass  # Screenshot is handled separately
+        async with self._action_lock:  # Prevent concurrent actions
+            try:
+                if action.action_type == ActionType.CLICK:
+                    await self._execute_click(action)
+                elif action.action_type == ActionType.DOUBLE_CLICK:
+                    await self._execute_double_click(action)
+                elif action.action_type == ActionType.RIGHT_CLICK:
+                    await self._execute_right_click(action)
+                elif action.action_type == ActionType.TYPE:
+                    await self._execute_type(action)
+                elif action.action_type == ActionType.KEY:
+                    await self._execute_key(action)
+                elif action.action_type == ActionType.SCROLL:
+                    await self._execute_scroll(action)
+                elif action.action_type == ActionType.WAIT:
+                    await self._execute_wait(action)
+                elif action.action_type == ActionType.CURSOR_POSITION:
+                    await self._execute_move(action)
+                elif action.action_type == ActionType.SCREENSHOT:
+                    pass  # Screenshot is handled separately
 
-            duration_ms = (time.time() - start_time) * 1000
+                duration_ms = (time.time() - start_time) * 1000
 
-            return ActionResult(
-                action_id=action.action_id,
-                success=True,
-                duration_ms=duration_ms
-            )
+                return ActionResult(
+                    action_id=action.action_id,
+                    success=True,
+                    duration_ms=duration_ms
+                )
 
-        except Exception as e:
-            logger.error(f"Action execution failed: {e}")
-            return ActionResult(
-                action_id=action.action_id,
-                success=False,
-                error=str(e),
-                duration_ms=(time.time() - start_time) * 1000
-            )
+            except asyncio.TimeoutError:
+                logger.error(f"Action timed out: {action.action_type.value}")
+                return ActionResult(
+                    action_id=action.action_id,
+                    success=False,
+                    error=f"Action timed out after {self.action_timeout}s",
+                    duration_ms=(time.time() - start_time) * 1000
+                )
+            except Exception as e:
+                logger.error(f"Action execution failed: {e}")
+                return ActionResult(
+                    action_id=action.action_id,
+                    success=False,
+                    error=str(e),
+                    duration_ms=(time.time() - start_time) * 1000
+                )
 
     async def _execute_click(self, action: ComputerAction) -> None:
-        """Execute click action."""
+        """Execute click action asynchronously."""
         if not action.coordinates:
             raise ValueError("Click action requires coordinates")
 
         x, y = self._scale_coordinates(action.coordinates)
-
-        # Move smoothly to position
-        pyautogui.moveTo(x, y, duration=self.movement_duration)
-        await asyncio.sleep(0.05)
-
-        # Click
-        pyautogui.click(x, y)
+        await run_blocking(
+            self._click_sync, x, y, self.movement_duration,
+            timeout=self.action_timeout
+        )
 
     async def _execute_double_click(self, action: ComputerAction) -> None:
-        """Execute double click action."""
+        """Execute double click action asynchronously."""
         if not action.coordinates:
             raise ValueError("Double click action requires coordinates")
 
         x, y = self._scale_coordinates(action.coordinates)
-        pyautogui.moveTo(x, y, duration=self.movement_duration)
-        pyautogui.doubleClick(x, y)
+        await run_blocking(
+            self._double_click_sync, x, y, self.movement_duration,
+            timeout=self.action_timeout
+        )
 
     async def _execute_right_click(self, action: ComputerAction) -> None:
-        """Execute right click action."""
+        """Execute right click action asynchronously."""
         if not action.coordinates:
             raise ValueError("Right click action requires coordinates")
 
         x, y = self._scale_coordinates(action.coordinates)
-        pyautogui.moveTo(x, y, duration=self.movement_duration)
-        pyautogui.rightClick(x, y)
+        await run_blocking(
+            self._right_click_sync, x, y, self.movement_duration,
+            timeout=self.action_timeout
+        )
 
     async def _execute_type(self, action: ComputerAction) -> None:
-        """Execute type action."""
+        """Execute type action asynchronously."""
         if not action.text:
             raise ValueError("Type action requires text")
 
-        pyautogui.write(action.text, interval=0.02)
+        # Typing can take a while for long text, extend timeout
+        text_timeout = max(self.action_timeout, len(action.text) * 0.05)
+        await run_blocking(
+            self._type_sync, action.text, 0.02,
+            timeout=text_timeout
+        )
 
     async def _execute_key(self, action: ComputerAction) -> None:
-        """Execute key press action."""
+        """Execute key press action asynchronously."""
         if not action.key:
             raise ValueError("Key action requires key")
 
-        # Handle key combinations (e.g., "command+c")
-        if "+" in action.key:
-            keys = action.key.split("+")
-            pyautogui.hotkey(*keys)
-        else:
-            pyautogui.press(action.key)
+        await run_blocking(
+            self._key_sync, action.key,
+            timeout=self.action_timeout
+        )
 
     async def _execute_scroll(self, action: ComputerAction) -> None:
-        """Execute scroll action."""
+        """Execute scroll action asynchronously."""
         amount = action.scroll_amount or 3
+        x, y = None, None
 
         if action.coordinates:
             x, y = self._scale_coordinates(action.coordinates)
-            pyautogui.moveTo(x, y)
 
-        pyautogui.scroll(amount)
+        await run_blocking(
+            self._scroll_sync, amount, x, y,
+            timeout=self.action_timeout
+        )
 
     async def _execute_wait(self, action: ComputerAction) -> None:
-        """Execute wait action."""
+        """Execute wait action (truly async, no thread pool needed)."""
         await asyncio.sleep(action.duration)
 
     async def _execute_move(self, action: ComputerAction) -> None:
-        """Execute cursor move action."""
+        """Execute cursor move action asynchronously."""
         if not action.coordinates:
             raise ValueError("Move action requires coordinates")
 
         x, y = self._scale_coordinates(action.coordinates)
-        pyautogui.moveTo(x, y, duration=self.movement_duration)
+        await run_blocking(
+            self._move_sync, x, y, self.movement_duration,
+            timeout=self.action_timeout
+        )
 
     def _scale_coordinates(self, coords: Tuple[int, int]) -> Tuple[int, int]:
         """Scale coordinates for Retina displays if needed."""
@@ -506,7 +746,8 @@ Always provide your reasoning before taking action."""
         learning_callback: Optional[Callable[[Dict], Awaitable[None]]] = None,
         scale_factor: float = 1.0,
         max_actions_per_task: int = 20,
-        action_timeout: float = 30.0
+        action_timeout: float = 30.0,
+        api_timeout: float = 60.0
     ):
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("anthropic package required. Install with: pip install anthropic")
@@ -519,12 +760,25 @@ Always provide your reasoning before taking action."""
         self.client = AsyncAnthropic(api_key=self.api_key)
         self.max_actions_per_task = max_actions_per_task
         self.action_timeout = action_timeout
+        self.api_timeout = api_timeout
 
-        # Initialize components
+        # Initialize components with proper timeout settings
         self.narrator = VoiceNarrationHandler(tts_callback=tts_callback)
-        self.screen_capture = ScreenCaptureHandler(scale_factor=scale_factor)
-        self.action_executor = ActionExecutor(scale_factor=scale_factor)
+        self.screen_capture = ScreenCaptureHandler(
+            scale_factor=scale_factor,
+            capture_timeout=10.0
+        )
+        self.action_executor = ActionExecutor(
+            scale_factor=scale_factor,
+            action_timeout=action_timeout
+        )
         self.learning_callback = learning_callback
+
+        # Circuit breaker for API calls
+        self._circuit_breaker = CircuitBreaker(
+            failure_threshold=3,
+            recovery_timeout=60.0
+        )
 
         # State tracking
         self._current_task_id: Optional[str] = None
@@ -535,7 +789,7 @@ Always provide your reasoning before taking action."""
         # Load learned positions
         self._load_learned_positions()
 
-        logger.info("[COMPUTER USE] Claude Computer Use Connector initialized")
+        logger.info("[COMPUTER USE] Claude Computer Use Connector initialized with async support")
 
     def _load_learned_positions(self) -> None:
         """Load previously learned UI element positions."""
@@ -753,7 +1007,23 @@ Always provide your reasoning before taking action."""
     ) -> VisionAnalysis:
         """
         Analyze screenshot and decide on next action using Claude.
+        Now with circuit breaker and timeout protection.
         """
+        # Check circuit breaker first
+        if not await self._circuit_breaker.can_execute():
+            logger.warning("[COMPUTER USE] Circuit breaker open - skipping API call")
+            return VisionAnalysis(
+                analysis_id=str(uuid4()),
+                description="API temporarily unavailable (circuit breaker open)",
+                detected_elements=[],
+                suggested_action=None,
+                goal_progress=0.0,
+                is_goal_achieved=False,
+                reasoning_chain=["Circuit breaker is open - API calls temporarily blocked"],
+                confidence=0.0,
+                is_auth_error=False
+            )
+
         # Build conversation history
         history_text = ""
         if action_history:
@@ -794,35 +1064,58 @@ If an action is needed, provide it in this JSON format:
 Respond with your analysis followed by the action JSON if needed."""
 
         try:
-            # Call Claude with computer use capability
-            response = await self.client.messages.create(
-                model=self.COMPUTER_USE_MODEL,
-                max_tokens=1024,
-                system=self.SYSTEM_PROMPT,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": screenshot_base64
+            # Call Claude with computer use capability - with timeout
+            response = await asyncio.wait_for(
+                self.client.messages.create(
+                    model=self.COMPUTER_USE_MODEL,
+                    max_tokens=1024,
+                    system=self.SYSTEM_PROMPT,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/png",
+                                        "data": screenshot_base64
+                                    }
+                                },
+                                {
+                                    "type": "text",
+                                    "text": user_prompt
                                 }
-                            },
-                            {
-                                "type": "text",
-                                "text": user_prompt
-                            }
-                        ]
-                    }
-                ]
+                            ]
+                        }
+                    ]
+                ),
+                timeout=self.api_timeout
             )
 
             # Parse response
             response_text = response.content[0].text
+
+            # Record success with circuit breaker
+            await self._circuit_breaker.record_success()
+
             return self._parse_analysis_response(response_text, goal)
+
+        except asyncio.TimeoutError:
+            logger.error(f"[COMPUTER USE] Claude API call timed out after {self.api_timeout}s")
+            await self._circuit_breaker.record_failure()
+
+            return VisionAnalysis(
+                analysis_id=str(uuid4()),
+                description=f"API call timed out after {self.api_timeout}s",
+                detected_elements=[],
+                suggested_action=None,
+                goal_progress=0.0,
+                is_goal_achieved=False,
+                reasoning_chain=["API timeout - Claude took too long to respond"],
+                confidence=0.0,
+                is_auth_error=False
+            )
 
         except Exception as e:
             error_str = str(e)
@@ -839,6 +1132,9 @@ Respond with your analysis followed by the action JSON if needed."""
                 # Mark connector as unavailable to prevent further attempts
                 self._auth_failed = True
                 logger.error("[COMPUTER USE] ❌ Authentication failed - API key is invalid")
+            else:
+                # Record failure with circuit breaker
+                await self._circuit_breaker.record_failure()
 
             return VisionAnalysis(
                 analysis_id=str(uuid4()),

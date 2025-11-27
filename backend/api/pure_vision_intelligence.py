@@ -8,7 +8,10 @@ Every response is generated fresh from actual observation.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List, Tuple
+import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+from typing import Dict, Any, Optional, List, Tuple, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from collections import deque
@@ -18,6 +21,124 @@ import sys
 import os
 import random
 import numpy as np
+
+
+# ============================================================================
+# Async Utilities for Vision Intelligence
+# ============================================================================
+
+# Thread pool for blocking operations
+_vision_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_vision_executor() -> ThreadPoolExecutor:
+    """Get or create thread pool for vision operations."""
+    global _vision_executor
+    if _vision_executor is None:
+        _vision_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vision_")
+    return _vision_executor
+
+
+async def run_in_thread(func: Callable, *args, timeout: float = 30.0, **kwargs) -> Any:
+    """Run a blocking function in thread pool with timeout."""
+    loop = asyncio.get_event_loop()
+    executor = _get_vision_executor()
+
+    if kwargs:
+        func = partial(func, **kwargs)
+
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(executor, func, *args),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        logging.getLogger(__name__).error(f"Vision operation timed out after {timeout}s")
+        raise
+
+
+class VisionCircuitBreaker:
+    """Circuit breaker for Claude Vision API calls."""
+
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        recovery_timeout: float = 60.0,
+        half_open_max: int = 1
+    ):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max = half_open_max
+
+        self._failures = 0
+        self._last_failure: Optional[float] = None
+        self._state = "closed"
+        self._half_open_calls = 0
+        self._lock = asyncio.Lock()
+
+    async def can_execute(self) -> bool:
+        """Check if we can make an API call."""
+        async with self._lock:
+            if self._state == "closed":
+                return True
+
+            if self._state == "open":
+                if self._last_failure and (time.time() - self._last_failure) >= self.recovery_timeout:
+                    self._state = "half-open"
+                    self._half_open_calls = 0
+                    return True
+                return False
+
+            if self._state == "half-open":
+                if self._half_open_calls < self.half_open_max:
+                    self._half_open_calls += 1
+                    return True
+                return False
+
+            return False
+
+    async def record_success(self) -> None:
+        """Record successful API call."""
+        async with self._lock:
+            if self._state == "half-open":
+                self._state = "closed"
+                self._failures = 0
+            elif self._state == "closed":
+                self._failures = 0
+
+    async def record_failure(self) -> None:
+        """Record failed API call."""
+        async with self._lock:
+            self._failures += 1
+            self._last_failure = time.time()
+
+            if self._state == "half-open":
+                self._state = "open"
+            elif self._failures >= self.failure_threshold:
+                self._state = "open"
+
+    @property
+    def is_open(self) -> bool:
+        return self._state == "open"
+
+    def get_state(self) -> Dict[str, Any]:
+        return {
+            "state": self._state,
+            "failures": self._failures,
+            "threshold": self.failure_threshold
+        }
+
+
+# Global circuit breaker instance
+_vision_circuit_breaker: Optional[VisionCircuitBreaker] = None
+
+
+def get_vision_circuit_breaker() -> VisionCircuitBreaker:
+    """Get or create the global vision circuit breaker."""
+    global _vision_circuit_breaker
+    if _vision_circuit_breaker is None:
+        _vision_circuit_breaker = VisionCircuitBreaker()
+    return _vision_circuit_breaker
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -177,10 +298,15 @@ class PureVisionIntelligence:
         enable_multi_space: bool = True,
         context_store=None,
         context_bridge=None,
+        api_timeout: float = 30.0,
     ):
         self.claude = claude_client
         self.context = ConversationContext()
         self.screen_cache = {}  # Hash -> understanding
+        self.api_timeout = api_timeout
+
+        # Circuit breaker for API calls
+        self._circuit_breaker = get_vision_circuit_breaker()
 
         # ═══════════════════════════════════════════════════════════════
         # Context Intelligence Bridge Integration
@@ -282,9 +408,9 @@ class PureVisionIntelligence:
         space_id: str,
         snapshot_id: str,
         summary: str,
-        ocr_text: str | None = None,
+        ocr_text: Optional[str] = None,
         ttl_seconds: int = 120,
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Track a pending question after JARVIS asks the user something.
         Returns context ID if successful, None if store unavailable.
@@ -1065,12 +1191,29 @@ Remember: Natural, {detail_level}, directly answering what was asked, and SPECIF
     async def _get_claude_vision_response(
         self, screenshot: Any, prompt: str
     ) -> Dict[str, Any]:
-        """Get pure, natural response from Claude Vision"""
+        """
+        Get pure, natural response from Claude Vision.
+        Now with circuit breaker and timeout protection.
+        """
+        # Check circuit breaker first
+        if not await self._circuit_breaker.can_execute():
+            logger.warning("[VISION] Circuit breaker open - using fallback response")
+            return {
+                "response": "I'm having temporary difficulty with my vision systems, Sir. Let me try again in a moment.",
+                "understanding": {
+                    "circuit_breaker": "open",
+                    "timestamp": datetime.now().isoformat(),
+                },
+            }
+
         if self.claude:
             try:
-                # Call Claude Vision API with screenshot and prompt
-                response = await self.claude.analyze_image_with_prompt(
-                    image=screenshot, prompt=prompt, max_tokens=500
+                # Call Claude Vision API with timeout protection
+                response = await asyncio.wait_for(
+                    self.claude.analyze_image_with_prompt(
+                        image=screenshot, prompt=prompt, max_tokens=500
+                    ),
+                    timeout=self.api_timeout
                 )
 
                 # Debug: Check response type
@@ -1087,12 +1230,12 @@ Remember: Natural, {detail_level}, directly answering what was asked, and SPECIF
                         "error": f"Invalid response type: {type(response)}",
                     }
 
+                # Record success with circuit breaker
+                await self._circuit_breaker.record_success()
+
                 # Parse Claude's response to extract the natural language and understanding
-                # Claude returns text, we need to structure it
                 response_text = response.get("content", "")
 
-                # For structured responses, we can ask Claude to return JSON-like sections
-                # But for now, treat the whole response as natural language
                 return {
                     "response": response_text,
                     "understanding": {
@@ -1100,8 +1243,22 @@ Remember: Natural, {detail_level}, directly answering what was asked, and SPECIF
                         "timestamp": datetime.now().isoformat(),
                     },
                 }
+
+            except asyncio.TimeoutError:
+                logger.error(f"[VISION] Claude Vision API timed out after {self.api_timeout}s")
+                await self._circuit_breaker.record_failure()
+                return {
+                    "response": f"My vision analysis is taking longer than expected, Sir. Let me try a simpler approach.",
+                    "understanding": {
+                        "timeout": True,
+                        "timeout_seconds": self.api_timeout,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                }
+
             except Exception as e:
                 logger.error(f"Claude Vision API error: {e}")
+                await self._circuit_breaker.record_failure()
                 # Fall back to mock response on error
                 return self._get_mock_response(prompt)
         else:
