@@ -75,6 +75,26 @@ from .jarvis_integration import (
     connect_neural_mesh,
     integrate_all,
 )
+from .voice_authentication_narrator import (
+    VoiceAuthNarrator,
+    AuthenticationContext,
+    AuthenticationResult,
+    ConfidenceLevel,
+    get_auth_narrator,
+    create_auth_context,
+    create_auth_result,
+)
+from .owner_identity_service import (
+    OwnerIdentityService,
+    OwnerProfile,
+    IdentityContext,
+    IdentitySource,
+    IdentityConfidence,
+    get_owner_identity,
+    get_owner_name,
+    verify_is_owner,
+    create_identity_context,
+)
 
 __all__ = [
     # Main coordinator
@@ -114,4 +134,22 @@ __all__ = [
     "integrate_approval_systems",
     "connect_neural_mesh",
     "integrate_all",
+    # Voice authentication narrator
+    "VoiceAuthNarrator",
+    "AuthenticationContext",
+    "AuthenticationResult",
+    "ConfidenceLevel",
+    "get_auth_narrator",
+    "create_auth_context",
+    "create_auth_result",
+    # Owner identity service
+    "OwnerIdentityService",
+    "OwnerProfile",
+    "IdentityContext",
+    "IdentitySource",
+    "IdentityConfidence",
+    "get_owner_identity",
+    "get_owner_name",
+    "verify_is_owner",
+    "create_identity_context",
 ]

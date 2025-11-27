@@ -98,6 +98,10 @@ from .intelligent_action_orchestrator import (
     start_action_orchestrator,
     stop_action_orchestrator,
 )
+from .owner_identity_service import (
+    OwnerIdentityService,
+    get_owner_identity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +164,12 @@ class AGIOSCoordinator:
 
         # Screen Analyzer
         self._screen_analyzer: Optional[Any] = None
+
+        # Owner Identity Service (dynamic voice biometric identification)
+        self._owner_identity: Optional[OwnerIdentityService] = None
+
+        # Speaker Verification Service (for voice biometrics)
+        self._speaker_verification: Optional[Any] = None
 
         # Component status
         self._component_status: Dict[str, ComponentStatus] = {}
@@ -245,10 +255,19 @@ class AGIOSCoordinator:
         self._state = AGIOSState.SHUTTING_DOWN
         logger.info("Stopping AGI OS...")
 
-        # Announce shutdown
+        # Announce shutdown with dynamic owner name
         if self._voice:
+            owner_name = "sir"  # Fallback
+            if self._owner_identity:
+                try:
+                    owner_profile = await self._owner_identity.get_current_owner()
+                    if owner_profile and owner_profile.name:
+                        owner_name = owner_profile.name
+                except Exception:
+                    pass
+
             await self._voice.speak(
-                "Shutting down AGI OS. Goodbye, sir.",
+                f"Shutting down AGI OS. Goodbye, {owner_name}.",
                 mode=VoiceMode.QUIET
             )
             await asyncio.sleep(2)
@@ -438,6 +457,50 @@ class AGIOSCoordinator:
                 error=str(e)
             )
 
+        # Speaker Verification Service (for voice biometrics)
+        try:
+            from voice.speaker_verification_service import SpeakerVerificationService
+            self._speaker_verification = SpeakerVerificationService(
+                learning_db=self._learning_db
+            )
+            await self._speaker_verification.start()
+            self._component_status['speaker_verification'] = ComponentStatus(
+                name='speaker_verification',
+                available=True
+            )
+            logger.info("Speaker verification service loaded")
+        except Exception as e:
+            logger.warning("Speaker verification not available: %s", e)
+            self._component_status['speaker_verification'] = ComponentStatus(
+                name='speaker_verification',
+                available=False,
+                error=str(e)
+            )
+
+        # Owner Identity Service (dynamic voice biometric identification)
+        try:
+            self._owner_identity = await get_owner_identity(
+                speaker_verification=self._speaker_verification,
+                learning_db=self._learning_db
+            )
+            owner_profile = await self._owner_identity.get_current_owner()
+            self._component_status['owner_identity'] = ComponentStatus(
+                name='owner_identity',
+                available=True
+            )
+            logger.info(
+                "Owner identity service loaded - Owner: %s (confidence: %s)",
+                owner_profile.name,
+                owner_profile.identity_confidence.value
+            )
+        except Exception as e:
+            logger.warning("Owner identity service not available: %s", e)
+            self._component_status['owner_identity'] = ComponentStatus(
+                name='owner_identity',
+                available=False,
+                error=str(e)
+            )
+
     async def _init_neural_mesh(self) -> None:
         """Initialize Neural Mesh coordinator."""
         try:
@@ -520,17 +583,27 @@ class AGIOSCoordinator:
         logger.debug("Components connected")
 
     async def _announce_startup(self) -> None:
-        """Announce AGI OS startup via voice."""
+        """Announce AGI OS startup via voice with dynamic owner identification."""
         # Count available components
         available = sum(1 for s in self._component_status.values() if s.available)
         total = len(self._component_status)
 
+        # Get owner name dynamically via voice biometrics
+        owner_name = "sir"  # Fallback
+        if self._owner_identity:
+            try:
+                owner_profile = await self._owner_identity.get_current_owner()
+                if owner_profile and owner_profile.name:
+                    owner_name = owner_profile.name
+            except Exception as e:
+                logger.warning("Could not get owner name: %s", e)
+
         if available == total:
-            greeting = "Good day, sir. AGI OS systems are fully online. All components operational. I'm ready to assist you."
+            greeting = f"Good day, {owner_name}. AGI OS systems are fully online. All components operational. I'm ready to assist you."
         elif available > total // 2:
-            greeting = f"AGI OS systems are online, sir. {available} of {total} components available. Running in degraded mode."
+            greeting = f"AGI OS systems are online, {owner_name}. {available} of {total} components available. Running in degraded mode."
         else:
-            greeting = "AGI OS starting with limited functionality, sir. Several components are unavailable."
+            greeting = f"AGI OS starting with limited functionality, {owner_name}. Several components are unavailable."
 
         await self._voice.greet()
         await asyncio.sleep(0.5)

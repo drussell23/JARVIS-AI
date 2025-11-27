@@ -209,6 +209,42 @@ class VoiceApprovalManager:
         # Voice communicator (lazy loaded)
         self._voice: Optional[Any] = None
 
+        # Owner identity service (for dynamic user identification)
+        self._owner_identity: Optional[Any] = None
+
+        # Speaker verification (for voice-verified approvals)
+        self._speaker_verification: Optional[Any] = None
+
+        # Voice recognition keywords for approval
+        self._approval_keywords = {
+            'approve': True,
+            'yes': True,
+            'yeah': True,
+            'yep': True,
+            'go ahead': True,
+            'proceed': True,
+            'do it': True,
+            'sure': True,
+            'okay': True,
+            'ok': True,
+            'affirmative': True,
+            'approved': True,
+            'fine': True,
+        }
+        self._denial_keywords = {
+            'deny': False,
+            'no': False,
+            'nope': False,
+            'stop': False,
+            'cancel': False,
+            'don\'t': False,
+            'negative': False,
+            'denied': False,
+            'reject': False,
+            'wait': False,
+            'hold on': False,
+        }
+
         # Statistics
         self._stats = {
             'total_requests': 0,
@@ -231,6 +267,46 @@ class VoiceApprovalManager:
             from .realtime_voice_communicator import get_voice_communicator
             self._voice = await get_voice_communicator()
         return self._voice
+
+    async def set_owner_identity(self, owner_identity) -> None:
+        """Set the owner identity service for dynamic user identification."""
+        self._owner_identity = owner_identity
+        logger.info("Owner identity service connected to approval manager")
+
+    async def set_speaker_verification(self, speaker_verification) -> None:
+        """Set the speaker verification service for voice-verified approvals."""
+        self._speaker_verification = speaker_verification
+        logger.info("Speaker verification service connected to approval manager")
+
+    async def _get_owner_name(self) -> str:
+        """Get the current owner's name dynamically."""
+        if self._owner_identity:
+            try:
+                owner = await self._owner_identity.get_current_owner()
+                if owner and owner.name:
+                    return owner.name
+            except Exception as e:
+                logger.warning("Could not get owner name: %s", e)
+
+        # Fallback to macOS username
+        import os
+        import subprocess
+        try:
+            username = os.environ.get('USER') or os.getlogin()
+            result = subprocess.run(
+                ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                if len(lines) > 1:
+                    return lines[1].strip().split()[0]  # First name
+        except Exception:
+            pass
+
+        return "sir"  # Ultimate fallback
 
     def _load_patterns(self) -> None:
         """Load learned patterns from disk."""
@@ -432,7 +508,7 @@ class VoiceApprovalManager:
 
         # Build the voice prompt
         if voice_prompt is None:
-            voice_prompt = self._build_voice_prompt(request)
+            voice_prompt = await self._build_voice_prompt(request)
 
         # Store pending request
         self._pending_requests[request.request_id] = request
@@ -500,23 +576,26 @@ class VoiceApprovalManager:
             self._pending_requests.pop(request.request_id, None)
             self._request_responses.pop(request.request_id, None)
 
-    def _build_voice_prompt(self, request: ApprovalRequest) -> str:
-        """Build a natural voice prompt for the request."""
+    async def _build_voice_prompt(self, request: ApprovalRequest) -> str:
+        """Build a natural voice prompt for the request with dynamic owner name."""
+        # Get owner name dynamically
+        owner_name = await self._get_owner_name()
+
         # Contextual prompts based on action type
         prompts = {
-            'fix_error': "Sir, I've detected an error in {target}. {reasoning} Shall I fix it?",
-            'send_message': "Sir, may I send a message to {target}? {reasoning}",
-            'organize_workspace': "Sir, I'd like to organize your workspace. {reasoning} Is that alright?",
-            'cleanup': "Sir, shall I clean up {target}? {reasoning}",
-            'security_alert': "Sir, security concern detected in {target}. {reasoning} Should I take action?",
-            'open_application': "Sir, shall I open {target}? {reasoning}",
-            'close_application': "Sir, may I close {target}? {reasoning}",
+            'fix_error': f"{owner_name}, I've detected an error in {{target}}. {{reasoning}} Shall I fix it?",
+            'send_message': f"{owner_name}, may I send a message to {{target}}? {{reasoning}}",
+            'organize_workspace': f"{owner_name}, I'd like to organize your workspace. {{reasoning}} Is that alright?",
+            'cleanup': f"{owner_name}, shall I clean up {{target}}? {{reasoning}}",
+            'security_alert': f"{owner_name}, security concern detected in {{target}}. {{reasoning}} Should I take action?",
+            'open_application': f"{owner_name}, shall I open {{target}}? {{reasoning}}",
+            'close_application': f"{owner_name}, may I close {{target}}? {{reasoning}}",
         }
 
         # Get template or use default
         template = prompts.get(
             request.action_type,
-            "Sir, may I proceed with {action_type} on {target}? {reasoning}"
+            f"{owner_name}, may I proceed with {{action_type}} on {{target}}? {{reasoning}}"
         )
 
         return template.format(
@@ -783,6 +862,143 @@ class VoiceApprovalManager:
             self._quiet_hours['start'] = start
         if end is not None:
             self._quiet_hours['end'] = end
+
+    # ============== Voice Recognition Integration ==============
+
+    async def process_voice_response(
+        self,
+        transcript: str,
+        audio_data: Optional[bytes] = None,
+        require_owner_verification: bool = True
+    ) -> Optional[Tuple[str, bool]]:
+        """
+        Process a voice recognition response for pending approval requests.
+
+        This method:
+        1. Analyzes the transcript for approval/denial keywords
+        2. Optionally verifies the speaker is the owner via voice biometrics
+        3. Responds to any pending approval request
+
+        Args:
+            transcript: The recognized text from voice
+            audio_data: Optional raw audio for speaker verification
+            require_owner_verification: If True, verify speaker is owner
+
+        Returns:
+            Tuple of (request_id, approved) if a pending request was handled,
+            None if no pending request or keywords not found
+        """
+        if not self._pending_requests:
+            return None
+
+        # Normalize transcript
+        transcript_lower = transcript.lower().strip()
+
+        # Check for approval keywords
+        decision = None
+        for keyword in self._approval_keywords:
+            if keyword in transcript_lower:
+                decision = True
+                break
+
+        if decision is None:
+            for keyword in self._denial_keywords:
+                if keyword in transcript_lower:
+                    decision = False
+                    break
+
+        if decision is None:
+            logger.debug("No approval keywords found in transcript: %s", transcript)
+            return None
+
+        # Verify speaker is owner if required
+        if require_owner_verification and audio_data and self._speaker_verification:
+            try:
+                is_owner, confidence = await self._speaker_verification.is_owner(audio_data)
+                if not is_owner:
+                    logger.warning(
+                        "Approval response rejected - speaker is not owner (confidence: %.2f)",
+                        confidence
+                    )
+                    # Optionally announce the rejection
+                    voice = await self._get_voice()
+                    await voice.speak(
+                        "I can only accept approvals from the device owner. Please have them respond.",
+                        mode="notification"
+                    )
+                    return None
+
+                logger.info("Speaker verified as owner (confidence: %.2f)", confidence)
+
+            except Exception as e:
+                logger.warning("Speaker verification failed, proceeding without: %s", e)
+
+        # Get the first pending request (FIFO)
+        request_id = next(iter(self._pending_requests.keys()))
+        request = self._pending_requests[request_id]
+
+        # Respond to the request
+        logger.info(
+            "Voice response for request %s: %s (transcript: '%s')",
+            request_id,
+            "approved" if decision else "denied",
+            transcript
+        )
+
+        self.respond_to_pending(
+            request_id=request_id,
+            approved=decision,
+            response_method="voice_recognition"
+        )
+
+        return (request_id, decision)
+
+    def parse_approval_intent(self, transcript: str) -> Optional[bool]:
+        """
+        Parse approval intent from transcript without acting on it.
+
+        Args:
+            transcript: The recognized text
+
+        Returns:
+            True for approval, False for denial, None if unclear
+        """
+        transcript_lower = transcript.lower().strip()
+
+        for keyword in self._approval_keywords:
+            if keyword in transcript_lower:
+                return True
+
+        for keyword in self._denial_keywords:
+            if keyword in transcript_lower:
+                return False
+
+        return None
+
+    def get_pending_request_summary(self) -> Optional[Dict[str, Any]]:
+        """
+        Get summary of the current pending request for UI display.
+
+        Returns:
+            Dictionary with pending request info, or None if no pending
+        """
+        if not self._pending_requests:
+            return None
+
+        # Get first pending request
+        request_id = next(iter(self._pending_requests.keys()))
+        request = self._pending_requests[request_id]
+
+        return {
+            'request_id': request_id,
+            'action_type': request.action_type,
+            'target': request.target,
+            'confidence': request.confidence,
+            'reasoning': request.reasoning,
+            'urgency': request.urgency.name,
+            'timeout': request.timeout,
+            'created_at': request.created_at.isoformat(),
+        }
 
 
 # ============== Singleton Pattern ==============
