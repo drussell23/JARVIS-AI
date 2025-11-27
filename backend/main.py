@@ -1125,6 +1125,50 @@ async def lifespan(app: FastAPI):
         await app.state.memory_manager.start_monitoring()
         logger.info("✅ Memory manager initialized")
 
+    # ═══════════════════════════════════════════════════════════════
+    # NEURAL MESH INITIALIZATION (Multi-Agent Collaboration System)
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        from neural_mesh.integration import (
+            initialize_neural_mesh,
+            NeuralMeshConfig,
+            is_neural_mesh_initialized,
+        )
+
+        # Initialize Neural Mesh with Crew system in background
+        logger.info("🧠 Initializing Neural Mesh Multi-Agent System...")
+        neural_mesh_config = NeuralMeshConfig(
+            enable_crew=True,
+            enable_monitoring=True,
+            enable_knowledge_graph=True,
+            enable_communication_bus=True,
+            lazy_load=True,
+        )
+
+        # Run initialization asynchronously
+        neural_mesh_result = await initialize_neural_mesh(neural_mesh_config)
+
+        if neural_mesh_result.get("status") == "initialized":
+            app.state.neural_mesh = neural_mesh_result
+            components_loaded = neural_mesh_result.get("components", [])
+            elapsed = neural_mesh_result.get("elapsed_seconds", 0)
+            logger.info(
+                f"✅ Neural Mesh initialized in {elapsed:.2f}s "
+                f"(components: {', '.join(components_loaded)})"
+            )
+        elif neural_mesh_result.get("status") == "already_initialized":
+            app.state.neural_mesh = neural_mesh_result
+            logger.info("✅ Neural Mesh already initialized")
+        else:
+            logger.warning(
+                f"⚠️ Neural Mesh initialization: {neural_mesh_result.get('status')} "
+                f"- {neural_mesh_result.get('error', 'unknown error')}"
+            )
+    except ImportError as e:
+        logger.debug(f"Neural Mesh not available: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ Neural Mesh initialization skipped: {e}")
+
     # Initialize Goal Inference and start background tasks
     goal_inference = components.get("goal_inference", {})
     if goal_inference and goal_inference.get("integration"):
@@ -1741,6 +1785,86 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ v2.0 Systems initialization failed: {e}", exc_info=True)
 
+        # ========================================================================
+        # Initialize AGI OS - Autonomous General Intelligence Operating System
+        # ========================================================================
+        logger.info("\n" + "=" * 60)
+        logger.info("🧠 INITIALIZING AGI OS - Autonomous Intelligence Layer")
+        logger.info("=" * 60)
+
+        try:
+            from agi_os import (
+                start_agi_os,
+                get_voice_communicator,
+                get_owner_identity,
+                get_unified_vision,
+                integrate_all,
+                VoiceMode,
+            )
+
+            # Start the AGI OS coordinator
+            app.state.agi_os = await start_agi_os()
+            logger.info(f"✅ AGI OS State: {app.state.agi_os.state.value}")
+
+            # Get owner identity for personalized interactions
+            owner_service = await get_owner_identity()
+            owner = await owner_service.get_current_owner()
+            owner_name = owner.name.split()[0] if owner.name else "Sir"
+            app.state.owner_service = owner_service
+            logger.info(f"✅ Owner Identity: {owner.name} (source: {owner.identity_source.value})")
+
+            # Initialize voice communicator with Daniel TTS
+            voice = await get_voice_communicator()
+            app.state.agi_voice = voice
+            logger.info("✅ Voice Communicator: Daniel TTS ready")
+
+            # Initialize unified vision interface
+            vision = await get_unified_vision()
+            app.state.agi_vision = vision
+            patterns = vision.get_detection_patterns()
+            logger.info(f"✅ Unified Vision: {len(patterns)} proactive detection patterns")
+
+            # Integrate with existing JARVIS systems
+            integration_result = await integrate_all(
+                screen_analyzer=getattr(app.state, 'vision_analyzer', None),
+                decision_engine=getattr(app.state, 'decision_engine', None),
+            )
+            logger.info(f"✅ System Integration: {integration_result.get('integrated_count', 0)} bridges connected")
+
+            # Report component status
+            working = sum(1 for s in app.state.agi_os.component_status.values() if s.available)
+            total = len(app.state.agi_os.component_status)
+
+            logger.info("\n" + "=" * 60)
+            logger.info("🤖 AGI OS INITIALIZED")
+            logger.info("=" * 60)
+            logger.info("🎯 Autonomous Capabilities:")
+            logger.info("   • Real-time voice communication (Daniel TTS)")
+            logger.info("   • Voice-based approval workflows")
+            logger.info("   • Proactive event streaming")
+            logger.info("   • Intelligent action orchestration")
+            logger.info("   • Dynamic owner identification")
+            logger.info(f"\n✨ {working}/{total} AGI OS components operational")
+            logger.info(f"👤 Owner: {owner_name}")
+            logger.info("=" * 60 + "\n")
+
+            # Optional: Voice greeting on startup (only if voice is enabled)
+            if voice and getattr(app.state, 'voice_enabled', True):
+                asyncio.create_task(
+                    voice.speak(
+                        f"AGI OS initialized. {working} of {total} components operational. "
+                        f"Ready to assist, {owner_name}.",
+                        mode=VoiceMode.NOTIFICATION
+                    )
+                )
+
+        except ImportError as e:
+            logger.warning(f"⚠️ AGI OS not available: {e}")
+            app.state.agi_os = None
+        except Exception as e:
+            logger.error(f"❌ AGI OS initialization failed: {e}", exc_info=True)
+            app.state.agi_os = None
+
         # Log proactive monitoring configuration
         proactive_config = app.state.vision_analyzer.get_proactive_config()
         if proactive_config["proactive_enabled"]:
@@ -2033,6 +2157,19 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(0.5)
     except Exception as e:
         logger.warning(f"Failed to broadcast shutdown notification: {e}")
+
+    # Shutdown Neural Mesh Multi-Agent System
+    try:
+        from neural_mesh.integration import shutdown_neural_mesh, is_neural_mesh_initialized
+
+        if is_neural_mesh_initialized():
+            logger.info("🧠 Shutting down Neural Mesh...")
+            await shutdown_neural_mesh()
+            logger.info("✅ Neural Mesh shutdown complete")
+    except ImportError:
+        pass  # Neural Mesh not available
+    except Exception as e:
+        logger.warning(f"Neural Mesh shutdown error: {e}")
 
     # Shutdown Advanced Thread Manager with multi-phase escalation
     if THREAD_MANAGER_AVAILABLE and thread_manager:

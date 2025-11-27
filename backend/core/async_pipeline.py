@@ -14,12 +14,23 @@ This module implements:
 - Context-aware command processing
 - Follow-up intent detection and routing
 - Comprehensive error handling and recovery
+- AGI OS integration for autonomous event streaming and proactive actions
+
+AGI OS Integration:
+- Emits pipeline events to AGI OS event stream
+- Receives action requests from AGI OS for autonomous processing
+- Dynamic owner identification for personalized responses
+- Voice communicator integration for real-time TTS feedback (Daniel voice)
 
 Example:
     >>> pipeline = get_async_pipeline(jarvis_instance)
     >>> result = await pipeline.process_async("open safari and search for dogs")
     >>> print(result['response'])
     "I've opened Safari and searched for dogs, Sir."
+
+    # With AGI OS integration
+    >>> owner_name = await pipeline.get_owner_name()
+    >>> await pipeline.emit_agi_event("COMMAND_COMPLETED", {"response": result})
 """
 
 import asyncio
@@ -634,6 +645,17 @@ class AdvancedAsyncPipeline:
         # ═══════════════════════════════════════════════════════════════
         self.context_bridge = None  # Will be set by main.py if available
 
+        # ═══════════════════════════════════════════════════════════════
+        # AGI OS Integration - Autonomous Event Streaming
+        # ═══════════════════════════════════════════════════════════════
+        self.agi_os_enabled = self.config.get("agi_os_enabled", True)
+        self._agi_event_stream = None
+        self._agi_voice = None
+        self._agi_owner_service = None
+
+        if self.agi_os_enabled:
+            asyncio.create_task(self._init_agi_os_integration())
+
         if self._follow_up_enabled:
             try:
                 self._init_followup_system()
@@ -878,6 +900,104 @@ class AdvancedAsyncPipeline:
             f"{self.intent_engine.classifier_count} classifiers, "
             f"max_contexts={max_contexts}"
         )
+
+    async def _init_agi_os_integration(self):
+        """Initialize AGI OS integration for autonomous event streaming.
+
+        Connects the pipeline to the AGI OS event stream, voice communicator,
+        and owner identity service for personalized, proactive responses.
+        """
+        try:
+            from agi_os import (
+                get_event_stream,
+                get_voice_communicator,
+                get_owner_identity,
+                EventType,
+                EventPriority,
+            )
+
+            # Get AGI OS components
+            self._agi_event_stream = await get_event_stream()
+            self._agi_voice = await get_voice_communicator()
+            self._agi_owner_service = await get_owner_identity()
+
+            # Subscribe to pipeline events from AGI OS
+            async def handle_agi_event(event):
+                """Handle events from AGI OS for pipeline processing."""
+                if event.event_type == EventType.ACTION_REQUESTED:
+                    # Route action requests through the pipeline
+                    action_data = event.data.get("action", {})
+                    if action_data.get("requires_pipeline", False):
+                        logger.info(f"[AGI-OS] Processing action via pipeline: {action_data.get('name')}")
+                        # Queue for processing
+
+            self._agi_event_stream.subscribe(EventType.ACTION_REQUESTED, handle_agi_event)
+
+            logger.info("✅ AGI OS integration initialized")
+            logger.info("   • Event stream: Connected")
+            logger.info("   • Voice communicator: Ready (Daniel TTS)")
+            logger.info("   • Owner identity: Dynamic")
+
+        except ImportError as e:
+            logger.warning(f"⚠️ AGI OS not available: {e}")
+            self.agi_os_enabled = False
+        except Exception as e:
+            logger.error(f"❌ AGI OS integration failed: {e}", exc_info=True)
+            self.agi_os_enabled = False
+
+    async def emit_agi_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        priority: str = "NORMAL",
+    ):
+        """Emit an event to the AGI OS event stream.
+
+        Args:
+            event_type: Type of event (e.g., "command_completed", "error_detected")
+            data: Event data dictionary
+            priority: Event priority (LOW, NORMAL, HIGH, CRITICAL)
+        """
+        if not self.agi_os_enabled or not self._agi_event_stream:
+            return
+
+        try:
+            from agi_os import EventType, EventPriority, AGIEvent
+
+            # Map string to enum
+            priority_map = {
+                "LOW": EventPriority.LOW,
+                "NORMAL": EventPriority.NORMAL,
+                "HIGH": EventPriority.HIGH,
+                "CRITICAL": EventPriority.CRITICAL,
+            }
+
+            event = AGIEvent(
+                event_type=getattr(EventType, event_type, EventType.SYSTEM_STATUS),
+                source="async_pipeline",
+                data=data,
+                priority=priority_map.get(priority, EventPriority.NORMAL),
+            )
+
+            await self._agi_event_stream.emit(event)
+            logger.debug(f"[AGI-OS] Emitted event: {event_type}")
+
+        except Exception as e:
+            logger.debug(f"[AGI-OS] Event emission failed: {e}")
+
+    async def get_owner_name(self) -> str:
+        """Get the current owner's name for personalized responses.
+
+        Returns:
+            Owner's first name, or "Sir" as fallback
+        """
+        if self._agi_owner_service:
+            try:
+                owner = await self._agi_owner_service.get_current_owner()
+                return owner.name.split()[0] if owner.name else "Sir"
+            except Exception:
+                pass
+        return "Sir"
 
     def register_stage(
         self,

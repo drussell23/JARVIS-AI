@@ -66,7 +66,19 @@ from .jarvis_bridge import (
     get_agent,
 )
 
-__version__ = "2.0.0"
+# Integration module for system startup
+from .integration import (
+    initialize_neural_mesh,
+    shutdown_neural_mesh,
+    get_neural_mesh_coordinator,
+    get_crew_manager,
+    is_neural_mesh_initialized,
+    get_neural_mesh_status,
+    create_neural_mesh_task,
+    NeuralMeshConfig as IntegrationConfig,
+)
+
+__version__ = "2.1.0"  # Crew system added
 __author__ = "JARVIS AI System"
 
 __all__ = [
