@@ -841,25 +841,176 @@ class SecurityHandler:
             r"password expired|change password"
         ]
     
-    async def handle_security_event(self, event_type: str, 
+    async def handle_security_event(self, event_type: str,
                                    context: Dict[str, Any]) -> List[AutonomousAction]:
         """Handle security-related events.
-        
+
         Processes different types of security events and generates appropriate
         autonomous actions to protect the user and system.
-        
+
         Args:
             event_type: Type of security event ("suspicious_login", "password_manager_open", etc.)
             context: Dictionary containing event context and details
-            
+
         Returns:
             List of AutonomousAction objects for security response
-            
+
         Raises:
             ValueError: If event_type is not recognized
-            
+
         Example:
             >>> context = {"app_name": "1Password", "in_meeting": True}
             >>> actions = await handler.handle_security_event("password_manager_open", context)
             >>> print(f"Generated {len(actions)} security actions")
         """
+        actions = []
+
+        if event_type == "suspicious_login":
+            actions.append(AutonomousAction(
+                action_type="security_alert",
+                description="Alert user about suspicious login attempt",
+                confidence=0.9,
+                parameters={"event_type": event_type, "context": context},
+                requires_approval=False,
+                risk_level="high"
+            ))
+        elif event_type == "password_manager_open":
+            # Check if in meeting - hide sensitive info
+            if context.get("in_meeting", False):
+                actions.append(AutonomousAction(
+                    action_type="privacy_protection",
+                    description="Blur or hide password manager during meeting",
+                    confidence=0.85,
+                    parameters={"app_name": context.get("app_name", "unknown")},
+                    requires_approval=True,
+                    risk_level="medium"
+                ))
+
+        return actions
+
+
+class AutonomousBehaviorManager:
+    """Unified manager for all autonomous behavior handlers.
+
+    Coordinates between different specialized handlers (MessageHandler, MeetingHandler,
+    WorkspaceOrganizer, SecurityHandler) to provide comprehensive autonomous behaviors.
+
+    Attributes:
+        message_handler: Handler for message/notification behaviors
+        meeting_handler: Handler for meeting-related behaviors
+        workspace_organizer: Handler for workspace organization
+        security_handler: Handler for security events
+    """
+
+    def __init__(self):
+        """Initialize the behavior manager with all handlers."""
+        self.message_handler = MessageHandler()
+        self.meeting_handler = MeetingHandler()
+        self.workspace_organizer = WorkspaceOrganizer()
+        self.security_handler = SecurityHandler()
+
+        # Configuration
+        self._enabled = True
+        self._config = {
+            'auto_respond_enabled': True,
+            'meeting_management_enabled': True,
+            'workspace_optimization_enabled': True,
+            'security_protection_enabled': True
+        }
+
+    @property
+    def is_enabled(self) -> bool:
+        """Check if behavior manager is enabled."""
+        return self._enabled
+
+    def enable(self) -> None:
+        """Enable autonomous behaviors."""
+        self._enabled = True
+
+    def disable(self) -> None:
+        """Disable autonomous behaviors."""
+        self._enabled = False
+
+    async def process_event(self, event_type: str, context: Dict[str, Any]) -> List[AutonomousAction]:
+        """Process an event and generate appropriate autonomous actions.
+
+        Routes events to the appropriate handler based on event type and
+        aggregates resulting actions.
+
+        Args:
+            event_type: Type of event to process
+            context: Event context and details
+
+        Returns:
+            List of autonomous actions to execute
+        """
+        if not self._enabled:
+            return []
+
+        actions = []
+
+        # Route to appropriate handler
+        if event_type in ["new_message", "urgent_message", "notification"]:
+            if self._config['auto_respond_enabled']:
+                handler_actions = await self.message_handler.handle_notification(
+                    context.get("app_name", ""),
+                    context.get("content", ""),
+                    context.get("in_meeting", False),
+                    context.get("focus_mode", False)
+                )
+                actions.extend(handler_actions)
+
+        elif event_type in ["meeting_starting", "meeting_ending", "calendar_event"]:
+            if self._config['meeting_management_enabled']:
+                handler_actions = await self.meeting_handler.prepare_for_meeting(context)
+                actions.extend(handler_actions)
+
+        elif event_type in ["workspace_cluttered", "focus_session_start", "focus_session_end"]:
+            if self._config['workspace_optimization_enabled']:
+                # Workspace organization handled through workspace_organizer
+                pass
+
+        elif event_type in ["suspicious_login", "password_manager_open", "security_alert"]:
+            if self._config['security_protection_enabled']:
+                handler_actions = await self.security_handler.handle_security_event(
+                    event_type,
+                    context
+                )
+                actions.extend(handler_actions)
+
+        return actions
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get current configuration."""
+        return {
+            'enabled': self._enabled,
+            **self._config
+        }
+
+    def update_config(self, config: Dict[str, Any]) -> None:
+        """Update configuration.
+
+        Args:
+            config: Dictionary of configuration updates
+        """
+        for key, value in config.items():
+            if key in self._config:
+                self._config[key] = value
+            elif key == 'enabled':
+                self._enabled = value
+
+
+# Global singleton instance
+_behavior_manager: Optional[AutonomousBehaviorManager] = None
+
+
+def get_behavior_manager() -> AutonomousBehaviorManager:
+    """Get the global behavior manager instance.
+
+    Returns:
+        AutonomousBehaviorManager: Singleton behavior manager instance
+    """
+    global _behavior_manager
+    if _behavior_manager is None:
+        _behavior_manager = AutonomousBehaviorManager()
+    return _behavior_manager

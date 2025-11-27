@@ -571,13 +571,17 @@ class AgentCommunicationBus:
             tasks = []
             for callback in callbacks:
                 try:
-                    result = callback(message)
-                    if asyncio.iscoroutine(result):
+                    # Check if it's a coroutine function before calling
+                    if asyncio.iscoroutinefunction(callback):
+                        # Create task for async callbacks
                         tasks.append(
                             asyncio.create_task(
                                 self._execute_callback(callback, message)
                             )
                         )
+                    else:
+                        # Execute sync callback directly
+                        callback(message)
                 except Exception as e:
                     logger.exception("Error in message callback: %s", e)
 

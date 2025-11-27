@@ -25,8 +25,8 @@ import logging
 from typing import Any, Dict, List, Optional
 from enum import Enum
 
-from backend.core.hybrid_backend_client import HybridBackendClient
-from backend.core.hybrid_router import HybridRouter, RouteDecision, RoutingContext
+from core.hybrid_backend_client import HybridBackendClient
+from core.hybrid_router import HybridRouter, RouteDecision, RoutingContext
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ def _get_llm():
     global _llm_inference
     if _llm_inference is None:
         try:
-            from backend.intelligence.local_llm_inference import get_llm_inference
+            from intelligence.local_llm_inference import get_llm_inference
 
             _llm_inference = get_llm_inference()
             logger.info("✅ Local LLM (LLaMA 3.1 70B) ready for lazy loading")
@@ -163,7 +163,7 @@ def _get_model_registry():
     global _model_registry
     if _model_registry is None:
         try:
-            from backend.intelligence.model_registry import get_model_registry
+            from intelligence.model_registry import get_model_registry
 
             _model_registry = get_model_registry()
             logger.info("✅ Model Registry initialized")
@@ -181,7 +181,7 @@ def _get_lifecycle_manager():
     global _lifecycle_manager
     if _lifecycle_manager is None:
         try:
-            from backend.intelligence.model_lifecycle_manager import get_lifecycle_manager
+            from intelligence.model_lifecycle_manager import get_lifecycle_manager
 
             _lifecycle_manager = get_lifecycle_manager()
             logger.info("✅ Model Lifecycle Manager initialized")
@@ -199,7 +199,7 @@ def _get_model_selector():
     global _model_selector
     if _model_selector is None:
         try:
-            from backend.intelligence.model_selector import get_model_selector
+            from intelligence.model_selector import get_model_selector
 
             _model_selector = get_model_selector()
             logger.info("✅ Intelligent Model Selector initialized")
@@ -219,7 +219,7 @@ def _get_enhanced_uae():
     global _enhanced_uae
     if _enhanced_uae is None:
         try:
-            from backend.intelligence.uae_langgraph import create_enhanced_uae
+            from intelligence.uae_langgraph import create_enhanced_uae
 
             _enhanced_uae = create_enhanced_uae()
             logger.info("✅ EnhancedUAE with chain-of-thought loaded")
@@ -237,7 +237,7 @@ def _get_enhanced_sai():
     global _enhanced_sai
     if _enhanced_sai is None:
         try:
-            from backend.intelligence.intelligence_langgraph import create_enhanced_sai
+            from intelligence.intelligence_langgraph import create_enhanced_sai
 
             _enhanced_sai = create_enhanced_sai()
             logger.info("✅ EnhancedSAI with chain-of-thought loaded")
@@ -255,7 +255,7 @@ def _get_enhanced_cai():
     global _enhanced_cai
     if _enhanced_cai is None:
         try:
-            from backend.intelligence.intelligence_langgraph import create_enhanced_cai
+            from intelligence.intelligence_langgraph import create_enhanced_cai
 
             _enhanced_cai = create_enhanced_cai()
             logger.info("✅ EnhancedCAI with chain-of-thought loaded")
@@ -277,7 +277,7 @@ async def _get_unified_orchestrator():
     global _unified_orchestrator
     if _unified_orchestrator is None:
         try:
-            from backend.intelligence.intelligence_langgraph import create_unified_orchestrator
+            from intelligence.intelligence_langgraph import create_unified_orchestrator
 
             _unified_orchestrator = await create_unified_orchestrator()
             logger.info("✅ UnifiedIntelligenceOrchestrator loaded")
@@ -301,8 +301,8 @@ async def _get_reasoning_graph_engine():
     global _reasoning_graph_engine
     if _reasoning_graph_engine is None:
         try:
-            from backend.intelligence.reasoning_graph_engine import create_reasoning_graph_engine
-            from backend.autonomy.tool_orchestrator import get_orchestrator as get_tool_orchestrator
+            from intelligence.reasoning_graph_engine import create_reasoning_graph_engine
+            from autonomy.tool_orchestrator import get_orchestrator as get_tool_orchestrator
 
             # Get TTS callback for narration
             tts_callback = await _get_tts_callback()
@@ -331,7 +331,7 @@ async def _get_tts_callback():
     global _tts_handler
     if _tts_handler is None:
         try:
-            from backend.api.async_tts_handler import get_tts_handler, speak_async
+            from api.async_tts_handler import get_tts_handler, speak_async
 
             _tts_handler = speak_async
             logger.info("✅ TTS handler loaded for voice narration")
@@ -987,7 +987,7 @@ class HybridOrchestrator:
             style: One of "concise", "detailed", "technical", "casual"
         """
         import asyncio
-        from backend.intelligence.reasoning_graph_engine import NarrationStyle
+        from intelligence.reasoning_graph_engine import NarrationStyle
 
         style_map = {
             "concise": NarrationStyle.CONCISE,
@@ -1149,7 +1149,7 @@ class HybridOrchestrator:
             # Check if this is a YOLO model
             if model_def.name.startswith("yolov8"):
                 try:
-                    from backend.vision.yolo_vision_detector import get_yolo_detector
+                    from vision.yolo_vision_detector import get_yolo_detector
 
                     yolo_detector = get_yolo_detector()
 

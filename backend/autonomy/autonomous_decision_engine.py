@@ -828,4 +828,282 @@ class AutonomousDecisionEngine:
         timing_key = f"{day}_{hour}"
         if timing_key in self.learned_patterns.get('timing_patterns', {}):
             pattern = self.learned_patterns['timing_patterns'][timing_key]
-            if pattern['confidence'] >= self.thresh
+            if pattern['confidence'] >= self.thresholds['pattern_confidence']:
+                # Generate action based on learned pattern
+                expected_apps = pattern.get('expected_apps', [])
+                current_apps = [w.app_name for w in windows]
+
+                for expected_app in expected_apps:
+                    if expected_app not in current_apps:
+                        action = AutonomousAction(
+                            action_type='routine_automation',
+                            target=expected_app,
+                            params={
+                                'app': expected_app,
+                                'reason': 'learned_pattern',
+                                'timing_key': timing_key
+                            },
+                            priority=ActionPriority.LOW,
+                            confidence=pattern['confidence'],
+                            category=ActionCategory.WORKFLOW,
+                            reasoning=f"You typically use {expected_app} at this time"
+                        )
+                        actions.append(action)
+
+        return actions
+
+    def _classify_app_dynamically(self, window: 'WindowInfo') -> str:
+        """Dynamically classify application type without hardcoding.
+
+        Uses pattern matching and learned behaviors to classify apps.
+
+        Args:
+            window: Window to classify
+
+        Returns:
+            Application category string
+        """
+        app_name = window.app_name.lower() if window.app_name else ""
+        title = window.window_title.lower() if window.window_title else ""
+
+        # Check learned classifications first
+        if app_name in self.learned_patterns.get('app_behaviors', {}):
+            return self.learned_patterns['app_behaviors'][app_name].get('category', 'unknown')
+
+        # Pattern-based classification
+        productivity_patterns = ['code', 'ide', 'terminal', 'editor', 'document', 'sheet', 'slide']
+        communication_patterns = ['mail', 'message', 'chat', 'slack', 'teams', 'discord', 'zoom']
+        entertainment_patterns = ['video', 'music', 'game', 'netflix', 'youtube', 'spotify']
+        browser_patterns = ['safari', 'chrome', 'firefox', 'browser', 'edge']
+
+        combined = f"{app_name} {title}"
+
+        if any(p in combined for p in productivity_patterns):
+            return 'productivity'
+        elif any(p in combined for p in communication_patterns):
+            return 'communication'
+        elif any(p in combined for p in entertainment_patterns):
+            return 'entertainment'
+        elif any(p in combined for p in browser_patterns):
+            return 'browser'
+
+        return 'unknown'
+
+    def _suggest_arrangement(self, app_groups: Dict[str, List['WindowInfo']]) -> Dict[str, Any]:
+        """Suggest window arrangement based on app groups.
+
+        Args:
+            app_groups: Windows grouped by application type
+
+        Returns:
+            Suggested arrangement configuration
+        """
+        arrangement = {
+            'layout': 'auto',
+            'primary_focus': None,
+            'secondary': [],
+            'minimize': []
+        }
+
+        # Determine primary focus based on groups
+        if 'productivity' in app_groups:
+            arrangement['primary_focus'] = 'productivity'
+            arrangement['secondary'] = ['browser', 'communication']
+            arrangement['minimize'] = ['entertainment']
+        elif 'communication' in app_groups:
+            arrangement['primary_focus'] = 'communication'
+            arrangement['secondary'] = ['browser']
+
+        return arrangement
+
+    def _create_goal_context(self, workspace_state: 'WorkspaceAnalysis',
+                           windows: List['WindowInfo']) -> Dict[str, Any]:
+        """Create context dictionary for goal inference.
+
+        Args:
+            workspace_state: Current workspace analysis
+            windows: List of visible windows
+
+        Returns:
+            Context dictionary for goal inference engine
+        """
+        return {
+            'workspace_state': workspace_state,
+            'windows': windows,
+            'window_count': len(windows),
+            'app_names': [w.app_name for w in windows],
+            'focused_task': getattr(workspace_state, 'focused_task', None),
+            'timestamp': datetime.now().isoformat()
+        }
+
+    async def _generate_goal_based_actions(self, goals: List['Goal'],
+                                          workspace_state: 'WorkspaceAnalysis') -> List[AutonomousAction]:
+        """Generate actions based on inferred goals.
+
+        Args:
+            goals: List of inferred goals from goal inference engine
+            workspace_state: Current workspace state
+
+        Returns:
+            List of goal-based autonomous actions
+        """
+        actions = []
+
+        for goal in goals:
+            if goal.confidence < self.thresholds['goal_confidence']:
+                continue
+
+            # Get potential actions for this goal
+            goal_key = goal.description.lower().replace(' ', '_') if hasattr(goal, 'description') else 'unknown'
+            potential_actions = self.goal_action_mappings.get(goal_key, [])
+
+            for action_type in potential_actions[:2]:  # Limit to top 2 actions per goal
+                template = self.action_templates.get(action_type, {})
+
+                action = AutonomousAction(
+                    action_type=action_type,
+                    target=getattr(goal, 'target', 'workspace'),
+                    params={
+                        'goal': goal_key,
+                        'goal_confidence': goal.confidence if hasattr(goal, 'confidence') else 0.5
+                    },
+                    priority=ActionPriority.MEDIUM,
+                    confidence=goal.confidence if hasattr(goal, 'confidence') else 0.5,
+                    category=template.get('category', ActionCategory.WORKFLOW),
+                    reasoning=f"Supporting goal: {goal_key}"
+                )
+                actions.append(action)
+
+        return actions
+
+    def _apply_learned_optimizations(self, actions: List[AutonomousAction]) -> List[AutonomousAction]:
+        """Apply learned optimizations to actions.
+
+        Adjusts action confidence and priority based on historical success rates.
+
+        Args:
+            actions: List of proposed actions
+
+        Returns:
+            Optimized list of actions
+        """
+        optimized = []
+        success_rates = self.learned_patterns.get('action_success_rates', {})
+
+        for action in actions:
+            # Adjust confidence based on historical success
+            if action.action_type in success_rates:
+                historical_rate = success_rates[action.action_type]
+                # Blend current confidence with historical success
+                action.confidence = (action.confidence * 0.7) + (historical_rate * 0.3)
+
+            optimized.append(action)
+
+        return optimized
+
+    def _deduplicate_actions(self, actions: List[AutonomousAction]) -> List[AutonomousAction]:
+        """Remove duplicate actions.
+
+        Args:
+            actions: List of actions that may contain duplicates
+
+        Returns:
+            Deduplicated list of actions
+        """
+        seen = set()
+        unique = []
+
+        for action in actions:
+            key = f"{action.action_type}:{action.target}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(action)
+
+        return unique
+
+    def _record_decisions(self, actions: List[AutonomousAction]) -> None:
+        """Record decisions for learning.
+
+        Args:
+            actions: List of decided actions
+        """
+        for action in actions:
+            self.action_history.append({
+                'action_type': action.action_type,
+                'target': action.target,
+                'confidence': action.confidence,
+                'timestamp': action.timestamp.isoformat(),
+                'priority': action.priority.name
+            })
+
+        # Keep history bounded
+        if len(self.action_history) > 1000:
+            self.action_history = self.action_history[-500:]
+
+    async def _update_goal_progress(self, actions: List[AutonomousAction],
+                                   goals: List['Goal']) -> None:
+        """Update goal progress based on executed actions.
+
+        Args:
+            actions: Actions that were decided
+            goals: Current inferred goals
+        """
+        if not self.goal_inference:
+            return
+
+        for action in actions:
+            # Notify goal inference of action decisions
+            if hasattr(self.goal_inference, 'record_action'):
+                await self.goal_inference.record_action(
+                    action.action_type,
+                    action.target,
+                    action.confidence
+                )
+
+    def update_learned_pattern(self, pattern_type: str, key: str,
+                              data: Dict[str, Any]) -> None:
+        """Update a learned pattern.
+
+        Args:
+            pattern_type: Type of pattern (app_behaviors, timing_patterns, etc.)
+            key: Pattern key
+            data: Pattern data to store
+        """
+        if pattern_type not in self.learned_patterns:
+            self.learned_patterns[pattern_type] = {}
+
+        self.learned_patterns[pattern_type][key] = data
+
+        # Persist learned patterns
+        self._save_learned_patterns()
+
+    def _save_learned_patterns(self) -> None:
+        """Save learned patterns to disk."""
+        patterns_file = Path("backend/data/learned_patterns.json")
+        patterns_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(patterns_file, 'w') as f:
+                json.dump(self.learned_patterns, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save learned patterns: {e}")
+
+    def record_action_outcome(self, action_type: str, success: bool) -> None:
+        """Record the outcome of an action for learning.
+
+        Args:
+            action_type: Type of action that was executed
+            success: Whether the action succeeded
+        """
+        success_rates = self.learned_patterns.get('action_success_rates', {})
+
+        if action_type not in success_rates:
+            success_rates[action_type] = 0.5  # Start neutral
+
+        # Exponential moving average
+        current_rate = success_rates[action_type]
+        new_value = 1.0 if success else 0.0
+        success_rates[action_type] = (current_rate * 0.9) + (new_value * 0.1)
+
+        self.learned_patterns['action_success_rates'] = success_rates
+        self._save_learned_patterns()

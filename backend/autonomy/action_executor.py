@@ -882,10 +882,72 @@ class ActionExecutor:
 
 async def test_action_executor() -> None:
     """Test the action executor with sample actions.
-    
+
     Demonstrates ActionExecutor functionality by creating and executing
     test actions in dry-run mode, showing execution results and statistics.
-    
+
     Example:
         >>> await test_action_executor()
-        🚀 Action Executor Test
+        # Output shows test results
+    """
+    print("🚀 Action Executor Test")
+
+    executor = ActionExecutor()
+    await executor.start()
+
+    # Test action creation
+    test_action = AutonomousAction(
+        action_type="test_action",
+        description="Test action for demonstration",
+        confidence=0.85,
+        parameters={"test_param": "value"},
+        requires_approval=False,
+        risk_level="low"
+    )
+
+    print(f"Created test action: {test_action.action_type}")
+    print(f"Confidence: {test_action.confidence}")
+
+    # Execute in dry-run mode
+    result = await executor.execute_action(test_action, dry_run=True)
+    print(f"Execution result: {result.status.value}")
+
+    # Get stats
+    stats = executor.get_execution_stats()
+    print(f"Execution stats: {stats}")
+
+    await executor.stop()
+    print("✅ Test complete!")
+
+
+# Global singleton
+_executor_instance: Optional[ActionExecutor] = None
+
+
+def get_executor() -> ActionExecutor:
+    """Get the global action executor instance.
+
+    Returns:
+        ActionExecutor: Singleton executor instance
+    """
+    global _executor_instance
+    if _executor_instance is None:
+        _executor_instance = ActionExecutor()
+    return _executor_instance
+
+
+async def get_executor_async() -> ActionExecutor:
+    """Get and start the global action executor instance.
+
+    Returns:
+        ActionExecutor: Running singleton executor instance
+    """
+    executor = get_executor()
+    if not executor.is_running:
+        await executor.start()
+    return executor
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_action_executor())

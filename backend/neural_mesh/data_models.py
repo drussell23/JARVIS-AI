@@ -85,6 +85,11 @@ class MessageType(Enum):
     KNOWLEDGE_ADDED = "knowledge_added"
     KNOWLEDGE_UPDATED = "knowledge_updated"
     KNOWLEDGE_DELETED = "knowledge_deleted"
+    KNOWLEDGE_SHARED = "knowledge_shared"
+
+    # Context Operations
+    CONTEXT_UPDATE = "context_update"
+    CONTEXT_REQUEST = "context_request"
 
     # Error Handling
     ERROR_DETECTED = "error_detected"

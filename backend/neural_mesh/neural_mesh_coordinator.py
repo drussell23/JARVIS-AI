@@ -380,15 +380,18 @@ class NeuralMeshCoordinator:
         Returns:
             Health status of all components
         """
+        uptime_seconds = 0.0
+        if self._started_at:
+            uptime_seconds = (datetime.now() - self._started_at).total_seconds()
+
         health = {
+            "healthy": self._system_health == HealthStatus.HEALTHY and self._running,
             "status": self._system_health.value,
-            "uptime_seconds": 0.0,
+            "uptime_seconds": uptime_seconds,
+            "uptime_ms": uptime_seconds * 1000,
             "components": {},
             "agents": {},
         }
-
-        if self._started_at:
-            health["uptime_seconds"] = (datetime.now() - self._started_at).total_seconds()
 
         # Check bus
         if self._bus:
