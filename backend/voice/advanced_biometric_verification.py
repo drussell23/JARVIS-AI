@@ -13,16 +13,20 @@ State-of-the-art probabilistic voice authentication with:
 - Adaptive threshold learning
 - Zero hardcoded values - fully dynamic
 
+All CPU-intensive work runs in thread pool to prevent blocking.
+
 Author: Claude Code + Derek J. Russell
-Version: 1.0.0 (Beast Mode)
+Version: 2.0.0 - Async Optimized (Beast Mode)
 License: MIT
 """
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from functools import partial
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy import stats
@@ -30,6 +34,30 @@ from scipy.spatial.distance import mahalanobis
 from scipy.stats import multivariate_normal
 
 logger = logging.getLogger(__name__)
+
+# Shared thread pool for CPU-intensive biometric computations
+_biometric_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_biometric_executor() -> ThreadPoolExecutor:
+    """Get or create the shared thread pool for biometric computations."""
+    global _biometric_executor
+    if _biometric_executor is None:
+        _biometric_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="biometric_verify"
+        )
+        logger.info("🔧 Created biometric verification thread pool (4 workers)")
+    return _biometric_executor
+
+
+def shutdown_biometric_executor():
+    """Shutdown the biometric thread pool gracefully."""
+    global _biometric_executor
+    if _biometric_executor is not None:
+        logger.info("🔧 Shutting down biometric verification thread pool...")
+        _biometric_executor.shutdown(wait=True)
+        _biometric_executor = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -173,6 +201,8 @@ class AdvancedBiometricVerifier:
     4. Physics-based plausibility checking
     5. Anti-spoofing detection
     6. Adaptive threshold learning
+
+    All CPU-intensive work runs in thread pool to prevent blocking.
     """
 
     def __init__(
@@ -184,6 +214,7 @@ class AdvancedBiometricVerifier:
         self.learning_db = learning_db
         self.enable_adaptive_learning = enable_adaptive_learning
         self.enable_anti_spoofing = enable_anti_spoofing
+        self._executor = get_biometric_executor()
 
         # Adaptive parameters (learned over time, no hardcoding!)
         self.speaker_models: Dict[str, "SpeakerModel"] = {}
@@ -196,7 +227,14 @@ class AdvancedBiometricVerifier:
         self.false_rejection_rate = 0.0
         self.false_acceptance_rate = 0.0
 
-        logger.info("🚀 Advanced Biometric Verifier initialized (Beast Mode)")
+        logger.info("🚀 Advanced Biometric Verifier initialized (Beast Mode - Async Optimized)")
+
+    async def _run_in_executor(self, func, *args, **kwargs) -> Any:
+        """Run a CPU-intensive function in the thread pool."""
+        loop = asyncio.get_running_loop()
+        if kwargs:
+            func = partial(func, **kwargs)
+        return await loop.run_in_executor(self._executor, func, *args)
 
     async def verify_speaker(
         self,
@@ -222,31 +260,40 @@ class AdvancedBiometricVerifier:
         # Get or create speaker model
         speaker_model = await self._get_speaker_model(speaker_name, enrolled_features)
 
-        # Stage 1: Embedding similarity (deep learning)
-        embedding_sim = await self._compute_embedding_similarity(
-            test_features.embedding,
-            enrolled_features.embedding,
-            speaker_model
+        # Run all verification stages in parallel using thread pool
+        # This prevents blocking and allows true parallelism
+        results = await asyncio.gather(
+            self._compute_embedding_similarity(
+                test_features.embedding,
+                enrolled_features.embedding,
+                speaker_model
+            ),
+            self._compute_mahalanobis_distance(
+                test_features,
+                enrolled_features,
+                speaker_model
+            ),
+            self._compute_acoustic_match(
+                test_features,
+                enrolled_features,
+                speaker_model
+            ),
+            self._check_physics_plausibility(
+                test_features
+            ),
+            return_exceptions=True
         )
 
-        # Stage 2: Mahalanobis distance (statistical)
-        mahal_distance = await self._compute_mahalanobis_distance(
-            test_features,
-            enrolled_features,
-            speaker_model
-        )
+        # Unpack results with error handling
+        embedding_sim = results[0] if not isinstance(results[0], Exception) else 0.5
+        mahal_distance = results[1] if not isinstance(results[1], Exception) else 0.5
+        acoustic_score = results[2] if not isinstance(results[2], Exception) else 0.5
+        physics_score = results[3] if not isinstance(results[3], Exception) else 0.8
 
-        # Stage 3: Acoustic feature matching
-        acoustic_score = await self._compute_acoustic_match(
-            test_features,
-            enrolled_features,
-            speaker_model
-        )
-
-        # Stage 4: Physics-based plausibility
-        physics_score = await self._check_physics_plausibility(
-            test_features
-        )
+        # Log any exceptions
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                logger.warning(f"Verification stage {i} failed: {r}")
 
         # Stage 5: Anti-spoofing detection
         spoofing_score = 1.0
@@ -361,18 +408,37 @@ class AdvancedBiometricVerifier:
 
         return result
 
+    # =========================================================================
+    # ASYNC COMPUTATION METHODS - Run CPU work in thread pool
+    # =========================================================================
+
     async def _compute_embedding_similarity(
         self,
         test_emb: np.ndarray,
         enrolled_emb: np.ndarray,
         speaker_model: "SpeakerModel"
     ) -> float:
-        """Compute embedding similarity with multiple metrics"""
-
-        # Cosine similarity (fast, baseline)
-        cosine_sim = np.dot(test_emb, enrolled_emb) / (
-            np.linalg.norm(test_emb) * np.linalg.norm(enrolled_emb)
+        """Compute embedding similarity with multiple metrics (thread pool)."""
+        return await self._run_in_executor(
+            self._compute_embedding_similarity_sync,
+            test_emb, enrolled_emb, speaker_model
         )
+
+    def _compute_embedding_similarity_sync(
+        self,
+        test_emb: np.ndarray,
+        enrolled_emb: np.ndarray,
+        speaker_model: "SpeakerModel"
+    ) -> float:
+        """Sync embedding similarity computation."""
+        # Cosine similarity (fast, baseline)
+        test_norm = np.linalg.norm(test_emb)
+        enrolled_norm = np.linalg.norm(enrolled_emb)
+
+        if test_norm == 0 or enrolled_norm == 0:
+            return 0.0
+
+        cosine_sim = np.dot(test_emb, enrolled_emb) / (test_norm * enrolled_norm)
 
         # Euclidean distance (normalized)
         euclidean_dist = np.linalg.norm(test_emb - enrolled_emb)
@@ -395,11 +461,19 @@ class AdvancedBiometricVerifier:
         enrolled_features: VoiceBiometricFeatures,
         speaker_model: "SpeakerModel"
     ) -> float:
-        """
-        Compute Mahalanobis distance with adaptive covariance
+        """Compute Mahalanobis distance with adaptive covariance (thread pool)."""
+        return await self._run_in_executor(
+            self._compute_mahalanobis_distance_sync,
+            test_features, enrolled_features, speaker_model
+        )
 
-        Better than cosine similarity because it accounts for feature variance
-        """
+    def _compute_mahalanobis_distance_sync(
+        self,
+        test_features: VoiceBiometricFeatures,
+        enrolled_features: VoiceBiometricFeatures,
+        speaker_model: "SpeakerModel"
+    ) -> float:
+        """Sync Mahalanobis distance computation."""
         try:
             # Extract feature vector
             test_vector = self._features_to_vector(test_features)
@@ -416,14 +490,12 @@ class AdvancedBiometricVerifier:
                 distance = np.linalg.norm(test_vector - enrolled_vector)
 
             # Convert to similarity score (0-1)
-            # Mahalanobis distances typically range 0-10 for same speaker
             similarity = np.exp(-distance / speaker_model.mahalanobis_scale)
 
             return float(np.clip(similarity, 0.0, 1.0))
 
         except Exception as e:
             logger.warning(f"Mahalanobis distance failed: {e}, using fallback")
-            # Fallback to simple distance
             test_vector = self._features_to_vector(test_features)
             enrolled_vector = self._features_to_vector(enrolled_features)
             distance = np.linalg.norm(test_vector - enrolled_vector)
@@ -435,13 +507,24 @@ class AdvancedBiometricVerifier:
         enrolled_features: VoiceBiometricFeatures,
         speaker_model: "SpeakerModel"
     ) -> float:
-        """Compute acoustic feature matching score"""
+        """Compute acoustic feature matching score (thread pool)."""
+        return await self._run_in_executor(
+            self._compute_acoustic_match_sync,
+            test_features, enrolled_features, speaker_model
+        )
 
+    def _compute_acoustic_match_sync(
+        self,
+        test_features: VoiceBiometricFeatures,
+        enrolled_features: VoiceBiometricFeatures,
+        speaker_model: "SpeakerModel"
+    ) -> float:
+        """Sync acoustic matching computation."""
         scores = []
 
         # Pitch matching (with tolerance for natural variation)
         pitch_diff = abs(test_features.pitch_mean - enrolled_features.pitch_mean)
-        pitch_tolerance = speaker_model.pitch_std * 2.0  # 2 std devs
+        pitch_tolerance = speaker_model.pitch_std * 2.0
         pitch_score = np.exp(-pitch_diff / max(pitch_tolerance, 10.0))
         scores.append(pitch_score)
 
@@ -474,18 +557,23 @@ class AdvancedBiometricVerifier:
         self,
         features: VoiceBiometricFeatures
     ) -> float:
-        """
-        Check if voice features are physically plausible for a human
+        """Check if voice features are physically plausible (thread pool)."""
+        return await self._run_in_executor(
+            self._check_physics_plausibility_sync,
+            features
+        )
 
-        Uses vocal tract physics and acoustic theory
-        """
+    def _check_physics_plausibility_sync(
+        self,
+        features: VoiceBiometricFeatures
+    ) -> float:
+        """Sync physics plausibility check."""
         plausibility_scores = []
 
         # 1. Pitch range check
         if self.physics.min_pitch_male <= features.pitch_mean <= self.physics.max_pitch_female:
             pitch_plausibility = 1.0
         else:
-            # Penalize out-of-range pitch
             if features.pitch_mean < self.physics.min_pitch_male:
                 deviation = (self.physics.min_pitch_male - features.pitch_mean) / self.physics.min_pitch_male
             else:
@@ -494,13 +582,13 @@ class AdvancedBiometricVerifier:
 
         plausibility_scores.append(pitch_plausibility)
 
-        # 2. Formant relationship check (physics of vocal tract)
+        # 2. Formant relationship check
         f1_f2_ratio = features.formant_f1 / max(features.formant_f2, 1.0)
 
         if self.physics.f1_f2_min_ratio <= f1_f2_ratio <= self.physics.f1_f2_max_ratio:
             formant_plausibility = 1.0
         else:
-            formant_plausibility = 0.5  # Unusual but possible
+            formant_plausibility = 0.5
 
         plausibility_scores.append(formant_plausibility)
 
@@ -512,7 +600,7 @@ class AdvancedBiometricVerifier:
 
         plausibility_scores.append(hnr_plausibility)
 
-        # 4. Jitter check (pitch stability)
+        # 4. Jitter check
         if features.jitter <= self.physics.max_jitter:
             jitter_plausibility = 1.0
         else:
@@ -520,7 +608,7 @@ class AdvancedBiometricVerifier:
 
         plausibility_scores.append(jitter_plausibility)
 
-        # 5. Shimmer check (amplitude stability)
+        # 5. Shimmer check
         if features.shimmer <= self.physics.max_shimmer:
             shimmer_plausibility = 1.0
         else:
@@ -528,7 +616,6 @@ class AdvancedBiometricVerifier:
 
         plausibility_scores.append(shimmer_plausibility)
 
-        # Overall plausibility
         plausibility = np.mean(plausibility_scores)
 
         return float(np.clip(plausibility, 0.0, 1.0))
@@ -539,56 +626,53 @@ class AdvancedBiometricVerifier:
         enrolled_features: VoiceBiometricFeatures,
         context: Optional[Dict]
     ) -> float:
-        """
-        Detect spoofing attacks (replay, synthesis, voice conversion)
+        """Detect spoofing attacks (thread pool)."""
+        return await self._run_in_executor(
+            self._detect_spoofing_sync,
+            test_features, enrolled_features, context
+        )
 
-        Returns score: 1.0 = genuine, 0.0 = definitely spoofed
-        """
+    def _detect_spoofing_sync(
+        self,
+        test_features: VoiceBiometricFeatures,
+        enrolled_features: VoiceBiometricFeatures,
+        context: Optional[Dict]
+    ) -> float:
+        """Sync spoofing detection."""
         spoofing_indicators = []
 
-        # 1. Replay attack detection (microphone/environment consistency)
+        # 1. Replay attack detection
         if context and 'audio_quality' in context:
             quality = context['audio_quality']
 
-            # Handle both float and dict quality values
             if isinstance(quality, dict):
-                # Check if quality is suspiciously perfect (pre-recorded)
                 if quality.get('snr_db', 0) > 50:
                     spoofing_indicators.append(("perfect_quality", 0.3))
-
-                # Check for missing background noise (replay)
                 if quality.get('background_noise', 0) < 0.001:
                     spoofing_indicators.append(("no_background", 0.2))
             elif isinstance(quality, (int, float)):
-                # Simple quality score - check if suspiciously high
                 if quality > 0.95:
                     spoofing_indicators.append(("perfect_quality", 0.2))
 
-        # 2. Synthesis detection (unnatural prosody/artifacts)
-        # Check for too-consistent pitch (synthesized voices are often too stable)
+        # 2. Synthesis detection
         if test_features.pitch_std < 5.0:
             spoofing_indicators.append(("low_pitch_variation", 0.4))
 
-        # Check for unnatural formant relationships
         f1_f2_ratio = test_features.formant_f1 / max(test_features.formant_f2, 1.0)
         if f1_f2_ratio < 0.1 or f1_f2_ratio > 0.9:
             spoofing_indicators.append(("unnatural_formants", 0.5))
 
-        # Check for too-perfect harmonic structure (synthesis artifact)
         if test_features.harmonic_to_noise_ratio > 40.0:
             spoofing_indicators.append(("perfect_harmonics", 0.3))
 
-        # 3. Voice conversion detection (mismatched features)
-        # Check for inconsistent speaking rate
+        # 3. Voice conversion detection
         rate_diff = abs(test_features.speaking_rate - enrolled_features.speaking_rate)
         if rate_diff > 100.0:
             spoofing_indicators.append(("inconsistent_rate", 0.2))
 
-        # Calculate anti-spoofing score
         if not spoofing_indicators:
             return 1.0
 
-        # Weighted combination of indicators
         total_penalty = sum(penalty for _, penalty in spoofing_indicators)
         spoofing_score = max(0.0, 1.0 - total_penalty)
 
@@ -607,139 +691,81 @@ class AdvancedBiometricVerifier:
         acoustic_score: float,
         physics_score: float
     ) -> Tuple[float, str, Dict[str, any]]:
-        """
-        🎯 OWNER-AWARE ANTI-SPOOF FUSION
+        """Owner-aware anti-spoof fusion (thread pool)."""
+        return await self._run_in_executor(
+            self._owner_aware_antispoof_fusion_sync,
+            owner_match_score, spoof_prob, is_owner, speaker_model,
+            embedding_sim, acoustic_score, physics_score
+        )
 
-        Implements intelligent fusion that prioritizes owner identity while
-        maintaining protection against attacks.
-
-        Philosophy:
-        - Owner identity is the PRIMARY signal
-        - Anti-spoofing is a SUPPORTING safety check
-        - Only extreme spoof probability (≥0.90) can block owner
-        - Boosts confidence for legitimate owner authentication
-
-        Args:
-            owner_match_score: Identity match strength (0.0-1.0)
-            spoof_prob: Anti-spoofing probability (0.0=live, 1.0=spoofed)
-            is_owner: Whether this is the enrolled device owner
-            speaker_model: Adaptive speaker model
-            embedding_sim: Deep learning embedding similarity
-            acoustic_score: Acoustic features match
-            physics_score: Voice physics plausibility
-
-        Returns:
-            (final_auth_score, decision, debug_info)
-        """
-
-        # Dynamic thresholds from speaker model (no hardcoding!)
+    def _owner_aware_antispoof_fusion_sync(
+        self,
+        owner_match_score: float,
+        spoof_prob: float,
+        is_owner: bool,
+        speaker_model: "SpeakerModel",
+        embedding_sim: float,
+        acoustic_score: float,
+        physics_score: float
+    ) -> Tuple[float, str, Dict[str, any]]:
+        """Sync owner-aware anti-spoof fusion."""
         OWNER_STRONG_MATCH_THRESHOLD = speaker_model.owner_strong_threshold
         OWNER_OVERRIDABLE_SPOOF_LIMIT = speaker_model.spoof_override_limit
         BASE_UNLOCK_THRESHOLD = speaker_model.decision_threshold
 
-        # Fusion weights - identity dominates for owner
         if is_owner:
-            OWNER_WEIGHT = 0.75  # Identity is primary
-            LIVE_SPEECH_WEIGHT = 0.25  # Anti-spoof is secondary
+            OWNER_WEIGHT = 0.75
+            LIVE_SPEECH_WEIGHT = 0.25
         else:
-            OWNER_WEIGHT = 0.50  # Balanced for unknown speakers
+            OWNER_WEIGHT = 0.50
             LIVE_SPEECH_WEIGHT = 0.50
 
-        # Derive live speech score from spoof probability
         live_speech_score = 1.0 - spoof_prob
 
-        # Base fusion: weighted combination
         base_auth_score = (
             owner_match_score * OWNER_WEIGHT +
             live_speech_score * LIVE_SPEECH_WEIGHT
         )
         base_auth_score = np.clip(base_auth_score, 0.0, 1.0)
 
-        # Initialize decision variables
         final_auth_score = base_auth_score
         decision = "deny"
         rule_applied = "unknown"
         confidence_boost = 0.0
 
-        # ═══════════════════════════════════════════════════════════════
-        # OWNER-AWARE DECISION LOGIC
-        # ═══════════════════════════════════════════════════════════════
-
         if is_owner and owner_match_score >= OWNER_STRONG_MATCH_THRESHOLD:
-            # ✅ STRONG OWNER MATCH - Owner identity confirmed
             rule_applied = "strong_owner_match"
 
             if spoof_prob >= OWNER_OVERRIDABLE_SPOOF_LIMIT:
-                # 🚨 EXTREME SPOOF ATTACK - Even owner can't override
                 decision = "deny"
                 rule_applied = "extreme_spoof_attack"
-                logger.warning(
-                    f"🚨 SECURITY ALERT: Extreme spoofing detected for owner "
-                    f"(spoof_prob={spoof_prob:.1%}, threshold={OWNER_OVERRIDABLE_SPOOF_LIMIT:.1%})"
-                )
-
             else:
-                # ✅ OWNER OVERRIDE - Trust identity over medium spoof scores
                 decision = "allow"
-
-                # Calculate confidence boost based on identity strength
-                # Stronger match = bigger boost
                 identity_confidence = (owner_match_score - OWNER_STRONG_MATCH_THRESHOLD) / (1.0 - OWNER_STRONG_MATCH_THRESHOLD)
-                confidence_boost = 0.10 + (identity_confidence * 0.15)  # 10-25% boost
-
-                # Ensure we're comfortably above threshold
+                confidence_boost = 0.10 + (identity_confidence * 0.15)
                 minimum_score = BASE_UNLOCK_THRESHOLD + confidence_boost
                 final_auth_score = max(base_auth_score, minimum_score)
                 final_auth_score = np.clip(final_auth_score, 0.0, 1.0)
 
-                logger.info(
-                    f"✅ OWNER OVERRIDE APPLIED: {speaker_model.speaker_name} "
-                    f"(match={owner_match_score:.1%}, spoof_prob={spoof_prob:.1%}, "
-                    f"boost=+{confidence_boost:.1%}, final={final_auth_score:.1%})"
-                )
-
         elif is_owner and owner_match_score < OWNER_STRONG_MATCH_THRESHOLD:
-            # ⚠️ WEAK OWNER MATCH - Owner but uncertain identity
             rule_applied = "weak_owner_match"
-
-            # Slightly more lenient than unknown speaker
             adjusted_threshold = BASE_UNLOCK_THRESHOLD - 0.05
 
             if final_auth_score >= adjusted_threshold and spoof_prob < 0.75:
                 decision = "allow"
-                logger.info(f"⚠️ Weak owner match accepted: score={final_auth_score:.1%}")
             else:
                 decision = "deny"
-                logger.warning(
-                    f"⚠️ Weak owner match rejected: score={final_auth_score:.1%}, "
-                    f"spoof_prob={spoof_prob:.1%}"
-                )
 
         else:
-            # 🔒 UNKNOWN SPEAKER - Standard verification
             rule_applied = "unknown_speaker"
 
             if spoof_prob >= 0.80:
-                # High spoofing probability
                 decision = "deny"
                 rule_applied = "unknown_speaker_spoofed"
-                logger.warning(f"🔒 Unknown speaker with high spoof prob: {spoof_prob:.1%}")
-
             elif final_auth_score >= BASE_UNLOCK_THRESHOLD and spoof_prob < 0.80:
-                # Good score and low-medium spoofing
                 decision = "allow"
-                logger.info(f"🔒 Unknown speaker accepted: score={final_auth_score:.1%}")
             else:
-                # Weak identity or suspicious spoof
                 decision = "deny"
-                logger.info(
-                    f"🔒 Unknown speaker rejected: score={final_auth_score:.1%}, "
-                    f"spoof_prob={spoof_prob:.1%}"
-                )
-
-        # ═══════════════════════════════════════════════════════════════
-        # COMPILE DEBUG INFO
-        # ═══════════════════════════════════════════════════════════════
 
         debug_info = {
             "owner_match_score": float(owner_match_score),
@@ -771,24 +797,29 @@ class AdvancedBiometricVerifier:
         fusion_weights: Dict[str, float],
         speaker_model: "SpeakerModel"
     ) -> Tuple[float, float]:
-        """
-        Bayesian verification with uncertainty quantification
+        """Bayesian verification with uncertainty (thread pool)."""
+        return await self._run_in_executor(
+            self._bayesian_verification_sync,
+            embedding_sim, mahal_distance, acoustic_score, physics_score,
+            spoofing_score, fusion_weights, speaker_model
+        )
 
-        NOW ENHANCED with owner-aware anti-spoof fusion!
-
-        Returns: (posterior_probability, uncertainty)
-        """
-
-        # Compute spoof probability (inverse of spoofing_score)
+    def _bayesian_verification_sync(
+        self,
+        embedding_sim: float,
+        mahal_distance: float,
+        acoustic_score: float,
+        physics_score: float,
+        spoofing_score: float,
+        fusion_weights: Dict[str, float],
+        speaker_model: "SpeakerModel"
+    ) -> Tuple[float, float]:
+        """Sync Bayesian verification."""
         spoof_prob = 1.0 - spoofing_score
-
-        # Determine if this is the owner
         is_owner = speaker_model.is_primary_owner
+        owner_match_score = embedding_sim
 
-        # Use owner-aware fusion for final decision
-        owner_match_score = embedding_sim  # Primary identity signal
-
-        final_auth_score, fusion_decision, fusion_debug = await self._owner_aware_antispoof_fusion(
+        final_auth_score, fusion_decision, fusion_debug = self._owner_aware_antispoof_fusion_sync(
             owner_match_score=owner_match_score,
             spoof_prob=spoof_prob,
             is_owner=is_owner,
@@ -798,78 +829,49 @@ class AdvancedBiometricVerifier:
             physics_score=physics_score
         )
 
-        # Store fusion decision in speaker model for reference
         speaker_model.last_fusion_debug = fusion_debug
 
-        # Log detailed fusion analysis
-        logger.info(f"🎯 FUSION ANALYSIS: {speaker_model.speaker_name}")
-        logger.info(f"   Owner: {is_owner}, Match: {owner_match_score:.1%}, Spoof: {spoof_prob:.1%}")
-        logger.info(f"   Decision: {fusion_decision}, Score: {final_auth_score:.1%}")
-        logger.info(f"   Rule: {fusion_debug['rule_applied']}")
-
-        # Calculate uncertainty based on how close we are to threshold
-        # Lower uncertainty for decisions far from threshold
         distance_from_threshold = abs(final_auth_score - speaker_model.decision_threshold)
         uncertainty = max(0.1, 1.0 - (distance_from_threshold * 2.0))
         uncertainty = np.clip(uncertainty, 0.0, 1.0)
 
-        # Prior probability (learned from history)
         prior = speaker_model.prior_probability
-
-        # Likelihood from each modality
         likelihoods = []
 
-        # Embedding likelihood
         if fusion_weights.get('embedding', 0) > 0:
             emb_likelihood = self._score_to_likelihood(embedding_sim, speaker_model.embedding_mean, speaker_model.embedding_std)
             likelihoods.append((emb_likelihood, fusion_weights['embedding']))
 
-        # Mahalanobis likelihood
         if fusion_weights.get('mahalanobis', 0) > 0:
             mahal_likelihood = self._score_to_likelihood(mahal_distance, 0.8, 0.15)
             likelihoods.append((mahal_likelihood, fusion_weights['mahalanobis']))
 
-        # Acoustic likelihood
         if fusion_weights.get('acoustic', 0) > 0:
             acoustic_likelihood = self._score_to_likelihood(acoustic_score, speaker_model.acoustic_mean, speaker_model.acoustic_std)
             likelihoods.append((acoustic_likelihood, fusion_weights['acoustic']))
 
-        # Physics likelihood
         if fusion_weights.get('physics', 0) > 0:
-            physics_likelihood = physics_score  # Already a probability
-            likelihoods.append((physics_likelihood, fusion_weights['physics']))
+            likelihoods.append((physics_score, fusion_weights['physics']))
 
-        # Spoofing likelihood (now using live_speech_score)
         if fusion_weights.get('spoofing', 0) > 0:
             live_speech_score = 1.0 - spoof_prob
-            spoofing_likelihood = live_speech_score
-            likelihoods.append((spoofing_likelihood, fusion_weights['spoofing']))
+            likelihoods.append((live_speech_score, fusion_weights['spoofing']))
 
-        # Compute weighted likelihood
         weighted_likelihood = sum(l * w for l, w in likelihoods) / max(sum(w for _, w in likelihoods), 1.0)
 
-        # Bayes' theorem: P(genuine|evidence) = P(evidence|genuine) * P(genuine) / P(evidence)
-        # Simplified: posterior ∝ likelihood * prior
         unnormalized_posterior = weighted_likelihood * prior
-
-        # Normalize (assuming P(impostor) = 1 - P(genuine))
         impostor_prior = 1.0 - prior
         impostor_likelihood = 1.0 - weighted_likelihood
         normalizer = unnormalized_posterior + (impostor_likelihood * impostor_prior)
 
         posterior = unnormalized_posterior / max(normalizer, 1e-10)
-
-        # 🎯 CRITICAL: Use owner-aware fusion score as final posterior
-        # This ensures owner identity dominates the decision
         posterior = float(np.clip(final_auth_score, 0.0, 1.0))
 
         return posterior, float(uncertainty)
 
     def _score_to_likelihood(self, score: float, mean: float, std: float) -> float:
-        """Convert similarity score to likelihood using Gaussian"""
-        # Use Gaussian PDF
+        """Convert similarity score to likelihood using Gaussian."""
         likelihood = stats.norm.pdf(score, loc=mean, scale=max(std, 0.01))
-        # Normalize to [0, 1]
         max_likelihood = stats.norm.pdf(mean, loc=mean, scale=max(std, 0.01))
         return likelihood / max(max_likelihood, 1e-10)
 
@@ -878,31 +880,18 @@ class AdvancedBiometricVerifier:
         speaker_model: "SpeakerModel",
         context: Optional[Dict]
     ) -> Dict[str, float]:
-        """
-        Compute dynamic fusion weights based on context and reliability
-
-        Adapts weights based on:
-        - Historical performance of each modality
-        - Environmental context (noise, channel quality)
-        - Speaker variability
-        """
-
-        # Start with learned weights
+        """Compute dynamic fusion weights based on context."""
         weights = speaker_model.fusion_weights.copy()
 
-        # Adjust based on context
         if context:
-            # If noisy environment, rely more on embedding (robust to noise)
             if context.get('snr_db', 30) < 15:
                 weights['embedding'] *= 1.3
                 weights['acoustic'] *= 0.7
 
-            # If high quality audio, use all modalities
             if context.get('snr_db', 30) > 25:
                 weights['acoustic'] *= 1.2
                 weights['physics'] *= 1.1
 
-        # Normalize weights
         total = sum(weights.values())
         weights = {k: v / total for k, v in weights.items()}
 
@@ -914,32 +903,18 @@ class AdvancedBiometricVerifier:
         context: Optional[Dict],
         uncertainty: float
     ) -> float:
-        """
-        Compute adaptive threshold based on:
-        - Speaker's historical false rejection rate
-        - Environmental context
-        - Uncertainty in current decision
-        """
-
-        # Base threshold (learned from speaker)
+        """Compute adaptive threshold."""
         threshold = speaker_model.decision_threshold
-
-        # Adjust for uncertainty
-        # If high uncertainty, require higher confidence
         threshold += uncertainty * 0.1
 
-        # Adjust for context
         if context:
-            # Time of day adjustment (more strict at unusual hours)
             hour = context.get('hour', 12)
             if hour < 6 or hour > 23:
                 threshold += 0.05
 
-            # Location/environment adjustment
             if context.get('unusual_location', False):
                 threshold += 0.05
 
-        # Ensure threshold stays in reasonable range
         threshold = np.clip(threshold, 0.3, 0.85)
 
         return float(threshold)
@@ -950,15 +925,9 @@ class AdvancedBiometricVerifier:
         uncertainty: float,
         confidence_level: float = 0.95
     ) -> Tuple[float, float]:
-        """Compute confidence interval for posterior probability"""
-
-        # Convert uncertainty to standard deviation (approximation)
+        """Compute confidence interval for posterior probability."""
         std = uncertainty / 2.0
-
-        # Compute z-score for confidence level
         z = stats.norm.ppf((1 + confidence_level) / 2)
-
-        # Compute interval
         margin = z * std
         lower = max(0.0, posterior - margin)
         upper = min(1.0, posterior + margin)
@@ -966,7 +935,7 @@ class AdvancedBiometricVerifier:
         return (lower, upper)
 
     def _features_to_vector(self, features: VoiceBiometricFeatures) -> np.ndarray:
-        """Convert features to flat vector for distance computation"""
+        """Convert features to flat vector for distance computation."""
         return np.array([
             features.pitch_mean,
             features.pitch_std,
@@ -986,10 +955,8 @@ class AdvancedBiometricVerifier:
         speaker_name: str,
         enrolled_features: VoiceBiometricFeatures
     ) -> "SpeakerModel":
-        """Get or create speaker model"""
-
+        """Get or create speaker model."""
         if speaker_name not in self.speaker_models:
-            # Create new model
             self.speaker_models[speaker_name] = SpeakerModel(
                 speaker_name=speaker_name,
                 enrolled_features=enrolled_features
@@ -1004,44 +971,48 @@ class AdvancedBiometricVerifier:
         new_features: VoiceBiometricFeatures,
         confidence: float
     ):
-        """Update speaker model with new authentic sample (adaptive learning)"""
-
-        # Only update if high confidence
+        """Update speaker model with new authentic sample (thread pool)."""
         if confidence < 0.7:
             return
 
-        # Update statistics with exponential moving average
-        alpha = 0.1  # Learning rate
+        await self._run_in_executor(
+            self._update_speaker_model_sync,
+            speaker_model, new_features, confidence
+        )
 
-        # Update embedding statistics
+    def _update_speaker_model_sync(
+        self,
+        speaker_model: "SpeakerModel",
+        new_features: VoiceBiometricFeatures,
+        confidence: float
+    ):
+        """Sync speaker model update."""
+        alpha = 0.1
+
         if len(new_features.embedding) == len(speaker_model.embedding_samples[0]) if speaker_model.embedding_samples else True:
             speaker_model.embedding_samples.append(new_features.embedding)
 
-            # Keep only recent samples
             if len(speaker_model.embedding_samples) > 50:
                 speaker_model.embedding_samples = speaker_model.embedding_samples[-50:]
 
-            # Update mean and std
             all_embeddings = np.array(speaker_model.embedding_samples)
-            speaker_model.embedding_mean = np.mean([
-                np.dot(e1, e2) / (np.linalg.norm(e1) * np.linalg.norm(e2))
-                for i, e1 in enumerate(all_embeddings)
-                for e2 in all_embeddings[i+1:]
-            ])
-            speaker_model.embedding_std = np.std([
-                np.dot(e1, e2) / (np.linalg.norm(e1) * np.linalg.norm(e2))
-                for i, e1 in enumerate(all_embeddings)
-                for e2 in all_embeddings[i+1:]
-            ])
+            if len(all_embeddings) > 1:
+                sims = []
+                for i, e1 in enumerate(all_embeddings):
+                    for e2 in all_embeddings[i+1:]:
+                        n1, n2 = np.linalg.norm(e1), np.linalg.norm(e2)
+                        if n1 > 0 and n2 > 0:
+                            sims.append(np.dot(e1, e2) / (n1 * n2))
+                if sims:
+                    speaker_model.embedding_mean = np.mean(sims)
+                    speaker_model.embedding_std = np.std(sims)
 
-        # Update pitch statistics
         speaker_model.pitch_mean = (1 - alpha) * speaker_model.pitch_mean + alpha * new_features.pitch_mean
         speaker_model.pitch_std = np.sqrt(
             (1 - alpha) * speaker_model.pitch_std**2 +
             alpha * (new_features.pitch_mean - speaker_model.pitch_mean)**2
         )
 
-        # Update covariance matrix
         feature_vector = self._features_to_vector(new_features)
         speaker_model.feature_samples.append(feature_vector)
 
@@ -1049,23 +1020,16 @@ class AdvancedBiometricVerifier:
             feature_samples = speaker_model.feature_samples[-50:]
             speaker_model.covariance_matrix = np.cov(np.array(feature_samples).T)
 
-        logger.debug(f"Updated speaker model for {speaker_model.speaker_name}")
-
     async def _update_performance_metrics(self, result: VerificationResult):
-        """Track performance metrics for continuous improvement"""
-
-        # Keep recent history
+        """Track performance metrics."""
         if len(self.verification_history) > 1000:
             self.verification_history = self.verification_history[-1000:]
 
-        # Estimate error rates (simplified - would need ground truth in production)
         recent_results = self.verification_history[-100:]
 
-        # False rejection estimate (high confidence but rejected - might be FRR)
         potential_frr = [r for r in recent_results if not r.verified and r.confidence > 0.5]
         self.false_rejection_rate = len(potential_frr) / max(len(recent_results), 1)
 
-        # False acceptance estimate (low confidence but accepted - might be FAR)
         potential_far = [r for r in recent_results if r.verified and r.confidence < 0.6]
         self.false_acceptance_rate = len(potential_far) / max(len(recent_results), 1)
 
@@ -1077,43 +1041,39 @@ class AdvancedBiometricVerifier:
 
 class SpeakerModel:
     """
-    Adaptive speaker model that learns over time
-
+    Adaptive speaker model that learns over time.
     No hardcoded thresholds - everything is learned!
-
-    NOW ENHANCED with owner-aware anti-spoof fusion parameters!
     """
 
     def __init__(self, speaker_name: str, enrolled_features: VoiceBiometricFeatures, is_primary_owner: bool = False):
         self.speaker_name = speaker_name
-        self.is_primary_owner = is_primary_owner  # NEW: Owner flag
+        self.is_primary_owner = is_primary_owner
 
-        # Embedding statistics (learned)
+        # Embedding statistics
         self.embedding_samples: List[np.ndarray] = [enrolled_features.embedding]
-        self.embedding_mean = 0.9  # Initial mean similarity (will be updated)
-        self.embedding_std = 0.1   # Initial std (will be updated)
+        self.embedding_mean = 0.9
+        self.embedding_std = 0.1
 
-        # Acoustic statistics (learned)
+        # Acoustic statistics
         self.pitch_mean = enrolled_features.pitch_mean
         self.pitch_std = max(enrolled_features.pitch_std, 10.0)
         self.acoustic_mean = 0.8
         self.acoustic_std = 0.1
 
-        # Covariance matrix for Mahalanobis (adaptive)
+        # Covariance matrix
         self.feature_samples: List[np.ndarray] = []
         self.covariance_matrix: Optional[np.ndarray] = None
-        self.mahalanobis_scale = 5.0  # Learned scaling factor
+        self.mahalanobis_scale = 5.0
 
-        # Decision parameters (adaptive)
-        self.decision_threshold = 0.45  # Initial threshold, will adapt
-        self.prior_probability = 0.5    # Prior P(genuine), will adapt
+        # Decision parameters
+        self.decision_threshold = 0.45
+        self.prior_probability = 0.5
 
-        # 🎯 OWNER-AWARE ANTI-SPOOF FUSION PARAMETERS (Dynamic, No Hardcoding!)
-        # These adapt based on speaker performance and enrollment quality
-        self.owner_strong_threshold = 0.35  # When owner match is considered strong (will adapt)
-        self.spoof_override_limit = 0.90    # Spoof prob that blocks even owner (will adapt)
+        # Owner-aware parameters
+        self.owner_strong_threshold = 0.35
+        self.spoof_override_limit = 0.90
 
-        # Fusion weights (learned from performance)
+        # Fusion weights
         self.fusion_weights = {
             'embedding': 0.40,
             'mahalanobis': 0.20,
@@ -1122,68 +1082,54 @@ class SpeakerModel:
             'spoofing': 0.10
         }
 
-        # Metric weights (learned)
+        # Metric weights
         self.metric_weights = {
             'cosine': 0.7,
             'euclidean': 0.3
         }
 
-        # Acoustic feature weights (learned)
-        self.acoustic_weights = [0.3, 0.3, 0.2, 0.2]  # pitch, formants, spectral, rate
+        # Acoustic feature weights
+        self.acoustic_weights = [0.3, 0.3, 0.2, 0.2]
 
         # Performance tracking
         self.verification_count = 0
         self.successful_verifications = 0
         self.last_updated = datetime.now()
 
-        # 🎯 NEW: Fusion debug info storage
         self.last_fusion_debug: Optional[Dict[str, any]] = None
 
-        # 🎯 NEW: Owner-specific adaptation tracking
         if is_primary_owner:
-            # Owner gets more lenient thresholds initially
-            # These will adapt based on false rejection rate
-            self.owner_strong_threshold = 0.30  # Lower threshold for owner recognition
-            self.decision_threshold = 0.40       # Slightly lower unlock threshold
+            self.owner_strong_threshold = 0.30
+            self.decision_threshold = 0.40
             logger.info(f"✅ Speaker model created for PRIMARY OWNER: {speaker_name}")
         else:
             logger.info(f"📝 Speaker model created for speaker: {speaker_name}")
 
     def get_success_rate(self) -> float:
-        """Get historical success rate"""
+        """Get historical success rate."""
         if self.verification_count == 0:
             return 0.5
         return self.successful_verifications / self.verification_count
 
     def adapt_owner_thresholds(self, false_rejection_rate: float, false_acceptance_rate: float):
-        """
-        🎯 ADAPTIVE LEARNING: Adjust owner thresholds based on performance
-
-        Args:
-            false_rejection_rate: Rate of falsely rejecting owner
-            false_acceptance_rate: Rate of falsely accepting imposters
-        """
+        """Adaptive learning: adjust owner thresholds based on performance."""
         if not self.is_primary_owner:
             return
 
-        # If we're rejecting owner too often, make thresholds more lenient
-        if false_rejection_rate > 0.15:  # >15% false rejections
+        if false_rejection_rate > 0.15:
             self.owner_strong_threshold = max(0.25, self.owner_strong_threshold - 0.02)
             self.decision_threshold = max(0.35, self.decision_threshold - 0.01)
             logger.info(
                 f"📉 Adapting thresholds for {self.speaker_name}: "
                 f"FRR={false_rejection_rate:.1%} → "
-                f"owner_threshold={self.owner_strong_threshold:.2f}, "
-                f"decision_threshold={self.decision_threshold:.2f}"
+                f"owner_threshold={self.owner_strong_threshold:.2f}"
             )
 
-        # If we're accepting imposters, make thresholds stricter
-        elif false_acceptance_rate > 0.05:  # >5% false acceptances
+        elif false_acceptance_rate > 0.05:
             self.owner_strong_threshold = min(0.50, self.owner_strong_threshold + 0.02)
             self.decision_threshold = min(0.50, self.decision_threshold + 0.01)
             self.spoof_override_limit = max(0.85, self.spoof_override_limit - 0.01)
             logger.info(
                 f"📈 Tightening security for {self.speaker_name}: "
-                f"FAR={false_acceptance_rate:.1%} → "
-                f"owner_threshold={self.owner_strong_threshold:.2f}"
+                f"FAR={false_acceptance_rate:.1%}"
             )

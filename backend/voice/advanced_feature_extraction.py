@@ -10,32 +10,61 @@ Extracts comprehensive voice biometric features:
 - Temporal characteristics (speaking rate, rhythm)
 - Energy contours
 
-All async, fully dynamic, zero hardcoding
+All async with proper thread pool execution for CPU-intensive work.
+Zero hardcoding, fully dynamic.
 
 Author: Claude Code + Derek J. Russell
-Version: 1.0.0
+Version: 2.0.0 - Async Optimized
 """
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Optional, Tuple
+from functools import partial
+from typing import Optional, Tuple, Dict, Any
 
 import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
 
+# Shared thread pool for CPU-intensive feature extraction
+# Using a dedicated pool prevents blocking the main event loop
+_feature_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_feature_executor() -> ThreadPoolExecutor:
+    """Get or create the shared thread pool for feature extraction."""
+    global _feature_executor
+    if _feature_executor is None:
+        # Use 4 workers for parallel feature extraction
+        _feature_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="feature_extract"
+        )
+        logger.info("🔧 Created feature extraction thread pool (4 workers)")
+    return _feature_executor
+
 
 class AdvancedFeatureExtractor:
     """
-    🔬 Advanced biometric feature extraction
+    🔬 Advanced biometric feature extraction with proper async execution.
 
-    Extracts ALL features needed for beast mode verification
+    All CPU-intensive numpy/scipy operations run in a thread pool
+    to prevent blocking the async event loop.
     """
 
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate
+        self._executor = get_feature_executor()
+
+    async def _run_in_executor(self, func, *args, **kwargs) -> Any:
+        """Run a CPU-intensive function in the thread pool."""
+        loop = asyncio.get_running_loop()
+        if kwargs:
+            func = partial(func, **kwargs)
+        return await loop.run_in_executor(self._executor, func, *args)
 
     async def extract_features(
         self,
@@ -44,7 +73,9 @@ class AdvancedFeatureExtractor:
         transcription: str = ""
     ) -> "VoiceBiometricFeatures":
         """
-        Extract comprehensive biometric features
+        Extract comprehensive biometric features.
+
+        All CPU-intensive work runs in thread pool to avoid blocking.
 
         Args:
             audio_tensor: Audio as torch tensor
@@ -56,22 +87,23 @@ class AdvancedFeatureExtractor:
         """
         from voice.advanced_biometric_verification import VoiceBiometricFeatures
 
-        # Convert to numpy
+        # Convert to numpy (quick operation)
         audio_np = audio_tensor.cpu().numpy() if torch.is_tensor(audio_tensor) else audio_tensor
 
-        # Extract all features in parallel
+        # Extract all features in parallel using thread pool
+        # Each extraction runs in its own thread, truly parallel
         results = await asyncio.gather(
-            self._extract_pitch_features(audio_np),
-            self._extract_formants(audio_np),
-            self._extract_spectral_features(audio_np),
-            self._extract_temporal_features(audio_np, transcription),
-            self._extract_voice_quality(audio_np),
+            self._extract_pitch_features_async(audio_np),
+            self._extract_formants_async(audio_np),
+            self._extract_spectral_features_async(audio_np),
+            self._extract_temporal_features_async(audio_np, transcription),
+            self._extract_voice_quality_async(audio_np),
             return_exceptions=True
         )
 
         pitch_features, formants, spectral_features, temporal_features, quality_features = results
 
-        # Handle any exceptions
+        # Handle any exceptions with safe defaults
         if isinstance(pitch_features, Exception):
             logger.warning(f"Pitch extraction failed: {pitch_features}")
             pitch_features = {'mean': 150.0, 'std': 20.0, 'range': 50.0}
@@ -95,7 +127,7 @@ class AdvancedFeatureExtractor:
         # Create feature object
         features = VoiceBiometricFeatures(
             embedding=embedding,
-            embedding_confidence=0.9,  # Can be computed from embedding quality
+            embedding_confidence=0.9,
             pitch_mean=pitch_features['mean'],
             pitch_std=pitch_features['std'],
             pitch_range=pitch_features['range'],
@@ -119,8 +151,36 @@ class AdvancedFeatureExtractor:
 
         return features
 
-    async def _extract_pitch_features(self, audio: np.ndarray) -> dict:
-        """Extract pitch features using autocorrelation"""
+    # =========================================================================
+    # ASYNC WRAPPERS - Run CPU-intensive work in thread pool
+    # =========================================================================
+
+    async def _extract_pitch_features_async(self, audio: np.ndarray) -> dict:
+        """Async wrapper for pitch extraction."""
+        return await self._run_in_executor(self._extract_pitch_features_sync, audio)
+
+    async def _extract_formants_async(self, audio: np.ndarray) -> list:
+        """Async wrapper for formant extraction."""
+        return await self._run_in_executor(self._extract_formants_sync, audio)
+
+    async def _extract_spectral_features_async(self, audio: np.ndarray) -> dict:
+        """Async wrapper for spectral feature extraction."""
+        return await self._run_in_executor(self._extract_spectral_features_sync, audio)
+
+    async def _extract_temporal_features_async(self, audio: np.ndarray, transcription: str) -> dict:
+        """Async wrapper for temporal feature extraction."""
+        return await self._run_in_executor(self._extract_temporal_features_sync, audio, transcription)
+
+    async def _extract_voice_quality_async(self, audio: np.ndarray) -> dict:
+        """Async wrapper for voice quality extraction."""
+        return await self._run_in_executor(self._extract_voice_quality_sync, audio)
+
+    # =========================================================================
+    # SYNC IMPLEMENTATIONS - Run in thread pool
+    # =========================================================================
+
+    def _extract_pitch_features_sync(self, audio: np.ndarray) -> dict:
+        """Extract pitch features using autocorrelation (CPU-intensive)."""
         frame_size = 2048
         hop_size = 512
         pitches = []
@@ -154,8 +214,8 @@ class AdvancedFeatureExtractor:
         else:
             return {'mean': 150.0, 'std': 20.0, 'range': 50.0}
 
-    async def _extract_formants(self, audio: np.ndarray) -> list:
-        """Extract formant frequencies using LPC"""
+    def _extract_formants_sync(self, audio: np.ndarray) -> list:
+        """Extract formant frequencies using LPC (CPU-intensive)."""
         try:
             # Pre-emphasis
             emphasized = np.append(audio[0], audio[1:] - 0.97 * audio[:-1])
@@ -180,8 +240,8 @@ class AdvancedFeatureExtractor:
             logger.debug(f"Formant extraction failed: {e}")
             return [500.0, 1500.0, 2500.0, 3500.0]
 
-    async def _extract_spectral_features(self, audio: np.ndarray) -> dict:
-        """Extract spectral features"""
+    def _extract_spectral_features_sync(self, audio: np.ndarray) -> dict:
+        """Extract spectral features (CPU-intensive FFT operations)."""
         fft = np.fft.rfft(audio)
         magnitude = np.abs(fft)
         power = magnitude ** 2
@@ -210,8 +270,8 @@ class AdvancedFeatureExtractor:
             'entropy': entropy
         }
 
-    async def _extract_temporal_features(self, audio: np.ndarray, transcription: str) -> dict:
-        """Extract temporal features"""
+    def _extract_temporal_features_sync(self, audio: np.ndarray, transcription: str) -> dict:
+        """Extract temporal features (CPU-intensive)."""
         duration = len(audio) / self.sample_rate
 
         # Speaking rate (words per minute)
@@ -224,13 +284,14 @@ class AdvancedFeatureExtractor:
 
         energy_contour = []
         pauses = 0
+        mean_energy = np.mean(audio ** 2)
 
         for i in range(num_frames):
             frame = audio[i * frame_size:(i + 1) * frame_size]
             energy = np.sum(frame ** 2)
             energy_contour.append(energy)
 
-            if energy < np.mean(audio ** 2) * 0.05:
+            if energy < mean_energy * 0.05:
                 pauses += 1
 
         pause_ratio = pauses / max(num_frames, 1)
@@ -241,17 +302,11 @@ class AdvancedFeatureExtractor:
             'energy': np.array(energy_contour)
         }
 
-    async def _extract_voice_quality(self, audio: np.ndarray) -> dict:
-        """Extract voice quality metrics (jitter, shimmer, HNR)"""
-
-        # Jitter (pitch period variation)
-        jitter = await self._compute_jitter(audio)
-
-        # Shimmer (amplitude variation)
-        shimmer = await self._compute_shimmer(audio)
-
-        # Harmonic-to-Noise Ratio
-        hnr = await self._compute_hnr(audio)
+    def _extract_voice_quality_sync(self, audio: np.ndarray) -> dict:
+        """Extract voice quality metrics (CPU-intensive)."""
+        jitter = self._compute_jitter_sync(audio)
+        shimmer = self._compute_shimmer_sync(audio)
+        hnr = self._compute_hnr_sync(audio)
 
         return {
             'jitter': float(jitter),
@@ -259,10 +314,9 @@ class AdvancedFeatureExtractor:
             'hnr': float(hnr)
         }
 
-    async def _compute_jitter(self, audio: np.ndarray) -> float:
-        """Compute jitter (pitch period variation)"""
+    def _compute_jitter_sync(self, audio: np.ndarray) -> float:
+        """Compute jitter (pitch period variation)."""
         try:
-            # Extract pitch periods
             frame_size = 2048
             hop_size = 512
             periods = []
@@ -284,20 +338,18 @@ class AdvancedFeatureExtractor:
                             periods.append(period)
 
             if len(periods) > 1:
-                # Jitter = average absolute difference between consecutive periods
                 diffs = np.abs(np.diff(periods))
                 jitter = np.mean(diffs) / np.mean(periods)
-                return min(jitter, 0.1)  # Cap at 10%
+                return min(jitter, 0.1)
 
-            return 0.01  # Default
+            return 0.01
 
         except Exception:
             return 0.01
 
-    async def _compute_shimmer(self, audio: np.ndarray) -> float:
-        """Compute shimmer (amplitude variation)"""
+    def _compute_shimmer_sync(self, audio: np.ndarray) -> float:
+        """Compute shimmer (amplitude variation)."""
         try:
-            # Extract peak amplitudes
             frame_size = int(self.sample_rate * 0.01)  # 10ms frames
             num_frames = len(audio) // frame_size
 
@@ -308,24 +360,21 @@ class AdvancedFeatureExtractor:
                 peaks.append(peak)
 
             if len(peaks) > 1:
-                # Shimmer = average absolute difference between consecutive peaks
                 diffs = np.abs(np.diff(peaks))
                 shimmer = np.mean(diffs) / (np.mean(peaks) + 1e-10)
-                return min(shimmer, 0.5)  # Cap at 50%
+                return min(shimmer, 0.5)
 
-            return 0.05  # Default
+            return 0.05
 
         except Exception:
             return 0.05
 
-    async def _compute_hnr(self, audio: np.ndarray) -> float:
-        """Compute Harmonic-to-Noise Ratio"""
+    def _compute_hnr_sync(self, audio: np.ndarray) -> float:
+        """Compute Harmonic-to-Noise Ratio."""
         try:
-            # Simple HNR estimation using autocorrelation
             correlation = np.correlate(audio, audio, mode='full')
             correlation = correlation[len(correlation) // 2:]
 
-            # Find first peak (fundamental)
             min_lag = int(self.sample_rate / 500)
             max_lag = int(self.sample_rate / 50)
 
@@ -335,14 +384,22 @@ class AdvancedFeatureExtractor:
                     peak_idx = min_lag + np.argmax(search_region)
                     peak_value = correlation[peak_idx]
 
-                    # HNR = ratio of peak to noise floor
                     noise_floor = np.median(correlation[min_lag:max_lag])
                     hnr_linear = peak_value / (noise_floor + 1e-10)
                     hnr_db = 10 * np.log10(hnr_linear + 1e-10)
 
                     return float(np.clip(hnr_db, 0.0, 40.0))
 
-            return 15.0  # Default
+            return 15.0
 
         except Exception:
             return 15.0
+
+
+def shutdown_feature_executor():
+    """Shutdown the feature extraction thread pool gracefully."""
+    global _feature_executor
+    if _feature_executor is not None:
+        logger.info("🔧 Shutting down feature extraction thread pool...")
+        _feature_executor.shutdown(wait=True)
+        _feature_executor = None

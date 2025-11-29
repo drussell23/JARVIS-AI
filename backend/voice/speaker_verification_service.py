@@ -15,7 +15,7 @@ Features:
 - Multi-factor authentication fusion
 - Progressive confidence communication
 
-Enhanced Version: 2.0.0
+Enhanced Version: 2.1.0 - Async Optimized (Non-Blocking)
 """
 
 import asyncio
@@ -24,13 +24,50 @@ import threading
 import hashlib
 import time
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Optional, List, Dict, Any, Tuple, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
 
 import numpy as np
+
+# ============================================================================
+# ASYNC OPTIMIZATION: Shared Thread Pool for CPU-Intensive Operations
+# ============================================================================
+# All numpy, scipy, and signal processing operations MUST run in thread pool
+# to prevent blocking the async event loop. This is CRITICAL for responsiveness.
+# ============================================================================
+
+_verification_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_verification_executor() -> ThreadPoolExecutor:
+    """Get or create the shared thread pool for verification operations."""
+    global _verification_executor
+    if _verification_executor is None:
+        # Use 4 workers for parallel CPU-intensive operations
+        _verification_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="speaker_verify"
+        )
+        logging.getLogger(__name__).info(
+            "🔧 Created speaker verification thread pool (4 workers)"
+        )
+    return _verification_executor
+
+
+def shutdown_verification_executor():
+    """Shutdown the verification thread pool gracefully."""
+    global _verification_executor
+    if _verification_executor is not None:
+        logging.getLogger(__name__).info(
+            "🔧 Shutting down speaker verification thread pool..."
+        )
+        _verification_executor.shutdown(wait=True)
+        _verification_executor = None
 
 # ============================================================================
 # CRITICAL FIX: Patch torchaudio for compatibility with version 2.9.0+
@@ -1079,6 +1116,7 @@ class MultiFactorAuthFusionEngine:
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.MultiFactor")
+        self._executor = get_verification_executor()
 
         # Factor weights (dynamically adjusted based on reliability)
         self.base_weights = {
@@ -1148,6 +1186,13 @@ class MultiFactorAuthFusionEngine:
             )
         ]
 
+    async def _run_in_executor(self, func, *args, **kwargs) -> Any:
+        """Run a CPU-intensive function in the thread pool."""
+        loop = asyncio.get_running_loop()
+        if kwargs:
+            func = partial(func, **kwargs)
+        return await loop.run_in_executor(self._executor, func, *args)
+
     async def analyze_voice_for_illness(
         self,
         audio_data: bytes,
@@ -1162,6 +1207,8 @@ class MultiFactorAuthFusionEngine:
         - Voice quality changes (roughness, breathiness)
         - Speech rate changes (fatigue, illness)
         - Formant shifts (congestion)
+
+        All CPU-intensive operations run in thread pool to avoid blocking.
         """
         result = VoiceAnalysisResult()
 
@@ -1172,14 +1219,17 @@ class MultiFactorAuthFusionEngine:
             if len(audio_array) < 1600:  # Less than 0.1 second
                 return result
 
-            # Estimate fundamental frequency (F0)
-            result.fundamental_frequency_hz = self._estimate_f0(audio_array)
+            # Run all CPU-intensive feature extraction in parallel using thread pool
+            f0_task = self._run_in_executor(self._estimate_f0_sync, audio_array)
+            quality_task = self._run_in_executor(self._calculate_voice_quality_sync, audio_array)
+            snr_task = self._run_in_executor(self._estimate_snr_sync, audio_array)
 
-            # Calculate voice quality (roughness indicator)
-            result.voice_quality_score = self._calculate_voice_quality(audio_array)
+            # Wait for all results
+            f0, quality, snr = await asyncio.gather(f0_task, quality_task, snr_task)
 
-            # Estimate SNR
-            result.snr_db = self._estimate_snr(audio_array)
+            result.fundamental_frequency_hz = f0
+            result.voice_quality_score = quality
+            result.snr_db = snr
 
             # Compare to baseline if available
             if baseline or speaker_name in self.voice_baselines:
@@ -1215,8 +1265,12 @@ class MultiFactorAuthFusionEngine:
 
         return result
 
-    def _estimate_f0(self, audio: np.ndarray, sr: int = 16000) -> float:
-        """Estimate fundamental frequency using autocorrelation."""
+    # =========================================================================
+    # SYNC IMPLEMENTATIONS - Run in thread pool to avoid blocking event loop
+    # =========================================================================
+
+    def _estimate_f0_sync(self, audio: np.ndarray, sr: int = 16000) -> float:
+        """Estimate fundamental frequency using autocorrelation (CPU-intensive)."""
         try:
             # Use autocorrelation for F0 estimation
             # Look for periodicity in typical voice range (75-400 Hz)
@@ -1237,8 +1291,8 @@ class MultiFactorAuthFusionEngine:
             pass
         return 0.0
 
-    def _calculate_voice_quality(self, audio: np.ndarray) -> float:
-        """Calculate voice quality score (1.0 = clear, 0.0 = rough/breathy)."""
+    def _calculate_voice_quality_sync(self, audio: np.ndarray) -> float:
+        """Calculate voice quality score (CPU-intensive FFT)."""
         try:
             # Harmonic-to-noise ratio approximation
             # Higher HNR = clearer voice
@@ -1259,8 +1313,8 @@ class MultiFactorAuthFusionEngine:
             pass
         return 0.7  # Default moderate quality
 
-    def _estimate_snr(self, audio: np.ndarray) -> float:
-        """Estimate signal-to-noise ratio in dB."""
+    def _estimate_snr_sync(self, audio: np.ndarray) -> float:
+        """Estimate signal-to-noise ratio in dB (CPU-intensive)."""
         try:
             # Assume first 10% is noise, rest is signal
             noise_samples = int(len(audio) * 0.1)
@@ -1275,20 +1329,19 @@ class MultiFactorAuthFusionEngine:
         except Exception:
             return 15.0  # Default moderate SNR
 
-    async def detect_microphone_change(
+    def _detect_microphone_change_sync(
         self,
-        audio_data: bytes,
-        speaker_name: str
-    ) -> Tuple[bool, str, float]:
+        audio_array: np.ndarray,
+        speaker_name: str,
+        known_microphones: Dict[str, Dict[str, Any]]
+    ) -> Tuple[bool, str, float, Optional[Dict[str, Any]]]:
         """
-        Detect if user is using a different microphone than usual.
+        Sync implementation of microphone change detection (CPU-intensive FFT).
 
         Returns:
-            Tuple of (is_different, microphone_signature, confidence)
+            Tuple of (is_different, signature, similarity, new_mic_data)
         """
         try:
-            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-
             # Extract spectral characteristics for microphone fingerprinting
             fft = np.fft.rfft(audio_array[:4096])
             magnitude = np.abs(fft)
@@ -1304,8 +1357,8 @@ class MultiFactorAuthFusionEngine:
             signature = f"lf{low_freq_response:.2f}_hf{high_freq_response:.2f}_sc{spectral_centroid:.0f}"
 
             # Compare to known microphones
-            if speaker_name in self.known_microphones:
-                known = self.known_microphones[speaker_name]
+            if speaker_name in known_microphones:
+                known = known_microphones[speaker_name]
                 best_match = None
                 best_similarity = 0.0
 
@@ -1319,20 +1372,51 @@ class MultiFactorAuthFusionEngine:
                         best_match = mic_name
 
                 if best_similarity < 0.7:  # New microphone detected
-                    return True, signature, 1 - best_similarity
+                    return True, signature, 1 - best_similarity, None
                 else:
-                    return False, best_match or signature, best_similarity
+                    return False, best_match or signature, best_similarity, None
 
-            # First time - store as default
-            self.known_microphones[speaker_name] = {
-                "default": {
-                    "signature": signature,
-                    "spectral_centroid": spectral_centroid,
-                    "low_freq": low_freq_response,
-                    "high_freq": high_freq_response
-                }
+            # First time - return new mic data to store
+            new_mic_data = {
+                "signature": signature,
+                "spectral_centroid": spectral_centroid,
+                "low_freq": low_freq_response,
+                "high_freq": high_freq_response
             }
-            return False, "default", 1.0
+            return False, "default", 1.0, new_mic_data
+
+        except Exception:
+            return False, "unknown", 0.5, None
+
+    async def detect_microphone_change(
+        self,
+        audio_data: bytes,
+        speaker_name: str
+    ) -> Tuple[bool, str, float]:
+        """
+        Detect if user is using a different microphone than usual.
+
+        All CPU-intensive operations run in thread pool to avoid blocking.
+
+        Returns:
+            Tuple of (is_different, microphone_signature, confidence)
+        """
+        try:
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+            # Run CPU-intensive FFT in thread pool
+            is_different, signature, similarity, new_mic_data = await self._run_in_executor(
+                self._detect_microphone_change_sync,
+                audio_array,
+                speaker_name,
+                self.known_microphones
+            )
+
+            # Store new microphone data if detected
+            if new_mic_data is not None:
+                self.known_microphones[speaker_name] = {"default": new_mic_data}
+
+            return is_different, signature, similarity
 
         except Exception as e:
             self.logger.debug(f"Microphone detection error: {e}")
@@ -1707,6 +1791,9 @@ class SpeakerVerificationService:
         self.verification_threshold = 0.40  # 40% confidence for verification (matches owner-aware fusion threshold)
         self.legacy_threshold = 0.40  # 40% for legacy profiles with dimension mismatch
         self.profile_quality_scores = {}  # Track profile quality (1.0 = native, <1.0 = legacy)
+
+        # Thread pool for CPU-intensive operations (non-blocking async)
+        self._executor = get_verification_executor()
         self._preload_thread = None
         self._encoder_preloading = False
         self._encoder_preloaded = False
@@ -1823,6 +1910,13 @@ class SpeakerVerificationService:
 
         # Known environments for context
         self.known_environments = ["home", "office", "default"]
+
+    async def _run_in_executor(self, func, *args, **kwargs) -> Any:
+        """Run a CPU-intensive function in the thread pool to avoid blocking."""
+        loop = asyncio.get_running_loop()
+        if kwargs:
+            func = partial(func, **kwargs)
+        return await loop.run_in_executor(self._executor, func, *args)
 
     async def initialize_fast(self):
         """
@@ -2762,7 +2856,25 @@ class SpeakerVerificationService:
         strategy: MigrationStrategy,
         integer_ratio: Optional[int] = None
     ) -> np.ndarray:
-        """Execute downsampling migration using the selected strategy."""
+        """Execute downsampling migration using the selected strategy.
+
+        All CPU-intensive operations run in thread pool to avoid blocking.
+        """
+        # Run CPU-intensive migration in thread pool
+        return await self._run_in_executor(
+            self._execute_downsampling_sync,
+            embedding, source_dim, target_dim, strategy, integer_ratio
+        )
+
+    def _execute_downsampling_sync(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        strategy: MigrationStrategy,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """Sync implementation of downsampling migration (CPU-intensive)."""
 
         if strategy == MigrationStrategy.STATISTICAL_POOLING:
             return self._statistical_pooling_downsample(embedding, source_dim, target_dim, integer_ratio)
@@ -2798,7 +2910,25 @@ class SpeakerVerificationService:
         strategy: MigrationStrategy,
         integer_ratio: Optional[int] = None
     ) -> np.ndarray:
-        """Execute upsampling migration using the selected strategy."""
+        """Execute upsampling migration using the selected strategy.
+
+        All CPU-intensive operations run in thread pool to avoid blocking.
+        """
+        # Run CPU-intensive migration in thread pool
+        return await self._run_in_executor(
+            self._execute_upsampling_sync,
+            embedding, source_dim, target_dim, strategy, integer_ratio
+        )
+
+    def _execute_upsampling_sync(
+        self,
+        embedding: np.ndarray,
+        source_dim: int,
+        target_dim: int,
+        strategy: MigrationStrategy,
+        integer_ratio: Optional[int] = None
+    ) -> np.ndarray:
+        """Sync implementation of upsampling migration (CPU-intensive)."""
 
         if strategy == MigrationStrategy.HARMONIC_EXPANSION:
             return self._harmonic_expansion_upsample(embedding, source_dim, target_dim, integer_ratio)

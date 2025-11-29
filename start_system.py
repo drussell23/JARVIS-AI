@@ -406,8 +406,9 @@ class VenvAutoActivator:
         self._reexecute_with_venv(venv_path)
 
     def _reexecute_with_venv(self, venv_path: Path) -> None:
-        """Re-execute script using venv Python"""
+        """Re-execute script using venv Python with graceful signal handling"""
         import subprocess
+        import signal as sig
 
         venv_python = self._get_venv_python(venv_path)
 
@@ -423,12 +424,47 @@ class VenvAutoActivator:
         env = os.environ.copy()
         env["_JARVIS_VENV_ACTIVATED"] = "1"
 
-        result = subprocess.run(
+        # Use Popen for better signal handling instead of run()
+        process = subprocess.Popen(
             [str(venv_python)] + sys.argv,
             cwd=str(self.script_dir),
             env=env
         )
-        sys.exit(result.returncode)
+
+        # Forward signals to child process for graceful shutdown
+        def forward_signal(signum, frame):
+            """Forward signal to child process and exit cleanly"""
+            if process.poll() is None:  # Process still running
+                try:
+                    process.send_signal(signum)
+                except (ProcessLookupError, OSError):
+                    pass  # Process already terminated
+
+        # Register signal handlers
+        original_sigint = sig.signal(sig.SIGINT, forward_signal)
+        original_sigterm = sig.signal(sig.SIGTERM, forward_signal)
+
+        try:
+            # Wait for subprocess with proper interrupt handling
+            returncode = process.wait()
+            sys.exit(returncode)
+        except KeyboardInterrupt:
+            # Clean exit on Ctrl+C - signal already forwarded
+            print("\r", end="")  # Clear ^C from terminal
+            try:
+                # Give child process time to cleanup
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            sys.exit(0)
+        finally:
+            # Restore original signal handlers
+            sig.signal(sig.SIGINT, original_sigint)
+            sig.signal(sig.SIGTERM, original_sigterm)
 
     def _print_error(self, missing: List[str], reason: str) -> None:
         """Display detailed error with actionable solutions"""
