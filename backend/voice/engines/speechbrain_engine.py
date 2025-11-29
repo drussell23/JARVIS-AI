@@ -1222,14 +1222,20 @@ class SpeechBrainEngine(BaseSTTEngine):
             logger.info("   Moving audio to CPU (MPS doesn't support FFT)...")
             audio_tensor = audio_tensor.to("cpu")
 
-            # Extract embedding
+            # Extract embedding - run in thread pool to avoid blocking event loop
             logger.info("   Encoding speaker embedding with ECAPA-TDNN...")
-            with torch.no_grad():
-                # Encode the waveform
-                embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
 
-                # Convert to numpy
-                embedding = embeddings[0].cpu().numpy()
+            def _encode_sync():
+                """Run ECAPA-TDNN encoding in thread to avoid blocking event loop."""
+                with torch.no_grad():
+                    # Encode the waveform
+                    embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
+                    # Convert to numpy
+                    return embeddings[0].cpu().numpy()
+
+            # Run blocking encode_batch in thread pool
+            loop = asyncio.get_running_loop()
+            embedding = await loop.run_in_executor(None, _encode_sync)
 
             logger.info(f"   Embedding extracted: shape={embedding.shape}, dtype={embedding.dtype}")
             logger.info(f"   Embedding stats: min={embedding.min():.4f}, max={embedding.max():.4f}, norm={np.linalg.norm(embedding):.4f}")
