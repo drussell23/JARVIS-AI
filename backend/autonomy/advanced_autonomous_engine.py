@@ -32,6 +32,14 @@ from typing import Dict, List, Optional, Set, Tuple, Any, Callable, Union, Proto
 from collections import defaultdict, deque
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
+
 import aiofiles
 import torch
 import torch.nn as nn
@@ -507,8 +515,11 @@ class AdvancedAutonomousEngine:
         self.prediction_cache = {}
         self.cache_ttl = timedelta(minutes=5)
 
-        # Async execution
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Async execution (daemon threads for clean shutdown)
+        if _USE_DAEMON_EXECUTOR:
+            self.executor = get_daemon_executor(max_workers=4, name='autonomous-engine')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=4)
         self.active_decisions = {}
 
         # Configuration
@@ -887,3 +898,9 @@ class AdvancedAutonomousEngine:
             if hasattr(decision, 'execution_time') and decision.execution_time:
                 if decision.execution_time > cutoff:
                     recent.append({
+                        'action': decision.action if hasattr(decision, 'action') else str(decision),
+                        'outcome': decision.outcome if hasattr(decision, 'outcome') else None,
+                        'timestamp': decision.execution_time.isoformat() if decision.execution_time else None
+                    })
+
+        return recent

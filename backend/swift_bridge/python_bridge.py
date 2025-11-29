@@ -27,6 +27,13 @@ from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 import ctypes
 from concurrent.futures import ThreadPoolExecutor
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
 import time
 
 logger = logging.getLogger(__name__)
@@ -78,7 +85,11 @@ class SwiftCommandClassifier:
         self.swift_bridge_dir = Path(__file__).parent
         self.classifier_path = self.swift_bridge_dir / ".build/release/jarvis-classifier"
         self.lib_path = self.swift_bridge_dir / ".build/release/libCommandClassifierDynamic.dylib"
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        # Daemon executor for clean shutdown
+        if _USE_DAEMON_EXECUTOR:
+            self.executor = get_daemon_executor(max_workers=2, name='swift-bridge')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=2)
         self._lib = None
         self._classifier = None
         

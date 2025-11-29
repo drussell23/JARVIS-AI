@@ -303,10 +303,24 @@ class AdvancedFeatureExtractor:
         }
 
     def _extract_voice_quality_sync(self, audio: np.ndarray) -> dict:
-        """Extract voice quality metrics (CPU-intensive)."""
-        jitter = self._compute_jitter_sync(audio)
-        shimmer = self._compute_shimmer_sync(audio)
-        hnr = self._compute_hnr_sync(audio)
+        """Extract voice quality metrics (CPU-intensive).
+
+        IMPORTANT: For long audio, we sample a representative chunk to avoid
+        O(n²) autocorrelation complexity that would hang for 30+ seconds.
+        """
+        # Limit audio length for voice quality analysis (max 3 seconds)
+        # Voice quality metrics don't need the entire audio
+        max_samples = int(self.sample_rate * 3)  # 3 seconds max
+        if len(audio) > max_samples:
+            # Take middle portion for best representation
+            start = (len(audio) - max_samples) // 2
+            audio_chunk = audio[start:start + max_samples]
+        else:
+            audio_chunk = audio
+
+        jitter = self._compute_jitter_sync(audio_chunk)
+        shimmer = self._compute_shimmer_sync(audio_chunk)
+        hnr = self._compute_hnr_sync(audio_chunk)
 
         return {
             'jitter': float(jitter),
@@ -370,9 +384,19 @@ class AdvancedFeatureExtractor:
             return 0.05
 
     def _compute_hnr_sync(self, audio: np.ndarray) -> float:
-        """Compute Harmonic-to-Noise Ratio."""
+        """Compute Harmonic-to-Noise Ratio.
+
+        Uses a single representative frame instead of full-length autocorrelation
+        to avoid O(n²) complexity that would hang on long audio.
+        """
         try:
-            correlation = np.correlate(audio, audio, mode='full')
+            # Use a single frame for HNR (much faster than full-length autocorrelation)
+            # Take a frame from the middle of the audio for best representation
+            frame_size = min(4096, len(audio))
+            start = max(0, (len(audio) - frame_size) // 2)
+            frame = audio[start:start + frame_size]
+
+            correlation = np.correlate(frame, frame, mode='full')
             correlation = correlation[len(correlation) // 2:]
 
             min_lag = int(self.sample_rate / 500)
@@ -387,6 +411,10 @@ class AdvancedFeatureExtractor:
                     noise_floor = np.median(correlation[min_lag:max_lag])
                     hnr_linear = peak_value / (noise_floor + 1e-10)
                     hnr_db = 10 * np.log10(hnr_linear + 1e-10)
+
+                    # Handle NaN (can occur with noise-only audio)
+                    if np.isnan(hnr_db):
+                        return 15.0
 
                     return float(np.clip(hnr_db, 0.0, 40.0))
 

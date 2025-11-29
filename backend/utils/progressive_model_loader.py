@@ -13,6 +13,13 @@ from typing import Dict, List, Optional, Any, Callable, Set, Tuple
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
 import json
 import os
 from pathlib import Path
@@ -509,8 +516,11 @@ class ProgressiveModelLoader:
         else:
             self.max_workers = int(config_workers)
 
-        # Execution pools
-        self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        # Execution pools (use daemon executor for clean shutdown)
+        if _USE_DAEMON_EXECUTOR:
+            self.thread_executor = get_daemon_executor(max_workers=self.max_workers, name='model-loader')
+        else:
+            self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self.process_executor = ProcessPoolExecutor(
             max_workers=max(1, self.max_workers // 2)
         )

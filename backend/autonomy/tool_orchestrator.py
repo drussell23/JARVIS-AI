@@ -28,6 +28,13 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from dataclasses import dataclass, field
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
 from datetime import datetime, timedelta
 from enum import Enum, auto
 from heapq import heappush, heappop
@@ -447,7 +454,11 @@ class ResourceManager:
         self.max_concurrent = max_concurrent
         self.adaptive = adaptive
 
-        self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
+        # Use daemon executor for clean shutdown
+        if _USE_DAEMON_EXECUTOR:
+            self._thread_pool = get_daemon_executor(max_workers=max_workers, name='tool-orchestrator')
+        else:
+            self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._active_count = 0
         self._peak_concurrent = 0

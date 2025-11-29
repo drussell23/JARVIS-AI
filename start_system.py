@@ -10949,6 +10949,39 @@ if __name__ == "__main__":
     _jarvis_initialized = False
     _hybrid_coordinator = None
 
+    # Track Ctrl+C count for force exit on double-press
+    _interrupt_count = 0
+    _last_interrupt_time = 0
+
+    def _force_exit_handler(signum, frame):
+        """Handle Ctrl+C with force exit on double-press"""
+        global _interrupt_count, _last_interrupt_time
+        import time as t
+
+        current_time = t.time()
+
+        # Reset count if more than 2 seconds since last interrupt
+        if current_time - _last_interrupt_time > 2.0:
+            _interrupt_count = 0
+
+        _interrupt_count += 1
+        _last_interrupt_time = current_time
+
+        if _interrupt_count >= 2:
+            # Double Ctrl+C - force immediate exit
+            print(f"\n\r{Colors.RED}⚡ Force exit (double Ctrl+C){Colors.ENDC}")
+            sys.stdout.flush()
+            os._exit(130)  # 128 + SIGINT(2) = 130
+        else:
+            # First Ctrl+C - show hint and let normal handling proceed
+            print(f"\n\r{Colors.YELLOW}⏳ Shutting down... (Ctrl+C again to force quit){Colors.ENDC}")
+            sys.stdout.flush()
+            # Raise KeyboardInterrupt to trigger normal shutdown
+            raise KeyboardInterrupt
+
+    # Install force exit handler before entering main loop
+    signal.signal(signal.SIGINT, _force_exit_handler)
+
     try:
         # Use custom asyncio runner to ensure all tasks are cancelled on exit
         loop = asyncio.new_event_loop()
@@ -11326,3 +11359,31 @@ if __name__ == "__main__":
                 print(f"\n{Colors.CYAN}ℹ️  {len(daemon_threads)} daemon threads (will auto-terminate):{Colors.ENDC}")
                 for thread in daemon_threads:
                     print(f"   - {thread.name}")
+
+            # Give non-daemon threads a chance to terminate gracefully
+            if non_daemon_threads:
+                print(f"\n{Colors.YELLOW}🔧 Waiting for {len(non_daemon_threads)} non-daemon threads to complete...{Colors.ENDC}")
+
+                # Give threads a generous 5 seconds to finish gracefully
+                import time as time_module
+                deadline = time_module.time() + 5.0
+
+                while time_module.time() < deadline:
+                    remaining = [t for t in threading.enumerate()
+                                if t != threading.main_thread() and not t.daemon and t.is_alive()]
+                    if not remaining:
+                        print(f"   {Colors.GREEN}✓ All threads terminated gracefully{Colors.ENDC}")
+                        break
+                    time_module.sleep(0.2)
+                else:
+                    # Threads still running after timeout - this shouldn't happen
+                    # with proper daemon threads, but log it for debugging
+                    still_alive = [t for t in threading.enumerate()
+                                  if t != threading.main_thread() and not t.daemon and t.is_alive()]
+                    if still_alive:
+                        print(f"   {Colors.YELLOW}⚠ {len(still_alive)} threads still running after 5s timeout{Colors.ENDC}")
+                        for t in still_alive[:5]:  # Show first 5
+                            print(f"      - {t.name}")
+                        if len(still_alive) > 5:
+                            print(f"      ... and {len(still_alive) - 5} more")
+                        print(f"   {Colors.CYAN}ℹ These may be from third-party libraries{Colors.ENDC}")

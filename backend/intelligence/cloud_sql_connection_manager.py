@@ -144,11 +144,10 @@ class CloudSQLConnectionManager:
                 try:
                     # Force synchronous pool termination
                     if self.pool:
-                        # Use private asyncpg pool method for sync termination
-                        import asyncio
                         try:
-                            # Try to terminate synchronously
-                            self.pool._holders.clear()
+                            # Try to terminate synchronously by clearing holders
+                            if hasattr(self.pool, '_holders'):
+                                self.pool._holders.clear()
                             self.pool = None
                             logger.info("✅ Pool terminated synchronously")
                         except Exception as term_error:

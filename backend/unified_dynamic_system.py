@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import psutil
 
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    USE_DAEMON_EXECUTOR = True
+except ImportError:
+    USE_DAEMON_EXECUTOR = False
+
 # Import all our components
 from dynamic_jarvis_activation import get_dynamic_activation
 from graceful_http_handler import _graceful_handler, graceful_endpoint
@@ -54,8 +61,11 @@ class UnifiedDynamicSystem:
         self.performance_history = []
         self.optimization_model = self._init_optimization_model()
         
-        # Thread pool for parallel operations
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Thread pool for parallel operations (daemon threads for clean shutdown)
+        if USE_DAEMON_EXECUTOR:
+            self.executor = get_daemon_executor(max_workers=4, name='unified-dynamic')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=4)
         
         # Initialize Rust components if available
         if RUST_AVAILABLE:
@@ -86,7 +96,7 @@ class UnifiedDynamicSystem:
             logger.warning(f"Rust components unavailable: {e}")
             RUST_AVAILABLE = False
     
-    @graceful_endpoint#{
+    @graceful_endpoint({
         "status": "activated",
         "message": "JARVIS activated with full optimization",
         "mode": "unified_dynamic"

@@ -27,6 +27,13 @@ from typing import Dict, Any, Optional, List, Tuple, Callable
 from dataclasses import dataclass, asdict
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
 import time
 import os
 import subprocess
@@ -263,7 +270,11 @@ class SwiftAudioProcessor:
         if not self._processor:
             raise RuntimeError("Failed to create Swift audio processor")
         
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        # Daemon executor for clean shutdown
+        if _USE_DAEMON_EXECUTOR:
+            self.executor = get_daemon_executor(max_workers=2, name='swift-perf')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=2)
         logger.info("✅ Swift audio processor initialized")
     
     def process_audio(self, audio_data: np.ndarray) -> AudioFeatures:

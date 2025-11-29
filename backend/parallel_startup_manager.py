@@ -17,6 +17,13 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from functools import partial
 
+# Import daemon executor for clean shutdown
+try:
+    from core.thread_manager import get_daemon_executor
+    _USE_DAEMON_EXECUTOR = True
+except ImportError:
+    _USE_DAEMON_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -42,9 +49,12 @@ class ParallelStartupManager:
         self.startup_timeout = float(os.getenv('STARTUP_TIMEOUT', '60'))
         self.parallel_health_checks = os.getenv('PARALLEL_HEALTH_CHECKS', 'true').lower() == 'true'
         
-        # Thread pool for I/O operations
-        self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        
+        # Thread pool for I/O operations (use daemon executor for clean shutdown)
+        if _USE_DAEMON_EXECUTOR:
+            self.thread_executor = get_daemon_executor(max_workers=self.max_workers, name='startup-manager')
+        else:
+            self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers)
+
         # Process pool for CPU-intensive operations
         self.process_executor = ProcessPoolExecutor(max_workers=self.max_workers)
         
