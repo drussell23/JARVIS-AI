@@ -1,0 +1,3217 @@
+{
+	"info": {
+		"_postman_id": "jarvis-api-collection-2024",
+		"name": "JARVIS AI Agent API",
+		"description": "Complete API collection for JARVIS AI Agent - A sophisticated multi-modal AI system with voice biometrics, vision intelligence, and autonomous capabilities.\n\n## Base URL\n`http://localhost:8010`\n\n## Features\n- Voice Biometric Authentication\n- Screen Control & Unlock\n- Vision Intelligence\n- Wake Word Detection\n- Display Monitoring\n- Memory Management\n- Self-Healing System\n- Hybrid Cloud Integration\n\n## API Documentation\nSwagger UI: http://localhost:8010/docs",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8010",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health & Status",
+			"description": "System health checks and component status endpoints",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Quick health check with component status"
+					}
+				},
+				{
+					"name": "Root Endpoint",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Root endpoint - returns basic API info"
+					}
+				},
+				{
+					"name": "Component Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/components/status",
+							"host": ["{{base_url}}"],
+							"path": ["components", "status"]
+						},
+						"description": "Get status of all JARVIS components"
+					}
+				},
+				{
+					"name": "Component Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/components/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["components", "metrics"]
+						},
+						"description": "Get performance metrics for all components"
+					}
+				},
+				{
+					"name": "Autonomous Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/autonomous/status",
+							"host": ["{{base_url}}"],
+							"path": ["autonomous", "status"]
+						},
+						"description": "Get autonomous mode status"
+					}
+				},
+				{
+					"name": "Autonomous Services",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/autonomous/services",
+							"host": ["{{base_url}}"],
+							"path": ["autonomous", "services"]
+						},
+						"description": "List all autonomous services"
+					}
+				}
+			]
+		},
+		{
+			"name": "Startup",
+			"description": "System startup and initialization endpoints",
+			"item": [
+				{
+					"name": "Get Startup Progress",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/startup-progress",
+							"host": ["{{base_url}}"],
+							"path": ["api", "startup-progress"]
+						},
+						"description": "HTTP endpoint for polling-based progress updates"
+					}
+				},
+				{
+					"name": "Announce System Online",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/startup-voice/announce-online",
+							"host": ["{{base_url}}"],
+							"path": ["api", "startup-voice", "announce-online"]
+						},
+						"description": "Play JARVIS startup announcement using macOS Daniel voice"
+					}
+				},
+				{
+					"name": "Test Startup Voice",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/startup-voice/test",
+							"host": ["{{base_url}}"],
+							"path": ["api", "startup-voice", "test"]
+						},
+						"description": "Test endpoint to verify voice is working"
+					}
+				}
+			]
+		},
+		{
+			"name": "Screen Control",
+			"description": "Screen lock/unlock and display management",
+			"item": [
+				{
+					"name": "Unlock Screen",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"\",\n    \"method\": \"keychain\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/screen/unlock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "screen", "unlock"]
+						},
+						"description": "Unlock the screen using advanced transport layer. Methods: keychain, password, voice"
+					}
+				},
+				{
+					"name": "Lock Screen",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reason\": \"user_request\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/screen/lock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "screen", "lock"]
+						},
+						"description": "Lock the screen"
+					}
+				},
+				{
+					"name": "Screen Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/screen/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "screen", "status"]
+						},
+						"description": "Get current screen lock status and transport health"
+					}
+				},
+				{
+					"name": "Reset Transport Health",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/screen/transport/reset",
+							"host": ["{{base_url}}"],
+							"path": ["api", "screen", "transport", "reset"]
+						},
+						"description": "Reset transport health metrics and circuit breakers"
+					}
+				}
+			]
+		},
+		{
+			"name": "JARVIS Voice",
+			"description": "JARVIS voice system - activation, commands, TTS, and CoreML",
+			"item": [
+				{
+					"name": "Get JARVIS Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/status",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "status"]
+						},
+						"description": "Get JARVIS system status"
+					}
+				},
+				{
+					"name": "Activate JARVIS",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/activate",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "activate"]
+						},
+						"description": "Activate JARVIS voice system"
+					}
+				},
+				{
+					"name": "Deactivate JARVIS",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/deactivate",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "deactivate"]
+						},
+						"description": "Deactivate JARVIS voice system"
+					}
+				},
+				{
+					"name": "Process JARVIS Command",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"what time is it\",\n    \"context\": {}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/command",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "command"]
+						},
+						"description": "Process a JARVIS command"
+					}
+				},
+				{
+					"name": "JARVIS Speak (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Hello Derek, how can I assist you today?\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/speak",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "speak"]
+						},
+						"description": "Make JARVIS speak the given text"
+					}
+				},
+				{
+					"name": "JARVIS Speak (GET)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/speak/:text",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "speak", ":text"],
+							"variable": [
+								{
+									"key": "text",
+									"value": "Hello Derek"
+								}
+							]
+						},
+						"description": "GET endpoint for text-to-speech (frontend fallback)"
+					}
+				},
+				{
+					"name": "Transcribe Audio",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_data\": \"base64_encoded_audio\",\n    \"audio_format\": \"wav\",\n    \"strategy\": \"balanced\",\n    \"speaker_name\": \"Derek J. Russell\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/transcribe",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "transcribe"]
+						},
+						"description": "Transcribe audio using Hybrid STT Router with RAM-aware model selection"
+					}
+				},
+				{
+					"name": "Get STT Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/transcribe/stats",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "transcribe", "stats"]
+						},
+						"description": "Get Hybrid STT Router performance statistics"
+					}
+				},
+				{
+					"name": "Get JARVIS Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/config",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "config"]
+						},
+						"description": "Get JARVIS configuration"
+					}
+				},
+				{
+					"name": "Update JARVIS Config",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"voice_enabled\": true,\n    \"wake_word_enabled\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/config",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "config"]
+						},
+						"description": "Update JARVIS configuration"
+					}
+				},
+				{
+					"name": "Get JARVIS Personality",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/personality",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "personality"]
+						},
+						"description": "Get JARVIS personality information"
+					}
+				},
+				{
+					"name": "CoreML Voice Detection",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/voice/detect-coreml?audio_data=base64_audio&priority=0",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "voice", "detect-coreml"],
+							"query": [
+								{
+									"key": "audio_data",
+									"value": "base64_audio",
+									"description": "Base64-encoded float32 numpy array (16kHz, mono)"
+								},
+								{
+									"key": "priority",
+									"value": "0",
+									"description": "Task priority (0=normal, 1=high, 2=critical)"
+								}
+							]
+						},
+						"description": "Async voice detection using CoreML with circuit breaker protection"
+					}
+				},
+				{
+					"name": "CoreML VAD Detection",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/voice/detect-vad-coreml?audio_data=base64_audio&priority=0",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "voice", "detect-vad-coreml"],
+							"query": [
+								{
+									"key": "audio_data",
+									"value": "base64_audio"
+								},
+								{
+									"key": "priority",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Voice Activity Detection only (faster, no speaker recognition)"
+					}
+				},
+				{
+					"name": "Train Speaker CoreML",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/voice/train-speaker-coreml?audio_data=base64_audio&is_user=true",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "voice", "train-speaker-coreml"],
+							"query": [
+								{
+									"key": "audio_data",
+									"value": "base64_audio"
+								},
+								{
+									"key": "is_user",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Train speaker recognition model with new audio samples"
+					}
+				},
+				{
+					"name": "Get CoreML Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/voice/coreml-metrics",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "voice", "coreml-metrics"]
+						},
+						"description": "Get CoreML voice engine performance metrics"
+					}
+				},
+				{
+					"name": "Get CoreML Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/jarvis/voice/coreml-status",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "jarvis", "voice", "coreml-status"]
+						},
+						"description": "Check CoreML engine availability and status"
+					}
+				}
+			]
+		},
+		{
+			"name": "Enhanced Voice",
+			"description": "Enhanced voice processing with Rust acceleration",
+			"item": [
+				{
+					"name": "Activate JARVIS (Enhanced)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/jarvis/activate",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "jarvis", "activate"]
+						},
+						"description": "Activate JARVIS voice system with Rust acceleration"
+					}
+				},
+				{
+					"name": "JARVIS Status (Enhanced)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/jarvis/status",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "jarvis", "status"]
+						},
+						"description": "Get JARVIS system status with performance metrics"
+					}
+				},
+				{
+					"name": "Process Voice",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/process",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "process"]
+						},
+						"description": "Process voice input with Rust acceleration"
+					}
+				},
+				{
+					"name": "Voice Performance",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/performance",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "performance"]
+						},
+						"description": "Get detailed performance metrics"
+					}
+				},
+				{
+					"name": "Voice Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/health",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "health"]
+						},
+						"description": "Health check for voice system"
+					}
+				},
+				{
+					"name": "Demo Rust Acceleration",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/voice/enhanced/voice/demo",
+							"host": ["{{base_url}}"],
+							"path": ["voice", "enhanced", "voice", "demo"]
+						},
+						"description": "Demo endpoint to show Rust acceleration benefits"
+					}
+				}
+			]
+		},
+		{
+			"name": "Audio & TTS",
+			"description": "Text-to-speech and audio processing",
+			"item": [
+				{
+					"name": "Audio Speak (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Hello Derek, how can I assist you today?\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/speak",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "speak"]
+						},
+						"description": "Forward audio speak requests to JARVIS voice API"
+					}
+				},
+				{
+					"name": "Audio Speak (GET)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/speak/:text",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "speak", ":text"],
+							"variable": [
+								{
+									"key": "text",
+									"value": "Hello Derek"
+								}
+							]
+						},
+						"description": "GET endpoint for audio speak (frontend fallback)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Wake Word",
+			"description": "Wake word detection (Hey JARVIS)",
+			"item": [
+				{
+					"name": "Wake Word Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "status"]
+						},
+						"description": "Get wake word detection status"
+					}
+				},
+				{
+					"name": "Enable Wake Word",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/enable",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "enable"]
+						},
+						"description": "Enable wake word detection"
+					}
+				},
+				{
+					"name": "Disable Wake Word",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/disable",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "disable"]
+						},
+						"description": "Disable wake word detection"
+					}
+				},
+				{
+					"name": "Wake Word Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/config",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "config"]
+						},
+						"description": "Get wake word configuration"
+					}
+				},
+				{
+					"name": "Update Wake Word Settings",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sensitivity\": 0.5,\n    \"wake_word\": \"hey jarvis\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/settings",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "settings"]
+						},
+						"description": "Update wake word settings"
+					}
+				},
+				{
+					"name": "Wake Word Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/statistics",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "statistics"]
+						},
+						"description": "Get wake word statistics"
+					}
+				},
+				{
+					"name": "Test Wake Word",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/test",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "test"]
+						},
+						"description": "Test wake word activation"
+					}
+				},
+				{
+					"name": "Report False Positive",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"timestamp\": \"2024-01-01T12:00:00Z\",\n    \"context\": \"TV was playing\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/wake-word/feedback/false-positive",
+							"host": ["{{base_url}}"],
+							"path": ["api", "wake-word", "feedback", "false-positive"]
+						},
+						"description": "Report a false positive wake word detection"
+					}
+				}
+			]
+		},
+		{
+			"name": "Memory Management",
+			"description": "M1/M2 optimized memory management",
+			"item": [
+				{
+					"name": "Memory Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/status",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "status"]
+						},
+						"description": "Get current memory status"
+					}
+				},
+				{
+					"name": "Memory Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/report",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "report"]
+						},
+						"description": "Get detailed memory report"
+					}
+				},
+				{
+					"name": "List Components",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/components",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "components"]
+						},
+						"description": "List all registered components with their current status"
+					}
+				},
+				{
+					"name": "Register Component",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"custom_model\",\n    \"priority\": \"MEDIUM\",\n    \"estimated_memory_mb\": 512\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/memory/components/register",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "components", "register"]
+						},
+						"description": "Register a new component for memory management"
+					}
+				},
+				{
+					"name": "Load Component",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/components/:component_name/load",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "components", ":component_name", "load"],
+							"variable": [
+								{
+									"key": "component_name",
+									"value": "llm_model"
+								}
+							]
+						},
+						"description": "Check if a component can be loaded"
+					}
+				},
+				{
+					"name": "Unload Component",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/components/:component_name/unload",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "components", ":component_name", "unload"],
+							"variable": [
+								{
+									"key": "component_name",
+									"value": "embedding_model"
+								}
+							]
+						},
+						"description": "Unload a component from memory"
+					}
+				},
+				{
+					"name": "Component Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/components/:component_name/status",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "components", ":component_name", "status"],
+							"variable": [
+								{
+									"key": "component_name",
+									"value": "llm_model"
+								}
+							]
+						},
+						"description": "Get detailed status of a specific component"
+					}
+				},
+				{
+					"name": "Optimize Memory",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/optimize",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "optimize"]
+						},
+						"description": "Manually trigger memory optimization"
+					}
+				},
+				{
+					"name": "Emergency Cleanup",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/emergency-cleanup",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "emergency-cleanup"]
+						},
+						"description": "Trigger emergency memory cleanup"
+					}
+				},
+				{
+					"name": "Optimize for LangChain",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"force\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/memory/optimize/langchain",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "optimize", "langchain"]
+						},
+						"description": "Intelligently optimize memory for LangChain operations"
+					}
+				},
+				{
+					"name": "Optimization Suggestions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/memory/optimize/suggestions",
+							"host": ["{{base_url}}"],
+							"path": ["memory", "optimize", "suggestions"]
+						},
+						"description": "Get memory optimization suggestions"
+					}
+				}
+			]
+		},
+		{
+			"name": "Models",
+			"description": "ML model management and selection",
+			"item": [
+				{
+					"name": "Model Registry",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/registry",
+							"host": ["{{base_url}}"],
+							"path": ["models", "registry"]
+						},
+						"description": "Get model registry"
+					}
+				},
+				{
+					"name": "Model Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/registry/:model_name",
+							"host": ["{{base_url}}"],
+							"path": ["models", "registry", ":model_name"],
+							"variable": [
+								{
+									"key": "model_name",
+									"value": "whisper"
+								}
+							]
+						},
+						"description": "Get details of a specific model"
+					}
+				},
+				{
+					"name": "Model Capabilities",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/capabilities",
+							"host": ["{{base_url}}"],
+							"path": ["models", "capabilities"]
+						},
+						"description": "Get all model capabilities"
+					}
+				},
+				{
+					"name": "Models for Capability",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/capabilities/:capability",
+							"host": ["{{base_url}}"],
+							"path": ["models", "capabilities", ":capability"],
+							"variable": [
+								{
+									"key": "capability",
+									"value": "transcription"
+								}
+							]
+						},
+						"description": "Get models that have a specific capability"
+					}
+				},
+				{
+					"name": "Select Model",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"capability\": \"transcription\",\n    \"constraints\": {\n        \"max_memory_mb\": 2048\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/models/select",
+							"host": ["{{base_url}}"],
+							"path": ["models", "select"]
+						},
+						"description": "Select optimal model for a task"
+					}
+				},
+				{
+					"name": "Model Recommendations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/select/recommend/:intent",
+							"host": ["{{base_url}}"],
+							"path": ["models", "select", "recommend", ":intent"],
+							"variable": [
+								{
+									"key": "intent",
+									"value": "voice_transcription"
+								}
+							]
+						},
+						"description": "Get model recommendations for an intent"
+					}
+				},
+				{
+					"name": "Execute with Model Selection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"transcribe\",\n    \"input\": \"base64_audio\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/models/execute",
+							"host": ["{{base_url}}"],
+							"path": ["models", "execute"]
+						},
+						"description": "Execute task with automatic model selection"
+					}
+				},
+				{
+					"name": "Model System Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/health",
+							"host": ["{{base_url}}"],
+							"path": ["models", "health"]
+						},
+						"description": "Get model system health"
+					}
+				},
+				{
+					"name": "Model Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["models", "metrics"]
+						},
+						"description": "Get model performance metrics"
+					}
+				},
+				{
+					"name": "Cost Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/metrics/cost",
+							"host": ["{{base_url}}"],
+							"path": ["models", "metrics", "cost"]
+						},
+						"description": "Get model cost metrics"
+					}
+				},
+				{
+					"name": "Lifecycle Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/lifecycle/status",
+							"host": ["{{base_url}}"],
+							"path": ["models", "lifecycle", "status"]
+						},
+						"description": "Get model lifecycle status"
+					}
+				},
+				{
+					"name": "RAM Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/lifecycle/ram",
+							"host": ["{{base_url}}"],
+							"path": ["models", "lifecycle", "ram"]
+						},
+						"description": "Get RAM status for model lifecycle"
+					}
+				},
+				{
+					"name": "Load Model",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model_name\": \"whisper-small\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/models/lifecycle/load",
+							"host": ["{{base_url}}"],
+							"path": ["models", "lifecycle", "load"]
+						},
+						"description": "Load a model into memory"
+					}
+				},
+				{
+					"name": "Unload Model",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model_name\": \"whisper-small\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/models/lifecycle/unload",
+							"host": ["{{base_url}}"],
+							"path": ["models", "lifecycle", "unload"]
+						},
+						"description": "Unload a model from memory"
+					}
+				}
+			]
+		},
+		{
+			"name": "Vision & Displays",
+			"description": "Vision system and display management",
+			"item": [
+				{
+					"name": "Get Displays",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vision/displays",
+							"host": ["{{base_url}}"],
+							"path": ["vision", "displays"]
+						},
+						"description": "Get all connected displays"
+					}
+				},
+				{
+					"name": "Get Display Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vision/displays/stats",
+							"host": ["{{base_url}}"],
+							"path": ["vision", "displays", "stats"]
+						},
+						"description": "Get display statistics"
+					}
+				},
+				{
+					"name": "Get Display by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vision/displays/:display_id",
+							"host": ["{{base_url}}"],
+							"path": ["vision", "displays", ":display_id"],
+							"variable": [
+								{
+									"key": "display_id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Get specific display information"
+					}
+				},
+				{
+					"name": "Capture Display",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vision/displays/:display_id/capture",
+							"host": ["{{base_url}}"],
+							"path": ["vision", "displays", ":display_id", "capture"],
+							"variable": [
+								{
+									"key": "display_id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Capture screenshot from a display"
+					}
+				}
+			]
+		},
+		{
+			"name": "Proximity Display",
+			"description": "Proximity-aware display management",
+			"item": [
+				{
+					"name": "Proximity Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "status"]
+						},
+						"description": "Get proximity display status"
+					}
+				},
+				{
+					"name": "Proximity Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "health"]
+						},
+						"description": "Health check for proximity display"
+					}
+				},
+				{
+					"name": "Get Displays with Proximity",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/displays",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "displays"]
+						},
+						"description": "Get displays with proximity information"
+					}
+				},
+				{
+					"name": "Get Proximity Context",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/context",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "context"]
+						},
+						"description": "Get proximity display context"
+					}
+				},
+				{
+					"name": "Trigger Proximity Scan",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/scan",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "scan"]
+						},
+						"description": "Trigger a proximity scan"
+					}
+				},
+				{
+					"name": "Connect Display",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"display_id\": \"1\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/connect",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "connect"]
+						},
+						"description": "Connect to a display"
+					}
+				},
+				{
+					"name": "Disconnect Display",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/disconnect",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "disconnect"]
+						},
+						"description": "Disconnect from display"
+					}
+				},
+				{
+					"name": "Register Display Location",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"display_id\": \"1\",\n    \"location\": \"office\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "register"]
+						},
+						"description": "Register a display location"
+					}
+				},
+				{
+					"name": "Make Connection Decision",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/decision",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "decision"]
+						},
+						"description": "Make a connection decision"
+					}
+				},
+				{
+					"name": "Evaluate Auto Connect",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/auto-connect",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "auto-connect"]
+						},
+						"description": "Evaluate auto-connect"
+					}
+				},
+				{
+					"name": "Route Command",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"command\": \"display_info\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/route-command",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "route-command"]
+						},
+						"description": "Route a command to display"
+					}
+				},
+				{
+					"name": "Get Proximity Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/stats",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "stats"]
+						},
+						"description": "Get proximity display stats"
+					}
+				},
+				{
+					"name": "Connection Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/connection-stats",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "connection-stats"]
+						},
+						"description": "Get connection statistics"
+					}
+				},
+				{
+					"name": "Routing Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/routing-stats",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "routing-stats"]
+						},
+						"description": "Get routing statistics"
+					}
+				},
+				{
+					"name": "Voice Prompt Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/voice-prompt-stats",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "voice-prompt-stats"]
+						},
+						"description": "Get voice prompt statistics"
+					}
+				},
+				{
+					"name": "Check Display Availability",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/display-availability/:display_id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "display-availability", ":display_id"],
+							"variable": [
+								{
+									"key": "display_id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Check availability of a display"
+					}
+				},
+				{
+					"name": "Discover AirPlay Devices",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/airplay-devices",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "airplay-devices"]
+						},
+						"description": "Discover AirPlay devices"
+					}
+				},
+				{
+					"name": "Connect to AirPlay",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_name\": \"Apple TV\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/proximity-display/airplay-connect",
+							"host": ["{{base_url}}"],
+							"path": ["api", "proximity-display", "airplay-connect"]
+						},
+						"description": "Connect to an AirPlay device"
+					}
+				}
+			]
+		},
+		{
+			"name": "Hybrid Cloud",
+			"description": "Hybrid cloud cost tracking and management",
+			"item": [
+				{
+					"name": "Hybrid Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/status",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "status"]
+						},
+						"description": "Get comprehensive hybrid cloud status"
+					}
+				},
+				{
+					"name": "Hybrid Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/health",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "health"]
+						},
+						"description": "Get hybrid system health"
+					}
+				},
+				{
+					"name": "Initialize Tracking",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/initialize",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "initialize"]
+						},
+						"description": "Initialize hybrid tracking"
+					}
+				},
+				{
+					"name": "Get Configuration",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/config",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "config"]
+						},
+						"description": "Get hybrid configuration"
+					}
+				},
+				{
+					"name": "Update Configuration",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cost_threshold\": 100.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/hybrid/config",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "config"]
+						},
+						"description": "Update hybrid configuration"
+					}
+				},
+				{
+					"name": "Cost Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/cost",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "cost"]
+						},
+						"description": "Get cost summary"
+					}
+				},
+				{
+					"name": "Daily Cost",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/cost/daily",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "cost", "daily"]
+						},
+						"description": "Get daily cost"
+					}
+				},
+				{
+					"name": "Weekly Cost",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/cost/weekly",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "cost", "weekly"]
+						},
+						"description": "Get weekly cost"
+					}
+				},
+				{
+					"name": "Monthly Cost",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/cost/monthly",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "cost", "monthly"]
+						},
+						"description": "Get monthly cost"
+					}
+				},
+				{
+					"name": "Routing Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/metrics/routing",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "metrics", "routing"]
+						},
+						"description": "Get routing metrics"
+					}
+				},
+				{
+					"name": "Orphaned VMs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/orphaned-vms",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "orphaned-vms"]
+						},
+						"description": "Get orphaned VMs report"
+					}
+				},
+				{
+					"name": "Trigger Cleanup",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/cleanup",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "cleanup"]
+						},
+						"description": "Trigger VM cleanup"
+					}
+				},
+				{
+					"name": "Get Alerts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/alerts",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "alerts"]
+						},
+						"description": "Get hybrid alerts"
+					}
+				},
+				{
+					"name": "Acknowledge Alert",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hybrid/alerts/:alert_id/acknowledge",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "alerts", ":alert_id", "acknowledge"],
+							"variable": [
+								{
+									"key": "alert_id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Acknowledge an alert"
+					}
+				},
+				{
+					"name": "Test VM Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"event_type\": \"start\",\n    \"vm_name\": \"test-vm\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/hybrid/test/vm-event",
+							"host": ["{{base_url}}"],
+							"path": ["hybrid", "test", "vm-event"]
+						},
+						"description": "Test VM event"
+					}
+				}
+			]
+		},
+		{
+			"name": "ML Audio",
+			"description": "ML-powered audio processing and self-healing",
+			"item": [
+				{
+					"name": "ML Audio Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/status",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "status"]
+						},
+						"description": "Get ML audio status"
+					}
+				},
+				{
+					"name": "ML Audio Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/health",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "health"]
+						},
+						"description": "Health check for ML audio"
+					}
+				},
+				{
+					"name": "ML Audio Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/config",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "config"]
+						},
+						"description": "Get ML audio configuration"
+					}
+				},
+				{
+					"name": "Update ML Config",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"enabled\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/ml/config",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "config"]
+						},
+						"description": "Update ML audio configuration"
+					}
+				},
+				{
+					"name": "ML Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "metrics"]
+						},
+						"description": "Get ML audio metrics"
+					}
+				},
+				{
+					"name": "Predict Audio Issue",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_data\": \"base64_audio\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/ml/predict",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "predict"]
+						},
+						"description": "Predict audio issues"
+					}
+				},
+				{
+					"name": "Handle Audio Error",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"error_type\": \"noise\",\n    \"details\": \"Background noise detected\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/ml/error",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "error"]
+						},
+						"description": "Handle audio error"
+					}
+				},
+				{
+					"name": "Manual Heal",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/heal",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "heal"]
+						},
+						"description": "Trigger manual healing"
+					}
+				},
+				{
+					"name": "Healing History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audio/ml/healing-history",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "healing-history"]
+						},
+						"description": "Get healing history"
+					}
+				},
+				{
+					"name": "Receive Telemetry",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"metrics\": {}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/ml/telemetry",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "telemetry"]
+						},
+						"description": "Receive telemetry data"
+					}
+				},
+				{
+					"name": "Simulate Error",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"error_type\": \"timeout\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/audio/ml/simulate-error",
+							"host": ["{{base_url}}"],
+							"path": ["audio", "ml", "simulate-error"]
+						},
+						"description": "Simulate an error for testing"
+					}
+				}
+			]
+		},
+		{
+			"name": "Self-Healing",
+			"description": "System self-healing and Rust component management",
+			"item": [
+				{
+					"name": "Self-Healing Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/status",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "status"]
+						},
+						"description": "Get self-healing system status"
+					}
+				},
+				{
+					"name": "Component Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/component-status",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "component-status"]
+						},
+						"description": "Get component status"
+					}
+				},
+				{
+					"name": "Diagnose Rust Issues",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/diagnose",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "diagnose"]
+						},
+						"description": "Diagnose Rust component issues"
+					}
+				},
+				{
+					"name": "Fix Rust Components",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/fix",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "fix"]
+						},
+						"description": "Fix Rust component issues"
+					}
+				},
+				{
+					"name": "Force Component Check",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/force-check",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "force-check"]
+						},
+						"description": "Force a component check"
+					}
+				},
+				{
+					"name": "Clean and Rebuild Rust",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/self-healing/clean-build",
+							"host": ["{{base_url}}"],
+							"path": ["self-healing", "clean-build"]
+						},
+						"description": "Clean and rebuild Rust components"
+					}
+				}
+			]
+		},
+		{
+			"name": "Network Recovery",
+			"description": "Network connectivity and recovery",
+			"item": [
+				{
+					"name": "Test Connectivity",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/network/test",
+							"host": ["{{base_url}}"],
+							"path": ["network", "test"]
+						},
+						"description": "Test network connectivity"
+					}
+				},
+				{
+					"name": "Diagnose Network",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/network/diagnose",
+							"host": ["{{base_url}}"],
+							"path": ["network", "diagnose"]
+						},
+						"description": "Diagnose network issues"
+					}
+				},
+				{
+					"name": "Advanced Recovery",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/network/ml/advanced-recovery",
+							"host": ["{{base_url}}"],
+							"path": ["network", "ml", "advanced-recovery"]
+						},
+						"description": "Get ML-powered advanced recovery suggestions"
+					}
+				},
+				{
+					"name": "Log Recovery Success",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"recovery_type\": \"dns_flush\",\n    \"success\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/network/ml/recovery-success",
+							"host": ["{{base_url}}"],
+							"path": ["network", "ml", "recovery-success"]
+						},
+						"description": "Log a successful recovery for ML learning"
+					}
+				}
+			]
+		},
+		{
+			"name": "Auto Configuration",
+			"description": "Dynamic configuration endpoints",
+			"item": [
+				{
+					"name": "Get Auto Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auto-config/",
+							"host": ["{{base_url}}"],
+							"path": ["auto-config", ""]
+						},
+						"description": "Get auto configuration"
+					}
+				},
+				{
+					"name": "Get Client Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auto-config/client-config",
+							"host": ["{{base_url}}"],
+							"path": ["auto-config", "client-config"]
+						},
+						"description": "Get client configuration"
+					}
+				},
+				{
+					"name": "List Endpoints",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auto-config/endpoints",
+							"host": ["{{base_url}}"],
+							"path": ["auto-config", "endpoints"]
+						},
+						"description": "List all available endpoints"
+					}
+				}
+			]
+		},
+		{
+			"name": "Commands",
+			"description": "Generic command processing",
+			"item": [
+				{
+					"name": "Execute Command",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"command\": \"status\",\n    \"context\": {}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/command",
+							"host": ["{{base_url}}"],
+							"path": ["api", "command"]
+						},
+						"description": "Execute a JARVIS command"
+					}
+				}
+			]
+		},
+		{
+			"name": "Voice Unlock (Biometric Auth)",
+			"description": "BEAST MODE voice biometric authentication system with ECAPA-TDNN embeddings",
+			"item": [
+				{
+					"name": "Voice Unlock Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "status"]
+						},
+						"description": "Get voice unlock system status including enrolled users and system health"
+					}
+				},
+				{
+					"name": "Start Enrollment Session",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/enrollment/start?user_id=derek",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "enrollment", "start"],
+							"query": [
+								{
+									"key": "user_id",
+									"value": "derek"
+								}
+							]
+						},
+						"description": "Start a new voice enrollment session for a user"
+					}
+				},
+				{
+					"name": "Authenticate with Voice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "multipart/form-data"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "audio_file",
+									"type": "file",
+									"description": "Audio file for voice authentication (WAV format)"
+								},
+								{
+									"key": "user_id",
+									"value": "derek",
+									"type": "text",
+									"description": "Optional: Specific user to authenticate against"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/authenticate",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "authenticate"]
+						},
+						"description": "Authenticate a user via voice biometrics"
+					}
+				},
+				{
+					"name": "Toggle Voice Unlock",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/unlock/toggle?enable=true",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "unlock", "toggle"],
+							"query": [
+								{
+									"key": "enable",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Toggle voice unlock feature on/off"
+					}
+				},
+				{
+					"name": "List Enrolled Users",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "users"]
+						},
+						"description": "List all users enrolled in voice unlock system"
+					}
+				},
+				{
+					"name": "Delete User Profile",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/users/:user_id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "users", ":user_id"],
+							"variable": [
+								{
+									"key": "user_id",
+									"value": "derek"
+								}
+							]
+						},
+						"description": "Delete a user's voice profile"
+					}
+				},
+				{
+					"name": "Export Profiles Backup",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/backup/export",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "backup", "export"]
+						},
+						"description": "Export voice profiles for backup"
+					}
+				},
+				{
+					"name": "Get Configuration",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/config",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "config"]
+						},
+						"description": "Get voice unlock configuration settings"
+					}
+				},
+				{
+					"name": "Update Configuration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"section\": \"authentication\",\n    \"updates\": {\n        \"adaptive_thresholds\": true\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/config/update?section=authentication",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "config", "update"],
+							"query": [
+								{
+									"key": "section",
+									"value": "authentication"
+								}
+							]
+						},
+						"description": "Update voice unlock configuration"
+					}
+				},
+				{
+					"name": "Reload User Profiles",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/voice-unlock/profiles/reload",
+							"host": ["{{base_url}}"],
+							"path": ["api", "voice-unlock", "profiles", "reload"]
+						},
+						"description": "Reload user profiles from database"
+					}
+				}
+			]
+		},
+		{
+			"name": "Voice Authentication Intelligence",
+			"description": "Advanced voice authentication with LangGraph reasoning, Langfuse audit trails, ChromaDB patterns, and multi-factor fusion. Test endpoints for the intelligent authentication pipeline.",
+			"item": [
+				{
+					"name": "1. Status & Health",
+					"item": [
+						{
+							"name": "Get Intelligence Status",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/status",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "status"]
+								},
+								"description": "Get comprehensive status of all voice authentication intelligence components including LangGraph, Langfuse, ChromaDB, and cache."
+							}
+						},
+						{
+							"name": "Quick Health Check",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/health",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "health"]
+								},
+								"description": "Quick health check for the voice auth intelligence API."
+							}
+						},
+						{
+							"name": "Component Health Test",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/test/component-health",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "test", "component-health"]
+								},
+								"description": "Test initialization of all components (speaker_service, audit_trail, pattern_store, voice_cache, feedback_generator, multi_factor_engine)."
+							}
+						}
+					]
+				},
+				{
+					"name": "2. Authentication",
+					"item": [
+						{
+							"name": "Enhanced Authentication",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"speaker_name\": \"Derek\",\n    \"use_adaptive\": true,\n    \"max_attempts\": 3,\n    \"require_watch\": false,\n    \"audio_base64\": null\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/enhanced",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "enhanced"]
+								},
+								"description": "Perform enhanced voice authentication with LangGraph adaptive reasoning, multi-factor fusion, Langfuse audit trail, and ChromaDB anti-spoofing."
+							}
+						},
+						{
+							"name": "Simulate - Success",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"success\",\n    \"speaker_name\": \"Derek\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate a successful authentication with high confidence match."
+							}
+						},
+						{
+							"name": "Simulate - Borderline",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"borderline\",\n    \"speaker_name\": \"Derek\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate borderline confidence (triggers challenge question)."
+							}
+						},
+						{
+							"name": "Simulate - Sick Voice",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"sick_voice\",\n    \"speaker_name\": \"Derek\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate voice anomaly detection (illness detected)."
+							}
+						},
+						{
+							"name": "Simulate - Replay Attack",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"replay_attack\",\n    \"speaker_name\": \"Derek\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate detected replay attack - tests anti-spoofing."
+							}
+						},
+						{
+							"name": "Simulate - Unknown Speaker",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"unknown_speaker\",\n    \"speaker_name\": \"Intruder\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate unknown voice attempting authentication."
+							}
+						},
+						{
+							"name": "Simulate - Noisy Environment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"scenario\": \"noisy_environment\",\n    \"speaker_name\": \"Derek\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/simulate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "authenticate", "simulate"]
+								},
+								"description": "Simulate authentication in noisy environment with low SNR."
+							}
+						}
+					]
+				},
+				{
+					"name": "3. Langfuse Audit Trail",
+					"item": [
+						{
+							"name": "Start Audit Session",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/audit/session/start?user_id=Derek&device=mac",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "audit", "session", "start"],
+									"query": [
+										{
+											"key": "user_id",
+											"value": "Derek"
+										},
+										{
+											"key": "device",
+											"value": "mac"
+										}
+									]
+								},
+								"description": "Start a new Langfuse audit session for tracking authentication attempts."
+							}
+						},
+						{
+							"name": "End Audit Session",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/audit/session/:session_id/end?outcome=authenticated",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "audit", "session", ":session_id", "end"],
+									"query": [
+										{
+											"key": "outcome",
+											"value": "authenticated"
+										}
+									],
+									"variable": [
+										{
+											"key": "session_id",
+											"value": "session_12345"
+										}
+									]
+								},
+								"description": "End an audit session with final outcome (authenticated, denied, timeout, cancelled)."
+							}
+						},
+						{
+							"name": "Get Recent Traces",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/audit/traces/recent?limit=20",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "audit", "traces", "recent"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "20"
+										}
+									]
+								},
+								"description": "Get recent authentication traces from the Langfuse audit trail."
+							}
+						},
+						{
+							"name": "Get Trace Details",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/audit/trace/:trace_id",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "audit", "trace", ":trace_id"],
+									"variable": [
+										{
+											"key": "trace_id",
+											"value": "trace_12345"
+										}
+									]
+								},
+								"description": "Get detailed information about a specific authentication trace."
+							}
+						}
+					]
+				},
+				{
+					"name": "4. ChromaDB Patterns",
+					"item": [
+						{
+							"name": "Get Pattern Stats",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/patterns/stats",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "patterns", "stats"]
+								},
+								"description": "Get ChromaDB pattern store statistics."
+							}
+						},
+						{
+							"name": "Detect Replay Attack",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/patterns/detect-replay?speaker_name=Derek&audio_fingerprint=abc123def456&time_window_seconds=300",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "patterns", "detect-replay"],
+									"query": [
+										{
+											"key": "speaker_name",
+											"value": "Derek"
+										},
+										{
+											"key": "audio_fingerprint",
+											"value": "abc123def456"
+										},
+										{
+											"key": "time_window_seconds",
+											"value": "300"
+										}
+									]
+								},
+								"description": "Check if audio has been used before (anti-spoofing replay attack detection)."
+							}
+						},
+						{
+							"name": "Store Voice Pattern",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"speaker_name\": \"Derek\",\n    \"pattern_type\": \"rhythm\",\n    \"embedding\": [0.1, 0.2, 0.3],\n    \"metadata\": {\n        \"captured_at\": \"2024-01-15T10:30:00Z\",\n        \"environment\": \"home\"\n    }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/patterns/store",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "patterns", "store"]
+								},
+								"description": "Store a voice pattern in ChromaDB for behavioral analysis (rhythm, phrase, environment, emotion, audio_fingerprint)."
+							}
+						},
+						{
+							"name": "Search Similar Patterns",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "[0.1, 0.2, 0.3]"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/patterns/search?speaker_name=Derek&top_k=5",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "patterns", "search"],
+									"query": [
+										{
+											"key": "speaker_name",
+											"value": "Derek"
+										},
+										{
+											"key": "top_k",
+											"value": "5"
+										}
+									]
+								},
+								"description": "Search for similar voice patterns in ChromaDB by embedding vector."
+							}
+						}
+					]
+				},
+				{
+					"name": "5. Voice Cache (Cost Optimization)",
+					"item": [
+						{
+							"name": "Get Cache Stats",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/cache/stats",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "cache", "stats"]
+								},
+								"description": "Get voice processing cache statistics (Helicone-style cost optimization) including hit rate, miss rate, and savings."
+							}
+						},
+						{
+							"name": "Clear Cache",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/cache/clear",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "cache", "clear"]
+								},
+								"description": "Clear the voice processing cache."
+							}
+						}
+					]
+				},
+				{
+					"name": "6. Multi-Factor Fusion",
+					"item": [
+						{
+							"name": "Get Factor Weights",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/multi-factor/weights",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "multi-factor", "weights"]
+								},
+								"description": "Get current multi-factor authentication weights and thresholds."
+							}
+						},
+						{
+							"name": "Calculate Fused Confidence",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/multi-factor/calculate?voice_confidence=0.85&behavioral_confidence=0.92&context_confidence=0.95&proximity_confidence=0&history_confidence=0.5",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "multi-factor", "calculate"],
+									"query": [
+										{
+											"key": "voice_confidence",
+											"value": "0.85"
+										},
+										{
+											"key": "behavioral_confidence",
+											"value": "0.92"
+										},
+										{
+											"key": "context_confidence",
+											"value": "0.95"
+										},
+										{
+											"key": "proximity_confidence",
+											"value": "0"
+										},
+										{
+											"key": "history_confidence",
+											"value": "0.5"
+										}
+									]
+								},
+								"description": "Calculate fused confidence from individual factors (voice, behavioral, context, proximity, history) and get authentication decision."
+							}
+						}
+					]
+				},
+				{
+					"name": "7. Feedback Generation",
+					"item": [
+						{
+							"name": "Generate Feedback",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/feedback/generate?confidence=0.85&snr_db=18&hour=9&voice_changed=false&new_location=false",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "feedback", "generate"],
+									"query": [
+										{
+											"key": "confidence",
+											"value": "0.85"
+										},
+										{
+											"key": "snr_db",
+											"value": "18"
+										},
+										{
+											"key": "hour",
+											"value": "9"
+										},
+										{
+											"key": "voice_changed",
+											"value": "false"
+										},
+										{
+											"key": "new_location",
+											"value": "false"
+										}
+									]
+								},
+								"description": "Generate voice feedback message based on authentication result and context."
+							}
+						},
+						{
+							"name": "Generate Security Alert",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/feedback/security-alert?threat_type=replay_attack",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "feedback", "security-alert"],
+									"query": [
+										{
+											"key": "threat_type",
+											"value": "replay_attack"
+										}
+									]
+								},
+								"description": "Generate security alert feedback for detected threats (replay_attack, voice_cloning, synthetic_voice, unknown_speaker, environmental_anomaly)."
+							}
+						}
+					]
+				},
+				{
+					"name": "8. Integration Tests",
+					"item": [
+						{
+							"name": "Full Pipeline Test",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/test/full-pipeline?speaker_name=Derek&simulate_success=true",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "test", "full-pipeline"],
+									"query": [
+										{
+											"key": "speaker_name",
+											"value": "Derek"
+										},
+										{
+											"key": "simulate_success",
+											"value": "true"
+										}
+									]
+								},
+								"description": "Test the full authentication pipeline with all components: Langfuse audit, voice analysis, ChromaDB patterns, multi-factor fusion, and feedback generation."
+							}
+						},
+						{
+							"name": "Full Pipeline Test (Failure)",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/voice-auth-intelligence/test/full-pipeline?speaker_name=Derek&simulate_success=false",
+									"host": ["{{base_url}}"],
+									"path": ["api", "voice-auth-intelligence", "test", "full-pipeline"],
+									"query": [
+										{
+											"key": "speaker_name",
+											"value": "Derek"
+										},
+										{
+											"key": "simulate_success",
+											"value": "false"
+										}
+									]
+								},
+								"description": "Test the full authentication pipeline simulating a failure scenario."
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Context Intelligence",
+			"description": "Context awareness, OCR processing, and intelligent context queries",
+			"item": [
+				{
+					"name": "Query Context",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"query\": \"What am I working on?\",\n    \"include_history\": true,\n    \"max_history_items\": 10\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/context/query",
+							"host": ["{{base_url}}"],
+							"path": ["context", "query"]
+						},
+						"description": "Query context information - ask about current activity, history, patterns"
+					}
+				},
+				{
+					"name": "Get Context Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/context/summary",
+							"host": ["{{base_url}}"],
+							"path": ["context", "summary"]
+						},
+						"description": "Get high-level overview of current context"
+					}
+				},
+				{
+					"name": "Update OCR Context",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"ocr_text\": \"VS Code - main.py - JARVIS-AI-Agent\",\n    \"source\": \"screen_capture\",\n    \"confidence\": 0.95\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/context/ocr_update",
+							"host": ["{{base_url}}"],
+							"path": ["context", "ocr_update"]
+						},
+						"description": "Update context with OCR data from screen capture"
+					}
+				},
+				{
+					"name": "Record Context Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"event_type\": \"command\",\n    \"data\": {\n        \"command\": \"open safari\",\n        \"result\": \"success\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/context/event",
+							"host": ["{{base_url}}"],
+							"path": ["context", "event"]
+						},
+						"description": "Record a context event (commands, app switches, etc.)"
+					}
+				},
+				{
+					"name": "Get Context History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/context/history?limit=50",
+							"host": ["{{base_url}}"],
+							"path": ["context", "history"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Get context event history"
+					}
+				},
+				{
+					"name": "Get User Patterns",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/context/patterns",
+							"host": ["{{base_url}}"],
+							"path": ["context", "patterns"]
+						},
+						"description": "Get learned user patterns (commands, apps, active hours)"
+					}
+				},
+				{
+					"name": "Get Active App",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/context/active-app",
+							"host": ["{{base_url}}"],
+							"path": ["context", "active-app"]
+						},
+						"description": "Get the currently active application"
+					}
+				},
+				{
+					"name": "Reset Context",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/context/reset?reset_history=true&reset_patterns=false",
+							"host": ["{{base_url}}"],
+							"path": ["context", "reset"],
+							"query": [
+								{
+									"key": "reset_history",
+									"value": "true"
+								},
+								{
+									"key": "reset_patterns",
+									"value": "false"
+								}
+							]
+						},
+						"description": "Reset context data (history and/or patterns)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Monitoring (System)",
+			"description": "System monitoring, metrics collection, and performance tracking",
+			"item": [
+				{
+					"name": "Get System Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "metrics"]
+						},
+						"description": "Get comprehensive system metrics (CPU, memory, disk, process)"
+					}
+				},
+				{
+					"name": "Get API Performance",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/api-performance",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "api-performance"]
+						},
+						"description": "Get API endpoint performance statistics"
+					}
+				},
+				{
+					"name": "Get Resource Usage",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/resources",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "resources"]
+						},
+						"description": "Get detailed resource usage (memory maps, files, network)"
+					}
+				},
+				{
+					"name": "Get Health History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/health-history?minutes=60",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "health-history"],
+							"query": [
+								{
+									"key": "minutes",
+									"value": "60"
+								}
+							]
+						},
+						"description": "Get historical health metrics"
+					}
+				},
+				{
+					"name": "Get Component Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/components",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "components"]
+						},
+						"description": "Get health status of all JARVIS components"
+					}
+				},
+				{
+					"name": "Get Uptime",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/monitoring/uptime",
+							"host": ["{{base_url}}"],
+							"path": ["monitoring", "uptime"]
+						},
+						"description": "Get system uptime information"
+					}
+				}
+			]
+		}
+	]
+}

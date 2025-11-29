@@ -19,10 +19,13 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Initialize logger BEFORE using it in except blocks
+logger = logging.getLogger(__name__)
+
 try:
     from voice_unlock import (
-        VoiceEnrollmentManager, 
-        VoiceAuthenticator, 
+        VoiceEnrollmentManager,
+        VoiceAuthenticator,
         MacUnlockService
     )
     from voice_unlock.config import get_config
@@ -39,8 +42,6 @@ except ImportError as e:
     class KeychainService: pass
     class ScreensaverManager: pass
     def get_config(): return {}
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/voice-unlock", tags=["voice_unlock"])
 

@@ -387,6 +387,7 @@ async def parallel_import_components():
         "monitoring": import_monitoring,
         "voice_unlock": import_voice_unlock,
         "wake_word": import_wake_word,
+        "context": import_context_api,
         "display_monitor": import_display_monitor,
         "goal_inference": import_goal_inference,
     }
@@ -645,6 +646,23 @@ def import_wake_word():
         wake_word["initialized"] = False
 
     return wake_word
+
+
+def import_context_api():
+    """Import context intelligence API components"""
+    context = {}
+
+    try:
+        from api.context_api import router as context_router
+
+        context["router"] = context_router
+        context["available"] = True
+        logger.info("  ✅ Context Intelligence API loaded")
+    except ImportError as e:
+        logger.warning(f"  ⚠️  Context API not available: {e}")
+        context["available"] = False
+
+    return context
 
 
 def import_display_monitor():
@@ -3048,17 +3066,31 @@ def mount_routers():
         app.include_router(ml["status_router"], prefix="/models", tags=["models"])
         logger.info("✅ Model Status API mounted")
 
-    # Monitoring API
+    # Monitoring API (router already has /monitoring prefix)
     monitoring = components.get("monitoring", {})
     if monitoring and monitoring.get("router"):
-        app.include_router(monitoring["router"], prefix="/monitoring", tags=["monitoring"])
-        logger.info("✅ Monitoring API mounted")
+        app.include_router(monitoring["router"], tags=["monitoring"])
+        logger.info("✅ Monitoring API mounted at /monitoring")
 
-    # Voice Unlock API
+    # Context Intelligence API (router already has /context prefix)
+    context = components.get("context", {})
+    if context and context.get("router"):
+        app.include_router(context["router"], tags=["context"])
+        logger.info("✅ Context Intelligence API mounted at /context")
+
+    # Voice Unlock API (router already has /api/voice-unlock prefix)
     voice_unlock = components.get("voice_unlock", {})
     if voice_unlock and voice_unlock.get("router"):
         app.include_router(voice_unlock["router"], tags=["voice_unlock"])
-        logger.info("✅ Voice Unlock API mounted")
+        logger.info("✅ Voice Unlock API mounted at /api/voice-unlock")
+
+    # Voice Authentication Intelligence API (LangGraph + Langfuse + ChromaDB + Cache)
+    try:
+        from api.voice_auth_intelligence_api import router as voice_auth_intelligence_router
+        app.include_router(voice_auth_intelligence_router, tags=["voice_auth_intelligence"])
+        logger.info("✅ Voice Auth Intelligence API mounted at /api/voice-auth-intelligence")
+    except ImportError as e:
+        logger.warning(f"⚠️ Voice Auth Intelligence API not available: {e}")
 
     # Startup Progress API (for loading page)
     try:
